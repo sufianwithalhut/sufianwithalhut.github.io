@@ -15,10 +15,9 @@
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .master-font { font-family: 'Orbitron', sans-serif; }
         .status-badge { font-size: 8px; padding: 2px 8px; border-radius: 99px; font-weight: 900; text-transform: uppercase; }
-        .btn-action { transition: all 0.2s; cursor: pointer; }
-        .btn-action:active { transform: scale(0.9); }
         .pulse-emerald { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); animation: pulse 2s infinite; }
         @keyframes pulse { 70% { box-shadow: 0 0 0 15px rgba(16, 185, 129, 0); } 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }
+        .card-hover:hover { border-color: rgba(16, 185, 129, 0.4); transform: translateY(-5px); transition: 0.3s; }
     </style>
 </head>
 <body class="min-h-screen">
@@ -34,7 +33,7 @@
 
     <div id="mainDashboard" class="hidden p-4 md:p-8 pb-24">
         
-        <header class="max-w-7xl mx-auto mb-10 flex flex-col md:flex-row justify-between items-center bg-slate-900/80 p-6 rounded-[2.5rem] border border-emerald-500/20 shadow-2xl">
+        <header class="max-w-7xl mx-auto mb-10 flex flex-col md:flex-row justify-between items-center bg-slate-900/80 p-6 rounded-[2.5rem] border border-emerald-500/20 shadow-2xl sticky top-4 z-50 glass">
             <div class="flex items-center gap-5">
                 <div class="w-14 h-14 bg-emerald-500 rounded-2xl flex items-center justify-center font-black text-slate-900 text-2xl master-font">ح</div>
                 <div>
@@ -77,7 +76,8 @@
     </div>
 
     <script>
-        const scriptURL = 'https://script.google.com/macros/s/AKfycbzNazBaQ32kAKmHz3d4-aHWVBXlNvDif19JmiaiT9vBUBceXZh6_YeNtj_Dhu2NvGLpLw/exec';
+        // الرابط المحدث الخاص بك
+        const scriptURL = 'https://script.google.com/macros/s/AKfycbwka4X5EuWllid1JLzvrXvGoYpcMdnEFID7gwrk4TPiHpudxhCWKB7OPT1rvSxeU6YfbA/exec';
         const MASTER_PASS = "112233"; // رمز السيادة الخاص بك
 
         function unlockMaster() {
@@ -85,13 +85,13 @@
                 document.getElementById('lockScreen').classList.add('hidden');
                 document.getElementById('mainDashboard').classList.remove('hidden');
                 fetchData();
-                setInterval(fetchData, 15000); // تحديث تلقائي كل 15 ثانية
+                setInterval(fetchData, 15000); 
             } else { alert("عذراً طه، الرمز غير صحيح!"); }
         }
 
         async function fetchData() {
             try {
-                const response = await fetch(scriptURL + "?action=get_master_data");
+                const response = await fetch(`${scriptURL}?action=get_master_data&pass=${MASTER_PASS}`);
                 const data = await response.json();
                 renderOrders(data.orders || []);
                 renderPending(data.pending || []);
@@ -102,7 +102,7 @@
         function renderOrders(orders) {
             const container = document.getElementById('ordersList');
             container.innerHTML = orders.map(ord => `
-                <div class="bg-white/5 p-6 rounded-[2rem] border border-white/5 hover:border-emerald-500/30 transition-all">
+                <div class="bg-white/5 p-6 rounded-[2rem] border border-white/5 card-hover">
                     <div class="flex justify-between items-start mb-4">
                         <span class="text-[9px] font-black text-emerald-500 uppercase tracking-tighter">ID: ${ord.id}</span>
                         <span class="status-badge ${ord.status === 'delivered' ? 'bg-emerald-500' : 'bg-blue-600'} text-white italic">${ord.status}</span>
@@ -123,7 +123,7 @@
         function renderPending(pending) {
             const container = document.getElementById('pendingList');
             const countBadge = document.getElementById('reqCount');
-            if (pending.length > 0) {
+            if (pending && pending.length > 0) {
                 countBadge.innerText = pending.length; countBadge.classList.remove('hidden');
                 container.innerHTML = pending.map(user => `
                     <div class="bg-amber-500/5 border border-amber-500/20 p-6 rounded-[2rem] text-center">
@@ -144,7 +144,7 @@
             const all = [...restaurants.map(r => ({...r, type: 'Restaurant'})), ...drivers.map(d => ({...d, type: 'Driver'}))];
             
             container.innerHTML = all.map(item => `
-                <div class="bg-slate-900 border border-white/5 p-6 rounded-[2.5rem] relative overflow-hidden group">
+                <div class="bg-slate-900 border border-white/5 p-6 rounded-[2.5rem] relative group card-hover">
                     <div class="flex justify-between items-start mb-6">
                         <div>
                             <span class="text-[8px] text-gray-500 uppercase font-black tracking-widest">${item.type === 'Driver' ? 'كابتن ميداني' : 'شريك مطعم'}</span>
@@ -153,39 +153,39 @@
                         <p class="text-emerald-500 text-xl font-black">${item.wallet} <span class="text-[8px]">IQD</span></p>
                     </div>
                     <div class="grid grid-cols-2 gap-2 mb-4">
-                        <button onclick="clearWallet('${item.phone}', '${item.type}')" class="bg-blue-600 text-white py-4 rounded-xl font-black text-[10px] italic shadow-lg active:scale-95 transition-all">تصفير الحساب 💰</button>
+                        <button onclick="clearWallet('${item.phone}', '${item.type}')" class="bg-blue-600 text-white py-4 rounded-xl font-black text-[10px] italic shadow-lg active:scale-95 transition-all">تصفية 💰</button>
                         <button onclick="banUser('${item.phone}', '${item.type}')" class="bg-red-500/10 text-red-500 py-4 rounded-xl font-black text-[10px] border border-red-500/20 active:scale-95 transition-all">حظر 🚫</button>
                     </div>
                     <div class="flex justify-center gap-6 opacity-40 group-hover:opacity-100 transition-all">
                         <a href="tel:${item.phone}" class="text-white text-sm"><i class="fas fa-phone"></i></a>
-                        <a href="https://wa.me/${item.phone}" class="text-emerald-500 text-sm"><i class="fab fa-whatsapp"></i></a>
+                        <a href="https://wa.me/${item.phone}" target="_blank" class="text-emerald-500 text-sm"><i class="fab fa-whatsapp"></i></a>
                     </div>
                 </div>
             `).join('');
         }
 
-        // أوامر السيادة (أكشنات)
+        // الأوامر المركزية
         async function approveUser(phone, type) {
-            await fetch(scriptURL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'approve_user', phone, type, pass: MASTER_PASS }) });
-            alert("تم التفعيل بنجاح!"); fetchData();
+            await fetch(scriptURL, { method: 'POST', body: JSON.stringify({ action: 'approve_user', phone, type, pass: MASTER_PASS }) });
+            alert("تم تفعيل الشريك بنجاح!"); fetchData();
         }
 
         async function clearWallet(phone, type) {
             if(!confirm("هل أنت متأكد من تصفير محفظة هذا المستخدم؟")) return;
-            await fetch(scriptURL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'clear_wallet', phone, type, pass: MASTER_PASS }) });
+            await fetch(scriptURL, { method: 'POST', body: JSON.stringify({ action: 'clear_wallet', phone, type, pass: MASTER_PASS }) });
             alert("تمت تسوية الحساب."); fetchData();
         }
 
         async function banUser(phone, type) {
             if(!confirm("سيتم حظر المستخدم نهائياً ومنعه من الدخول. هل أنت متأكد؟")) return;
-            await fetch(scriptURL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'ban_user', phone, type, pass: MASTER_PASS }) });
+            await fetch(scriptURL, { method: 'POST', body: JSON.stringify({ action: 'ban_user', phone, type, pass: MASTER_PASS }) });
             alert("تم الحظر بنجاح."); fetchData();
         }
 
         async function releaseOrder(orderID) {
             if(!confirm("سحب الطلب سيعيده إلى الرادار ليأخذه سائق آخر. استمرار؟")) return;
-            await fetch(scriptURL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'release_order', orderID, pass: MASTER_PASS }) });
-            fetchData();
+            await fetch(scriptURL, { method: 'POST', body: JSON.stringify({ action: 'release_order', orderID, pass: MASTER_PASS }) });
+            alert("تم سحب الطلب بنجاح."); fetchData();
         }
 
         function showTab(tabId) {
@@ -198,5 +198,4 @@
         }
     </script>
 </body>
-    </html>
-    
+</html>
