@@ -68,37 +68,62 @@
             <div class="text-6xl mb-6 animate-bounce">⏳</div>
             <h3 class="text-xl font-black text-amber-500 italic uppercase">بانتظار الموافقة</h3>
             <p class="text-[10px] text-slate-400 mt-6 leading-relaxed italic">طلب انضمام مطعمك قيد المراجعة في غرفة العمليات.<br>سيتم التفعيل من قبل الإدارة فوراً.</p>
-            <button onclick="logout()" class="mt-10 text-[9px] text-red-500 font-black uppercase border-b border-red-500/30 pb-1">إعادة محاولة الاتصال</button>
+            <button onclick="logout()" class="mt-10 text-[9px] text-red-500 font-black uppercase border-b border-red-500/30 pb-1">تغيير البيانات / إعادة المحاولة</button>
         </div>
 
         <div id="banMessage" class="hidden text-center py-12">
             <div class="text-6xl mb-6">🚫</div>
             <h3 class="text-xl font-black text-red-500 italic uppercase">تم تقييد الوصول</h3>
-            <p class="text-[10px] text-slate-400 mt-6 leading-relaxed italic">نأسف، لقد تم حظر هذا الحساب من قبل الإدارة.<br>يرجى التواصل مع الدعم الفني للمنظومة.</p>
+            <p class="text-[10px] text-slate-400 mt-6 leading-relaxed italic">نأسف، لقد تم حظر هذا الحساب من قبل الإدارة.<br>يرجى التواصل مع طه للمراجعة.</p>
+            <button onclick="logout()" class="mt-8 text-[9px] text-gray-500">العودة للرئيسية</button>
         </div>
 
     </div>
 
     <script>
-        const scriptURL = 'https://script.google.com/macros/s/AKfycbzNazBaQ32kAKmHz3d4-aHWVBXlNvDif19JmiaiT9vBUBceXZh6_YeNtj_Dhu2NvGLpLw/exec';
+        // رابط السكريبت الجديد الخاص بك
+        const scriptURL = 'https://script.google.com/macros/s/AKfycbwka4X5EuWllid1JLzvrXvGoYpcMdnEFID7gwrk4TPiHpudxhCWKB7OPT1rvSxeU6YfbA/exec';
 
-        window.onload = () => {
-            const savedStatus = localStorage.getItem('whale_res_status');
+        window.onload = async () => {
             const savedName = localStorage.getItem('whale_res_name');
+            const savedPhone = localStorage.getItem('whale_res_phone');
 
-            setTimeout(() => {
-                document.getElementById('loader').classList.add('hidden');
-                if (savedStatus === 'active' && savedName) {
-                    window.location.href = 'restaurant.html'; // توجيه لصفحة المطعم الرئيسية
-                } else if (savedStatus === 'pending') {
-                    document.getElementById('waitMessage').classList.remove('hidden');
-                } else if (savedStatus === 'banned') {
-                    document.getElementById('banMessage').classList.remove('hidden');
-                } else {
-                    document.getElementById('authUI').classList.remove('hidden');
+            if (savedName) {
+                // محاولة التحقق التلقائي من الحالة عند فتح التطبيق
+                try {
+                    const response = await fetch(`${scriptURL}?action=restaurant_login&id=${encodeURIComponent(savedName)}&phone=${savedPhone || ''}`);
+                    const result = await response.json();
+                    handleStatus(result, savedName, savedPhone);
+                } catch (e) {
+                    showUI('authUI'); // في حال فشل الاتصال نظهر واجهة الدخول
                 }
-            }, 1200);
+            } else {
+                showUI('authUI');
+            }
         };
+
+        async function handleStatus(result, name, phone) {
+            document.getElementById('loader').classList.add('hidden');
+            if (result.status === 'active') {
+                localStorage.setItem('whale_res_name', name);
+                localStorage.setItem('whale_res_phone', phone);
+                window.location.href = 'restaurant.html'; 
+            } else if (result.status === 'pending') {
+                showUI('waitMessage');
+            } else if (result.status === 'banned') {
+                showUI('banMessage');
+            } else {
+                showUI('authUI');
+            }
+        }
+
+        function showUI(id) {
+            document.getElementById('loader').classList.add('hidden');
+            document.getElementById('authUI').classList.add('hidden');
+            document.getElementById('waitMessage').classList.add('hidden');
+            document.getElementById('banMessage').classList.add('hidden');
+            document.getElementById(id).classList.remove('hidden');
+        }
 
         document.getElementById('smartForm').onsubmit = async function(e) {
             e.preventDefault();
@@ -109,38 +134,30 @@
             const regFields = document.getElementById('regFields');
             
             btn.disabled = true;
-            btnText.innerText = "جاري الربط... 📡";
+            btnText.innerText = "جاري الاتصال بالرادار... 📡";
 
             try {
-                // استدعاء السكريبت الشامل
                 const response = await fetch(`${scriptURL}?action=restaurant_login&id=${encodeURIComponent(name)}&phone=${phone}&name=${encodeURIComponent(name)}`);
                 const result = await response.json();
 
-                if (result.status === 'active') {
-                    localStorage.setItem('whale_res_name', result.name || name);
-                    localStorage.setItem('whale_res_status', 'active');
-                    window.location.href = 'restaurant.html';
-                } else if (result.status === 'pending') {
-                    localStorage.setItem('whale_res_status', 'pending');
-                    localStorage.setItem('whale_res_name', name);
-                    document.getElementById('authUI').classList.add('hidden');
-                    document.getElementById('waitMessage').classList.remove('hidden');
-                } else if (result.status === 'banned') {
-                    localStorage.setItem('whale_res_status', 'banned');
-                    document.getElementById('authUI').classList.add('hidden');
-                    document.getElementById('banMessage').classList.remove('hidden');
+                if (result.status === 'not_found' && !regFields.classList.contains('hidden')) {
+                     // هذا يعني أنه أدخل الهاتف بالفعل والنتيجة لا تزال غير موجودة (خطأ ما)
+                     alert("حدث خطأ في التسجيل، يرجى المحاولة مرة أخرى.");
+                     btn.disabled = false;
                 } else if (result.status === 'not_found') {
-                    // لم يسبق له التسجيل، نظهر حقل الهاتف للتقديم
+                    // أول مرة يحاول الدخول: نطلب الهاتف للتسجيل
                     regFields.classList.remove('hidden');
                     document.getElementById('resPhone').required = true;
                     btn.disabled = false;
-                    btnText.innerText = "تقديم طلب انضمام";
-                    alert("المطعم غير مسجل. يرجى إدخال رقم الهاتف لتقديم طلب انضمام للإدارة.");
+                    btnText.innerText = "ارسال طلب انضمام";
+                    alert("المطعم غير مسجل. يرجى إدخال رقم الهاتف لتقديم طلبك للإدارة.");
+                } else {
+                    handleStatus(result, name, phone);
                 }
             } catch (e) {
-                alert("فشل في مزامنة الرادار. تأكد من اتصالك بالإنترنت.");
+                alert("فشل الاتصال بالخادم. تحقق من جودة الإنترنت.");
                 btn.disabled = false;
-                btnText.innerText = "تفعيل الدخول";
+                btnText.innerText = "إعادة المحاولة";
             }
         };
 
