@@ -12,6 +12,7 @@
         .receipt-card { background: linear-gradient(145deg, #0f172a, #020617); border: 1px solid rgba(255,255,255,0.05); }
         .hidden { display: none; }
         .step-active { color: #10b981; border-color: #10b981; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
     </style>
 </head>
 <body class="max-w-md mx-auto min-h-screen pb-10">
@@ -83,17 +84,17 @@
     </main>
 
     <script>
-        const scriptURL = 'https://script.google.com/macros/s/AKfycbz2Q28bDhfpg3DVhDfCrWWk8fkS-pVvUa5guZXfZJ-cqGEEoJ2t08SxK8KdFZbxR-OVSg/exec';
+        // الرابط الجديد الخاص بك يا طه
+        const scriptURL = 'https://script.google.com/macros/s/AKfycbyYL0NRSg1V9xL62JyL5MQfP2jNO3sNU6lDl1xf_GcmOAZXWBg8G7YpdFdJjxpEDcpDhQ/exec';
         const driverPhone = localStorage.getItem('whale_driver_phone'); 
         let currentOrderID = null;
-        let isBusy = false; // لمنع استلام طلبين
 
         document.addEventListener('DOMContentLoaded', () => {
             if (!driverPhone) return window.location.href = 'driver_login.html';
             document.getElementById('welcomeName').innerText = "كابتن: " + (localStorage.getItem('whale_driver_name') || "مجهول");
             
             startLiveTracking();
-            setInterval(checkOrders, 7000);
+            setInterval(checkOrders, 5000); // تحديث أسرع كل 5 ثوانٍ
             checkOrders();
         });
 
@@ -103,7 +104,7 @@
                     fetch(scriptURL + "?action=update_driver_location", {
                         method: 'POST',
                         body: JSON.stringify({ lat: p.coords.latitude, lng: p.coords.longitude, phone: driverPhone })
-                    });
+                    }).catch(e => console.log("GPS sync error"));
                 }, null, { enableHighAccuracy: true });
             }
         }
@@ -115,12 +116,10 @@
 
                 if (data.status === "found") {
                     renderOrder(data.order);
-                    isBusy = true;
                     document.getElementById('radarText').innerText = "الرادار مقفل على طلبية نشطة";
                 } else {
                     document.getElementById('orderCard').classList.add('hidden');
                     document.getElementById('noOrders').classList.remove('hidden');
-                    isBusy = false;
                     document.getElementById('radarText').innerText = "الرادار يبحث...";
                     currentOrderID = null;
                 }
@@ -133,18 +132,19 @@
             document.getElementById('orderCard').classList.remove('hidden');
             document.getElementById('restaurantTitle').innerText = order.restaurantName;
             
-            // تحديث الأزرار بناءً على الحالة
             if (order.status === "picked-up") {
                 document.getElementById('pickUpBtn').classList.add('hidden');
                 document.getElementById('deliverBtn').classList.remove('hidden');
                 document.getElementById('orderStatusBadge').innerText = "في الطريق للزبون 🚀";
+                document.getElementById('orderStatusBadge').className = "mt-3 px-4 py-1 rounded-full bg-blue-500/10 text-[9px] font-bold text-blue-400 border border-blue-500/20";
             } else {
                 document.getElementById('pickUpBtn').classList.remove('hidden');
                 document.getElementById('deliverBtn').classList.add('hidden');
                 document.getElementById('orderStatusBadge').innerText = "توجه للمطعم للاستلام";
+                document.getElementById('orderStatusBadge').className = "mt-3 px-4 py-1 rounded-full bg-amber-500/10 text-[9px] font-bold text-amber-400 border border-amber-500/20";
             }
 
-            if (order.type === "photo") {
+            if (order.img && order.img !== "No Info") {
                 document.getElementById('receiptOnlyView').classList.remove('hidden');
                 document.getElementById('manualInfoView').classList.add('hidden');
                 document.getElementById('receiptImg').src = order.img;
@@ -163,17 +163,26 @@
         async function updateOrderStatus(newStatus) {
             if (!currentOrderID) return;
             const btn = (newStatus === 'picked-up') ? document.getElementById('pickUpBtn') : document.getElementById('deliverBtn');
+            const originalText = btn.innerHTML;
             btn.disabled = true;
             btn.innerText = "جاري التحديث... 📡";
 
             try {
-                await fetch(scriptURL + "?action=driver_status_update", {
+                const response = await fetch(scriptURL + "?action=driver_status_update", {
                     method: 'POST',
                     body: JSON.stringify({ orderID: currentOrderID, status: newStatus })
                 });
-                if (newStatus === 'delivered') alert("عاش كابتن! تم إكمال المهمة 🐋");
-                checkOrders();
-            } catch (e) { alert("خطأ في الاتصال"); btn.disabled = false; }
+                const result = await response.json();
+                
+                if (result.status === "success") {
+                    if (newStatus === 'delivered') alert("عاش كابتن! تم إكمال المهمة بنجاح 🐋");
+                    checkOrders();
+                }
+            } catch (e) { 
+                alert("خطأ في الاتصال، حاول مرة أخرى"); 
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
         }
 
         function requestCancel() {
