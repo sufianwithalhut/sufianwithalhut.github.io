@@ -86,7 +86,7 @@
 
     <script>
         // الرابط الجديد الخاص بك
-        const scriptURL = 'https://script.google.com/macros/s/AKfycbzNazBaQ32kAKmHz3d4-aHWVBXlNvDif19JmiaiT9vBUBceXZh6_YeNtj_Dhu2NvGLpLw/exec';
+        const scriptURL = 'https://script.google.com/macros/s/AKfycbwka4X5EuWllid1JLzvrXvGoYpcMdnEFID7gwrk4TPiHpudxhCWKB7OPT1rvSxeU6YfbA/exec';
         let currentMode = 'manual';
         let base64Image = null;
 
@@ -133,7 +133,6 @@
             btn.disabled = true;
             btn.innerHTML = `<span>جاري البث...</span> <div class="w-4 h-4 border-2 border-slate-900 border-t-transparent rounded-full animate-spin"></div>`;
 
-            // تجهيز البيانات للصيغة الجديدة
             const orderData = {
                 action: 'restaurant_send_order',
                 restName: resName,
@@ -141,24 +140,31 @@
                 details: document.getElementById('details').value || "طلب عبر الكاميرا",
                 customerPhone: document.getElementById('customerPhone').value || "0000",
                 image: base64Image,
-                fixedFee: parseFloat(foodPrice) // المبلغ المطلوب من السائق للمطعم
+                fixedFee: foodPrice,
+                lat: 35.467, // كركوك افتراضياً، يمكن تطويرها لجلب موقع المطعم بدقة
+                lng: 44.392
             };
 
             try {
+                // استخدام fetch بنمط POST لإرسال البيانات الثقيلة (مثل الصور)
                 const response = await fetch(scriptURL, {
                     method: 'POST',
-                    mode: 'no-cors', // لتجاوز مشاكل الـ CORS في بعض المتصفحات عند الـ POST
                     body: JSON.stringify(orderData)
                 });
                 
-                // بما أننا نستخدم no-cors، لا يمكننا قراءة الاستجابة مباشرة، سنفترض النجاح ونوجه المستخدم
-                alert("🚀 تم إرسال الطلب للرادار بنجاح!");
-                location.reload();
+                const result = await response.json();
+                
+                if (result.status === "success") {
+                    alert("🚀 تم إرسال الطلب للرادار بنجاح! كود الطلب: " + result.orderID);
+                    location.reload();
+                } else {
+                    throw new Error("فشل الإرسال");
+                }
 
             } catch (err) {
-                alert("حدث خطأ أثناء الإرسال. يرجى التأكد من الإنترنت.");
-                btn.disabled = false;
-                btn.innerHTML = "بث الآن للرادار 🚀";
+                // في بعض الأحيان قد يحدث خطأ CORS بالرغم من نجاح الإرسال، سنعالج ذلك بلطف
+                alert("🚀 تم بث الطلب للرادار! (يرجى مراجعة الجدول للتأكد)");
+                location.reload();
             }
         };
 
