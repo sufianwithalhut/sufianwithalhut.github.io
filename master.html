@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>السيادة المطلقة | منظومة الحوت</title>
+    <title>السيادة المطلقة | منظومة الحوت 🐋</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&family=Orbitron:wght@700&display=swap" rel="stylesheet">
     <style>
@@ -14,6 +14,7 @@
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         #lockScreen { background: radial-gradient(circle at center, #0f172a 0%, #020617 100%); transition: all 0.6s; }
         .master-font { font-family: 'Orbitron', sans-serif; }
+        .status-badge { font-size: 8px; padding: 2px 8px; border-radius: 99px; font-weight: 900; text-transform: uppercase; }
     </style>
 </head>
 <body class="min-h-screen">
@@ -23,7 +24,7 @@
             <div class="w-20 h-20 bg-emerald-500 rounded-3xl mx-auto flex items-center justify-center mb-8 shadow-2xl animate-pulse">
                 <span class="text-slate-900 text-4xl font-black master-font">ح</span>
             </div>
-            <h1 class="text-2xl font-black mb-8 italic">غرفة العمليات المركزية</h1>
+            <h1 class="text-2xl font-black mb-8 italic text-white">غرفة العمليات المركزية</h1>
             <input type="password" id="adminPass" placeholder="رمز السيادة" 
                    class="w-full bg-white/5 border border-white/10 p-5 rounded-2xl text-center mb-6 focus:border-emerald-500 outline-none text-emerald-500 text-xl font-bold tracking-widest">
             <button onclick="unlockMaster()" class="w-full bg-emerald-500 text-slate-900 py-5 rounded-2xl font-black hover:scale-95 transition-all text-lg italic uppercase">دخول السيادة 🔐</button>
@@ -53,14 +54,13 @@
             </div>
 
             <div id="orders" class="tab-content active glass p-8 rounded-[3.5rem] border-t-4 border-emerald-500">
-                <div class="flex justify-between items-center mb-10">
+                <div class="flex justify-between items-center mb-10 border-b border-white/5 pb-4">
                     <h2 class="text-2xl font-black text-emerald-400 italic uppercase flex items-center gap-3">
                         <span class="w-3 h-3 bg-emerald-500 rounded-full animate-ping"></span> مراقبة الطلبات النشطة
                     </h2>
                 </div>
                 <div id="ordersList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <p class="text-center col-span-full py-10 opacity-30 italic">جاري جلب إشارات الرادار...</p>
-                </div>
+                    </div>
             </div>
 
             <div id="restaurants" class="tab-content glass p-8 rounded-[3.5rem] border-t-4 border-red-500">
@@ -72,81 +72,101 @@
     </div>
 
     <script>
-        const scriptURL = 'https://script.google.com/macros/s/AKfycbz2Q28bDhfpg3DVhDfCrWWk8fkS-pVvUa5guZXfZJ-cqGEEoJ2t08SxK8KdFZbxR-OVSg/exec';
+        const scriptURL = 'https://script.google.com/macros/s/AKfycbyYL0NRSg1V9xL62JyL5MQfP2jNO3sNU6lDl1xf_GcmOAZXWBg8G7YpdFdJjxpEDcpDhQ/exec';
         const MASTER_PASS = "112233";
 
         function unlockMaster() {
             const pass = document.getElementById('adminPass').value;
             if (pass === MASTER_PASS) {
-                document.getElementById('lockScreen').classList.add('hidden');
-                document.getElementById('mainDashboard').classList.remove('hidden');
-                fetchData(); // جلب البيانات عند الدخول
+                document.getElementById('lockScreen').style.opacity = '0';
+                setTimeout(() => {
+                    document.getElementById('lockScreen').classList.add('hidden');
+                    document.getElementById('mainDashboard').classList.remove('hidden');
+                    fetchData();
+                    setInterval(fetchData, 15000); // تحديث آلي كل 15 ثانية
+                }, 600);
             } else { alert("⚠️ رمز السيادة غير صحيح!"); }
         }
 
         async function fetchData() {
             try {
-                // جلب بيانات الطلبات، المطاعم، والسائقين
-                const res = await fetch(scriptURL + "?action=get_master_data");
+                // ملاحظة: تأكد أن السكريبت يحتوي على أكشن لجلب كل البيانات
+                const response = await fetch(scriptURL + "?action=get_master_data");
                 const data = await response.json();
-                renderOrders(data.orders);
-                renderEntities(data.restaurants, 'Restaurants', 'red');
-                renderEntities(data.drivers, 'Drivers', 'amber');
-            } catch (e) { console.log("Master Data Fetch Error"); }
+                
+                renderOrders(data.orders || []);
+                renderEntities(data.restaurants || [], 'Restaurants', 'emerald');
+                renderEntities(data.drivers || [], 'Drivers', 'red', true);
+            } catch (e) { console.log("Master Sync Error"); }
         }
 
         function renderOrders(orders) {
             const container = document.getElementById('ordersList');
-            container.innerHTML = orders.map(ord => `
-                <div class="bg-white/5 p-6 rounded-[2rem] border border-white/10">
-                    <div class="flex justify-between mb-4">
-                        <span class="text-emerald-500 font-mono text-xs">${ord.id}</span>
-                        <span class="bg-blue-500/20 text-blue-400 px-3 py-1 rounded-full text-[9px] font-black italic">${ord.status}</span>
-                    </div>
-                    <h3 class="font-black italic mb-2">${ord.restName}</h3>
-                    <p class="text-xs text-gray-400 mb-4">${ord.details}</p>
-                    <div class="text-[10px] text-emerald-500/50 uppercase font-black italic">السائق: ${ord.driver || 'بانتظار التخصيص...'}</div>
-                </div>
-            `).join('') || '<p class="text-center col-span-full opacity-30 italic">لا توجد طلبات نشطة حالياً</p>';
-        }
-
-        function renderEntities(items, type, color) {
-            const container = document.getElementById('entitiesList');
-            if (type === 'Restaurants') container.innerHTML = ""; // مسح القائمة عند البدء بالمطاعم
-            
-            container.innerHTML += items.map(item => `
-                <div class="bg-white/[0.02] border border-white/5 p-8 rounded-[3rem] hover:border-${color}-500/30 transition-all">
-                    <div class="flex justify-between items-start mb-8">
-                        <div>
-                            <h3 class="text-xl font-black text-white italic">${item.name}</h3>
-                            <p class="text-[10px] text-gray-500 font-bold mt-2 font-mono uppercase">المحفظة: <span class="text-${color}-500 text-lg">${item.wallet} د.ع</span></p>
+            container.innerHTML = orders.map(ord => {
+                const statusColor = ord.status === 'delivered' ? 'bg-emerald-500' : 'bg-blue-500';
+                return `
+                    <div class="bg-white/5 p-6 rounded-[2rem] border border-white/10 relative overflow-hidden">
+                        <div class="flex justify-between items-start mb-4">
+                            <span class="text-emerald-500 font-mono text-[10px] font-bold">${ord.id}</span>
+                            <span class="${statusColor} text-slate-900 status-badge italic">${ord.status}</span>
+                        </div>
+                        <h3 class="font-black italic text-lg text-white mb-1">${ord.restaurantName}</h3>
+                        <p class="text-[11px] text-gray-400 mb-4 line-clamp-2">${ord.details}</p>
+                        <div class="pt-4 border-t border-white/5 flex justify-between items-center">
+                            <span class="text-[9px] text-gray-500 uppercase font-black italic">الكابتن:</span>
+                            <span class="text-[10px] text-emerald-400 font-bold italic">${ord.driverPhone || 'بدون سائق'}</span>
                         </div>
                     </div>
-                    <button onclick="clearWallet('${item.name}', '${type}')" class="w-full bg-${color}-500/20 text-${color}-500 py-4 rounded-2xl font-black italic border border-${color}-500/10 hover:bg-${color}-500 hover:text-slate-900 transition-all shadow-lg">تصفير الحساب 💰</button>
+                `;
+            }).join('') || '<p class="text-center col-span-full opacity-20 py-20 italic">الرادار نظيف تماماً الآن 🐋</p>';
+        }
+
+        function renderEntities(items, type, color, append = false) {
+            const container = document.getElementById('entitiesList');
+            if (!append) container.innerHTML = "";
+            
+            container.innerHTML += items.map(item => `
+                <div class="bg-white/[0.02] border border-white/5 p-8 rounded-[3rem] hover:border-${color}-500/30 transition-all shadow-xl">
+                    <div class="flex justify-between items-start mb-6">
+                        <div>
+                            <span class="text-[9px] text-gray-500 uppercase font-black mb-1 block tracking-widest">${type === 'Drivers' ? 'كابتن ميداني' : 'شريك مطعم'}</span>
+                            <h3 class="text-xl font-black text-white italic">${item.name}</h3>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-[10px] text-gray-500 font-bold font-mono uppercase">المبلغ الحالي</p>
+                            <p class="text-${color}-500 text-2xl font-black italic">${item.wallet} <span class="text-[10px]">د.ع</span></p>
+                        </div>
+                    </div>
+                    <button onclick="clearWallet('${item.name}', '${type}')" 
+                            class="w-full bg-${color}-500/10 text-${color}-500 py-4 rounded-2xl font-black italic border border-${color}-500/20 hover:bg-${color}-500 hover:text-slate-900 transition-all">
+                        تسوية وتصفير الحساب 💰
+                    </button>
                 </div>
             `).join('');
         }
 
         async function clearWallet(name, targetSheet) {
-            if(!confirm(`هل استلمت المبالغ من ${name} وتريد تصفير المحفظة؟`)) return;
+            if(!confirm(`تأكيد السيادة: هل استلمت المبالغ من [${name}] وتريد تصفير محفظته الآن؟`)) return;
             
-            const res = await fetch(scriptURL + "?action=clear_wallet", {
-                method: 'POST',
-                body: JSON.stringify({ name, targetSheet, pass: MASTER_PASS })
-            });
-            if(res.ok) { alert("تم تصفير الحساب بنجاح ✅"); fetchData(); }
+            try {
+                const response = await fetch(scriptURL, {
+                    method: 'POST',
+                    body: JSON.stringify({ action: 'clear_wallet', name: name, targetSheet: targetSheet, pass: MASTER_PASS })
+                });
+                const result = await response.json();
+                if(result.status === "ok") { alert("تم تصفير الحساب وتحديث السجلات ✅"); fetchData(); }
+            } catch (e) { alert("حدث خطأ في عملية التسوية"); }
         }
 
         function showTab(tabId) {
             document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
             document.getElementById(tabId).classList.add('active');
+            
             document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.classList.replace('bg-emerald-600', 'glass');
-                btn.classList.replace('text-white', 'text-emerald-500');
+                btn.className = "tab-btn flex-1 glass p-6 rounded-3xl font-black text-emerald-500 text-lg italic";
             });
             const activeBtn = document.getElementById('btn-' + tabId);
-            activeBtn.classList.replace('glass', 'bg-emerald-600');
-            activeBtn.classList.replace('text-emerald-500', 'text-white');
+            activeBtn.className = "tab-btn flex-1 bg-emerald-600 p-6 rounded-3xl font-black text-white text-lg italic shadow-[0_10px_30px_rgba(16,185,129,0.3)]";
         }
 
         function lockDashboard() { location.reload(); }
