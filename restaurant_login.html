@@ -12,8 +12,10 @@
         body { font-family: 'Tajawal', sans-serif; background: #010409; color: white; overflow-x: hidden; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
         .radar-grid { position: fixed; inset: 0; background-image: linear-gradient(rgba(16, 185, 129, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(16, 185, 129, 0.03) 1px, transparent 1px); background-size: 30px 30px; z-index: -1; }
         .glass-card { background: rgba(13, 17, 23, 0.85); backdrop-filter: blur(25px); border: 1px solid rgba(16, 185, 129, 0.2); }
-        .whale-input { width: 100%; padding: 1.1rem 3.5rem 1.1rem 1.1rem; background: rgba(0, 0, 0, 0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 1.2rem; color: white; }
-        .action-btn { background: var(--whale-emerald); color: #020617; font-weight: 900; clip-path: polygon(4% 0, 100% 0, 96% 100%, 0% 100%); }
+        .whale-input { width: 100%; padding: 1.1rem 3.5rem 1.1rem 1.1rem; background: rgba(0, 0, 0, 0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 1.2rem; color: white; outline: none; transition: 0.3s; }
+        .whale-input:focus { border-color: var(--whale-emerald); box-shadow: 0 0 15px rgba(16, 185, 129, 0.1); }
+        .action-btn { background: var(--whale-emerald); color: #020617; font-weight: 900; clip-path: polygon(4% 0, 100% 0, 96% 100%, 0% 100%); transition: 0.3s; }
+        .action-btn:active { transform: scale(0.95); }
         .hidden { display: none; }
     </style>
 </head>
@@ -41,14 +43,8 @@
             <form id="smartForm" class="space-y-4">
                 <div class="relative">
                     <i class="fas fa-id-card absolute right-4 top-1/2 -translate-y-1/2 text-emerald-500"></i>
-                    <input type="number" id="managerID" required placeholder="رقم الهاتف أو الهوية" 
-                           class="whale-input text-center font-black tracking-widest text-lg">
-                </div>
-
-                <div id="newFields" class="hidden space-y-4 border-t border-white/5 pt-6">
-                    <p class="text-[10px] text-emerald-500 text-center font-bold italic mb-2">تسجيل مطعم جديد في المنظومة</p>
-                    <input type="text" id="resName" placeholder="اسم المطعم" class="whale-input font-bold italic text-center">
-                    <input type="text" id="resLocation" placeholder="المنطقة (مثلاً: الواسطي)" class="whale-input font-bold italic text-center">
+                    <input type="text" id="managerID" required placeholder="معرف المطعم (الاسم المسجل)" 
+                           class="whale-input text-center font-black tracking-tight text-lg">
                 </div>
 
                 <button type="submit" id="mainBtn" class="w-full py-5 action-btn mt-6 flex items-center justify-center gap-3 italic">
@@ -56,24 +52,30 @@
                     <i class="fas fa-satellite-dish"></i>
                 </button>
             </form>
+            <p class="text-[9px] text-center text-gray-500 mt-6 italic font-bold uppercase tracking-widest">Kirkuk Operational Sector</p>
         </div>
 
         <div id="waitMessage" class="hidden text-center py-12">
             <div class="text-6xl mb-6">⏳</div>
-            <h3 class="text-xl font-black text-amber-500 italic uppercase">قيد المراجعة الأمنية</h3>
-            <p class="text-[10px] text-slate-400 mt-6 leading-relaxed italic">يتم الآن ربط مطعمك بالمنظومة المركزية.<br>سيتم التفعيل فور مراجعة الإدارة للبيانات.</p>
+            <h3 class="text-xl font-black text-amber-500 italic uppercase">بانتظار الموافقة</h3>
+            <p class="text-[10px] text-slate-400 mt-6 leading-relaxed italic">مطعمك مسجل ولكنه بانتظار تفعيل الإدارة.<br>يرجى التواصل مع منظومة الحوت الميدانية.</p>
             <button onclick="logout()" class="mt-10 text-[9px] text-red-500/70 underline font-black">إعادة محاولة</button>
         </div>
     </div>
 
     <script>
-        const scriptURL = 'https://script.google.com/macros/s/AKfycbz2Q28bDhfpg3DVhDfCrWWk8fkS-pVvUa5guZXfZJ-cqGEEoJ2t08SxK8KdFZbxR-OVSg/exec';
+        // الرابط الخاص بك يا طه
+        const scriptURL = 'https://script.google.com/macros/s/AKfycbyYL0NRSg1V9xL62JyL5MQfP2jNO3sNU6lDl1xf_GcmOAZXWBg8G7YpdFdJjxpEDcpDhQ/exec';
 
         window.onload = () => {
             const savedStatus = localStorage.getItem('whale_res_status');
+            const savedName = localStorage.getItem('whale_res_name');
+
             setTimeout(() => {
                 document.getElementById('loader').classList.add('hidden');
-                if (savedStatus === 'pending') {
+                if (savedStatus === 'active' && savedName) {
+                    window.location.href = 'restaurant.html';
+                } else if (savedStatus === 'pending') {
                     document.getElementById('waitMessage').classList.remove('hidden');
                 } else {
                     document.getElementById('authUI').classList.remove('hidden');
@@ -84,34 +86,34 @@
         document.getElementById('smartForm').onsubmit = async function(e) {
             e.preventDefault();
             const id = document.getElementById('managerID').value;
-            const name = document.getElementById('resName').value;
-            const loc = document.getElementById('resLocation').value;
             const btn = document.getElementById('mainBtn');
             
             btn.disabled = true;
-            btn.innerText = "جاري التحقق... 📡";
+            btn.innerText = "جاري التحقق من التراخيص... 📡";
 
             try {
-                const response = await fetch(`${scriptURL}?action=restaurant_login&id=${id}&name=${encodeURIComponent(name)}&loc=${encodeURIComponent(loc)}`);
+                // استخدام أكشن restaurant_login للتحقق من وجود المطعم في شيت Restaurants
+                const response = await fetch(`${scriptURL}?action=restaurant_login&id=${encodeURIComponent(id)}`);
                 const result = await response.json();
 
                 if (result.status === 'active') {
-                    localStorage.setItem('whale_res_id', id);
                     localStorage.setItem('whale_res_name', result.name);
                     localStorage.setItem('whale_res_status', 'active');
                     window.location.href = 'restaurant.html';
                 } else if (result.status === 'not_found') {
-                    document.getElementById('newFields').classList.remove('hidden');
+                    alert("⚠️ اسم المطعم هذا غير موجود في المنظومة. يرجى مراجعة الإدارة لإضافة مطعمك.");
                     btn.disabled = false;
-                    btn.innerText = "تقديم طلب انضمام";
+                    btn.innerText = "تفعيل الدخول";
                 } else {
+                    // حالة الـ pending
                     localStorage.setItem('whale_res_status', 'pending');
                     document.getElementById('authUI').classList.add('hidden');
                     document.getElementById('waitMessage').classList.remove('hidden');
                 }
             } catch (e) {
-                alert("فشل الاتصال بالرادار المركزي");
+                alert("فشل الاتصال بالرادار المركزي، تأكد من جودة الإنترنت");
                 btn.disabled = false;
+                btn.innerText = "تفعيل الدخول";
             }
         };
 
