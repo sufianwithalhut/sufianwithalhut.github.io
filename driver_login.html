@@ -68,30 +68,53 @@
             <div id="statusIcon" class="text-6xl mb-6">🛰️</div>
             <h3 id="statusTitle" class="text-xl font-black text-amber-500 italic uppercase">بانتظار الإشارة</h3>
             <p id="statusDesc" class="text-[10px] text-slate-400 mt-6 leading-relaxed italic">طلب انضمامك قيد المعالجة الآن.<br>سيتم فتح الرادار لك فور موافقة الإدارة.</p>
-            <button onclick="logout()" class="mt-10 text-[9px] text-red-500 font-black border-b border-red-500/30 pb-1 italic">خروج / تغيير الرقم</button>
+            <button onclick="logout()" class="mt-10 text-[9px] text-red-500 font-black border-b border-red-500/30 pb-1 italic">خروج / تغيير البيانات</button>
         </div>
     </div>
 
     <script>
-        // الرابط الجديد الخاص بك
-        const scriptURL = 'https://script.google.com/macros/s/AKfycbzNazBaQ32kAKmHz3d4-aHWVBXlNvDif19JmiaiT9vBUBceXZh6_YeNtj_Dhu2NvGLpLw/exec';
+        // الرابط المحدث الخاص بك
+        const scriptURL = 'https://script.google.com/macros/s/AKfycbwka4X5EuWllid1JLzvrXvGoYpcMdnEFID7gwrk4TPiHpudxhCWKB7OPT1rvSxeU6YfbA/exec';
 
-        window.onload = () => {
-            const savedStatus = localStorage.getItem('whale_driver_status');
+        window.onload = async () => {
             const savedPhone = localStorage.getItem('whale_driver_phone');
             
-            setTimeout(() => {
-                document.getElementById('loader').classList.add('hidden');
-                
-                if (savedStatus === 'active' && savedPhone) {
-                    window.location.href = 'driver_dashboard.html';
-                } else if (savedStatus && savedStatus !== 'active') {
-                    showStatusView(savedStatus);
-                } else {
-                    document.getElementById('authUI').classList.remove('hidden');
+            if (savedPhone) {
+                // تحقق تلقائي من الحالة عند فتح التطبيق
+                try {
+                    const response = await fetch(`${scriptURL}?action=driver_login&phone=${savedPhone}`);
+                    const result = await response.json();
+                    handleDriverStatus(result, savedPhone);
+                } catch (e) {
+                    showUI('authUI');
                 }
-            }, 1200);
+            } else {
+                showUI('authUI');
+            }
         };
+
+        function handleDriverStatus(result, phone) {
+            document.getElementById('loader').classList.add('hidden');
+            if (result.status === 'active') {
+                localStorage.setItem('whale_driver_phone', phone);
+                localStorage.setItem('whale_driver_name', result.name);
+                localStorage.setItem('whale_driver_status', 'active');
+                window.location.href = 'driver_dashboard.html';
+            } else if (result.status === 'pending') {
+                showStatusView('pending');
+            } else if (result.status === 'banned') {
+                showStatusView('banned');
+            } else {
+                showUI('authUI');
+            }
+        }
+
+        function showUI(id) {
+            document.getElementById('loader').classList.add('hidden');
+            document.getElementById('authUI').classList.add('hidden');
+            document.getElementById('statusMessage').classList.add('hidden');
+            document.getElementById(id).classList.remove('hidden');
+        }
 
         document.getElementById('loginForm').onsubmit = async function(e) {
             e.preventDefault();
@@ -105,49 +128,36 @@
             btnText.innerText = "جاري التحقق... 📡";
 
             try {
-                // إرسال طلب تسجيل أو دخول للسكريبت الشامل
                 const response = await fetch(`${scriptURL}?action=driver_login&phone=${phone}&name=${encodeURIComponent(name)}`);
                 const result = await response.json();
 
-                if (result.status === 'active') {
-                    localStorage.setItem('whale_driver_phone', phone);
-                    localStorage.setItem('whale_driver_name', result.name || name);
-                    localStorage.setItem('whale_driver_status', 'active');
-                    window.location.href = 'driver_dashboard.html';
-                } else if (result.status === 'not_found' && regFields.classList.contains('hidden')) {
-                    // السائق غير مسجل، نطلب الاسم للتقديم
+                if (result.status === 'not_found' && regFields.classList.contains('hidden')) {
                     regFields.classList.remove('hidden');
                     document.getElementById('driverName').required = true;
                     btn.disabled = false;
                     btnText.innerText = "إرسال طلب الانضمام";
-                    alert("الرقم غير مسجل في المنظومة. يرجى إدخال اسمك الكامل لتقديم طلب انضمام.");
-                } else if (result.status === 'pending') {
-                    localStorage.setItem('whale_driver_status', 'pending');
-                    localStorage.setItem('whale_driver_phone', phone);
-                    showStatusView('pending');
-                } else if (result.status === 'banned') {
-                    localStorage.setItem('whale_driver_status', 'banned');
-                    showStatusView('banned');
+                    alert("الرقم غير مسجل. يرجى إدخال اسمك الكامل لتقديم طلب انضمام لمنظومة الحوت.");
+                } else {
+                    handleDriverStatus(result, phone);
                 }
             } catch (e) {
-                alert("حدث خطأ في الاتصال بالقاعدة المركزية.");
+                alert("حدث خطأ في الاتصال بالقاعدة المركزية. تحقق من الإنترنت.");
                 btn.disabled = false;
                 btnText.innerText = "تفعيل الرادار";
             }
         };
 
         function showStatusView(status) {
-            document.getElementById('authUI').classList.add('hidden');
-            document.getElementById('statusMessage').classList.remove('hidden');
+            showUI('statusMessage');
             const title = document.getElementById('statusTitle');
             const icon = document.getElementById('statusIcon');
             const desc = document.getElementById('statusDesc');
 
             if (status === 'banned') {
-                title.innerText = "تم حظر الدخول";
-                title.classList.replace('text-amber-500', 'text-red-500');
+                title.innerText = "تم تقييد الوصول";
+                title.style.color = "#ef4444";
                 icon.innerText = "🚫";
-                desc.innerText = "لقد تم تقييد وصولك إلى الرادار من قبل الإدارة.\nيرجى مراجعة الدعم الفني.";
+                desc.innerText = "لقد تم حظر هذا الحساب من قبل الإدارة.\nيرجى مراجعة طه لفك القيود.";
             } else {
                 title.innerText = "بانتظار التفعيل";
                 icon.innerText = "🛰️";
