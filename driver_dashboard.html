@@ -15,13 +15,17 @@
         .img-zoom { transition: transform 0.3s; width: 100%; height: auto; border-radius: 1rem; cursor: zoom-in; }
         .img-zoom:active { transform: scale(1.8); z-index: 100; position: relative; }
         .hidden { display: none; }
+        .active-mission { border-top: 4px solid #fbbf24; }
     </style>
 </head>
 <body class="max-w-md mx-auto min-h-screen pb-10">
     
     <header class="p-5 bg-slate-900 rounded-b-[2.5rem] border-b border-emerald-500/30 shadow-2xl flex justify-between items-center sticky top-0 z-50">
         <div class="flex items-center gap-3">
-            <div class="relative"><div class="absolute inset-0 bg-emerald-500 rounded-full radar-ping opacity-20"></div><div class="w-3 h-3 bg-emerald-500 rounded-full relative z-10"></div></div>
+            <div class="relative">
+                <div class="absolute inset-0 bg-emerald-500 rounded-full radar-ping opacity-20"></div>
+                <div class="w-3 h-3 bg-emerald-500 rounded-full relative z-10"></div>
+            </div>
             <div>
                 <h1 class="text-[10px] font-black text-emerald-500 italic uppercase tracking-tighter">Whale Pilot Radar</h1>
                 <p id="welcomeName" class="text-xs text-white font-bold italic text-right tracking-wide">جاري الاتصال...</p>
@@ -35,8 +39,47 @@
             <p id="radarText" class="text-[9px] text-emerald-500 font-black uppercase tracking-[0.4em] italic animate-pulse">Scanning Kirkuk Sector...</p>
         </div>
 
-        <div id="ordersContainer" class="space-y-6">
+        <div id="orderCard" class="receipt-card p-6 rounded-[2.5rem] relative overflow-hidden hidden active-mission">
+            <div class="mb-6 flex flex-col items-center border-b border-white/5 pb-6 text-center">
+                <span class="text-[8px] bg-amber-500 text-black px-3 py-0.5 rounded-full font-black uppercase mb-3 italic">مهمة قتالية نشطة</span>
+                <h2 id="restaurantTitle" class="text-2xl font-black text-white italic tracking-tight">اسم المطعم</h2>
+                <div id="orderStatusBadge" class="mt-3 px-4 py-1.5 rounded-full bg-white/5 text-[10px] font-bold text-emerald-400 border border-emerald-500/20 italic">بانتظار التحرك</div>
             </div>
+
+            <div id="receiptOnlyView" class="hidden space-y-4 mb-6">
+                <p class="text-[9px] text-gray-500 font-black text-center italic uppercase">انقر على الوصل للتكبير 🔍</p>
+                <div class="rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-black">
+                    <img id="receiptImg" src="" class="img-zoom" alt="Receipt">
+                </div>
+            </div>
+
+            <div id="manualInfoView" class="space-y-4">
+                <div class="bg-white/5 p-4 rounded-2xl border border-white/5">
+                    <p class="text-[8px] text-gray-500 font-black uppercase italic mb-1">📍 تفاصيل الوجهة والملاحظات</p>
+                    <p id="locationTxt" class="text-sm font-black text-white italic leading-relaxed text-right">جاري جلب البيانات...</p>
+                </div>
+                
+                <div id="customerPhoneSection" class="bg-blue-500/5 p-4 rounded-2xl border border-blue-500/20 flex justify-between items-center hidden">
+                    <div>
+                        <p class="text-[8px] text-blue-400 font-black uppercase italic mb-1">📞 اتصال سريع بالزبون</p>
+                        <p id="phoneTxt" class="text-lg font-black text-blue-400 font-mono tracking-widest italic">077XXXXXXXX</p>
+                    </div>
+                    <a id="phoneCall" href="#" class="bg-blue-600 w-12 h-12 rounded-2xl text-white shadow-lg shadow-blue-900/40 flex items-center justify-center text-xl active:scale-90 transition-all">
+                        <i class="fas fa-phone-alt"></i>
+                    </a>
+                </div>
+            </div>
+
+            <div class="mt-8 space-y-3">
+                <button id="pickUpBtn" onclick="updateOrderStatus('picked-up')" class="w-full bg-amber-500 text-black py-5 rounded-[1.5rem] font-black text-lg active:scale-95 transition-all shadow-xl italic flex items-center justify-center gap-2">
+                    <span>تم الاستلام من المطعم 🥡</span>
+                </button>
+                <button id="deliverBtn" onclick="updateOrderStatus('delivered')" class="w-full bg-emerald-500 text-black py-5 rounded-[1.5rem] font-black text-lg active:scale-95 transition-all shadow-xl italic flex items-center justify-center gap-2 hidden">
+                    <span>تم التسليم بنجاح ✅</span>
+                </button>
+                <button onclick="reportProblem()" class="w-full py-3 text-red-500/40 font-bold text-[10px] italic">⚠️ إبلاغ عن مشكلة لطه</button>
+            </div>
+        </div>
 
         <div id="noOrders" class="text-center py-32 opacity-20 italic">
             <i class="fas fa-satellite-dish text-6xl mb-4 text-slate-700"></i>
@@ -45,133 +88,135 @@
     </main>
 
     <script>
-        // رابط السكريبت V6.0 (The Octopus Update)
-        const scriptURL = 'https://script.google.com/macros/s/AKfycbyLS5rwRjqIG8_s0XTuYT1ai1_PewDOBejcEUDCa_EwCqY3p9i5RiHdet9gsgpr6QA_kg/exec';
+        // الرابط الجديد الذي زودتني به
+        const scriptURL = 'https://script.google.com/macros/s/AKfycbypXnyeduY_p9Ax-BWJC-u_dYMU7q-zZ8MSv_7o3BWNtBZdYxNo3h7CX0OVR_GGbZr5ew/exec';
         const driverPhone = localStorage.getItem('whale_driver_phone'); 
+        let currentOrderID = null;
 
         document.addEventListener('DOMContentLoaded', () => {
-            if (!driverPhone) { window.location.href = 'driver_login.html'; return; }
+            if (!driverPhone) {
+                window.location.href = 'driver_login.html';
+                return;
+            }
             document.getElementById('welcomeName').innerText = "كابتن: " + (localStorage.getItem('whale_driver_name') || "مجهول");
             
-            // 1. تفعيل الرادار (متوافق مع update_driver_live في السكريبت)
-            initRadar();
-            
-            // 2. فحص الطلبات (متوافق مع get_radar_orders في السكريبت)
-            fetchOrders();
-            setInterval(fetchOrders, 7000); 
+            initRadarSystem(); // بدء نظام الـ GPS
+            checkOrders(); // فحص الطلبات فوراً
+            setInterval(checkOrders, 5000); 
         });
 
-        // إرسال الإحداثيات للعمود 6 و 7 في شيت Drivers
-        function initRadar() {
+        function initRadarSystem() {
             if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition((pos) => {
-                    sendLocation(pos.coords.latitude, pos.coords.longitude);
-                    setInterval(() => {
-                        navigator.geolocation.getCurrentPosition(p => sendLocation(p.coords.latitude, p.coords.longitude));
-                    }, 30000); // تحديث كل 30 ثانية
-                }, (err) => alert("يرجى تفعيل الموقع لتظهر في الرادار."), { enableHighAccuracy: true });
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                        broadcastPosition(pos.coords.latitude, pos.coords.longitude);
+                        setInterval(() => {
+                            navigator.geolocation.getCurrentPosition(p => broadcastPosition(p.coords.latitude, p.coords.longitude));
+                        }, 30000); // تحديث كل 30 ثانية
+                    },
+                    (err) => { alert("⚠️ الرادار معطل! يرجى السماح بالوصول للموقع."); },
+                    { enableHighAccuracy: true }
+                );
             }
         }
 
-        async function sendLocation(lat, lng) {
-            const data = { 
-                action: "update_driver_live", // التسمية المطلوبة في السكريبت V6.0
-                phone: driverPhone, 
-                lat: lat, 
-                lng: lng 
-            };
+        async function broadcastPosition(lat, lng) {
+            const data = { action: "update_location", phone: driverPhone, lat: lat, lng: lng };
             fetch(scriptURL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(data) });
         }
 
-        async function fetchOrders() {
+        async function checkOrders() {
             try {
-                // طلب الأكشن get_radar_orders كما هو محدد في السكريبت
-                const res = await fetch(`${scriptURL}?action=get_radar_orders&phone=${driverPhone}`);
-                const data = await res.json();
-                
-                const container = document.getElementById('ordersContainer');
-                const noOrders = document.getElementById('noOrders');
-                
-                if (data.orders && data.orders.length > 0) {
-                    noOrders.classList.add('hidden');
-                    container.innerHTML = "";
-                    data.orders.forEach(order => {
-                        container.innerHTML += createOrderCard(order);
-                    });
+                // نرسل id ليتمكن السكريبت من مطابقة الطلب المخصص للسائق
+                const response = await fetch(`${scriptURL}?action=get_driver_orders&id=${encodeURIComponent(driverPhone)}`);
+                const data = await response.json();
+                if (data.status === "found" && data.order) {
+                    renderOrder(data.order);
                     updateRadarUI(true);
                 } else {
-                    container.innerHTML = "";
-                    noOrders.classList.remove('hidden');
+                    document.getElementById('orderCard').classList.add('hidden');
+                    document.getElementById('noOrders').classList.remove('hidden');
                     updateRadarUI(false);
                 }
-            } catch (e) { console.log("Radar Sync..."); }
-        }
-
-        function createOrderCard(order) {
-            // ترتيب البيانات في السكريبت: [ID, المطعم, النوع, التفاصيل, الصورة, الحالة...]
-            const orderID = order[0];
-            const restName = order[1];
-            const details = order[3];
-            const img = order[4];
-            const phoneMatch = details.match(/07[0-9]{9}/);
-            const customerPhone = phoneMatch ? phoneMatch[0] : null;
-
-            return `
-                <div class="receipt-card p-6 rounded-[2.5rem] border-t-4 border-amber-500">
-                    <div class="mb-4 text-center border-b border-white/5 pb-4">
-                        <span class="text-[8px] bg-amber-500 text-black px-3 py-0.5 rounded-full font-black italic">مهمة متاحة</span>
-                        <h2 class="text-xl font-black text-white italic mt-2">${restName}</h2>
-                    </div>
-                    ${img ? `<div class="mb-4"><img src="${img}" class="img-zoom rounded-xl"></div>` : ''}
-                    <div class="bg-white/5 p-4 rounded-2xl text-xs italic text-right mb-4">
-                        <p class="text-gray-500 mb-1">📍 التفاصيل:</p>
-                        <p>${details}</p>
-                    </div>
-                    ${customerPhone ? `
-                        <a href="tel:${customerPhone}" class="flex items-center justify-between bg-blue-600/20 p-4 rounded-2xl border border-blue-500/30 mb-4">
-                            <span class="font-mono text-blue-400">${customerPhone}</span>
-                            <i class="fas fa-phone-alt text-blue-400"></i>
-                        </a>
-                    ` : ''}
-                    <button onclick="acceptOrder('${orderID}')" class="w-full bg-emerald-500 text-black py-4 rounded-2xl font-black text-lg shadow-lg active:scale-95 transition-all italic">
-                        قبول المهمة 🐋
-                    </button>
-                </div>
-            `;
-        }
-
-        async function acceptOrder(id) {
-            // استخدام عمل المدير Master Control لتغيير حالة الطلب وتعيين السائق
-            // في السكريبت: الحالة في العمود 6 (Index 6) والسائق في العمود 7 (Index 7)
-            const payloadStatus = { 
-                action: "master_control", 
-                pass: "112233", // الباسورد الافتراضي في سكريبت V6.0
-                targetSheet: "Orders", 
-                targetID: id, 
-                colIndex: 6, // تحديث الحالة إلى accepted
-                newValue: "accepted" 
-            };
-            
-            const payloadDriver = { 
-                action: "master_control", 
-                pass: "112233", 
-                targetSheet: "Orders", 
-                targetID: id, 
-                colIndex: 7, // وضع هاتف السائق
-                newValue: driverPhone 
-            };
-
-            await fetch(scriptURL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payloadStatus) });
-            await fetch(scriptURL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payloadDriver) });
-            
-            alert("تم قبول الطلب! توجه للمطعم 🚀");
-            fetchOrders();
+            } catch (e) { console.log("Radar Scanning..."); }
         }
 
         function updateRadarUI(active) {
             const txt = document.getElementById('radarText');
             txt.innerText = active ? "LOCKED ON MISSION 🐋" : "Scanning Kirkuk Sector...";
             txt.style.color = active ? "#fbbf24" : "#10b981";
+        }
+
+        function renderOrder(order) {
+            currentOrderID = order.id; 
+            document.getElementById('noOrders').classList.add('hidden');
+            document.getElementById('orderCard').classList.remove('hidden');
+            document.getElementById('restaurantTitle').innerText = order.restName;
+            
+            const badge = document.getElementById('orderStatusBadge');
+            if (order.status === "picked-up") {
+                document.getElementById('pickUpBtn').classList.add('hidden');
+                document.getElementById('deliverBtn').classList.remove('hidden');
+                badge.innerText = "في الطريق لتسليم الزبون 🚀";
+                badge.className = "mt-3 px-4 py-1.5 rounded-full bg-blue-500/10 text-[10px] font-bold text-blue-400 border border-blue-500/20 italic";
+            } else {
+                document.getElementById('pickUpBtn').classList.remove('hidden');
+                document.getElementById('deliverBtn').classList.add('hidden');
+                badge.innerText = "توجه للمطعم لاستلام الطلب 🥡";
+                badge.className = "mt-3 px-4 py-1.5 rounded-full bg-amber-500/10 text-[10px] font-bold text-amber-400 border border-amber-500/20 italic";
+            }
+
+            const rView = document.getElementById('receiptOnlyView');
+            if (order.image && order.image.includes('http')) {
+                rView.classList.remove('hidden');
+                document.getElementById('receiptImg').src = order.image;
+            } else {
+                rView.classList.add('hidden');
+            }
+
+            document.getElementById('locationTxt').innerText = order.details || "لا توجد تفاصيل";
+            const pSec = document.getElementById('customerPhoneSection');
+            const pMatch = order.details.match(/07[0-9]{9}/);
+            if (pMatch) {
+                pSec.classList.remove('hidden');
+                document.getElementById('phoneTxt').innerText = pMatch[0];
+                document.getElementById('phoneCall').href = "tel:" + pMatch[0];
+            } else {
+                pSec.classList.add('hidden');
+            }
+        }
+
+        async function updateOrderStatus(newStatus) {
+            if (!currentOrderID) return;
+            const btn = (newStatus === 'picked-up') ? document.getElementById('pickUpBtn') : document.getElementById('deliverBtn');
+            const old = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerText = "جاري التحديث... 📡";
+
+            try {
+                // إرسال التحديث للسكريبت المطور
+                await fetch(scriptURL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    body: JSON.stringify({ action: "update_order_status", orderID: currentOrderID, status: newStatus, phone: driverPhone })
+                });
+                
+                if (newStatus === 'delivered') {
+                    alert("تم إكمال المهمة بنجاح! 🐋");
+                    document.getElementById('orderCard').classList.add('hidden');
+                }
+                setTimeout(checkOrders, 1000);
+            } catch (e) {
+                checkOrders();
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = old;
+            }
+        }
+
+        function reportProblem() {
+            const msg = prompt("اكتب رسالتك لطه:");
+            if (msg) alert("تم الإرسال لطه بنجاح.");
         }
 
         function logout() { localStorage.clear(); window.location.href = 'driver_login.html'; }
