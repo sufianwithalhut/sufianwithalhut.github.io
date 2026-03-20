@@ -9,14 +9,13 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         body { font-family: 'Tajawal', sans-serif; background: #000; color: #fff; overflow-x: hidden; }
-        .receipt-card { background: linear-gradient(145deg, #0f172a, #020617); border: 1px solid rgba(255,255,255,0.05); box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
-        .hidden { display: none; }
+        .receipt-card { background: linear-gradient(145deg, #0f172a, #020617); border: 1px solid rgba(255,255,255,0.05); box-shadow: 0 20px 50px rgba(0,0,0,0.5); position: relative; }
         .radar-ping { animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite; }
         @keyframes ping { 75%, 100% { transform: scale(2); opacity: 0; } }
-        button:disabled { opacity: 0.5; cursor: not-allowed; }
-        .img-zoom { transition: transform 0.3s; width: 100%; height: auto; border-radius: 1rem; }
-        /* وضعية التكبير عند الضغط المطول أو النقر */
-        .img-zoom:active { transform: scale(1.8); z-index: 100; position: relative; }
+        .img-zoom { transition: transform 0.3s; width: 100%; height: auto; border-radius: 1rem; cursor: zoom-in; }
+        .img-zoom:active { transform: scale(1.5); z-index: 100; position: relative; }
+        .status-active { color: #10b981; text-shadow: 0 0 10px rgba(16, 185, 129, 0.5); }
+        .hidden { display: none; }
     </style>
 </head>
 <body class="max-w-md mx-auto min-h-screen pb-10">
@@ -29,7 +28,7 @@
             </div>
             <div>
                 <h1 class="text-[10px] font-black text-emerald-500 italic uppercase tracking-tighter">Whale Pilot Radar</h1>
-                <p id="welcomeName" class="text-xs text-white font-bold italic">جاري الاتصال...</p>
+                <p id="welcomeName" class="text-xs text-white font-bold italic text-right">جاري الاتصال...</p>
             </div>
         </div>
         <button onclick="logout()" class="text-[10px] bg-red-500/10 text-red-400 px-4 py-2 rounded-xl font-black italic border border-red-500/20 active:scale-90 transition-all">خروج</button>
@@ -44,26 +43,26 @@
             
             <div class="mb-6 flex flex-col items-center border-b border-white/5 pb-6 text-center">
                 <span class="text-[8px] bg-emerald-500 text-black px-3 py-0.5 rounded-full font-black uppercase mb-3 italic">مهمة نشطة</span>
-                <h2 id="restaurantTitle" class="text-2xl font-black text-white italic tracking-tight font-mono">اسم المطعم</h2>
+                <h2 id="restaurantTitle" class="text-2xl font-black text-white italic tracking-tight">اسم المطعم</h2>
                 <div id="orderStatusBadge" class="mt-3 px-4 py-1.5 rounded-full bg-white/5 text-[10px] font-bold text-emerald-400 border border-emerald-500/20 italic">قيد المعالجة</div>
             </div>
 
-            <div id="receiptOnlyView" class="hidden space-y-4">
-                <p class="text-[9px] text-gray-500 font-black text-center italic uppercase mb-2">انقر على الصورة للتكبير</p>
+            <div id="receiptOnlyView" class="hidden space-y-4 mb-4">
+                <p class="text-[9px] text-gray-500 font-black text-center italic uppercase">انقر على الوصل للتكبير 🔍</p>
                 <div class="rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-black">
                     <img id="receiptImg" src="" class="img-zoom" alt="Receipt">
                 </div>
             </div>
 
-            <div id="manualInfoView" class="hidden space-y-4">
+            <div id="manualInfoView" class="space-y-4">
                 <div class="bg-white/5 p-4 rounded-2xl border border-white/5">
-                    <p class="text-[8px] text-gray-500 font-black uppercase italic mb-1">📍 تفاصيل الطلب والوجهة</p>
+                    <p class="text-[8px] text-gray-500 font-black uppercase italic mb-1">📍 تفاصيل الوجهة والطلب</p>
                     <p id="locationTxt" class="text-sm font-black text-white italic leading-relaxed">...</p>
                 </div>
                 
-                <div id="customerPhoneSection" class="bg-white/5 p-4 rounded-2xl border border-white/5 flex justify-between items-center hidden">
+                <div id="customerPhoneSection" class="bg-blue-500/5 p-4 rounded-2xl border border-blue-500/20 flex justify-between items-center hidden">
                     <div>
-                        <p class="text-[8px] text-gray-500 font-black uppercase italic mb-1">📞 هاتف الزبون</p>
+                        <p class="text-[8px] text-blue-400 font-black uppercase italic mb-1">📞 هاتف الزبون</p>
                         <p id="phoneTxt" class="text-lg font-black text-blue-400 font-mono tracking-widest italic">...</p>
                     </div>
                     <a id="phoneCall" href="#" class="bg-blue-600 w-12 h-12 rounded-2xl text-white shadow-lg shadow-blue-900/40 flex items-center justify-center text-xl active:scale-90 transition-all">
@@ -95,57 +94,55 @@
     </main>
 
     <script>
-        // الرابط الجديد الخاص بك
-        const scriptURL = 'https://script.google.com/macros/s/AKfycbwka4X5EuWllid1JLzvrXvGoYpcMdnEFID7gwrk4TPiHpudxhCWKB7OPT1rvSxeU6YfbA/exec';
+        const scriptURL = 'https://script.google.com/macros/s/AKfycbyuXWjqrDVJEFUeNbj2WL78NomEzigv_ewkQ9O0NEc7ZIedHqo8qaTbIUe45FkbHyHMzw/exec';
         const driverPhone = localStorage.getItem('whale_driver_phone'); 
         let currentOrderID = null;
 
         document.addEventListener('DOMContentLoaded', () => {
-            if (!driverPhone) window.location.href = 'Driver_login.html';
+            if (!driverPhone) window.location.href = 'driver_login.html';
             document.getElementById('welcomeName').innerText = "كابتن: " + (localStorage.getItem('whale_driver_name') || "مجهول");
             
-            startLiveTracking();
+            // تحديث موقع السائق كل دقيقة ليكون متاحاً للرادار الذكي
+            startLocationUpdate();
+            // تفقد الطلبات فوراً ثم كل 10 ثوانٍ
             checkOrders();
-            setInterval(checkOrders, 7000); // تحديث الرادار كل 7 ثوانٍ
+            setInterval(checkOrders, 10000); 
         });
 
-        function startLiveTracking() {
+        function startLocationUpdate() {
             if (navigator.geolocation) {
-                navigator.geolocation.watchPosition(p => {
-                    fetch(scriptURL, {
-                        method: 'POST',
-                        mode: 'no-cors',
-                        body: JSON.stringify({ action: 'update_driver_location', phone: driverPhone, lat: p.coords.latitude, lng: p.coords.longitude })
-                    });
-                }, null, { enableHighAccuracy: true });
+                navigator.geolocation.watchPosition(pos => {
+                    const url = `${scriptURL}?action=update_driver_location&phone=${driverPhone}&lat=${pos.coords.latitude}&lng=${pos.coords.longitude}`;
+                    fetch(url, { method: 'POST', mode: 'no-cors' });
+                });
             }
         }
 
         async function checkOrders() {
             try {
-                const response = await fetch(`${scriptURL}?action=get_my_orders&phone=${driverPhone}`);
+                // استدعاء الطلبات المسندة لهذا الرقم حصراً
+                const response = await fetch(`${scriptURL}?action=get_driver_orders&phone=${driverPhone}`);
                 const data = await response.json();
 
                 if (data.status === "found" && data.order) {
                     renderOrder(data.order);
-                    updateRadarText(true);
+                    toggleRadarStatus(true);
                 } else {
                     document.getElementById('orderCard').classList.add('hidden');
                     document.getElementById('noOrders').classList.remove('hidden');
-                    updateRadarText(false);
-                    currentOrderID = null;
+                    toggleRadarStatus(false);
                 }
-            } catch (e) { console.log("Radar sync error"); }
+            } catch (e) { console.warn("Sync error..."); }
         }
 
-        function updateRadarText(isMissionActive) {
+        function toggleRadarStatus(isActive) {
             const txt = document.getElementById('radarText');
-            if (isMissionActive) {
+            if (isActive) {
                 txt.innerText = "LOCKED ON MISSION 🐋";
-                txt.classList.replace('text-emerald-500', 'text-amber-500');
+                txt.style.color = "#fbbf24";
             } else {
                 txt.innerText = "Scanning Kirkuk Sector...";
-                txt.classList.replace('text-amber-500', 'text-emerald-500');
+                txt.style.color = "#10b981";
             }
         }
 
@@ -153,80 +150,71 @@
             currentOrderID = order.id;
             document.getElementById('noOrders').classList.add('hidden');
             document.getElementById('orderCard').classList.remove('hidden');
-            document.getElementById('restaurantTitle').innerText = order.restaurantName;
+            document.getElementById('restaurantTitle').innerText = order.restName;
             
             const badge = document.getElementById('orderStatusBadge');
             
-            // إدارة الأزرار حسب الحالة
+            // إدارة الأزرار حسب حالة الطلب في الشيت
             if (order.status === "picked-up") {
                 document.getElementById('pickUpBtn').classList.add('hidden');
                 document.getElementById('deliverBtn').classList.remove('hidden');
-                badge.innerText = "المهمة: توجه لتسليم الزبون 🚀";
-                badge.className = "mt-3 px-4 py-1.5 rounded-full bg-blue-500 text-[10px] font-black text-white shadow-lg shadow-blue-500/20 italic";
+                badge.innerText = "في الطريق لتسليم الزبون 🚀";
+                badge.style.color = "#3b82f6";
             } else {
                 document.getElementById('pickUpBtn').classList.remove('hidden');
                 document.getElementById('deliverBtn').classList.add('hidden');
-                badge.innerText = "المهمة: استلام من المطعم 🥡";
-                badge.className = "mt-3 px-4 py-1.5 rounded-full bg-amber-500 text-[10px] font-black text-black shadow-lg shadow-amber-500/20 italic";
+                badge.innerText = "توجه للمطعم للاستلام 🥡";
+                badge.style.color = "#fbbf24";
             }
 
-            // عرض الصور أو المعلومات اليدوية
-            if (order.img && order.img !== "" && !order.img.includes('null')) {
+            // معالجة عرض الصورة أو النص
+            if (order.image && order.image.length > 50) {
                 document.getElementById('receiptOnlyView').classList.remove('hidden');
-                document.getElementById('manualInfoView').classList.add('hidden');
-                document.getElementById('receiptImg').src = order.img;
+                document.getElementById('receiptImg').src = order.image;
             } else {
                 document.getElementById('receiptOnlyView').classList.add('hidden');
-                document.getElementById('manualInfoView').classList.remove('hidden');
-                document.getElementById('locationTxt').innerText = order.details || "لا توجد تفاصيل إضافية";
-                if(order.customerPhone && order.customerPhone !== "0000") {
-                    document.getElementById('customerPhoneSection').classList.remove('hidden');
-                    document.getElementById('phoneTxt').innerText = order.customerPhone;
-                    document.getElementById('phoneCall').href = "tel:" + order.customerPhone;
-                } else {
-                    document.getElementById('customerPhoneSection').classList.add('hidden');
-                }
+            }
+
+            document.getElementById('locationTxt').innerText = order.details || "لا توجد ملاحظات إضافية";
+            
+            if (order.customerPhone && order.customerPhone !== "0000") {
+                document.getElementById('customerPhoneSection').classList.remove('hidden');
+                document.getElementById('phoneTxt').innerText = order.customerPhone;
+                document.getElementById('phoneCall').href = "tel:" + order.customerPhone;
+            } else {
+                document.getElementById('customerPhoneSection').classList.add('hidden');
             }
         }
 
         async function updateOrderStatus(newStatus) {
             if (!currentOrderID) return;
             const btn = (newStatus === 'picked-up') ? document.getElementById('pickUpBtn') : document.getElementById('deliverBtn');
-            const originalHTML = btn.innerHTML;
+            const originalText = btn.innerHTML;
             
             btn.disabled = true;
-            btn.innerHTML = `<div class="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin"></div> <span>جاري التحديث...</span>`;
+            btn.innerText = "جاري تحديث القاعدة... 📡";
 
             try {
-                // استخدام POST لتحديث الحالة لضمان التوافق
-                await fetch(scriptURL, {
-                    method: 'POST',
-                    body: JSON.stringify({ 
-                        action: 'driver_status_update', 
-                        orderID: currentOrderID, 
-                        status: newStatus, 
-                        phone: driverPhone 
-                    })
-                });
+                // إرسال تحديث الحالة للسكريبت
+                await fetch(`${scriptURL}?action=update_order_status&orderID=${currentOrderID}&status=${newStatus}&phone=${driverPhone}`);
                 
-                setTimeout(checkOrders, 1500);
-                if(newStatus === 'delivered') alert("أحسنت يا بطل! تم إكمال المهمة وإضافة العمولة لمحفظتك 🐋");
-
-            } catch (e) { 
-                alert("حدث خطأ، يرجى المحاولة مرة أخرى."); 
+                if (newStatus === 'delivered') {
+                    alert("عاش كابتن! تم إكمال المهمة بنجاح 🐋");
+                }
+                setTimeout(checkOrders, 1000);
+            } catch (e) {
+                alert("خطأ في الشبكة، حاول مرة أخرى.");
                 btn.disabled = false;
-                btn.innerHTML = originalHTML;
+                btn.innerHTML = originalText;
             }
         }
 
         function reportProblem() {
-            const reason = prompt("ما هي المشكلة التي تواجهها؟ (مثلاً: الزبون لا يرد، المطعم مغلق)");
-            if (reason) {
-                alert("تم إرسال بلاغك لغرفة عمليات الحوت. سيتواصل معك طه قريباً.");
-            }
+            const msg = prompt("ما هي المشكلة؟ (الزبون لا يرد / المطعم مغلق)");
+            if (msg) alert("تم إبلاغ المدير طه. سيتواصل معك فوراً.");
         }
 
-        function logout() { localStorage.clear(); window.location.href = 'Driver_login.html'; }
+        function logout() { localStorage.clear(); window.location.href = 'driver_login.html'; }
     </script>
 </body>
 </html>
