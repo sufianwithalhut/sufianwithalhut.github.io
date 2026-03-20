@@ -16,6 +16,7 @@
         .whale-input:focus { border-color: var(--whale-amber); box-shadow: 0 0 15px rgba(251, 191, 36, 0.2); }
         .action-btn { background: var(--whale-amber); color: #020617; font-weight: 900; clip-path: polygon(5% 0, 100% 0, 95% 100%, 0% 100%); transition: 0.3s; cursor: pointer; }
         .action-btn:active { transform: scale(0.95); }
+        .action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .hidden { display: none; }
     </style>
 </head>
@@ -38,7 +39,7 @@
                 <h2 class="text-2xl font-black tracking-widest uppercase italic" style="font-family: 'Orbitron', sans-serif;">
                     WHALE <span class="text-amber-500">PILOT</span>
                 </h2>
-                <p class="text-[9px] text-gray-500 mt-2 font-bold italic uppercase tracking-widest">قطاع كركوك الميداني</p>
+                <p class="text-[9px] text-gray-500 mt-2 font-bold italic uppercase tracking-widest">قطاع كركوك الميداني V6.2</p>
             </header>
 
             <form id="loginForm" class="space-y-4">
@@ -73,8 +74,8 @@
     </div>
 
     <script>
-        // الرابط الجديد المحدث V6.2 لعام 2026
-        const scriptURL = 'https://script.google.com/macros/s/AKfycbw0IyVaO5zgsrFFohgarfB_AkjWyUqZ8UMg-8cYlGQfYymg-eDhE-gDJEq3etTPP635Iw/exec';
+        // الرابط المحدث V6.2 - آذار 2026
+        const scriptURL = 'https://script.google.com/macros/s/AKfycbw_cl72d5j5v3ziPZYFAd-wy8_H6yo0II4CHEzJiEMMnkPY92jlUbSYbI_FgnXDPeRvyg/exec';
 
         window.onload = async () => {
             const savedPhone = localStorage.getItem('whale_driver_phone');
@@ -87,12 +88,10 @@
 
         async function checkLoginStatus(phone) {
             try {
-                // استدعاء فحص الحالة من القاعدة
                 const response = await fetch(`${scriptURL}?action=login_check&type=Driver&id=${encodeURIComponent(phone)}`);
                 const result = await response.json();
                 handleDriverStatus(result, phone);
             } catch (e) { 
-                console.error("Connection error");
                 showUI('authUI'); 
             }
         }
@@ -101,11 +100,12 @@
             document.getElementById('loader').classList.add('hidden');
             if (result.status === 'active') {
                 localStorage.setItem('whale_driver_phone', phone);
-                // حفظ الاسم لغرض الترحيب في الصفحة الرئيسية
                 if (result.data) localStorage.setItem('whale_driver_name', result.data[1]); 
                 window.location.href = 'driver.html';
             } else if (result.status === 'pending') {
                 showStatusView('pending');
+                // فحص ذكي: إعادة المحاولة كل 30 ثانية
+                setTimeout(() => location.reload(), 30000);
             } else if (result.status === 'banned') {
                 showStatusView('banned');
             } else { 
@@ -133,15 +133,15 @@
 
             try {
                 if (!regFields.classList.contains('hidden')) {
-                    // تسجيل كابتن جديد
                     const regData = {
                         action: "register_user",
                         type: "Driver",
                         name: name,
                         phone: phone,
-                        password: "123" // كلمة سر افتراضية
+                        password: "123"
                     };
                     
+                    // استخدام fetch مع التعديلات الجديدة
                     await fetch(scriptURL, {
                         method: 'POST',
                         mode: 'no-cors',
@@ -149,14 +149,12 @@
                     });
                     
                     localStorage.setItem('whale_driver_phone', phone);
-                    setTimeout(() => showStatusView('pending'), 1000);
+                    setTimeout(() => showStatusView('pending'), 1500);
                 } else {
-                    // محاولة دخول عادي
                     const response = await fetch(`${scriptURL}?action=login_check&type=Driver&id=${encodeURIComponent(phone)}`);
                     const result = await response.json();
 
                     if (result.status === 'not_found') {
-                        // إذا لم يتم العثور على الرقم، نطلب الاسم للتسجيل
                         regFields.classList.remove('hidden');
                         document.getElementById('driverName').required = true;
                         btn.disabled = false;
@@ -167,7 +165,7 @@
                     }
                 }
             } catch (e) {
-                alert("خطأ في الشبكة، يرجى المحاولة لاحقاً.");
+                alert("خطأ في الربط مع كركوك، تحقق من الإنترنت.");
                 btn.disabled = false;
                 btnText.innerText = "تفعيل ودخول الرادار";
             }
@@ -187,9 +185,7 @@
             } else {
                 title.innerText = "بانتظار موافقة طه";
                 icon.innerText = "🛰️";
-                desc.innerText = "تم استلام بياناتك وهي قيد المراجعة.\nبمجرد التفعيل، سيفتح الرادار تلقائياً.";
-                // فحص دوري كل دقيقة إذا تم التفعيل
-                setTimeout(() => location.reload(), 60000);
+                desc.innerText = "تم استلام بياناتك وهي قيد المراجعة.\nبمجرد تفعيل طه لحسابك، سيفتح الرادار تلقائياً.";
             }
         }
 
