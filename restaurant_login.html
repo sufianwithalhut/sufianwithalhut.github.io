@@ -108,8 +108,8 @@
     </div>
 
     <script>
-        // الرابط الجديد المحدث V6.2 لعام 2026
-        const scriptURL = 'https://script.google.com/macros/s/AKfycbw_cl72d5j5v3ziPZYFAd-wy8_H6yo0II4CHEzJiEMMnkPY92jlUbSYbI_FgnXDPeRvyg/exec';
+        // الرابط الجديد المحدث V6.2 لعام 2026 (طه - كركوك)
+        const scriptURL = 'https://script.google.com/macros/s/AKfycbyIqK63Xu4b2G8BN0aNQIs42oTqvvYRlGDLfQCCSMo68YPYoysKjQ_IjoXhie0MhIaZpQ/exec';
 
         window.onload = async () => {
             const savedPhone = localStorage.getItem('whale_res_phone');
@@ -138,13 +138,11 @@
                     localStorage.setItem('whale_res_name', result.data[1]);
                     localStorage.setItem('whale_res_map', result.data[3]);
                     localStorage.setItem('whale_res_fee', result.data[5]);
-                    // تخزين الإحداثيات إذا كانت موجودة لخدمة المطعم لاحقاً
-                    if(result.data[8]) localStorage.setItem('whale_res_lat', result.data[8]);
-                    if(result.data[9]) localStorage.setItem('whale_res_lng', result.data[9]);
                 }
                 window.location.href = 'restaurant.html'; 
             } else if (result.status === 'pending') {
                 showUI('waitMessage');
+                // إعادة المحاولة كل 30 ثانية للكشف عن التفعيل التلقائي
                 setTimeout(() => location.reload(), 30000);
             } else if (result.status === 'banned') {
                 showUI('banMessage');
@@ -179,9 +177,10 @@
             
             btn.disabled = true;
             statusDiv.classList.remove('hidden');
-            document.getElementById('btnText').innerText = "جاري معايرة الموقع...";
+            const btnSpan = document.getElementById('btnText');
+            btnSpan.innerText = "جاري معايرة الموقع...";
 
-            // سحب إحداثيات GPS المطعم فوراً
+            // سحب إحداثيات المطعم لضبطها في القاعدة
             const coords = await getCoords();
 
             const data = {
@@ -196,23 +195,24 @@
                 lng: coords.lng  
             };
 
-            document.getElementById('btnText').innerText = "بث البيانات للقاعدة...";
+            btnSpan.innerText = "بث البيانات للقاعدة...";
 
             try {
+                // حفظ الرقم محلياً قبل الإرسال
                 localStorage.setItem('whale_res_phone', data.phone);
-                // إرسال البيانات
+                
                 await fetch(scriptURL, {
                     method: 'POST',
                     mode: 'no-cors',
                     body: JSON.stringify(data)
                 });
                 
-                setTimeout(() => showUI('waitMessage'), 1000);
+                setTimeout(() => showUI('waitMessage'), 1500);
             } catch (e) {
-                alert("خطأ في الاتصال. تأكد من الإنترنت.");
+                alert("تعذر الاتصال بالرادار. يرجى التحقق من الشبكة.");
                 btn.disabled = false;
                 statusDiv.classList.add('hidden');
-                document.getElementById('btnText').innerText = "إعادة المحاولة";
+                btnSpan.innerText = "إعادة المحاولة";
             }
         };
 
