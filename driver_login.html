@@ -15,7 +15,7 @@
         .whale-input { width: 100%; padding: 1.1rem 3.5rem 1.1rem 1.1rem; background: rgba(0, 0, 0, 0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 1.2rem; color: white; outline: none; transition: 0.3s; }
         .whale-input:focus { border-color: var(--whale-amber); box-shadow: 0 0 15px rgba(251, 191, 36, 0.2); }
         .action-btn { background: var(--whale-amber); color: #020617; font-weight: 900; clip-path: polygon(5% 0, 100% 0, 95% 100%, 0% 100%); transition: 0.3s; cursor: pointer; }
-        .action-btn:active { transform: scale(0.95); }
+        .action-btn:active:not(:disabled) { transform: scale(0.95); }
         .action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .hidden { display: none; }
     </style>
@@ -75,7 +75,7 @@
 
     <script>
         // الرابط المحدث V6.2 - آذار 2026
-        const scriptURL = 'https://script.google.com/macros/s/AKfycbw_cl72d5j5v3ziPZYFAd-wy8_H6yo0II4CHEzJiEMMnkPY92jlUbSYbI_FgnXDPeRvyg/exec';
+        const scriptURL = 'https://script.google.com/macros/s/AKfycbyIqK63Xu4b2G8BN0aNQIs42oTqvvYRlGDLfQCCSMo68YPYoysKjQ_IjoXhie0MhIaZpQ/exec';
 
         window.onload = async () => {
             const savedPhone = localStorage.getItem('whale_driver_phone');
@@ -92,6 +92,7 @@
                 const result = await response.json();
                 handleDriverStatus(result, phone);
             } catch (e) { 
+                console.error("Login Check Error:", e);
                 showUI('authUI'); 
             }
         }
@@ -104,7 +105,7 @@
                 window.location.href = 'driver.html';
             } else if (result.status === 'pending') {
                 showStatusView('pending');
-                // فحص ذكي: إعادة المحاولة كل 30 ثانية
+                // فحص ذكي: إعادة المحاولة كل 30 ثانية للتأكد من التفعيل
                 setTimeout(() => location.reload(), 30000);
             } else if (result.status === 'banned') {
                 showStatusView('banned');
@@ -133,6 +134,7 @@
 
             try {
                 if (!regFields.classList.contains('hidden')) {
+                    // عملية تسجيل كابتن جديد
                     const regData = {
                         action: "register_user",
                         type: "Driver",
@@ -141,7 +143,6 @@
                         password: "123"
                     };
                     
-                    // استخدام fetch مع التعديلات الجديدة
                     await fetch(scriptURL, {
                         method: 'POST',
                         mode: 'no-cors',
@@ -149,8 +150,9 @@
                     });
                     
                     localStorage.setItem('whale_driver_phone', phone);
-                    setTimeout(() => showStatusView('pending'), 1500);
+                    setTimeout(() => showStatusView('pending'), 2000);
                 } else {
+                    // محاولة دخول عادية
                     const response = await fetch(`${scriptURL}?action=login_check&type=Driver&id=${encodeURIComponent(phone)}`);
                     const result = await response.json();
 
@@ -165,7 +167,7 @@
                     }
                 }
             } catch (e) {
-                alert("خطأ في الربط مع كركوك، تحقق من الإنترنت.");
+                alert("خطأ في الربط، تحقق من جودة الإنترنت.");
                 btn.disabled = false;
                 btnText.innerText = "تفعيل ودخول الرادار";
             }
