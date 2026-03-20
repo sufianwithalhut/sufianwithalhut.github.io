@@ -63,6 +63,7 @@
                         <option value="حزيران">حي حزيران</option>
                         <option value="المصلى">المصلى</option>
                         <option value="حي عدن">حي عدن</option>
+                        <option value="حي الخضراء">حي الخضراء</option>
                     </select>
                     <i class="fas fa-map-marker-alt absolute right-4 top-1/2 -translate-y-1/2 text-emerald-500"></i>
                 </div>
@@ -104,18 +105,20 @@
     </div>
 
     <script>
-        // إحداثيات المطعم الثابتة (كركوك - تقريبي)
-        // يمكنك تغيير هذه الأرقام بدقة حسب موقع مطعمك الفعلي من خرائط جوجل
-        const FIXED_LAT = 35.467; 
-        const FIXED_LNG = 44.392;
-
-        const scriptURL = 'https://script.google.com/macros/s/AKfycbxzctandOPXa8wwohxl9NiNnWdaRhh8d2UKQdFHfPNSPfkv1HQosWXIZ9FT6TjlaPjMJA/exec';
+        // الرابط الجديد V6.0
+        const scriptURL = 'https://script.google.com/macros/s/AKfycbyLS5rwRjqIG8_s0XTuYT1ai1_PewDOBejcEUDCa_EwCqY3p9i5RiHdet9gsgpr6QA_kg/exec';
         let currentMode = 'manual';
         let base64Image = null;
 
         document.addEventListener('DOMContentLoaded', () => {
             const resName = localStorage.getItem('whale_res_name') || "مطعم غير معرف";
             document.getElementById('displayResName').innerText = resName;
+            
+            // التحقق من وجود إحداثيات المطعم، وإلا نطلب منه إعادة التسجيل
+            if (!localStorage.getItem('res_lat')) {
+                alert("تنبيه: موقع المطعم غير مثبت. يرجى إعادة تسجيل الدخول لتفعيل الرادار.");
+                logout();
+            }
         });
 
         function switchTab(type) {
@@ -155,15 +158,19 @@
             const phone = document.getElementById('customerPhone').value || "غير متوفر";
             const userDetails = document.getElementById('details').value || "بدون ملاحظات";
 
+            // سحب الإحداثيات الثابتة للمطعم التي تم حفظها عند تسجيل الدخول
+            const lat = localStorage.getItem('res_lat');
+            const lng = localStorage.getItem('res_lng');
+
             const orderData = {
                 action: 'restaurant_send_order',
                 restName: resName,
                 type: currentMode === 'camera' ? 'تصوير وصل' : 'يدوي',
                 area: area,
-                details: `الهاتف: ${phone} | ملاحظات: ${userDetails}`,
-                fee: 0, 
-                lat: FIXED_LAT, // إرسال الإحداثيات الثابتة
-                lng: FIXED_LNG, // إرسال الإحداثيات الثابتة
+                details: `هاتف الزبون: ${phone} | ملاحظات: ${userDetails}`,
+                fee: 0, // العمولة تُحسب تلقائياً في السكريبت من بيانات المطعم
+                lat: parseFloat(lat),
+                lng: parseFloat(lng),
                 image: base64Image
             };
 
@@ -171,14 +178,12 @@
             btn.innerHTML = `<i class="fas fa-satellite-dish animate-spin"></i> جاري بث الإشارة...`;
             
             try {
-                // إرسال البيانات باستخدام POST (JSON)
                 await fetch(scriptURL, {
                     method: 'POST',
                     mode: 'no-cors',
                     body: JSON.stringify(orderData)
                 });
 
-                // إظهار نجاح العملية
                 toast.classList.remove('hidden');
                 document.getElementById('orderForm').reset();
                 cancelImage();
@@ -192,6 +197,7 @@
             } catch (err) {
                 alert("حدث خطأ في الاتصال، حاول مرة أخرى.");
                 btn.disabled = false;
+                btn.innerHTML = `<span>بث فوري للرادار</span> <i class="fas fa-paper-plane"></i>`;
             }
         };
 
