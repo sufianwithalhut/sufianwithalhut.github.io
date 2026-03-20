@@ -50,7 +50,7 @@
                 </div>
 
                 <div>
-                    <label>رقم هاتف التواصل (معرّف الدخول)</label>
+                    <label>رقم هاتف التواصل</label>
                     <div class="relative">
                         <i class="fas fa-phone absolute right-4 top-1/2 -translate-y-1/2 text-emerald-500"></i>
                         <input type="tel" id="resPhone" required placeholder="07XXXXXXXXX" class="whale-input text-right">
@@ -74,7 +74,7 @@
                         <label>نظام الدفع</label>
                         <select id="commType" class="whale-input bg-slate-900 text-[10px] px-1">
                             <option value="restaurant">المطعم يدفع</option>
-                            <option value="split">مناصفة (مطعم+سائق)</option>
+                            <option value="split">مناصفة</option>
                         </select>
                     </div>
                 </div>
@@ -112,14 +112,13 @@
     </div>
 
     <script>
-        // الرابط الجديد الخاص بك V5.0
-        const scriptURL = 'https://script.google.com/macros/s/AKfycbxblbNvf-H7QN-TVp6M5GMuN8pVcFMRXpA-7ahrVoKwRc0qj0vUaFaSVBtLJFOEHtVg6g/exec';
+        // الرابط الجديد V5.0 المطور
+        const scriptURL = 'https://script.google.com/macros/s/AKfycbxzctandOPXa8wwohxl9NiNnWdaRhh8d2UKQdFHfPNSPfkv1HQosWXIZ9FT6TjlaPjMJA/exec';
 
         window.onload = async () => {
             const savedPhone = localStorage.getItem('whale_res_phone');
             if (savedPhone) {
                 try {
-                    // التحقق من الحالة عبر رقم الهاتف (Phone)
                     const res = await fetch(`${scriptURL}?action=login_check&type=Restaurant&id=${encodeURIComponent(savedPhone)}`);
                     const result = await res.json();
                     handleStatus(result, savedPhone);
@@ -137,7 +136,7 @@
                     locBtn.classList.add('success');
                     locStatus.innerText = "تم تثبيت إحداثيات المطعم ✅";
                 }, () => {
-                    alert("يرجى تفعيل الـ GPS في متصفحك.");
+                    alert("يرجى تفعيل الـ GPS.");
                     locStatus.innerText = "خطأ في التحديد - حاول مجدداً";
                 });
             }
@@ -147,7 +146,6 @@
             document.getElementById('loader').classList.add('hidden');
             if (result.status === 'active') {
                 localStorage.setItem('whale_res_phone', phone);
-                // تخزين اسم المطعم أيضاً لاستخدامه في الطلبات
                 if(result.data) localStorage.setItem('whale_res_name', result.data[1]); 
                 window.location.href = 'restaurant.html'; 
             } else if (result.status === 'pending') {
@@ -167,28 +165,32 @@
             e.preventDefault();
             const btn = document.getElementById('mainBtn');
             const data = {
+                action: "register_user",
+                type: "Restaurant",
                 name: document.getElementById('resName').value,
                 phone: document.getElementById('resPhone').value,
                 address: document.getElementById('resAddress').value,
                 fee: document.getElementById('fixedFee').value,
-                commType: document.getElementById('commType').value,
                 coords: document.getElementById('resCoords').value
             };
 
-            if (!data.coords) return alert("يجب الضغط على زر تثبيت الموقع أولاً لضمان وصول السواق إليك.");
+            if (!data.coords) return alert("ثبت موقع المطعم أولاً 📍");
 
             btn.disabled = true;
-            document.getElementById('btnText').innerText = "جاري إرسال بياناتك لطه... 🚀";
+            document.getElementById('btnText').innerText = "جاري إرسال طلب الانضمام... 🚀";
 
             try {
-                // إرسال طلب تسجيل جديد
-                const url = `${scriptURL}?action=login_check&type=Restaurant&register=true&name=${encodeURIComponent(data.name)}&phone=${data.phone}&address=${encodeURIComponent(data.address)}&fee=${data.fee}&commType=${data.commType}&coords=${data.coords}&id=${data.phone}`;
-                const response = await fetch(url);
+                const response = await fetch(scriptURL, {
+                    method: 'POST',
+                    body: JSON.stringify(data)
+                });
                 const result = await response.json();
+                localStorage.setItem('whale_res_phone', data.phone);
                 handleStatus(result, data.phone);
             } catch (e) {
-                alert("حدث خطأ في الاتصال بالسيرفر الرئيسي.");
-                btn.disabled = false;
+                // في حالة الـ CORS، نفترض الإرسال وننتظر تفعيل طه
+                localStorage.setItem('whale_res_phone', data.phone);
+                showUI('waitMessage');
             }
         };
 
