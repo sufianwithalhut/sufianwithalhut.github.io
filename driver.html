@@ -88,8 +88,8 @@
     </main>
 
     <script>
-        // الرابط الجديد الذي زودتني به
-        const scriptURL = 'https://script.google.com/macros/s/AKfycbypXnyeduY_p9Ax-BWJC-u_dYMU7q-zZ8MSv_7o3BWNtBZdYxNo3h7CX0OVR_GGbZr5ew/exec';
+        // الرابط المحدث V6.1.3
+        const scriptURL = 'https://script.google.com/macros/s/AKfycbz-Rgnwclf9OJz2uJuBhD4PqDkY9XI0KCnSDhq1bRI558bxT5YLTTozkpZHky20oX9g/exec';
         const driverPhone = localStorage.getItem('whale_driver_phone'); 
         let currentOrderID = null;
 
@@ -100,36 +100,31 @@
             }
             document.getElementById('welcomeName').innerText = "كابتن: " + (localStorage.getItem('whale_driver_name') || "مجهول");
             
-            initRadarSystem(); // بدء نظام الـ GPS
-            checkOrders(); // فحص الطلبات فوراً
-            setInterval(checkOrders, 5000); 
+            initRadarSystem(); // تفعيل الـ GPS
+            checkOrders(); // فحص أولي
+            setInterval(checkOrders, 5000); // تحديث كل 5 ثوانٍ
         });
 
         function initRadarSystem() {
             if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(
-                    (pos) => {
-                        broadcastPosition(pos.coords.latitude, pos.coords.longitude);
-                        setInterval(() => {
-                            navigator.geolocation.getCurrentPosition(p => broadcastPosition(p.coords.latitude, p.coords.longitude));
-                        }, 30000); // تحديث كل 30 ثانية
-                    },
-                    (err) => { alert("⚠️ الرادار معطل! يرجى السماح بالوصول للموقع."); },
-                    { enableHighAccuracy: true }
+                navigator.geolocation.watchPosition(
+                    (pos) => broadcastPosition(pos.coords.latitude, pos.coords.longitude),
+                    (err) => console.error("GPS Error"),
+                    { enableHighAccuracy: true, timeout: 5000 }
                 );
             }
         }
 
         async function broadcastPosition(lat, lng) {
-            const data = { action: "update_location", phone: driverPhone, lat: lat, lng: lng };
+            const data = { action: "update_location", type: "Driver", phone: driverPhone, lat: lat, lng: lng };
             fetch(scriptURL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(data) });
         }
 
         async function checkOrders() {
             try {
-                // نرسل id ليتمكن السكريبت من مطابقة الطلب المخصص للسائق
-                const response = await fetch(`${scriptURL}?action=get_driver_orders&id=${encodeURIComponent(driverPhone)}`);
-                const data = await response.json();
+                const res = await fetch(`${scriptURL}?action=get_driver_orders&id=${encodeURIComponent(driverPhone)}`);
+                const data = await res.json();
+                
                 if (data.status === "found" && data.order) {
                     renderOrder(data.order);
                     updateRadarUI(true);
@@ -138,7 +133,9 @@
                     document.getElementById('noOrders').classList.remove('hidden');
                     updateRadarUI(false);
                 }
-            } catch (e) { console.log("Radar Scanning..."); }
+            } catch (e) { 
+                console.log("Radar Scanning..."); 
+            }
         }
 
         function updateRadarUI(active) {
@@ -154,33 +151,39 @@
             document.getElementById('restaurantTitle').innerText = order.restName;
             
             const badge = document.getElementById('orderStatusBadge');
+            const pBtn = document.getElementById('pickUpBtn');
+            const dBtn = document.getElementById('deliverBtn');
+
             if (order.status === "picked-up") {
-                document.getElementById('pickUpBtn').classList.add('hidden');
-                document.getElementById('deliverBtn').classList.remove('hidden');
+                pBtn.classList.add('hidden');
+                dBtn.classList.remove('hidden');
                 badge.innerText = "في الطريق لتسليم الزبون 🚀";
                 badge.className = "mt-3 px-4 py-1.5 rounded-full bg-blue-500/10 text-[10px] font-bold text-blue-400 border border-blue-500/20 italic";
             } else {
-                document.getElementById('pickUpBtn').classList.remove('hidden');
-                document.getElementById('deliverBtn').classList.add('hidden');
+                pBtn.classList.remove('hidden');
+                dBtn.classList.add('hidden');
                 badge.innerText = "توجه للمطعم لاستلام الطلب 🥡";
                 badge.className = "mt-3 px-4 py-1.5 rounded-full bg-amber-500/10 text-[10px] font-bold text-amber-400 border border-amber-500/20 italic";
             }
 
+            // عرض الصورة إذا وجدت
             const rView = document.getElementById('receiptOnlyView');
-            if (order.image && order.image.includes('http')) {
+            if (order.image && order.image.length > 50) {
                 rView.classList.remove('hidden');
                 document.getElementById('receiptImg').src = order.image;
             } else {
                 rView.classList.add('hidden');
             }
 
-            document.getElementById('locationTxt').innerText = order.details || "لا توجد تفاصيل";
+            document.getElementById('locationTxt').innerText = order.details || "لا توجد ملاحظات";
+            
+            // استخراج رقم الهاتف ذكياً
+            const phoneMatch = (order.details || "").match(/07[0-9]{9}/);
             const pSec = document.getElementById('customerPhoneSection');
-            const pMatch = order.details.match(/07[0-9]{9}/);
-            if (pMatch) {
+            if (phoneMatch) {
                 pSec.classList.remove('hidden');
-                document.getElementById('phoneTxt').innerText = pMatch[0];
-                document.getElementById('phoneCall').href = "tel:" + pMatch[0];
+                document.getElementById('phoneTxt').innerText = phoneMatch[0];
+                document.getElementById('phoneCall').href = "tel:" + phoneMatch[0];
             } else {
                 pSec.classList.add('hidden');
             }
@@ -189,37 +192,41 @@
         async function updateOrderStatus(newStatus) {
             if (!currentOrderID) return;
             const btn = (newStatus === 'picked-up') ? document.getElementById('pickUpBtn') : document.getElementById('deliverBtn');
-            const old = btn.innerHTML;
+            const originalContent = btn.innerHTML;
+            
             btn.disabled = true;
             btn.innerText = "جاري التحديث... 📡";
 
             try {
-                // إرسال التحديث للسكريبت المطور
                 await fetch(scriptURL, {
                     method: 'POST',
                     mode: 'no-cors',
-                    body: JSON.stringify({ action: "update_order_status", orderID: currentOrderID, status: newStatus, phone: driverPhone })
+                    body: JSON.stringify({ 
+                        action: "update_order_status", 
+                        orderID: currentOrderID, 
+                        status: newStatus, 
+                        phone: driverPhone 
+                    })
                 });
                 
                 if (newStatus === 'delivered') {
-                    alert("تم إكمال المهمة بنجاح! 🐋");
-                    document.getElementById('orderCard').classList.add('hidden');
+                    alert("المهمة اكتملت! سيتم البحث عن طلب جديد. 🐋");
                 }
-                setTimeout(checkOrders, 1000);
+                setTimeout(checkOrders, 1500);
             } catch (e) {
-                checkOrders();
+                alert("خطأ في الاتصال بالقاعدة.");
             } finally {
                 btn.disabled = false;
-                btn.innerHTML = old;
+                btn.innerHTML = originalContent;
             }
         }
 
-        function reportProblem() {
-            const msg = prompt("اكتب رسالتك لطه:");
-            if (msg) alert("تم الإرسال لطه بنجاح.");
-        }
-
         function logout() { localStorage.clear(); window.location.href = 'driver_login.html'; }
+        
+        function reportProblem() {
+            const msg = prompt("اكتب طبيعة المشكلة لإرسالها لطه:");
+            if (msg) alert("سيتم إرسال إشعار للإدارة فوراً.");
+        }
     </script>
 </body>
 </html>
