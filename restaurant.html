@@ -3,136 +3,166 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>تسجيل المطاعم | رادار الحوت 🐋</title>
+    <title>بوابة المطعم | منظومة الحوت 🐋</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        :root { --whale-emerald: #10b981; --whale-navy: #020617; }
-        body { font-family: 'Tajawal', sans-serif; background: #010409; color: white; overflow-x: hidden; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
-        .radar-grid { position: fixed; inset: 0; background-image: linear-gradient(rgba(16, 185, 129, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(16, 185, 129, 0.03) 1px, transparent 1px); background-size: 30px 30px; z-index: -1; }
-        .glass-card { background: rgba(13, 17, 23, 0.85); backdrop-filter: blur(25px); border: 1px solid rgba(16, 185, 129, 0.2); box-shadow: 0 0 50px rgba(16, 185, 129, 0.1); }
-        .whale-input { width: 100%; padding: 1.1rem 3.5rem 1.1rem 1.1rem; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 1.2rem; color: white; outline: none; transition: 0.3s; font-weight: bold; font-size: 0.85rem; }
-        .whale-input:focus { border-color: var(--whale-emerald); background: rgba(16, 185, 129, 0.05); }
-        .action-btn { background: var(--whale-emerald); color: #020617; font-weight: 900; clip-path: polygon(4% 0, 100% 0, 96% 100%, 0% 100%); transition: 0.3s; cursor: pointer; }
+        body { font-family: 'Tajawal', sans-serif; background: #020617; color: white; overflow-x: hidden; }
+        .glass-card { background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.05); }
+        .tab-btn { transition: 0.3s; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); }
+        .tab-btn.active { background: #10b981; color: #020617; font-weight: 900; border-color: #10b981; }
+        .whale-select { background: #0f172a; border: 2px solid #1e293b; color: white; appearance: none; }
+        .whale-select:focus { border-color: #10b981; }
+        .btn-glow { box-shadow: 0 0 20px rgba(16, 185, 129, 0.3); }
         .hidden { display: none; }
     </style>
 </head>
-<body class="p-6">
-    <div class="radar-grid"></div>
-    <div class="max-w-md w-full glass-card p-8 rounded-[2.5rem] relative z-10">
-        <div id="loader" class="text-center py-12">
-            <div class="w-14 h-14 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
-            <p class="text-emerald-500 font-black italic uppercase text-[10px]">Verifying with Radar...</p>
+<body class="p-4 pb-24">
+
+    <header class="max-w-xl mx-auto mb-6 flex justify-between items-center glass-card p-4 rounded-3xl sticky top-4 z-50">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center text-slate-900 font-black shadow-lg">🐋</div>
+            <div>
+                <p class="text-[8px] text-emerald-500 font-black uppercase tracking-widest italic">Al-Hut Kitchen Hub V6.2</p>
+                <h1 id="displayResName" class="text-xs font-black text-white italic tracking-wider">جاري التوثيق...</h1>
+            </div>
+        </div>
+        <button onclick="logout()" class="text-[10px] font-black text-red-500 px-4 py-2 rounded-xl bg-red-500/10 border border-red-500/20">خروج</button>
+    </header>
+
+    <div class="max-w-xl mx-auto glass-card p-6 rounded-[2.5rem] shadow-2xl relative border-t-4 border-emerald-500">
+        <div class="text-center mb-6">
+            <h2 class="text-xl font-black italic">إرسال سريع للرادار 🚀</h2>
+            <p class="text-[9px] text-emerald-500 font-bold uppercase tracking-widest mt-1 italic">يتم بث موقع المطعم والبيانات تلقائياً 📍</p>
         </div>
 
-        <div id="authUI" class="hidden">
-            <header class="text-center mb-6">
-                <h2 class="text-2xl font-black italic" style="font-family: 'Orbitron';">WHALE <span class="text-emerald-500">KITCHEN</span></h2>
-                <p class="text-[10px] text-gray-400 mt-1 font-bold italic opacity-60">تفعيل رادار الشركاء V6.2</p>
-            </header>
-            <form id="smartForm" class="space-y-4">
-                <input type="text" id="resName" required placeholder="اسم المطعم" class="whale-input text-right">
-                <input type="tel" id="resPhone" required placeholder="رقم الهاتف" class="whale-input text-right">
-                <input type="url" id="resMapLink" required placeholder="رابط الموقع (Maps)" class="whale-input text-right">
-                <div class="grid grid-cols-2 gap-2">
-                    <input type="number" id="fixedFee" required placeholder="العمولة" class="whale-input text-center p-2">
-                    <select id="paySystem" class="whale-input bg-slate-900 text-[10px]">
-                        <option value="المطعم يدفع">المطعم يدفع</option>
-                        <option value="مناصفة">مناصفة</option>
+        <div class="flex gap-2 mb-6 bg-white/5 p-1 rounded-2xl">
+            <button type="button" onclick="switchTab('manual')" id="manualBtn" class="tab-btn active flex-1 py-3 rounded-xl font-black text-[10px] italic">إدخال بيانات</button>
+            <button type="button" onclick="switchTab('camera')" id="cameraBtn" class="tab-btn flex-1 py-3 rounded-xl font-black text-[10px] italic">تصوير الوصل 📸</button>
+        </div>
+        
+        <form id="orderForm" class="space-y-5">
+            <div>
+                <label class="text-[10px] font-black text-emerald-500 uppercase mb-2 block mr-1 italic">📍 منطقة توصيل الزبون</label>
+                <div class="relative">
+                    <select id="locationSelect" class="w-full p-4 whale-select rounded-2xl outline-none font-black text-sm pr-10" required>
+                        <option value="" disabled selected>اختر المنطقة...</option>
+                        <option value="الماس">الماس</option>
+                        <option value="طريق بغداد">طريق بغداد</option>
+                        <option value="التسعين">التسعين</option>
+                        <option value="شارع المحافظة">شارع المحافظة</option>
+                        <option value="قورية">قورية</option>
+                        <option value="بنجه علي">بنجه علي</option>
+                        <option value="عرفه">عرفه</option>
+                        <option value="حي الواسطي">حي الواسطي</option>
+                        <option value="حي حزيران">حي حزيران</option>
+                        <option value="المصلى">المصلى</option>
+                        <option value="حي عدن">حي عدن</option>
+                        <option value="حي الخضراء">حي الخضراء</option>
+                        <option value="حي العسكري">حي العسكري</option>
                     </select>
+                    <i class="fas fa-map-location-dot absolute right-4 top-1/2 -translate-y-1/2 text-emerald-500"></i>
                 </div>
-                <button type="submit" id="mainBtn" class="w-full py-5 action-btn mt-4 italic">إرسال طلب الانضمام</button>
-            </form>
-        </div>
+            </div>
 
-        <div id="waitMessage" class="hidden text-center py-12">
-            <div class="text-6xl mb-6 animate-bounce">⏳</div>
-            <h3 class="text-xl font-black text-amber-500 italic uppercase">بانتظار تفعيل طه</h3>
-            <p class="text-[10px] text-slate-400 mt-6 italic">سيتم التحقق من التفعيل تلقائياً كل 15 ثانية...</p>
-            <button onclick="logout()" class="mt-10 text-[9px] text-red-500 font-black border-b border-red-500/30">تعديل البيانات</button>
+            <div id="manualSection" class="space-y-5">
+                <input type="tel" id="customerPhone" class="w-full p-4 bg-white/5 border border-white/10 rounded-2xl outline-none focus:border-emerald-500 font-bold text-center" placeholder="رقم هاتف الزبون">
+                <input type="text" id="details" class="w-full p-4 bg-white/5 border border-white/10 rounded-2xl outline-none focus:border-emerald-500 font-bold text-sm text-right" placeholder="العنوان الدقيق وتفاصيل الطلب">
+            </div>
+
+            <div id="cameraSection" class="hidden space-y-4 text-center">
+                <div onclick="document.getElementById('receiptImage').click()" class="border-2 border-dashed border-white/10 rounded-[2rem] p-10 cursor-pointer hover:bg-emerald-500/5">
+                    <i class="fas fa-camera text-4xl mb-3 text-white/20"></i>
+                    <p class="font-black text-[10px] italic">التقط صورة الوصل</p>
+                    <input type="file" id="receiptImage" accept="image/*" capture="camera" class="hidden" onchange="previewImage(event)">
+                </div>
+                <div id="previewContainer" class="hidden relative inline-block">
+                    <img id="imagePreview" src="#" class="rounded-2xl max-h-48 border-2 border-emerald-500/30">
+                    <button type="button" onclick="cancelImage()" class="absolute -top-3 -right-3 bg-red-600 text-white w-8 h-8 rounded-full">✕</button>
+                </div>
+            </div>
+
+            <button type="submit" id="submitBtn" class="w-full bg-emerald-500 text-slate-900 py-5 rounded-2xl font-black text-lg btn-glow italic uppercase shadow-xl mt-6">
+                <span>بث الطلبية الآن</span> <i class="fas fa-satellite-dish"></i>
+            </button>
+        </form>
+
+        <div id="toast" class="fixed bottom-10 left-1/2 -translate-x-1/2 bg-emerald-500 text-slate-900 px-8 py-4 rounded-full font-black text-sm hidden shadow-2xl z-[100] animate-bounce">
+            ✅ تم بث الإشارة للرادار بنجاح!
         </div>
     </div>
 
     <script>
         const scriptURL = 'https://script.google.com/macros/s/AKfycbyIqK63Xu4b2G8BN0aNQIs42oTqvvYRlGDLfQCCSMo68YPYoysKjQ_IjoXhie0MhIaZpQ/exec';
+        let base64Image = null;
 
-        window.onload = () => {
-            const savedPhone = localStorage.getItem('whale_res_phone');
-            if (savedPhone) checkResLogin(savedPhone);
-            else showUI('authUI');
-        };
+        document.addEventListener('DOMContentLoaded', () => {
+            const resPhone = localStorage.getItem('whale_res_phone');
+            if (!resPhone) { window.location.href = 'Restaurant_login.html'; return; }
+            document.getElementById('displayResName').innerText = localStorage.getItem('whale_res_name') || "مطعم شريك";
+        });
 
-        async function checkResLogin(phone) {
-            try {
-                const timestamp = new Date().getTime();
-                const res = await fetch(`${scriptURL}?action=login_check&type=Restaurant&id=${encodeURIComponent(phone)}&cb=${timestamp}`);
-                const result = await res.json();
-                
-                if (result.status === 'active') {
-                    localStorage.setItem('whale_res_phone', phone);
-                    if (result.data) {
-                        localStorage.setItem('whale_res_name', result.data[1]);
-                        localStorage.setItem('whale_res_map', result.data[3]);
-                        localStorage.setItem('whale_res_fee', result.data[5]);
-                        localStorage.setItem('whale_res_lat', result.data[6] || 0); // حفظ خط العرض
-                        localStorage.setItem('whale_res_lng', result.data[7] || 0); // حفظ خط الطول
-                    }
-                    window.location.href = 'restaurant.html'; 
-                } else if (result.status === 'pending') {
-                    showUI('waitMessage');
-                    setTimeout(() => checkResLogin(phone), 15000);
-                } else showUI('authUI');
-            } catch (e) { showUI('authUI'); }
+        function switchTab(type) {
+            document.getElementById('manualSection').classList.toggle('hidden', type === 'camera');
+            document.getElementById('cameraSection').classList.toggle('hidden', type === 'manual');
+            document.getElementById('manualBtn').classList.toggle('active', type === 'manual');
+            document.getElementById('cameraBtn').classList.toggle('active', type === 'camera');
         }
 
-        function showUI(id) {
-            document.getElementById('loader').classList.add('hidden');
-            document.getElementById('authUI').classList.add('hidden');
-            document.getElementById('waitMessage').classList.add('hidden');
-            document.getElementById(id).classList.remove('hidden');
+        function previewImage(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    document.getElementById('imagePreview').src = e.target.result;
+                    document.getElementById('previewContainer').classList.remove('hidden');
+                    base64Image = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
         }
 
-        async function getCoords() {
-            return new Promise((resolve) => {
-                if (!navigator.geolocation) resolve({ lat: 0, lng: 0 });
-                navigator.geolocation.getCurrentPosition(
-                    (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-                    () => resolve({ lat: 0, lng: 0 }),
-                    { enableHighAccuracy: true, timeout: 5000 }
-                );
-            });
+        function cancelImage() {
+            base64Image = null;
+            document.getElementById('previewContainer').classList.add('hidden');
+            document.getElementById('receiptImage').value = "";
         }
 
-        document.getElementById('smartForm').onsubmit = async function(e) {
+        document.getElementById('orderForm').onsubmit = async function(e) {
             e.preventDefault();
-            const btn = document.getElementById('mainBtn');
-            btn.disabled = true;
-            btn.innerText = "جاري تحديد الموقع...";
-            
-            const coords = await getCoords();
-            const phone = document.getElementById('resPhone').value;
+            const btn = document.getElementById('submitBtn');
+            const area = document.getElementById('locationSelect').value;
+            const customerPhone = document.getElementById('customerPhone').value || "غير متوفر";
+            const userDetails = document.getElementById('details').value || "بدون تفاصيل";
 
-            const data = {
-                action: "register_user",
+            const orderData = {
+                action: 'restaurant_send_order',
+                restName: localStorage.getItem('whale_res_name'),
+                restPhone: localStorage.getItem('whale_res_phone'),
+                restLocation: localStorage.getItem('whale_res_map'),
                 type: "Restaurant",
-                name: document.getElementById('resName').value,
-                phone: phone,
-                address: document.getElementById('resMapLink').value,
-                fee: document.getElementById('fixedFee').value,
-                paySystem: document.getElementById('paySystem').value,
-                lat: coords.lat,
-                lng: coords.lng
+                lat: localStorage.getItem('whale_res_lat'),
+                lng: localStorage.getItem('whale_res_lng'),
+                area: area,
+                details: `[${area}] - ${userDetails} | هاتف الزبون: ${customerPhone}`,
+                fee: localStorage.getItem('whale_res_fee'),
+                image: base64Image || "" 
             };
 
-            localStorage.setItem('whale_res_phone', phone);
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fas fa-spinner animate-spin"></i> جاري البث...`;
+            
             try {
-                await fetch(scriptURL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(data) });
-                setTimeout(() => checkResLogin(phone), 2000);
-            } catch (e) { showUI('waitMessage'); }
+                await fetch(scriptURL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(orderData) });
+                document.getElementById('toast').classList.remove('hidden');
+                document.getElementById('orderForm').reset();
+                cancelImage();
+                setTimeout(() => { document.getElementById('toast').classList.add('hidden'); btn.disabled = false; btn.innerHTML = `<span>بث الطلبية الآن</span> <i class="fas fa-satellite-dish"></i>`; }, 3000);
+            } catch (err) { alert("فشل الاتصال بالرادار."); btn.disabled = false; }
         };
 
-        function logout() { localStorage.clear(); location.reload(); }
+        function logout() { localStorage.clear(); window.location.href = 'Restaurant_login.html'; }
     </script>
 </body>
 </html>
