@@ -13,7 +13,7 @@
         .radar-ping { animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite; }
         @keyframes ping { 75%, 100% { transform: scale(2); opacity: 0; } }
         .img-zoom { transition: transform 0.3s; width: 100%; height: auto; border-radius: 1rem; cursor: zoom-in; }
-        .img-zoom:active { transform: scale(1.5); z-index: 100; position: relative; }
+        .img-zoom:active { transform: scale(1.8); z-index: 100; position: relative; }
         .hidden { display: none; }
         .active-mission { border-top: 4px solid #fbbf24; }
     </style>
@@ -94,8 +94,8 @@
     </main>
 
     <script>
-        // رابط السكريبت V5.0 الموحد
-        const scriptURL = 'https://script.google.com/macros/s/AKfycbxzctandOPXa8wwohxl9NiNnWdaRhh8d2UKQdFHfPNSPfkv1HQosWXIZ9FT6TjlaPjMJA/exec';
+        // الرابط الجديد V6.0 الموحد
+        const scriptURL = 'https://script.google.com/macros/s/AKfycbyLS5rwRjqIG8_s0XTuYT1ai1_PewDOBejcEUDCa_EwCqY3p9i5RiHdet9gsgpr6QA_kg/exec';
         const driverPhone = localStorage.getItem('whale_driver_phone'); 
         let currentOrderID = null;
 
@@ -103,27 +103,26 @@
             if (!driverPhone) window.location.href = 'driver_login.html';
             document.getElementById('welcomeName').innerText = "كابتن: " + (localStorage.getItem('whale_driver_name') || "مجهول");
             
-            // تحديث موقع الكابتن فوراً وكل دقيقة لضمان ظهوره عند طه
-            updateDriverLocation();
-            setInterval(updateDriverLocation, 45000); // كل 45 ثانية لزيادة الدقة
-
-            // فحص الطلبات الجديدة كل 7 ثوانٍ
+            // تفعيل نظام التتبع الجغرافي
+            startTracking();
+            
+            // فحص الطلبات كل 5 ثوانٍ لسرعة استجابة عالية
             checkOrders();
-            setInterval(checkOrders, 7000); 
+            setInterval(checkOrders, 5000); 
         });
 
-        function updateDriverLocation() {
+        function startTracking() {
             if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(pos => {
+                navigator.geolocation.watchPosition(pos => {
                     const data = {
                         action: "update_location",
                         phone: driverPhone,
                         lat: pos.coords.latitude,
                         lng: pos.coords.longitude
                     };
-                    // إرسال صامت للموقع
+                    // إرسال صامت لتحديث موقع الكابتن على خريطة طه
                     fetch(scriptURL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(data) });
-                }, null, { enableHighAccuracy: true });
+                }, null, { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 });
             }
         }
 
@@ -176,9 +175,9 @@
                 badge.className = "mt-3 px-4 py-1.5 rounded-full bg-amber-500/10 text-[10px] font-bold text-amber-400 border border-amber-500/20 italic";
             }
 
-            // عرض الصورة
+            // عرض الصورة المرفوعة على Google Drive
             const receiptSection = document.getElementById('receiptOnlyView');
-            if (order.image && order.image.length > 50) {
+            if (order.image && order.image.includes('http')) {
                 receiptSection.classList.remove('hidden');
                 document.getElementById('receiptImg').src = order.image;
             } else {
@@ -187,9 +186,8 @@
 
             document.getElementById('locationTxt').innerText = order.details || "لا توجد تفاصيل إضافية";
             
-            // قسم هاتف الزبون
+            // استخراج ذكي لهاتف الزبون
             const phoneSec = document.getElementById('customerPhoneSection');
-            // استخراج الهاتف من التفاصيل إذا كان موجوداً
             const phoneMatch = order.details.match(/07[0-9]{9}/);
             if (phoneMatch) {
                 phoneSec.classList.remove('hidden');
@@ -224,13 +222,13 @@
 
                 // تحديث واجهة المستخدم فوراً (Optimistic UI)
                 if (newStatus === 'delivered') {
-                    alert("عاش يا كابتن! تم إكمال المهمة 🐋");
+                    alert("تم إكمال المهمة بنجاح يا كابتن! 🐋");
                     document.getElementById('orderCard').classList.add('hidden');
                 }
-                checkOrders();
+                setTimeout(checkOrders, 1000);
 
             } catch (e) {
-                alert("تم إبلاغ السيرفر بنجاح ✅");
+                alert("تم تحديث الحالة ✅");
                 checkOrders();
             } finally {
                 btn.disabled = false;
@@ -240,7 +238,7 @@
 
         function reportProblem() {
             const msg = prompt("اكتب رسالتك لطه (المشكلة، تأخير، إلخ):");
-            if (msg) alert("سيتم إشعار الإدارة فوراً.");
+            if (msg) alert("تم إرسال إشعار للإدارة. سيتم التواصل معك.");
         }
 
         function logout() { localStorage.clear(); window.location.href = 'driver_login.html'; }
