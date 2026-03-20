@@ -16,7 +16,6 @@
         .whale-input:focus { border-color: var(--whale-amber); box-shadow: 0 0 15px rgba(251, 191, 36, 0.2); }
         .action-btn { background: var(--whale-amber); color: #020617; font-weight: 900; clip-path: polygon(5% 0, 100% 0, 95% 100%, 0% 100%); transition: 0.3s; cursor: pointer; }
         .action-btn:active { transform: scale(0.95); }
-        .action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .hidden { display: none; }
     </style>
 </head>
@@ -45,7 +44,7 @@
             <form id="loginForm" class="space-y-4">
                 <div class="relative">
                     <i class="fas fa-phone absolute right-4 top-1/2 -translate-y-1/2 text-amber-500"></i>
-                    <input type="tel" id="driverPhone" required placeholder="رقم الهاتف" 
+                    <input type="tel" id="driverPhone" required placeholder="رقم هاتف الكابتن" 
                            class="whale-input text-center font-black tracking-[0.2em] text-lg">
                 </div>
 
@@ -58,7 +57,7 @@
                 </div>
 
                 <button type="submit" id="mainBtn" class="w-full py-5 action-btn mt-6 flex items-center justify-center gap-3 italic shadow-lg shadow-amber-500/10">
-                    <span id="btnText">تفعيل الرادار</span>
+                    <span id="btnText">تفعيل ودخول الرادار</span>
                     <i class="fas fa-crosshairs"></i>
                 </button>
             </form>
@@ -67,46 +66,36 @@
         <div id="statusMessage" class="hidden text-center py-12">
             <div id="statusIcon" class="text-6xl mb-6">🛰️</div>
             <h3 id="statusTitle" class="text-xl font-black text-amber-500 italic uppercase">بانتظار الإشارة</h3>
-            <p id="statusDesc" class="text-[10px] text-slate-400 mt-6 leading-relaxed italic">طلب انضمامك قيد المعالجة الآن.<br>سيتم فتح الرادار لك فور موافقة الإدارة.</p>
+            <p id="statusDesc" class="text-[10px] text-slate-400 mt-6 leading-relaxed italic">طلب انضمامك قيد المراجعة حالياً من قبل الإدارة.<br>سيفتح الرادار تلقائياً فور التفعيل.</p>
             <button onclick="logout()" class="mt-10 text-[9px] text-red-500 font-black border-b border-red-500/30 pb-1 italic">خروج / تغيير البيانات</button>
         </div>
     </div>
 
     <script>
-        // الرابط المحدث الخاص بك
-        const scriptURL = 'https://script.google.com/macros/s/AKfycbwka4X5EuWllid1JLzvrXvGoYpcMdnEFID7gwrk4TPiHpudxhCWKB7OPT1rvSxeU6YfbA/exec';
+        const scriptURL = 'https://script.google.com/macros/s/AKfycbyuXWjqrDVJEFUeNbj2WL78NomEzigv_ewkQ9O0NEc7ZIedHqo8qaTbIUe45FkbHyHMzw/exec';
 
         window.onload = async () => {
             const savedPhone = localStorage.getItem('whale_driver_phone');
-            
             if (savedPhone) {
-                // تحقق تلقائي من الحالة عند فتح التطبيق
                 try {
-                    const response = await fetch(`${scriptURL}?action=driver_login&phone=${savedPhone}`);
+                    const response = await fetch(`${scriptURL}?action=login_check&type=Driver&id=${savedPhone}`);
                     const result = await response.json();
                     handleDriverStatus(result, savedPhone);
-                } catch (e) {
-                    showUI('authUI');
-                }
-            } else {
-                showUI('authUI');
-            }
+                } catch (e) { showUI('authUI'); }
+            } else { showUI('authUI'); }
         };
 
         function handleDriverStatus(result, phone) {
             document.getElementById('loader').classList.add('hidden');
             if (result.status === 'active') {
                 localStorage.setItem('whale_driver_phone', phone);
-                localStorage.setItem('whale_driver_name', result.name);
-                localStorage.setItem('whale_driver_status', 'active');
+                localStorage.setItem('whale_driver_name', result.data[1]); // الاسم من قاعدة البيانات
                 window.location.href = 'driver_dashboard.html';
             } else if (result.status === 'pending') {
                 showStatusView('pending');
             } else if (result.status === 'banned') {
                 showStatusView('banned');
-            } else {
-                showUI('authUI');
-            }
+            } else { showUI('authUI'); }
         }
 
         function showUI(id) {
@@ -125,23 +114,30 @@
             const regFields = document.getElementById('regFields');
             
             btn.disabled = true;
-            btnText.innerText = "جاري التحقق... 📡";
+            btnText.innerText = "جاري البث للقاعدة... 📡";
 
             try {
-                const response = await fetch(`${scriptURL}?action=driver_login&phone=${phone}&name=${encodeURIComponent(name)}`);
+                // محاولة الدخول أو التسجيل
+                let url = `${scriptURL}?action=login_check&type=Driver&id=${phone}`;
+                if (!regFields.classList.contains('hidden')) {
+                    url += `&register=true&name=${encodeURIComponent(name)}&phone=${phone}`;
+                }
+
+                const response = await fetch(url);
                 const result = await response.json();
 
-                if (result.status === 'not_found' && regFields.classList.contains('hidden')) {
+                if (result.status === 'not_found') {
                     regFields.classList.remove('hidden');
                     document.getElementById('driverName').required = true;
                     btn.disabled = false;
-                    btnText.innerText = "إرسال طلب الانضمام";
-                    alert("الرقم غير مسجل. يرجى إدخال اسمك الكامل لتقديم طلب انضمام لمنظومة الحوت.");
+                    btnText.innerText = "إرسال طلب انضمام كابتن";
+                    alert("رقمك غير مسجل. يرجى كتابة اسمك الثلاثي لتقديم طلب انضمام.");
                 } else {
                     handleDriverStatus(result, phone);
+                    localStorage.setItem('whale_driver_phone', phone);
                 }
             } catch (e) {
-                alert("حدث خطأ في الاتصال بالقاعدة المركزية. تحقق من الإنترنت.");
+                alert("خطأ في الاتصال. تأكد من الإنترنت.");
                 btn.disabled = false;
                 btnText.innerText = "تفعيل الرادار";
             }
@@ -154,20 +150,17 @@
             const desc = document.getElementById('statusDesc');
 
             if (status === 'banned') {
-                title.innerText = "تم تقييد الوصول";
+                title.innerText = "الوصول محظور";
                 title.style.color = "#ef4444";
                 icon.innerText = "🚫";
-                desc.innerText = "لقد تم حظر هذا الحساب من قبل الإدارة.\nيرجى مراجعة طه لفك القيود.";
+                desc.innerText = "لقد تم حظر حساب الكابتن هذا.\nيرجى مراجعة إدارة منظومة الحوت.";
             } else {
-                title.innerText = "بانتظار التفعيل";
+                title.innerText = "بانتظار موافقة طه";
                 icon.innerText = "🛰️";
             }
         }
 
-        function logout() {
-            localStorage.clear();
-            location.reload();
-        }
+        function logout() { localStorage.clear(); location.reload(); }
     </script>
 </body>
 </html>
