@@ -5,69 +5,84 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Al-Hut V5.0 | لوحة السيادة</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
-        :root { --main-gold: #d4af37; --dark-bg: #0a0a0a; --card-bg: #1a1a1a; }
-        body { background: var(--dark-bg); color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; }
+        :root { --main-gold: #d4af37; --dark-bg: #0a0a0a; --card-bg: #1a1a1a; --danger: #b71c1c; --success: #1b5e20; }
+        body { background: var(--dark-bg); color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 15px; }
         .header { text-align: center; border-bottom: 2px solid var(--main-gold); padding-bottom: 10px; margin-bottom: 20px; }
-        .grid-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
-        .section-card { background: var(--card-bg); border-radius: 15px; padding: 15px; border: 1px solid #333; }
-        .section-card h2 { color: var(--main-gold); border-bottom: 1px solid #444; padding-bottom: 5px; font-size: 1.1rem; }
+        .grid-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 15px; }
+        .section-card { background: var(--card-bg); border-radius: 12px; padding: 15px; border: 1px solid #333; height: 500px; overflow-y: auto; }
+        .section-card h2 { color: var(--main-gold); border-bottom: 1px solid #444; padding-bottom: 8px; font-size: 1rem; position: sticky; top: 0; background: var(--card-bg); z-index: 10; }
         
-        /* نظام الفلترة */
-        .filter-box { background: #222; padding: 15px; border-radius: 10px; margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; border: 1px solid var(--main-gold); }
-        .filter-box input, .filter-box select { padding: 8px; border-radius: 5px; background: #000; color: gold; border: 1px solid #444; }
+        #map { height: 300px; border-radius: 12px; margin-bottom: 20px; border: 1px solid var(--main-gold); }
 
-        .item-row { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #222; font-size: 0.85rem; }
-        .status-badge { padding: 3px 8px; border-radius: 5px; font-size: 0.7rem; font-weight: bold; }
-        .active { background: #1b5e20; } .pending { background: #f57f17; } .banned { background: #b71c1c; }
+        .filter-box { background: #151515; padding: 15px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #333; }
+        .filter-inputs { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 10px; }
+        .filter-box input { padding: 8px; border-radius: 5px; background: #000; color: gold; border: 1px solid #444; }
+
+        .item-row { background: #222; margin-bottom: 8px; padding: 10px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; transition: 0.3s; }
+        .item-row:hover { border-right: 4px solid var(--main-gold); }
         
-        .btn { cursor: pointer; border: none; padding: 6px 12px; border-radius: 5px; color: white; transition: 0.3s; font-size: 0.8rem; }
-        .btn-ban { background: #d32f2f; } .btn-approve { background: #388e3c; } .btn-clear { background: #0288d1; }
+        .status-badge { padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; text-transform: uppercase; }
+        .active { background: var(--success); } .pending { background: #f57f17; } .banned { background: var(--danger); }
         
-        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+        .btn { cursor: pointer; border: none; padding: 6px 10px; border-radius: 5px; color: white; transition: 0.2s; font-size: 0.8rem; }
+        .btn-ban { background: var(--danger); } .btn-approve { background: var(--success); } .btn-clear { background: #0288d1; }
+        .btn:active { transform: scale(0.9); }
+
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
         .stat-item { background: #000; padding: 10px; border-radius: 8px; text-align: center; border: 1px solid #333; }
-        .stat-item span { display: block; color: var(--main-gold); font-size: 1.2rem; font-weight: bold; }
+        .stat-item span { display: block; color: var(--main-gold); font-size: 1.1rem; font-weight: bold; }
+        
+        small { color: #888; display: block; }
     </style>
 </head>
 <body>
 
     <div class="header">
         <h1>🐋 منظومة الحوت - لوحة السيادة</h1>
-        <p>قطاع كركوك | التحكم الكامل V5.0</p>
+        <p>قطاع كركوك المركزي V5.0</p>
     </div>
 
-    <div id="login-block" style="text-align: center; margin-bottom: 40px;">
-        <input type="password" id="master-pass" placeholder="أدخل رمز السيادة..." style="padding: 12px; border-radius: 5px; border: 1px solid var(--main-gold); background: #000; color: gold; width: 250px;">
-        <button class="btn btn-approve" onclick="loadMasterData()" style="padding: 12px 25px;">دخول السيادة</button>
+    <div id="login-block" style="text-align: center; margin-top: 50px;">
+        <i class="fas fa-crown" style="font-size: 3rem; color: var(--main-gold); margin-bottom: 20px;"></i><br>
+        <input type="password" id="master-pass" placeholder="أدخل رمز السيادة..." style="padding: 15px; border-radius: 8px; border: 1px solid var(--main-gold); background: #000; color: gold; width: 280px; font-size: 1.1rem; text-align: center;">
+        <br><br>
+        <button class="btn btn-approve" onclick="loadMasterData()" style="padding: 15px 40px; font-weight: bold;">دخول السيادة</button>
     </div>
 
     <div id="main-ui" style="display: none;">
         
+        <div id="map"></div>
+
         <div class="filter-box">
-            <i class="fas fa-filter" style="color: var(--main-gold);"></i>
-            <label>من تاريخ:</label> <input type="date" id="date-from">
-            <label>إلى تاريخ:</label> <input type="date" id="date-to">
-            <button class="btn btn-clear" onclick="applyFinancialFilter()">تطبيق الفلتر وحساب الأرباح</button>
+            <div class="filter-inputs">
+                <i class="fas fa-calculator" style="color: var(--main-gold);"></i>
+                <input type="date" id="date-from">
+                <input type="date" id="date-to">
+                <button class="btn btn-clear" onclick="applyFinancialFilter()">جرد الحسابات</button>
+            </div>
             
-            <div class="stats-grid" style="width: 100%; margin-top: 15px;">
-                <div class="stat-item">الطلبات المكتملة <span id="stat-count">0</span></div>
-                <div class="stat-item">إجمالي الأرباح الصافية <span id="stat-profit">0 د.ع</span></div>
+            <div class="stats-grid">
+                <div class="stat-item">الطلبات <span id="stat-count">0</span></div>
+                <div class="stat-item">الأرباح <span id="stat-profit">0 د.ع</span></div>
             </div>
         </div>
 
         <div class="grid-container">
             <div class="section-card">
-                <h2><i class="fas fa-motorcycle"></i> السواق (الأرواح الرقمية)</h2>
+                <h2><i class="fas fa-motorcycle"></i> السواق النشطين</h2>
                 <div id="drivers-list"></div>
             </div>
 
             <div class="section-card">
-                <h2><i class="fas fa-utensils"></i> المطاعم النشطة</h2>
+                <h2><i class="fas fa-utensils"></i> إدارة المطاعم</h2>
                 <div id="rests-list"></div>
             </div>
 
-            <div class="section-card" style="grid-column: span 1;">
-                <h2><i class="fas fa-history"></i> مراقبة الطلبات</h2>
+            <div class="section-card">
+                <h2><i class="fas fa-history"></i> آخر 20 طلبية</h2>
                 <div id="orders-list"></div>
             </div>
         </div>
@@ -76,6 +91,13 @@
     <script>
         const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxblbNvf-H7QN-TVp6M5GMuN8pVcFMRXpA-7ahrVoKwRc0qj0vUaFaSVBtLJFOEHtVg6g/exec";
         let rawData = null;
+        let map, markers = [];
+
+        // إعداد الخريطة فور التحميل
+        function initMap() {
+            map = L.map('map').setView([35.467, 44.392], 12); // إحداثيات كركوك
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        }
 
         async function loadMasterData() {
             const pass = document.getElementById('master-pass').value;
@@ -83,23 +105,25 @@
                 const res = await fetch(`${SCRIPT_URL}?action=get_master_data&pass=${pass}`);
                 rawData = await res.json();
 
-                if (rawData.status === "denied") return alert("رمز السيادة غير صحيح!");
+                if (rawData.status === "denied") return alert("رمز السيادة مرفوض!");
                 
                 document.getElementById('login-block').style.display = 'none';
                 document.getElementById('main-ui').style.display = 'block';
+                if(!map) initMap();
                 renderUI(rawData);
-            } catch (e) { alert("خطأ في الاتصال بالرادار!"); }
+                updateMapMarkers(rawData.drivers);
+            } catch (e) { alert("فشل في الاتصال بمحرك الحوت!"); }
         }
 
         function renderUI(data) {
-            // رندر السواق مع التحكم بالحالة والمحفظة
+            // رندر السواق
             document.getElementById('drivers-list').innerHTML = data.drivers.map(d => `
                 <div class="item-row">
-                    <div><b>${d[1]}</b><br><small>${d[2]}</small></div>
-                    <div>
-                        <span class="status-badge ${d[4]}">${d[4]}</span>
-                        <button class="btn btn-ban" onclick="control('Drivers', '${d[2]}', 5, 'banned')">حظر</button>
-                        <button class="btn btn-approve" onclick="control('Drivers', '${d[2]}', 5, 'active')">تفعيل</button>
+                    <div><b>${d[1]}</b><small>${d[2]}</small></div>
+                    <div style="text-align:left">
+                        <span class="status-badge ${d[4]}">${d[4]}</span><br>
+                        <button class="btn btn-ban" onclick="control('Drivers', '${d[2]}', 5, 'banned')"><i class="fas fa-trash"></i></button>
+                        <button class="btn btn-approve" onclick="control('Drivers', '${d[2]}', 5, 'active')"><i class="fas fa-check"></i></button>
                     </div>
                 </div>
             `).join('');
@@ -107,57 +131,65 @@
             // رندر المطاعم
             document.getElementById('rests-list').innerHTML = data.restaurants.map(r => `
                 <div class="item-row">
-                    <div><b>${r[1]}</b><br><small>العمولة: ${r[3]}</small></div>
-                    <div>
-                        <span class="status-badge ${r[4]}">${r[4]}</span>
-                        <button class="btn btn-ban" onclick="control('Restaurants', '${r[2]}', 5, 'banned')">حظر</button>
-                        <button class="btn btn-approve" onclick="control('Restaurants', '${r[2]}', 5, 'active')">تفعيل</button>
+                    <div><b>${r[1]}</b><small>العمولة: ${r[3]}</small></div>
+                    <div style="text-align:left">
+                        <span class="status-badge ${r[4]}">${r[4]}</span><br>
+                        <button class="btn btn-ban" onclick="control('Restaurants', '${r[2]}', 5, 'banned')"><i class="fas fa-lock"></i></button>
+                        <button class="btn btn-approve" onclick="control('Restaurants', '${r[2]}', 5, 'active')"><i class="fas fa-unlock"></i></button>
                     </div>
                 </div>
             `).join('');
 
             // رندر الطلبات
-            document.getElementById('orders-list').innerHTML = data.orders.slice(0, 15).map(o => `
+            document.getElementById('orders-list').innerHTML = data.orders.slice(0, 20).map(o => `
                 <div class="item-row">
-                    <span>${o[0]}<br><small>${o[1]} ➔ ${o[9]}</small></span>
-                    <button class="btn btn-clear" onclick="releaseOrder('${o[0]}')">سحب الطلب</button>
+                    <span><b>${o[0]}</b><br><small>${o[1]} ➔ ${o[9]}</small></span>
+                    <button class="btn btn-clear" onclick="releaseOrder('${o[0]}')">سحب</button>
                 </div>
             `).join('');
         }
 
-        // دالة الفلترة الزمنية وحساب الأرباح المالية
+        function updateMapMarkers(drivers) {
+            markers.forEach(m => map.removeLayer(m));
+            markers = [];
+            drivers.forEach(d => {
+                if(d[5] && d[6]) { // إذا توفرت إحداثيات
+                    let m = L.marker([d[5], d[6]]).addTo(map).bindPopup(`السائق: ${d[1]}<br>${d[2]}`);
+                    markers.push(m);
+                }
+            });
+        }
+
         function applyFinancialFilter() {
             const from = new Date(document.getElementById('date-from').value);
             const to = new Date(document.getElementById('date-to').value);
-            
-            let count = 0;
-            let totalProfit = 0;
+            let count = 0, total = 0;
 
             rawData.orders.forEach(o => {
-                const orderDate = new Date(o[7]); // عمود TimeStart
+                const orderDate = new Date(o[7]);
                 if (orderDate >= from && orderDate <= to) {
                     count++;
-                    totalProfit += parseFloat(o[8] || 0); // عمود Fee
+                    total += parseFloat(o[8] || 0);
                 }
             });
 
             document.getElementById('stat-count').innerText = count;
-            document.getElementById('stat-profit').innerText = totalProfit.toLocaleString() + " د.ع";
+            document.getElementById('stat-profit').innerText = total.toLocaleString() + " د.ع";
         }
 
         async function control(target, id, col, val) {
+            if(!confirm("هل أنت متأكد من تغيير الحالة؟")) return;
             const pass = document.getElementById('master-pass').value;
             await fetch(SCRIPT_URL, {
                 method: 'POST',
                 body: JSON.stringify({ action: 'master_control', pass: pass, targetSheet: target, targetID: id, colIndex: col, newValue: val })
             });
-            alert('تم تحديث الحالة بنجاح');
             loadMasterData();
         }
 
         async function releaseOrder(orderID) {
+            if(!confirm("سيتم فصل السائق عن الطلب، هل أنت متأكد؟")) return;
             const pass = document.getElementById('master-pass').value;
-            // سحب الطلب يعني مسح السائق وإعادته لـ waiting
             await fetch(SCRIPT_URL, {
                 method: 'POST',
                 body: JSON.stringify({ action: 'master_control', pass: pass, targetSheet: 'Orders', targetID: orderID, colIndex: 6, newValue: 'waiting' })
@@ -166,7 +198,7 @@
                 method: 'POST',
                 body: JSON.stringify({ action: 'master_control', pass: pass, targetSheet: 'Orders', targetID: orderID, colIndex: 7, newValue: '' })
             });
-            alert('تم سحب الطلب بنجاح');
+            alert('تم تحرير الطلب');
             loadMasterData();
         }
     </script>
