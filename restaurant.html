@@ -99,12 +99,16 @@
         </form>
 
         <div id="toast" class="fixed bottom-10 left-1/2 -translate-x-1/2 bg-emerald-500 text-slate-900 px-8 py-4 rounded-full font-black text-sm hidden shadow-2xl z-[100] border-2 border-white/20 animate-bounce">
-            ✅ تم تحديد السائق الأقرب وبث الطلب!
+            ✅ تم بث الطلب لرادار الكباتن بنجاح!
         </div>
     </div>
 
     <script>
-        // الرابط الجديد V5.0 المحدث
+        // إحداثيات المطعم الثابتة (كركوك - تقريبي)
+        // يمكنك تغيير هذه الأرقام بدقة حسب موقع مطعمك الفعلي من خرائط جوجل
+        const FIXED_LAT = 35.467; 
+        const FIXED_LNG = 44.392;
+
         const scriptURL = 'https://script.google.com/macros/s/AKfycbxzctandOPXa8wwohxl9NiNnWdaRhh8d2UKQdFHfPNSPfkv1HQosWXIZ9FT6TjlaPjMJA/exec';
         let currentMode = 'manual';
         let base64Image = null;
@@ -112,13 +116,6 @@
         document.addEventListener('DOMContentLoaded', () => {
             const resName = localStorage.getItem('whale_res_name') || "مطعم غير معرف";
             document.getElementById('displayResName').innerText = resName;
-            
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(pos => {
-                    localStorage.setItem('last_lat', pos.coords.latitude);
-                    localStorage.setItem('last_lng', pos.coords.longitude);
-                }, null, { enableHighAccuracy: true });
-            }
         });
 
         function switchTab(type) {
@@ -136,7 +133,7 @@
                 reader.onload = (e) => {
                     document.getElementById('imagePreview').src = e.target.result;
                     document.getElementById('previewContainer').classList.remove('hidden');
-                    base64Image = e.target.result.split(',')[1];
+                    base64Image = e.target.result;
                 };
                 reader.readAsDataURL(file);
             }
@@ -155,7 +152,7 @@
             const toast = document.getElementById('toast');
             const resName = localStorage.getItem('whale_res_name');
             const area = document.getElementById('locationSelect').value;
-            const phone = document.getElementById('customerPhone').value || "لا يوجد";
+            const phone = document.getElementById('customerPhone').value || "غير متوفر";
             const userDetails = document.getElementById('details').value || "بدون ملاحظات";
 
             const orderData = {
@@ -164,23 +161,24 @@
                 type: currentMode === 'camera' ? 'تصوير وصل' : 'يدوي',
                 area: area,
                 details: `الهاتف: ${phone} | ملاحظات: ${userDetails}`,
-                fee: 0, // السكريبت سيحسبها من الإعدادات تلقائياً
-                lat: localStorage.getItem('last_lat') || 35.467,
-                lng: localStorage.getItem('last_lng') || 44.392,
+                fee: 0, 
+                lat: FIXED_LAT, // إرسال الإحداثيات الثابتة
+                lng: FIXED_LNG, // إرسال الإحداثيات الثابتة
                 image: base64Image
             };
 
             btn.disabled = true;
-            btn.innerHTML = `<i class="fas fa-satellite-dish animate-spin"></i> جاري البحث عن سائق...`;
+            btn.innerHTML = `<i class="fas fa-satellite-dish animate-spin"></i> جاري بث الإشارة...`;
             
             try {
-                const response = await fetch(scriptURL, {
+                // إرسال البيانات باستخدام POST (JSON)
+                await fetch(scriptURL, {
                     method: 'POST',
-                    mode: 'no-cors', // لضمان الإرسال السريع وتجاوز حماية المتصفح
+                    mode: 'no-cors',
                     body: JSON.stringify(orderData)
                 });
 
-                // بما أننا نستخدم no-cors، سنفترض النجاح ونفرغ الحقول
+                // إظهار نجاح العملية
                 toast.classList.remove('hidden');
                 document.getElementById('orderForm').reset();
                 cancelImage();
@@ -192,7 +190,7 @@
                 }, 3000);
 
             } catch (err) {
-                alert("تم البث بنجاح 🚀");
+                alert("حدث خطأ في الاتصال، حاول مرة أخرى.");
                 btn.disabled = false;
             }
         };
