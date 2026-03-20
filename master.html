@@ -15,7 +15,8 @@
         .orbitron { font-family: 'Orbitron', sans-serif; }
         #login-block { background: #010409; display: flex; align-items: center; justify-content: center; position: fixed; inset: 0; z-index: 9999; }
         .login-btn { width: 100%; background: #ffcc00 !important; color: #000 !important; padding: 1.2rem; border-radius: 1.2rem; font-weight: 900; border: none; cursor: pointer; transition: 0.3s; }
-        .login-btn:hover { background: #e6b800 !important; transform: scale(1.02); }
+        .login-btn:hover:not(:disabled) { background: #e6b800 !important; transform: scale(1.02); }
+        .login-btn:disabled { opacity: 0.6; cursor: not-allowed; }
         #map { height: 400px; border-radius: 2.5rem; border: 1px solid var(--border-glass); margin: 1.5rem 0; z-index: 10; box-shadow: 0 0 30px rgba(0,0,0,0.5); }
         .glass-panel { background: var(--card-glass); backdrop-filter: blur(20px); border: 1px solid var(--border-glass); border-radius: 2rem; padding: 1.5rem; margin-bottom: 1rem; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
         .item-row { background: rgba(255,255,255,0.03); border-radius: 1.2rem; padding: 14px; margin-bottom: 12px; border: 1px solid rgba(255,255,255,0.05); transition: 0.2s; }
@@ -43,7 +44,7 @@
             <h1 class="orbitron text-2xl font-black text-white mb-2 uppercase tracking-tighter">AL-HUT <span class="text-gold">MASTER</span></h1>
             <p class="text-[10px] text-gray-400 mb-8 italic font-bold">SOVEREIGN CONTROL V6.2</p>
             <input type="password" id="master-pass" placeholder="أدخل شفرة السيادة" class="w-full bg-slate-900 border-2 border-slate-700 rounded-2xl p-4 text-center text-gold mb-6 outline-none focus:border-gold transition-all">
-            <button onclick="loadMasterData()" class="login-btn orbitron italic">INITIATE COMMAND</button>
+            <button id="login-btn-main" onclick="loadMasterData()" class="login-btn orbitron italic">INITIATE COMMAND</button>
         </div>
     </div>
 
@@ -62,7 +63,6 @@
         <div id="map"></div>
 
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
-            
             <section class="glass-panel h-[600px] flex flex-col border-t-4 border-gold">
                 <h2 class="font-black text-gold mb-4 text-sm flex justify-between items-center uppercase italic">
                     <span><i class="fas fa-motorcycle mr-2"></i> رادار الطيارين</span>
@@ -90,8 +90,7 @@
     </div>
 
     <script>
-        // الرابط السيادي الجديد V6.2 لعام 2026
-        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw_cl72d5j5v3ziPZYFAd-wy8_H6yo0II4CHEzJiEMMnkPY92jlUbSYbI_FgnXDPeRvyg/exec";
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyIqK63Xu4b2G8BN0aNQIs42oTqvvYRlGDLfQCCSMo68YPYoysKjQ_IjoXhie0MhIaZpQ/exec";
         let map, markers = {};
 
         setInterval(() => { document.getElementById('clock').innerText = new Date().toLocaleTimeString('en-GB'); }, 1000);
@@ -105,8 +104,14 @@
         }
 
         async function loadMasterData(isSilent = false) {
+            const btn = document.getElementById('login-btn-main');
             const pass = document.getElementById('master-pass').value;
             if(!pass) return;
+
+            if (!isSilent) {
+                btn.innerText = "جاري الاتصال بالقاعدة...";
+                btn.disabled = true;
+            }
 
             try {
                 const res = await fetch(`${SCRIPT_URL}?action=get_master_data&pass=${encodeURIComponent(pass)}`);
@@ -114,6 +119,10 @@
                 
                 if (data.status === "denied") {
                     alert("شفرة السيادة غير صحيحة!");
+                    if (!isSilent) {
+                        btn.innerText = "INITIATE COMMAND";
+                        btn.disabled = false;
+                    }
                     return;
                 }
 
@@ -125,7 +134,14 @@
                 
                 renderUI(data);
                 updateMarkers(data.drivers);
-            } catch (e) { console.log("Radar Sync Active..."); }
+            } catch (e) { 
+                console.log("Radar Sync Error...");
+                if (!isSilent) {
+                    alert("خطأ في الاتصال بالرادار السيادي.");
+                    btn.innerText = "INITIATE COMMAND";
+                    btn.disabled = false;
+                }
+            }
         }
 
         function renderUI(data) {
@@ -133,7 +149,6 @@
             document.getElementById('rest-count').innerText = data.restaurants.length;
             document.getElementById('order-count').innerText = data.orders.length;
 
-            // ريندر الطيارين
             document.getElementById('drivers-list').innerHTML = data.drivers.map(d => `
                 <div class="item-row text-[11px]">
                     <div class="flex justify-between mb-3 items-center">
@@ -152,7 +167,6 @@
                 </div>
             `).join('');
 
-            // ريندر المطاعم
             document.getElementById('rests-list').innerHTML = data.restaurants.map(r => `
                 <div class="item-row text-[11px]">
                     <div class="flex justify-between mb-3 items-center">
@@ -172,7 +186,6 @@
                 </div>
             `).join('');
 
-            // ريندر العمليات
             document.getElementById('orders-list').innerHTML = data.orders.map(o => {
                 const statusColor = o[5] === 'pending' ? 'text-amber-500' : 'text-emerald-400';
                 return `
@@ -233,7 +246,6 @@
             setTimeout(() => loadMasterData(true), 1000);
         }
 
-        // تحديث حي كل 10 ثوانٍ
         setInterval(() => { 
             if (!document.getElementById('main-ui').classList.contains('hidden')) {
                 loadMasterData(true);
