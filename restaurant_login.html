@@ -17,34 +17,26 @@
         .action-btn { background: var(--whale-emerald); color: #020617; font-weight: 900; clip-path: polygon(4% 0, 100% 0, 96% 100%, 0% 100%); transition: 0.3s; cursor: pointer; }
         label { display: block; text-align: right; font-size: 10px; color: #10b981; font-weight: 900; margin-bottom: 5px; margin-right: 5px; text-transform: uppercase; }
         .hidden { display: none; }
-        .gps-pulse { animation: pulse 1.5s infinite; color: #10b981; }
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
     </style>
 </head>
 <body class="p-6">
-
     <div class="radar-grid"></div>
 
     <div class="max-w-md w-full glass-card p-8 rounded-[2.5rem] relative z-10">
-        
         <div id="loader" class="text-center py-12">
             <div class="w-14 h-14 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
-            <p class="text-[10px] text-emerald-500 font-black italic uppercase tracking-[0.2em]">Authenticating Kitchen...</p>
+            <p class="text-emerald-500 font-black italic uppercase text-[10px]">Verifying with Radar...</p>
         </div>
 
         <div id="authUI" class="hidden">
             <header class="text-center mb-6">
-                <h2 class="text-2xl font-black italic" style="font-family: 'Orbitron'; uppercase;">
-                    WHALE <span class="text-emerald-500">KITCHEN</span>
-                </h2>
+                <h2 class="text-2xl font-black italic" style="font-family: 'Orbitron';">WHALE <span class="text-emerald-500">KITCHEN</span></h2>
                 <p class="text-[10px] text-gray-400 mt-1 font-bold italic opacity-60">تفعيل رادار الشركاء V6.2</p>
             </header>
-
             <form id="smartForm" class="space-y-4">
                 <input type="text" id="resName" required placeholder="اسم المطعم" class="whale-input text-right">
-                <input type="tel" id="resPhone" required placeholder="رقم هاتف المدير" class="whale-input text-right">
-                <input type="url" id="resMapLink" required placeholder="رابط الموقع على الخريطة" class="whale-input text-right">
-
+                <input type="tel" id="resPhone" required placeholder="رقم الهاتف" class="whale-input text-right">
+                <input type="url" id="resMapLink" required placeholder="رابط الموقع (Maps)" class="whale-input text-right">
                 <div class="grid grid-cols-2 gap-2">
                     <input type="number" id="fixedFee" required placeholder="العمولة" class="whale-input text-center p-2">
                     <select id="paySystem" class="whale-input bg-slate-900 text-[10px]">
@@ -52,25 +44,16 @@
                         <option value="مناصفة">مناصفة</option>
                     </select>
                 </div>
-
-                <div id="gpsStatus" class="text-[9px] text-center font-bold text-gray-500 italic mt-2 hidden">
-                    <i class="fas fa-location-crosshairs gps-pulse"></i> جاري تحديد الإحداثيات...
-                </div>
-
-                <button type="submit" id="mainBtn" class="w-full py-5 action-btn mt-4 flex items-center justify-center gap-3 italic shadow-xl">
-                    <span id="btnText">إرسال طلب الانضمام</span>
-                    <i class="fas fa-satellite-dish"></i>
-                </button>
+                <button type="submit" id="mainBtn" class="w-full py-5 action-btn mt-4 italic">إرسال طلب الانضمام</button>
             </form>
         </div>
 
         <div id="waitMessage" class="hidden text-center py-12">
             <div class="text-6xl mb-6 animate-bounce">⏳</div>
             <h3 class="text-xl font-black text-amber-500 italic uppercase">بانتظار تفعيل طه</h3>
-            <p class="text-[10px] text-slate-400 mt-6 leading-relaxed italic">طلبك الآن على طاولة الإدارة في كركوك.<br>بمجرد تفعيل طه، سيفتح الرادار تلقائياً.</p>
-            <button onclick="logout()" class="mt-10 text-[9px] text-red-500 font-black uppercase border-b border-red-500/30">تعديل البيانات</button>
+            <p class="text-[10px] text-slate-400 mt-6 italic">سيتم التحقق من التفعيل تلقائياً كل 15 ثانية...</p>
+            <button onclick="logout()" class="mt-10 text-[9px] text-red-500 font-black border-b border-red-500/30">تعديل البيانات</button>
         </div>
-
     </div>
 
     <script>
@@ -87,18 +70,24 @@
 
         async function checkResLogin(phone) {
             try {
-                const res = await fetch(`${scriptURL}?action=login_check&type=Restaurant&id=${encodeURIComponent(phone)}`);
+                // إضافة timestamp لضمان عدم جلب بيانات قديمة من الكاش
+                const timestamp = new Date().getTime();
+                const res = await fetch(`${scriptURL}?action=login_check&type=Restaurant&id=${encodeURIComponent(phone)}&cb=${timestamp}`);
                 const result = await res.json();
                 
                 if (result.status === 'active') {
+                    // تخزين البيانات فوراً عند التأكد أنها Active
                     localStorage.setItem('whale_res_phone', phone);
-                    localStorage.setItem('whale_res_name', result.data[1]);
-                    localStorage.setItem('whale_res_map', result.data[3]);
-                    localStorage.setItem('whale_res_fee', result.data[5]);
+                    if (result.data) {
+                        localStorage.setItem('whale_res_name', result.data[1]);
+                        localStorage.setItem('whale_res_map', result.data[3]);
+                        localStorage.setItem('whale_res_fee', result.data[5]);
+                    }
                     window.location.href = 'restaurant.html'; 
                 } else if (result.status === 'pending') {
                     showUI('waitMessage');
-                    setTimeout(() => checkResLogin(phone), 15000); // تحديث تلقائي كل 15 ثانية
+                    // محاولة الفحص مرة أخرى بعد 15 ثانية دون الحاجة لتحديث الصفحة يدوياً
+                    setTimeout(() => checkResLogin(phone), 15000);
                 } else {
                     showUI('authUI');
                 }
@@ -114,53 +103,37 @@
             document.getElementById(id).classList.remove('hidden');
         }
 
-        async function getCoords() {
-            return new Promise((resolve) => {
-                if (!navigator.geolocation) resolve({ lat: 0, lng: 0 });
-                navigator.geolocation.getCurrentPosition(
-                    (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-                    () => resolve({ lat: 0, lng: 0 }),
-                    { enableHighAccuracy: true, timeout: 5000 }
-                );
-            });
-        }
-
         document.getElementById('smartForm').onsubmit = async function(e) {
             e.preventDefault();
-            const btn = document.getElementById('mainBtn');
             const phone = document.getElementById('resPhone').value;
-            
+            const btn = document.getElementById('mainBtn');
             btn.disabled = true;
-            document.getElementById('gpsStatus').classList.remove('hidden');
-            document.getElementById('btnText').innerText = "جاري البث...";
+            btn.innerText = "جاري البث...";
 
-            const coords = await getCoords();
-
-            const params = new URLSearchParams({
+            const data = {
                 action: "register_user",
                 type: "Restaurant",
                 name: document.getElementById('resName').value,
                 phone: phone,
                 address: document.getElementById('resMapLink').value,
                 fee: document.getElementById('fixedFee').value,
-                paySystem: document.getElementById('paySystem').value,
-                lat: coords.lat,
-                lng: coords.lng
-            });
+                paySystem: document.getElementById('paySystem').value
+            };
 
-            // حفظ الرقم فوراً لضمان عدم نسيانه عند التحديث
+            // حفظ الهاتف محلياً فوراً حتى لو فشل الاتصال مؤقتاً
             localStorage.setItem('whale_res_phone', phone);
 
-            // إرسال البيانات
-            fetch(`${scriptURL}?${params.toString()}`, { method: 'GET', mode: 'no-cors' })
-            .then(() => {
+            try {
+                await fetch(scriptURL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    body: JSON.stringify(data)
+                });
+                // ننتظر قليلاً ثم نبدأ الفحص التلقائي
+                setTimeout(() => checkResLogin(phone), 2000);
+            } catch (e) {
                 showUI('waitMessage');
-                checkResLogin(phone); // البدء في فحص الحالة فوراً
-            })
-            .catch(() => {
-                alert("حدث خطأ، يرجى المحاولة مرة أخرى.");
-                btn.disabled = false;
-            });
+            }
         };
 
         function logout() { localStorage.clear(); location.reload(); }
