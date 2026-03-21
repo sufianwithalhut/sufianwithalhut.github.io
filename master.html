@@ -19,7 +19,6 @@
         .item-row { border-radius: 1rem; padding: 12px; margin-bottom: 10px; border: 1px solid var(--border); transition: all 0.2s ease; position: relative; }
         .row-active { background: white; border-right: 5px solid #2563eb; }
         
-        /* تمييز طلبات الانضمام الجديدة */
         .row-pending { background: #fffbeb; border: 2px dashed #f59e0b; }
         .row-pending::after { content: "طلب جديد"; position: absolute; top: 5px; left: 10px; font-size: 8px; font-weight: 900; color: #f59e0b; background: white; padding: 2px 5px; border-radius: 4px; border: 1px solid #f59e0b; }
         
@@ -121,8 +120,17 @@
             } catch (e) { console.error("Sync Error"); }
         }
 
+        // دالة مساعدة لفصل اسم المنطقة عن الرابط
+        function getAreaName(addressString) {
+            if (!addressString) return "غير محدد";
+            if (addressString.includes('|')) {
+                return addressString.split('|')[0].trim();
+            }
+            return "رابط موقع"; // في حال كان العنوان القديم رابطاً فقط
+        }
+
         function renderUI(data) {
-            // رندر السائقين
+            // 1. رندر السائقين
             document.getElementById('drivers-list').innerHTML = data.drivers.map(d => {
                 const isActive = d[4] === 'active';
                 return `
@@ -134,20 +142,20 @@
                     <div class="flex flex-wrap gap-2">
                         <span onclick="trackOnMap(${d[5]}, ${d[6]})" class="btn-text btn-blue">تتبع</span>
                         ${isActive 
-                            ? `<span onclick="control('Drivers', '${d[2]}', 4, 'pending')" class="btn-text btn-yellow">تعليق مؤقت</span>`
-                            : `<span onclick="control('Drivers', '${d[2]}', 4, 'active')" class="btn-text btn-green">قبول انضمام</span>`
+                            ? `<span onclick="control('Drivers', '${d[2]}', 4, 'pending')" class="btn-text btn-yellow">تعليق</span>`
+                            : `<span onclick="control('Drivers', '${d[2]}', 4, 'active')" class="btn-text btn-green">تفعيل</span>`
                         }
                         <a href="tel:${d[2]}" class="btn-text btn-gray">اتصال</a>
                     </div>
                 </div>`;
             }).join('');
 
-            // رندر المطاعم مع عرض اسم المنطقة نصياً
+            // 2. رندر المطاعم مع عرض اسم المنطقة (الفصل البرمجي)
             document.getElementById('rests-list').innerHTML = data.restaurants.map(r => {
                 const isActive = r[4] === 'active';
                 const totalOrders = data.orders.filter(o => o[1] === r[1]).length;
                 const totalDebt = totalOrders * parseFloat(r[5] || 0);
-                const areaName = r[2] || "غير محدد"; // تأكد من أن الـ Index هنا يطابق عمود اسم المنطقة في الشيت
+                const areaName = getAreaName(r[3]); // استخدام الدالة الجديدة لمعالجة العمود D
 
                 return `
                 <div class="item-row ${isActive ? 'row-active' : 'row-pending'}">
@@ -161,8 +169,8 @@
                     </div>
                     <div class="flex flex-wrap gap-2">
                         ${isActive 
-                            ? `<span onclick="control('Restaurants', '${r[2]}', 4, 'pending')" class="btn-text btn-yellow">تعليق مؤقت</span>`
-                            : `<span onclick="control('Restaurants', '${r[2]}', 4, 'active')" class="btn-text btn-green">قبول انضمام</span>`
+                            ? `<span onclick="control('Restaurants', '${r[2]}', 4, 'pending')" class="btn-text btn-yellow">تعليق</span>`
+                            : `<span onclick="control('Restaurants', '${r[2]}', 4, 'active')" class="btn-text btn-green">تفعيل</span>`
                         }
                         <a href="tel:${r[2]}" class="btn-text btn-gray">اتصال</a>
                         <span onclick="deleteItem('Restaurants', '${r[2]}')" class="btn-text btn-red px-2"><i class="fas fa-trash"></i></span>
@@ -176,20 +184,21 @@
             const orderTemplate = (o) => {
                 const rest = data.restaurants.find(r => r[1] === o[1]);
                 const driver = data.drivers.find(d => d[2] == o[6]);
+                const areaName = rest ? getAreaName(rest[3]) : "غير محدد";
                 
                 return `
                 <div class="item-row order-card-item ${o[5] === 'delivered' ? 'row-completed' : 'row-active shadow-md border-amber-200'}" data-driver-phone="${o[6] || ''}">
                     <div class="flex justify-between border-b pb-1 mb-2">
                         <span class="font-black text-[10px] text-blue-600">#${o[0]}</span>
-                        <span class="text-[9px] font-bold text-slate-400 italic">${o[5] === 'delivered' ? 'مكتمل ✅' : 'جاري التنفيذ'}</span>
+                        <span class="text-[9px] font-bold text-slate-400 italic">${o[5] === 'delivered' ? 'مكتمل ✅' : 'جاري...'}</span>
                     </div>
                     <div class="text-xs mb-3">
                         <p class="font-black text-slate-800">${o[1]}</p>
-                        <p class="text-[10px] text-slate-500 font-bold mb-1">📍 ${rest ? (rest[2] || "المنطقة غير مسجلة") : "غير محدد"}</p>
-                        <p class="text-[9px] bg-white border border-slate-100 p-1 rounded font-bold text-blue-700">الكابتن: ${driver ? driver[1] : (o[6] || 'بانتظار سائق')}</p>
+                        <p class="text-[10px] text-slate-500 font-bold mb-1">📍 ${areaName}</p>
+                        <p class="text-[9px] bg-white border border-slate-100 p-1 rounded font-bold text-blue-700">الكابتن: ${driver ? driver[1] : 'بانتظار سائق'}</p>
                     </div>
                     <div class="flex gap-2">
-                        <a href="tel:${o[10]}" class="btn-text btn-blue flex-1">المطعم</a>
+                        <a href="tel:${o[10]}" class="btn-text btn-blue flex-1 text-center">المطعم</a>
                         ${o[6] ? `<a href="tel:${o[6]}" class="btn-text btn-yellow flex-1 text-center">الكابتن</a>` : ''}
                         <span onclick="deleteItem('Orders', '${o[0]}')" class="btn-text btn-red"><i class="fas fa-trash-alt"></i></span>
                     </div>
@@ -200,7 +209,6 @@
             document.getElementById('completed-orders').innerHTML = completedOrders.reverse().map(orderTemplate).join('');
         }
 
-        // وظيفة البحث برقم السائق في المكتملة فقط
         function filterCompletedByPhone() {
             const val = document.getElementById('completedSearchPhone').value.trim();
             const completedList = document.getElementById('completed-orders');
@@ -219,7 +227,7 @@
         }
 
         async function deleteItem(sheet, id) {
-            if(!confirm("هل أنت متأكد من الحذف النهائي؟")) return;
+            if(!confirm("حذف نهائي؟")) return;
             const pass = document.getElementById('master-pass').value;
             await fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'delete_item', pass: pass, targetSheet: sheet, targetID: id }) });
             setTimeout(() => loadMasterData(true), 500);
