@@ -16,6 +16,8 @@
         .whale-select:focus { border-color: #10b981; }
         .btn-glow { box-shadow: 0 0 20px rgba(16, 185, 129, 0.3); }
         .hidden { display: none; }
+        .loading-shimmer { background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
+        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
     </style>
 </head>
 <body class="p-4 pb-24">
@@ -28,18 +30,18 @@
                 <h1 id="displayResName" class="text-xs font-black text-white italic tracking-wider">جاري التوثيق...</h1>
             </div>
         </div>
-        <button onclick="logout()" class="text-[10px] font-black text-red-500 px-4 py-2 rounded-xl bg-red-500/10 border border-red-500/20">خروج</button>
+        <button onclick="logout()" class="text-[10px] font-black text-red-400 px-4 py-2 rounded-xl bg-red-500/10 border border-red-500/20 active:scale-95 transition-all">خروج</button>
     </header>
 
     <div class="max-w-xl mx-auto glass-card p-6 rounded-[2.5rem] shadow-2xl relative border-t-4 border-emerald-500">
         <div class="text-center mb-6">
             <h2 class="text-xl font-black italic">إرسال سريع للرادار 🚀</h2>
-            <p class="text-[9px] text-emerald-500 font-bold uppercase tracking-widest mt-1 italic">يتم بث موقع المطعم والبيانات تلقائياً 📍</p>
+            <p id="resStatusText" class="text-[9px] text-emerald-500 font-bold uppercase tracking-widest mt-1 italic animate-pulse">جاري ربط الإحداثيات 📍</p>
         </div>
 
         <div class="flex gap-2 mb-6 bg-white/5 p-1 rounded-2xl">
-            <button type="button" onclick="switchTab('manual')" id="manualBtn" class="tab-btn active flex-1 py-3 rounded-xl font-black text-[10px] italic">إدخال بيانات</button>
-            <button type="button" onclick="switchTab('camera')" id="cameraBtn" class="tab-btn flex-1 py-3 rounded-xl font-black text-[10px] italic">تصوير الوصل 📸</button>
+            <button type="button" onclick="switchTab('manual')" id="manualBtn" class="tab-btn active flex-1 py-3 rounded-xl font-black text-[10px] italic uppercase">إدخال بيانات</button>
+            <button type="button" onclick="switchTab('camera')" id="cameraBtn" class="tab-btn flex-1 py-3 rounded-xl font-black text-[10px] italic uppercase">تصوير الوصل 📸</button>
         </div>
         
         <form id="orderForm" class="space-y-5">
@@ -67,41 +69,58 @@
             </div>
 
             <div id="manualSection" class="space-y-5">
-                <input type="tel" id="customerPhone" class="w-full p-4 bg-white/5 border border-white/10 rounded-2xl outline-none focus:border-emerald-500 font-bold text-center" placeholder="رقم هاتف الزبون">
-                <input type="text" id="details" class="w-full p-4 bg-white/5 border border-white/10 rounded-2xl outline-none focus:border-emerald-500 font-bold text-sm text-right" placeholder="العنوان الدقيق وتفاصيل الطلب">
+                <input type="tel" id="customerPhone" class="w-full p-4 bg-white/5 border border-white/10 rounded-2xl outline-none focus:border-emerald-500 font-bold text-center tracking-widest" placeholder="رقم هاتف الزبون">
+                <textarea id="details" class="w-full p-4 bg-white/5 border border-white/10 rounded-2xl outline-none focus:border-emerald-500 font-bold text-sm text-right h-24" placeholder="العنوان الدقيق وتفاصيل الطلب..."></textarea>
             </div>
 
             <div id="cameraSection" class="hidden space-y-4 text-center">
-                <div onclick="document.getElementById('receiptImage').click()" class="border-2 border-dashed border-white/10 rounded-[2rem] p-10 cursor-pointer hover:bg-emerald-500/5">
-                    <i class="fas fa-camera text-4xl mb-3 text-white/20"></i>
-                    <p class="font-black text-[10px] italic">التقط صورة الوصل</p>
+                <div onclick="document.getElementById('receiptImage').click()" class="border-2 border-dashed border-white/10 rounded-[2rem] p-10 cursor-pointer hover:bg-emerald-500/5 transition-all">
+                    <i class="fas fa-camera text-4xl mb-3 text-emerald-500/40"></i>
+                    <p class="font-black text-[10px] italic uppercase">التقط صورة الوصل بوضوح</p>
                     <input type="file" id="receiptImage" accept="image/*" capture="camera" class="hidden" onchange="previewImage(event)">
                 </div>
                 <div id="previewContainer" class="hidden relative inline-block">
-                    <img id="imagePreview" src="#" class="rounded-2xl max-h-48 border-2 border-emerald-500/30">
-                    <button type="button" onclick="cancelImage()" class="absolute -top-3 -right-3 bg-red-600 text-white w-8 h-8 rounded-full">✕</button>
+                    <img id="imagePreview" src="#" class="rounded-2xl max-h-48 border-2 border-emerald-500/30 shadow-2xl">
+                    <button type="button" onclick="cancelImage()" class="absolute -top-3 -right-3 bg-red-600 text-white w-8 h-8 rounded-full shadow-lg">✕</button>
                 </div>
             </div>
 
-            <button type="submit" id="submitBtn" class="w-full bg-emerald-500 text-slate-900 py-5 rounded-2xl font-black text-lg btn-glow italic uppercase shadow-xl mt-6">
-                <span>بث الطلبية الآن</span> <i class="fas fa-satellite-dish"></i>
+            <button type="submit" id="submitBtn" class="w-full bg-emerald-500 text-slate-900 py-5 rounded-2xl font-black text-lg btn-glow italic uppercase shadow-xl mt-6 active:scale-95 transition-all">
+                <span>بث الطلبية الآن</span> <i class="fas fa-satellite-dish ml-2"></i>
             </button>
         </form>
 
         <div id="toast" class="fixed bottom-10 left-1/2 -translate-x-1/2 bg-emerald-500 text-slate-900 px-8 py-4 rounded-full font-black text-sm hidden shadow-2xl z-[100] animate-bounce">
-            ✅ تم بث الإشارة للرادار بنجاح!
+            ✅ تم بث الإشارة بنجاح!
         </div>
     </div>
 
     <script>
         const scriptURL = 'https://script.google.com/macros/s/AKfycbyIqK63Xu4b2G8BN0aNQIs42oTqvvYRlGDLfQCCSMo68YPYoysKjQ_IjoXhie0MhIaZpQ/exec';
         let base64Image = null;
+        let restaurantProfile = null;
 
-        document.addEventListener('DOMContentLoaded', () => {
+        // عند فتح الصفحة: جلب بيانات المطعم كاملة من الشيت للتأكد من دقة المعلومات
+        window.onload = async () => {
             const resPhone = localStorage.getItem('whale_res_phone');
             if (!resPhone) { window.location.href = 'Restaurant_login.html'; return; }
-            document.getElementById('displayResName').innerText = localStorage.getItem('whale_res_name') || "مطعم شريك";
-        });
+            
+            try {
+                const res = await fetch(`${scriptURL}?action=login_check&type=Restaurant&id=${encodeURIComponent(resPhone)}`);
+                const result = await res.json();
+                
+                if (result.status === 'active') {
+                    restaurantProfile = result.userData; // تخزين بيانات المطعم (الاسم، العمولة، الرابط)
+                    document.getElementById('displayResName').innerText = restaurantProfile[1]; // اسم المطعم من العمود B
+                    document.getElementById('resStatusText').innerText = "الرادار متصل بنجاح 📍";
+                    document.getElementById('resStatusText').classList.remove('animate-pulse');
+                } else {
+                    window.location.href = 'Restaurant_login.html';
+                }
+            } catch (e) {
+                document.getElementById('displayResName').innerText = "خطأ في الاتصال";
+            }
+        };
 
         function switchTab(type) {
             document.getElementById('manualSection').classList.toggle('hidden', type === 'camera');
@@ -131,22 +150,24 @@
 
         document.getElementById('orderForm').onsubmit = async function(e) {
             e.preventDefault();
+            if (!restaurantProfile) return alert("انتظر جاري تحميل بيانات الرادار...");
+
             const btn = document.getElementById('submitBtn');
             const area = document.getElementById('locationSelect').value;
-            const customerPhone = document.getElementById('customerPhone').value || "غير متوفر";
+            const customerPhone = document.getElementById('customerPhone').value || "بدون رقم";
             const userDetails = document.getElementById('details').value || "بدون تفاصيل";
 
+            // إعداد البيانات بناءً على ملف المطعم في الشيت
             const orderData = {
                 action: 'restaurant_send_order',
-                restName: localStorage.getItem('whale_res_name'),
-                restPhone: localStorage.getItem('whale_res_phone'),
-                restLocation: localStorage.getItem('whale_res_map'),
-                type: "Restaurant",
-                lat: localStorage.getItem('whale_res_lat'),
-                lng: localStorage.getItem('whale_res_lng'),
+                restName: restaurantProfile[1],     // الاسم من شيت المطاعم
+                restPhone: restaurantProfile[2],    // الهاتف من شيت المطاعم
+                restLocation: restaurantProfile[3], // الرابط المدمج من شيت المطاعم (المنطقة|الرابط)
+                lat: restaurantProfile[6],          // خط العرض
+                lng: restaurantProfile[7],          // خط الطول
                 area: area,
                 details: `[${area}] - ${userDetails} | هاتف الزبون: ${customerPhone}`,
-                fee: localStorage.getItem('whale_res_fee'),
+                fee: restaurantProfile[5],          // العمولة من شيت المطاعم
                 image: base64Image || "" 
             };
 
@@ -155,11 +176,21 @@
             
             try {
                 await fetch(scriptURL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(orderData) });
+                
+                // نجاح الإرسال
                 document.getElementById('toast').classList.remove('hidden');
                 document.getElementById('orderForm').reset();
                 cancelImage();
-                setTimeout(() => { document.getElementById('toast').classList.add('hidden'); btn.disabled = false; btn.innerHTML = `<span>بث الطلبية الآن</span> <i class="fas fa-satellite-dish"></i>`; }, 3000);
-            } catch (err) { alert("فشل الاتصال بالرادار."); btn.disabled = false; }
+                setTimeout(() => { 
+                    document.getElementById('toast').classList.add('hidden'); 
+                    btn.disabled = false; 
+                    btn.innerHTML = `<span>بث الطلبية الآن</span> <i class="fas fa-satellite-dish ml-2"></i>`; 
+                }, 3000);
+            } catch (err) { 
+                alert("فشل في بث الإشارة، تأكد من الإنترنت."); 
+                btn.disabled = false; 
+                btn.innerHTML = `<span>بث الطلبية الآن</span> <i class="fas fa-satellite-dish ml-2"></i>`;
+            }
         };
 
         function logout() { localStorage.clear(); window.location.href = 'Restaurant_login.html'; }
