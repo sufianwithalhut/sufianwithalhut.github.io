@@ -16,7 +16,6 @@
         .whale-select:focus { border-color: #10b981; }
         .btn-glow { box-shadow: 0 0 20px rgba(16, 185, 129, 0.3); }
         .hidden { display: none; }
-        /* نبض حالة الاتصال */
         .online-dot { width: 8px; height: 8px; background: #10b981; border-radius: 50%; display: inline-block; margin-left: 5px; box-shadow: 0 0 10px #10b981; animation: pulse 2s infinite; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
     </style>
@@ -28,9 +27,7 @@
             <div class="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center text-slate-900 font-black shadow-lg">🐋</div>
             <div>
                 <p class="text-[8px] text-emerald-500 font-black uppercase tracking-widest italic">Al-Hut Kitchen Hub V6.2</p>
-                <h1 id="displayResName" class="text-xs font-black text-white italic tracking-wider flex items-center">
-                    جاري التحقق..
-                </h1>
+                <h1 id="displayResName" class="text-xs font-black text-white italic tracking-wider flex items-center">جاري التحقق..</h1>
             </div>
         </div>
         <button onclick="logout()" class="text-[10px] font-black text-red-400 px-4 py-2 rounded-xl bg-red-500/10 border border-red-500/20 active:scale-95 transition-all">خروج</button>
@@ -112,17 +109,16 @@
                 const result = await res.json();
                 
                 if (result.status === 'active') {
-                    restaurantProfile = result.userData;
-                    // تحديث الهيدر لإظهار حالة الاتصال
+                    // في الماكرو V6.2، البيانات تُرسل في حقل data
+                    restaurantProfile = result.data; 
                     document.getElementById('displayResName').innerHTML = `<span class="online-dot"></span> ${restaurantProfile[1]}`;
                     document.getElementById('resStatusText').innerText = "الرادار متصل بنجاح 🟢";
                     document.getElementById('resStatusText').classList.remove('animate-pulse');
-                    document.getElementById('resStatusText').classList.add('text-emerald-400');
                 } else {
                     window.location.href = 'Restaurant_login.html';
                 }
             } catch (e) {
-                document.getElementById('displayResName').innerText = "خطأ في الشبكة ⚠️";
+                document.getElementById('displayResName').innerText = "خطأ في الاتصال";
             }
         };
 
@@ -154,13 +150,14 @@
 
         document.getElementById('orderForm').onsubmit = async function(e) {
             e.preventDefault();
-            if (!restaurantProfile) return alert("الرادار لم يتعرف على بروفايل المطعم بعد. يرجى الانتظار ثوانٍ..");
+            if (!restaurantProfile) return alert("الرادار لم يتعرف على بروفايل المطعم بعد.");
 
             const btn = document.getElementById('submitBtn');
             const area = document.getElementById('locationSelect').value;
             const customerPhone = document.getElementById('customerPhone').value || "بدون رقم";
             const userDetails = document.getElementById('details').value || "بدون تفاصيل";
 
+            // إعداد البيانات بما يتوافق مع doPost في الماكرو V6.2
             const orderData = {
                 action: 'restaurant_send_order',
                 restName: restaurantProfile[1],
@@ -169,7 +166,8 @@
                 lat: restaurantProfile[6],
                 lng: restaurantProfile[7],
                 area: area,
-                details: `[${area}] - ${userDetails} | هاتف الزبون: ${customerPhone}`,
+                details: userDetails, // فصلنا التفاصيل عن رقم الهاتف لتنظيم أفضل في الشيت
+                type: "طلب طعام", // حقل إضافي يطلبه الماكرو أحياناً
                 fee: restaurantProfile[5],
                 image: base64Image || "" 
             };
@@ -178,7 +176,13 @@
             btn.innerHTML = `<i class="fas fa-spinner animate-spin"></i> جاري البث...`;
             
             try {
-                await fetch(scriptURL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(orderData) });
+                // إرسال POST حقيقي يتناسب مع الماكرو المطور
+                await fetch(scriptURL, { 
+                    method: 'POST', 
+                    mode: 'no-cors', 
+                    body: JSON.stringify(orderData) 
+                });
+                
                 document.getElementById('toast').classList.remove('hidden');
                 document.getElementById('orderForm').reset();
                 cancelImage();
@@ -189,7 +193,7 @@
                 }, 3000);
             } catch (err) { 
                 alert("فشل في بث الإشارة."); 
-                btn.disabled = false; 
+                btn.disabled = false;
                 btn.innerHTML = `<span>بث الطلبية الآن</span> <i class="fas fa-satellite-dish ml-2"></i>`;
             }
         };
