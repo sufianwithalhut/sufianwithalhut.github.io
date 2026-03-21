@@ -3,131 +3,101 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>غرفة العمليات المركزية | منظومة الحوت 🐋</title>
+    <title>التحكم المركزي | منظومة الحوت 🐋</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        :root { --primary: #2563eb; --danger: #ef4444; --success: #22c55e; --amber: #f59e0b; }
-        body { background: #f1f5f9; color: #1e293b; font-family: 'Tajawal', sans-serif; margin: 0; overflow-x: hidden; }
+        :root { --primary: #2563eb; --danger: #ef4444; --success: #22c55e; --warning: #f59e0b; }
+        body { background: #f1f5f9; color: #1e293b; font-family: 'Tajawal', sans-serif; margin: 0; }
         
-        /* تصميم الخريطة */
-        #map { height: 400px; border-radius: 2.5rem; border: 8px solid white; box-shadow: 0 20px 50px rgba(0,0,0,0.1); margin: 1.5rem 0; z-index: 10; }
+        #map { height: 400px; border-radius: 2rem; border: 6px solid white; box-shadow: 0 15px 35px rgba(0,0,0,0.1); margin-bottom: 2rem; z-index: 10; }
+        .glass-panel { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); border: 1px solid white; border-radius: 1.5rem; padding: 1.5rem; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
         
-        /* الحاويات الزجاجية */
-        .glass-panel { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); border: 1px solid white; border-radius: 2rem; padding: 1.5rem; box-shadow: 0 10px 15px rgba(0,0,0,0.05); }
+        /* النبض اللوني للطلبات المتأخرة */
+        .critical-pulse { animation: red-pulse 1.5s infinite; border: 2px solid var(--danger) !important; }
+        @keyframes red-pulse { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); background: #fff1f1; } 70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); background: #fff1f1; } }
         
-        /* أنظمة التنبيه الذكية */
-        .critical-pulse { animation: red-pulse 1.5s infinite; border: 2px solid var(--danger) !important; background: #fef2f2 !important; }
-        @keyframes red-pulse { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); } 70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
-        
+        /* توهج السائق الأنسب */
         .auto-suggest { animation: blue-glow 2s infinite; border: 3px solid var(--primary) !important; background: #eff6ff !important; transform: scale(1.02); z-index: 50; }
         @keyframes blue-glow { 0%, 100% { box-shadow: 0 0 10px rgba(59, 130, 246, 0.3); } 50% { box-shadow: 0 0 25px rgba(59, 130, 246, 0.6); } }
 
-        /* الصفوف والعناصر */
-        .item-row { border-radius: 1.2rem; padding: 14px; margin-bottom: 12px; border: 1px solid rgba(0,0,0,0.05); transition: 0.3s; position: relative; background: white; }
-        .delay-warning { border-right: 6px solid var(--amber); background: #fffbeb; }
-        .delay-safe { border-right: 6px solid var(--success); }
+        .item-row { border-radius: 1rem; padding: 14px; margin-bottom: 12px; border: 1px solid rgba(0,0,0,0.05); transition: 0.3s; background: white; position: relative; }
+        .row-active { border-right: 6px solid var(--primary); }
+        .row-pending { border: 2px dashed var(--warning); opacity: 0.8; }
 
-        /* الأزرار */
-        .btn-text { padding: 6px 12px; border-radius: 10px; font-weight: 800; font-size: 10px; cursor: pointer; transition: 0.2s; text-align: center; display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
+        .btn-action { padding: 6px 12px; border-radius: 8px; font-weight: 800; font-size: 10px; cursor: pointer; transition: 0.2s; display: inline-flex; align-items: center; gap: 4px; border: none; }
         .btn-blue { background: var(--primary); color: white; }
         .btn-red { background: var(--danger); color: white; }
         .btn-green { background: var(--success); color: white; }
-        .btn-yellow { background: var(--amber); color: white; }
+        .btn-yellow { background: var(--warning); color: white; }
         .btn-gray { background: #64748b; color: white; }
 
-        #login-block { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); z-index: 9999; }
         ::-webkit-scrollbar { width: 5px; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
     </style>
 </head>
 <body class="p-4 lg:p-8">
 
-    <div id="login-block" class="fixed inset-0 flex items-center justify-center">
-        <div class="max-w-[400px] w-full p-10 text-center glass-panel shadow-2xl">
-            <div class="w-20 h-20 bg-blue-600 rounded-3xl mx-auto mb-6 flex items-center justify-center shadow-xl animate-pulse">
-                <i class="fas fa-whale text-4xl text-white">🐋</i>
-            </div>
-            <h1 class="text-2xl font-black text-slate-800 mb-2">منظومة الحوت</h1>
-            <p class="text-[10px] text-slate-400 font-bold mb-8 tracking-widest uppercase">Master Control Center V8.0</p>
-            <input type="password" id="master-pass" placeholder="رمز الدخول المشفر" class="w-full bg-slate-100 border-2 border-slate-200 rounded-2xl p-4 text-center mb-6 outline-none font-bold focus:border-blue-500 transition-all">
-            <button onclick="loadMasterData()" class="w-full bg-blue-600 text-white p-4 rounded-2xl font-black shadow-lg hover:bg-blue-700 active:scale-95 transition-all">فتح الرادار المركزي</button>
+    <div id="login-block" class="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900">
+        <div class="max-w-[400px] w-full p-10 text-center glass-panel">
+            <h1 class="text-2xl font-black mb-6 italic">غرفة عمليات الحوت 🐋</h1>
+            <input type="password" id="master-pass" placeholder="رمز الدخول" class="w-full bg-slate-100 rounded-2xl p-4 text-center mb-4 outline-none font-bold">
+            <button onclick="loadMasterData()" class="w-full bg-blue-600 text-white p-4 rounded-2xl font-black">دخول</button>
         </div>
     </div>
 
     <div id="main-ui" class="hidden max-w-[1800px] mx-auto">
-        
-        <header class="flex flex-col md:flex-row justify-between items-center mb-8 gap-4 bg-white p-5 rounded-[2.5rem] shadow-sm border border-white">
-            <div class="flex items-center gap-4">
-                <div class="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center text-white text-2xl shadow-lg font-black">S</div>
-                <div>
-                    <h1 class="text-xl font-black text-slate-800 leading-none">لوحة تحكم الإدارة</h1>
-                    <span class="text-[10px] text-blue-600 font-bold italic">Al-Hut Autonomous Intelligence</span>
-                </div>
-            </div>
-            <div id="clock" class="font-black text-slate-600 bg-slate-100 px-8 py-3 rounded-2xl text-sm border border-slate-200 shadow-inner">00:00:00</div>
+        <header class="flex justify-between items-center mb-6 bg-white p-5 rounded-3xl shadow-sm border">
+            <h1 class="text-xl font-black text-blue-600 italic">AL-HUT MASTER <span class="text-slate-400 font-light text-xs">V8.5</span></h1>
+            <div id="clock" class="font-bold text-slate-500 bg-slate-50 px-6 py-2 rounded-2xl border">00:00:00</div>
         </header>
 
         <div id="map"></div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            
-            <section class="glass-panel h-[750px] flex flex-col border-t-8 border-blue-600">
-                <h2 class="font-black text-sm mb-4 uppercase flex items-center gap-2"><i class="fas fa-motorcycle text-blue-600"></i> رادار الطيارين</h2>
-                <input type="text" id="searchDriver" oninput="filterDrivers()" placeholder="بحث باسم أو رقم الطيار..." class="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs mb-4 outline-none focus:ring-2 ring-blue-500/20">
-                <div id="drivers-list" class="overflow-y-auto flex-1 space-y-3 pr-1"></div>
+            <section class="glass-panel h-[700px] flex flex-col border-t-4 border-blue-600">
+                <h2 class="font-black text-sm mb-4 uppercase"><i class="fas fa-motorcycle mr-1"></i> رادار الطيارين</h2>
+                <input type="text" id="searchDriver" oninput="filterDrivers()" placeholder="بحث باسم أو رقم..." class="w-full bg-slate-50 border rounded-xl p-2 text-xs mb-4 outline-none">
+                <div id="drivers-list" class="overflow-y-auto flex-1 space-y-2"></div>
             </section>
 
-            <section class="glass-panel h-[750px] flex flex-col border-t-8 border-emerald-500">
-                <h2 class="font-black text-sm mb-4 uppercase text-emerald-600 flex items-center gap-2"><i class="fas fa-utensils"></i> المطاعم والمحاسبة</h2>
-                <div id="rests-list" class="overflow-y-auto flex-1 space-y-3 pr-1"></div>
+            <section class="glass-panel h-[700px] flex flex-col border-t-4 border-emerald-500">
+                <h2 class="font-black text-sm mb-4 text-emerald-600 uppercase"><i class="fas fa-cash-register mr-1"></i> المطاعم والمحاسبة</h2>
+                <div id="rests-list" class="overflow-y-auto flex-1 space-y-2"></div>
             </section>
 
-            <section class="glass-panel h-[750px] flex flex-col border-t-8 border-amber-500">
-                <h2 class="font-black text-sm mb-4 uppercase text-amber-600 flex items-center gap-2"><i class="fas fa-satellite-dish"></i> طلبات جارية الآن</h2>
-                <div id="active-orders" class="overflow-y-auto flex-1 space-y-3 pr-1"></div>
+            <section class="glass-panel h-[700px] flex flex-col border-t-4 border-amber-500">
+                <h2 class="font-black text-sm mb-4 text-amber-600 uppercase"><i class="fas fa-broadcast-tower mr-1"></i> الرادار الميداني</h2>
+                <div id="active-orders" class="overflow-y-auto flex-1 space-y-2"></div>
             </section>
 
-            <section class="glass-panel h-[750px] flex flex-col border-t-8 border-slate-400">
-                <h2 class="font-black text-sm mb-4 uppercase text-slate-500 flex items-center gap-2"><i class="fas fa-history"></i> الأرشيف الذكي</h2>
-                <input type="text" id="completedSearchPhone" oninput="filterCompletedByPhone()" placeholder="بحث برقم هاتف السائق..." class="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs mb-4 outline-none">
-                <div id="completed-orders" class="overflow-y-auto flex-1 space-y-3 pr-1"></div>
+            <section class="glass-panel h-[700px] flex flex-col border-t-4 border-slate-400">
+                <h2 class="font-black text-sm mb-4 text-slate-500 uppercase"><i class="fas fa-archive mr-1"></i> الأرشيف</h2>
+                <div id="completed-orders" class="overflow-y-auto flex-1 space-y-2"></div>
             </section>
-
         </div>
     </div>
 
     <script>
-        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxODYE0lTSF_v3NdQw1lN0GCq3dcxeEfo3SB9QaDy2Klcg3NEMvs3GxUjHFxQ5fooQm2Q/exec";
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyIqK63Xu4b2G8BN0aNQIs42oTqvvYRlGDLfQCCSMo68YPYoysKjQ_IjoXhie0MhIaZpQ/exec";
         let map, markers = {}, currentData = null, selectedOrderID = null;
 
-        const locationsCoords = {
-            "الماس": [35.478, 44.385], "طريق بغداد": [35.455, 44.375], "التسعين": [35.460, 44.395],
-            "شارع المحافظة": [35.468, 44.392], "قورية": [35.475, 44.398], "بنجه علي": [35.485, 44.420],
-            "عرفه": [35.495, 44.370], "حي الواسطي": [35.425, 44.360]
-        };
+        const locationsCoords = { "الماس": [35.478, 44.385], "طريق بغداد": [35.455, 44.375], "التسعين": [35.460, 44.395], "شارع المحافظة": [35.468, 44.392], "قورية": [35.475, 44.398], "بنجه علي": [35.485, 44.420] };
 
-        function getAreaName(addressString) {
-            if (!addressString) return "غير محدد";
-            return addressString.includes('|') ? addressString.split('|')[0].trim() : "موقع محدد";
-        }
+        function getAreaName(address) { return (address && address.includes('|')) ? address.split('|')[0].trim() : "كركوك"; }
 
         async function loadMasterData(isSilent = false) {
             const pass = document.getElementById('master-pass').value;
             if(!pass) return;
             try {
-                const res = await fetch(`${SCRIPT_URL}?action=get_master_data&pass=${encodeURIComponent(pass)}&cb=${Date.now()}`);
+                const res = await fetch(`${SCRIPT_URL}?action=get_master_data&pass=${encodeURIComponent(pass)}`);
                 const data = await res.json();
-                if (data.status === "denied") return alert("كود الدخول خاطئ!");
+                if (data.status === "denied") return alert("الرمز خطأ!");
                 currentData = data;
-                if (!isSilent) { 
-                    document.getElementById('login-block').classList.add('hidden'); 
-                    document.getElementById('main-ui').classList.remove('hidden'); 
-                    initMap(); 
-                }
+                if (!isSilent) { document.getElementById('login-block').classList.add('hidden'); document.getElementById('main-ui').classList.remove('hidden'); initMap(); }
                 renderUI(data);
                 updateMarkers(data.drivers);
             } catch (e) { console.error("Sync Error"); }
@@ -139,14 +109,12 @@
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
         }
 
-        // خوارزمية الحوت للاختيار التلقائي (الافتراضي للرؤية)
-        function getBestDriver(orderArea) {
-            if (!currentData || !orderArea) return null;
-            const dest = locationsCoords[orderArea];
-            if (!dest) return null;
+        function getBestDriver(area) {
+            if (!currentData || !area) return null;
+            const dest = locationsCoords[area] || [35.467, 44.392];
             let bestID = null; let maxScore = -Infinity;
             currentData.drivers.forEach(d => {
-                if (d[4] !== 'active' || !d[5]) return; 
+                if (d[4] !== 'active' || !d[5]) return;
                 const dist = Math.sqrt(Math.pow(d[5]-dest[0], 2) + Math.pow(d[6]-dest[1], 2));
                 const score = 1 / (dist + 0.01);
                 if (score > maxScore) { maxScore = score; bestID = d[2]; }
@@ -158,87 +126,71 @@
             const activeOrders = data.orders.filter(o => o[5] !== 'delivered');
             const completedOrders = data.orders.filter(o => o[5] === 'delivered');
 
-            // 1. رندر السائقين
-            const targetOrder = data.orders.find(o => o[0] == selectedOrderID);
-            const bestDriverID = targetOrder ? getBestDriver(targetOrder[9]) : null;
-
+            // 1. رندر السائقين (أزرار تفعيل/تعطيل/حذف)
+            const bestDriverID = selectedOrderID ? getBestDriver(data.orders.find(o => o[0] == selectedOrderID)[9]) : null;
             document.getElementById('drivers-list').innerHTML = data.drivers.map(d => {
-                const isBest = d[2] == bestDriverID;
                 const isActive = d[4] === 'active';
-                const dailyCount = completedOrders.filter(o => o[6] === d[1]).length;
+                const isBest = d[2] == bestDriverID;
                 return `
-                <div class="item-row ${isBest ? 'auto-suggest' : (isActive ? 'delay-safe shadow-sm' : 'opacity-60 bg-slate-50')}" data-name="${d[1]}" data-phone="${d[2]}">
-                    <div class="flex justify-between items-start mb-2">
-                        <div>
-                            <span class="font-black text-xs block">${d[1]} ${isBest ? '⭐' : ''}</span>
-                            <span class="text-[9px] text-slate-400 font-bold">${d[2]}</span>
-                        </div>
-                        <span class="text-[8px] font-black bg-blue-50 text-blue-600 px-2 py-1 rounded-lg">إنجاز: ${dailyCount}</span>
-                    </div>
+                <div class="item-row ${isBest ? 'auto-suggest' : (isActive ? 'row-active' : 'row-pending')}" data-name="${d[1]}" data-phone="${d[2]}">
+                    <p class="font-black text-xs">${d[1]} ${isBest ? '⭐' : ''}</p>
+                    <p class="text-[9px] text-slate-400 mb-2">${d[2]}</p>
                     <div class="flex gap-1">
-                        <span onclick="trackOnMap(${d[5]}, ${d[6]})" class="btn-text btn-blue flex-1">تتبع</span>
-                        <span onclick="control('Drivers', '${d[2]}', 4, '${isActive?'pending':'active'}')" class="btn-text ${isActive?'btn-yellow':'btn-green'} flex-1">${isActive?'تعليق':'تفعيل'}</span>
-                        <a href="tel:${d[2]}" class="btn-text btn-gray px-3"><i class="fas fa-phone"></i></a>
+                        <span onclick="trackOnMap(${d[5]},${d[6]})" class="btn-action btn-blue"><i class="fas fa-crosshairs"></i></span>
+                        <span onclick="control('Drivers','${d[2]}',4,'${isActive?'pending':'active'}')" class="btn-action ${isActive?'btn-yellow':'btn-green'} flex-1 justify-center">${isActive?'تعطيل':'تفعيل'}</span>
+                        <span onclick="deleteItem('Drivers','${d[2]}')" class="btn-action btn-red"><i class="fas fa-trash"></i></span>
                     </div>
                 </div>`;
             }).join('');
 
-            // 2. رندر المطاعم
+            // 2. رندر المطاعم (نظام الدفع وتراكم الطلبات والتصفير)
             document.getElementById('rests-list').innerHTML = data.restaurants.map(r => {
-                const debt = completedOrders.filter(o => o[1] === r[1]).length * parseFloat(r[5] || 0);
+                const rOrders = completedOrders.filter(o => o[1] === r[1]);
+                const debt = rOrders.length * parseFloat(r[5] || 0);
+                const isActive = r[4] === 'active';
                 return `
                 <div class="item-row border-r-4 border-emerald-500">
-                    <p class="font-black text-xs mb-1 text-slate-800">${r[1]}</p>
-                    <p class="text-[9px] text-blue-600 font-bold mb-2 italic">📍 ${getAreaName(r[3])}</p>
-                    <div class="flex justify-between items-center bg-emerald-50 p-2 rounded-xl border border-emerald-100">
-                        <span class="text-[10px] font-black text-red-600">المستحق: ${debt.toLocaleString()} د.ع</span>
-                        <a href="tel:${r[2]}" class="text-emerald-600"><i class="fas fa-phone-alt"></i></a>
+                    <div class="flex justify-between items-start mb-1">
+                        <span class="font-black text-xs">${r[1]}</span>
+                        <span class="text-[8px] font-bold px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded">طلب: ${rOrders.length}</span>
+                    </div>
+                    <p class="text-[9px] text-blue-600 mb-2 font-bold italic">📍 ${getAreaName(r[3])}</p>
+                    <div class="bg-slate-50 p-2 rounded-lg mb-2 flex justify-between items-center border border-slate-100">
+                        <span class="text-[10px] font-black text-red-600">المبلغ: ${debt.toLocaleString()} د.ع</span>
+                        <span onclick="resetCommission('${r[2]}')" class="text-[8px] font-black text-red-500 border border-red-200 px-2 py-1 rounded cursor-pointer hover:bg-red-50">تصفير</span>
+                    </div>
+                    <div class="flex gap-1">
+                        <span onclick="control('Restaurants','${r[2]}',4,'${isActive?'pending':'active'}')" class="btn-action ${isActive?'btn-yellow':'btn-green'} flex-1 justify-center">${isActive?'إيقاف':'تشغيل'}</span>
+                        <a href="tel:${r[2]}" class="btn-action btn-gray"><i class="fas fa-phone"></i></a>
+                        <span onclick="deleteItem('Restaurants','${r[2]}')" class="btn-action btn-red"><i class="fas fa-trash"></i></span>
                     </div>
                 </div>`;
             }).join('');
 
-            // 3. رندر الطلبات النشطة
+            // 3. رندر الطلبات (النبض بالألوان)
             document.getElementById('active-orders').innerHTML = activeOrders.reverse().map(o => {
                 const diff = Math.floor(((new Date()) - new Date(o[7])) / 60000);
-                let stateClass = diff > 40 ? "critical-pulse" : (diff > 20 ? "delay-warning" : "delay-safe");
+                const isCritical = diff > 40;
                 return `
-                <div class="item-row ${stateClass} cursor-pointer shadow-md" onclick="selectOrder('${o[0]}')">
-                    <div class="flex justify-between text-[10px] font-black mb-2">
-                        <span class="text-blue-600 uppercase">#${o[0]}</span> 
-                        <span class="${diff > 30 ? 'text-red-600 animate-bounce' : 'text-slate-400'}">⏳ ${diff} د</span>
+                <div class="item-row ${isCritical ? 'critical-pulse' : 'row-active'} cursor-pointer" onclick="selectedOrderID='${o[0]}'; renderUI(currentData)">
+                    <div class="flex justify-between mb-1 text-[9px] font-black">
+                        <span class="text-blue-600 uppercase">#${o[0]}</span>
+                        <span class="${isCritical?'text-red-600 animate-pulse':'text-slate-400'}">⏳ ${diff} د</span>
                     </div>
-                    <p class="font-black text-xs mb-1">${o[1]}</p>
-                    <p class="text-[10px] font-bold text-slate-500 italic"><i class="fas fa-map-marker-alt text-red-500"></i> ${o[9] || 'كركوك'}</p>
-                    <div class="mt-3 flex gap-1">
-                         <span onclick="deleteItem('Orders', '${o[0]}')" class="btn-text btn-red flex-1"><i class="fas fa-trash-alt"></i></span>
+                    <p class="font-black text-xs">${o[1]}</p>
+                    <p class="text-[9px] text-slate-500 mb-2">📍 ${o[9]}</p>
+                    <div class="flex gap-1">
+                        <a href="tel:${o[10]}" class="btn-action btn-blue flex-1 justify-center">اتصال</a>
+                        <span onclick="deleteItem('Orders','${o[0]}')" class="btn-action btn-red"><i class="fas fa-trash"></i></span>
                     </div>
                 </div>`;
             }).join('');
 
             // 4. الأرشيف
-            document.getElementById('completed-orders').innerHTML = completedOrders.reverse().slice(0, 20).map(o => `
-                <div class="item-row opacity-70 bg-slate-50 border-r-4 border-slate-300" data-driver-phone="${o[6] || ''}">
-                    <p class="text-[9px] font-black text-slate-600">${o[1]} ➔ ${o[6] || 'مجهول'}</p>
-                    <p class="text-[8px] text-slate-400 font-bold">${new Date(o[7]).toLocaleTimeString('ar-EG')}</p>
+            document.getElementById('completed-orders').innerHTML = completedOrders.reverse().slice(0, 15).map(o => `
+                <div class="item-row opacity-60 bg-slate-50 border-r-4 border-slate-300">
+                    <p class="text-[9px] font-bold text-slate-600">${o[1]} ➔ ${o[6] || 'منجز'}</p>
                 </div>`).join('');
-        }
-
-        function selectOrder(id) { selectedOrderID = id; renderUI(currentData); }
-
-        function filterDrivers() {
-            const val = document.getElementById('searchDriver').value.toLowerCase();
-            document.querySelectorAll('#drivers-list .item-row').forEach(el => {
-                const text = el.getAttribute('data-name').toLowerCase() + el.getAttribute('data-phone');
-                el.style.display = text.includes(val) ? 'block' : 'none';
-            });
-        }
-
-        function filterCompletedByPhone() {
-            const val = document.getElementById('completedSearchPhone').value.trim();
-            document.querySelectorAll('#completed-orders .item-row').forEach(card => {
-                const phone = card.getAttribute('data-driver-phone');
-                card.style.display = phone.includes(val) ? 'block' : 'none';
-            });
         }
 
         async function control(target, id, col, val) {
@@ -248,22 +200,27 @@
         }
 
         async function deleteItem(sheet, id) {
-            if(!confirm("حذف نهائي من السجلات؟")) return;
+            if(!confirm("حذف نهائي؟")) return;
             const pass = document.getElementById('master-pass').value;
             await fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'delete_item', pass: pass, targetSheet: sheet, targetID: id }) });
             setTimeout(() => loadMasterData(true), 1000);
         }
 
-        function trackOnMap(lat, lng) {
-            if(!lat || lat == 0) return alert("الطيار غير متصل بالرادار.");
-            map.flyTo([lat, lng], 17, { animate: true });
+        function filterDrivers() {
+            const val = document.getElementById('searchDriver').value.toLowerCase();
+            document.querySelectorAll('#drivers-list .item-row').forEach(el => {
+                const text = el.getAttribute('data-name').toLowerCase() + el.getAttribute('data-phone');
+                el.style.display = text.includes(val) ? 'block' : 'none';
+            });
         }
+
+        function trackOnMap(lat, lng) { if(lat && lat != 0) map.flyTo([lat, lng], 17); else alert("أوفلاين"); }
 
         function updateMarkers(drivers) {
             drivers.forEach(d => {
                 if(d[5] && d[5] != 0) {
                     const color = d[4]==='active' ? '#22c55e' : '#94a3b8';
-                    const icon = L.divIcon({className: 'c-icon', html: `<div style="background: ${color}; width: 14px; height: 14px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px rgba(0,0,0,0.3);"></div>`});
+                    const icon = L.divIcon({className: 'c-icon', html: `<div style="background: ${color}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white;"></div>`});
                     if(markers[d[2]]) markers[d[2]].setLatLng([d[5], d[6]]);
                     else markers[d[2]] = L.marker([d[5], d[6]], {icon: icon}).addTo(map);
                 }
