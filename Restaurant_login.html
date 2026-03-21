@@ -23,26 +23,27 @@
 <body class="p-6">
     <div class="radar-grid"></div>
     <div class="max-w-md w-full glass-card p-8 rounded-[2.5rem] relative z-10">
+        
         <div id="loader" class="text-center py-12">
             <div class="w-14 h-14 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
-            <p class="text-emerald-500 font-black italic uppercase text-[10px]">Verifying with Radar...</p>
+            <p class="text-emerald-500 font-black italic uppercase text-[10px]">Verifying Status...</p>
         </div>
 
         <div id="authUI" class="hidden">
             <header class="text-center mb-6">
                 <h2 class="text-2xl font-black italic" style="font-family: 'Orbitron';">WHALE <span class="text-emerald-500">KITCHEN</span></h2>
-                <p class="text-[10px] text-gray-400 mt-1 font-bold italic opacity-60">تفعيل رادار الشركاء V6.2</p>
+                <p class="text-[10px] text-gray-400 mt-1 font-bold italic opacity-60">تسجيل شريك جديد V6.2</p>
             </header>
             <form id="smartForm" class="space-y-4">
                 <input type="text" id="resName" required placeholder="اسم المطعم" class="whale-input text-right">
                 <input type="tel" id="resPhone" required placeholder="رقم الهاتف" class="whale-input text-right">
                 
                 <div class="input-group">
-                    <input type="text" id="resArea" required placeholder="اسم المنطقة (مثال: طريق بغداد)" class="whale-input text-right border-emerald-500/40">
+                    <input type="text" id="resArea" required placeholder="اسم المنطقة (مثال: حي كركوك)" class="whale-input text-right border-emerald-500/40">
                     <i class="fas fa-map-marker-alt input-icon"></i>
                 </div>
 
-                <input type="url" id="resMapLink" required placeholder="رابط الموقع من الخريطة (Maps)" class="whale-input text-right">
+                <input type="url" id="resMapLink" required placeholder="رابط الخريطة (Google Maps)" class="whale-input text-right">
                 
                 <div class="grid grid-cols-2 gap-2">
                     <input type="number" id="fixedFee" required placeholder="العمولة" class="whale-input text-center p-2">
@@ -56,20 +57,32 @@
         </div>
 
         <div id="waitMessage" class="hidden text-center py-12">
-            <div class="text-6xl mb-6 animate-bounce">⏳</div>
-            <h3 class="text-xl font-black text-amber-500 italic uppercase">بانتظار تفعيل طه</h3>
-            <p class="text-[10px] text-slate-400 mt-6 italic">سيتم التحقق من التفعيل تلقائياً كل 15 ثانية...</p>
-            <button onclick="logout()" class="mt-10 text-[9px] text-red-500 font-black border-b border-red-500/30">تعديل البيانات</button>
+            <div class="relative w-24 h-24 mx-auto mb-8">
+                <div class="absolute inset-0 border-4 border-amber-500/20 rounded-full"></div>
+                <div class="absolute inset-0 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+                <div class="absolute inset-0 flex items-center justify-center text-3xl animate-pulse">🐋</div>
+            </div>
+            <h3 class="text-xl font-black text-amber-500 italic uppercase">بانتظار موافقة سفيان</h3>
+            <p class="text-[10px] text-slate-400 mt-4 italic leading-relaxed">
+                تم استلام طلبك بنجاح.<br>يرجى عدم إغلاق الصفحة، سيتم دخولك تلقائياً فور التفعيل.
+            </p>
+            <div class="mt-8 pt-6 border-t border-white/5">
+                <button onclick="logout()" class="text-[9px] text-red-500 font-black border-b border-red-500/30 uppercase tracking-widest">إلغاء الطلب / تعديل البيانات</button>
+            </div>
         </div>
     </div>
 
     <script>
         const scriptURL = 'https://script.google.com/macros/s/AKfycbyIqK63Xu4b2G8BN0aNQIs42oTqvvYRlGDLfQCCSMo68YPYoysKjQ_IjoXhie0MhIaZpQ/exec';
+        let checkTimer = null;
 
         window.onload = () => {
             const savedPhone = localStorage.getItem('whale_res_phone');
-            if (savedPhone) checkResLogin(savedPhone);
-            else showUI('authUI');
+            if (savedPhone) {
+                checkResLogin(savedPhone);
+            } else {
+                showUI('authUI');
+            }
         };
 
         async function checkResLogin(phone) {
@@ -79,13 +92,23 @@
                 const result = await res.json();
                 
                 if (result.status === 'active') {
+                    // دخول مباشر
                     localStorage.setItem('whale_res_phone', phone);
                     window.location.href = 'restaurant.html'; 
                 } else if (result.status === 'pending') {
+                    // وضع الانتظار والفحص التلقائي
                     showUI('waitMessage');
-                    setTimeout(() => checkResLogin(phone), 15000);
-                } else showUI('authUI');
-            } catch (e) { showUI('authUI'); }
+                    if (!checkTimer) {
+                        checkTimer = setInterval(() => checkResLogin(phone), 10000); // يفحص كل 10 ثواني لدخول أسرع
+                    }
+                } else {
+                    // غير موجود أو مرفوض
+                    showUI('authUI');
+                }
+            } catch (e) { 
+                console.error("Connection error");
+                showUI('authUI'); 
+            }
         }
 
         function showUI(id) {
@@ -109,15 +132,14 @@
         document.getElementById('smartForm').onsubmit = async function(e) {
             e.preventDefault();
             const btn = document.getElementById('mainBtn');
+            const phone = document.getElementById('resPhone').value;
+            
             btn.disabled = true;
-            btn.innerText = "جاري الحفظ...";
+            btn.innerHTML = `<i class="fas fa-spinner animate-spin"></i> جاري المعالجة...`;
             
             const coords = await getCoords();
-            const phone = document.getElementById('resPhone').value;
             const area = document.getElementById('resArea').value;
             const mapLink = document.getElementById('resMapLink').value;
-
-            // هنا يتم دمج اسم المنطقة مع الرابط في حقل واحد
             const combinedAddress = `${area} | ${mapLink}`;
 
             const data = {
@@ -125,21 +147,33 @@
                 type: "Restaurant",
                 name: document.getElementById('resName').value,
                 phone: phone,
-                address: combinedAddress, // نرسل العنوان المدمج
+                address: combinedAddress,
                 fee: document.getElementById('fixedFee').value,
                 paySystem: document.getElementById('paySystem').value,
                 lat: coords.lat,
                 lng: coords.lng
             };
 
-            localStorage.setItem('whale_res_phone', phone);
             try {
+                // حفظ الهاتف محلياً لبدء عملية التتبع
+                localStorage.setItem('whale_res_phone', phone);
+                
                 await fetch(scriptURL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(data) });
+                
+                // الانتقال فوراً لفحص الحالة والانتظار
                 setTimeout(() => checkResLogin(phone), 2000);
-            } catch (e) { showUI('waitMessage'); }
+            } catch (e) { 
+                alert("حدث خطأ في الاتصال، حاول مجدداً");
+                btn.disabled = false;
+                btn.innerText = "إرسال طلب الانضمام";
+            }
         };
 
-        function logout() { localStorage.clear(); location.reload(); }
+        function logout() { 
+            if (checkTimer) clearInterval(checkTimer);
+            localStorage.clear(); 
+            location.reload(); 
+        }
     </script>
 </body>
 </html>
