@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sufyan Command Center | Al-Hut System</title>
+    <title>Sufyan Command Center | Al-Hut Core</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
@@ -11,138 +11,78 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         :root { --bg-dark: #070b14; --panel-bg: rgba(15, 23, 42, 0.6); --border-glow: rgba(59, 130, 246, 0.2); }
-        body { background: var(--bg-dark); color: #e2e8f0; font-family: 'Tajawal', sans-serif; min-height: 100vh; margin: 0; overflow-x: hidden; }
+        body { background: var(--bg-dark); color: #e2e8f0; font-family: 'Tajawal', sans-serif; min-height: 100vh; margin: 0; overflow: hidden; }
         
-        /* Auth Screen */
-        #login-block { background: radial-gradient(circle at center, #0f172a 0%, #020617 100%); display: flex; align-items: center; justify-content: center; position: fixed; inset: 0; z-index: 9999; }
-        .cyber-input { background: rgba(0,0,0,0.5); border: 1px solid #3b82f6; box-shadow: inset 0 0 10px rgba(59,130,246,0.1); transition: all 0.3s ease; }
-        .cyber-input:focus { box-shadow: 0 0 20px rgba(59,130,246,0.4), inset 0 0 10px rgba(59,130,246,0.2); border-color: #60a5fa; }
+        /* Auth Screen - Instant Transition */
+        #login-block { background: radial-gradient(circle at center, #0f172a 0%, #020617 100%); display: flex; align-items: center; justify-content: center; position: fixed; inset: 0; z-index: 9999; transition: opacity 0.2s ease; }
+        .cyber-input { background: rgba(0,0,0,0.5); border: 1px solid #3b82f6; box-shadow: inset 0 0 10px rgba(59,130,246,0.1); outline: none; transition: 0.2s; }
+        .cyber-input:focus { border-color: #60a5fa; box-shadow: 0 0 15px rgba(59,130,246,0.3); }
         
-        /* Main UI & Panels */
-        .glass-panel { background: var(--panel-bg); backdrop-filter: blur(20px); border: 1px solid var(--border-glow); border-radius: 1.5rem; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
-        .kpi-card { background: linear-gradient(145deg, rgba(30,41,59,0.8), rgba(15,23,42,0.9)); border-left: 4px solid; transition: transform 0.2s; }
-        .kpi-card:hover { transform: translateY(-2px); }
+        /* Layout Grid */
+        .glass-panel { background: var(--panel-bg); backdrop-filter: blur(20px); border: 1px solid var(--border-glow); border-radius: 1.2rem; }
+        .kpi-card { background: linear-gradient(145deg, rgba(30,41,59,0.8), rgba(15,23,42,0.9)); border-left: 4px solid; }
         
-        /* Lists & Rows */
-        .item-row { border-radius: 0.75rem; padding: 14px; margin-bottom: 8px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.03); transition: all 0.2s; display: flex; flex-direction: column; gap: 8px; }
+        #map { height: 100%; width: 100%; border-radius: 1.2rem; background: #0b1120; z-index: 10; }
+        .driver-marker { width: 12px; height: 12px; background: #3b82f6; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 10px #3b82f6; }
+        
+        .item-row { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.03); border-radius: 0.75rem; padding: 10px; margin-bottom: 6px; transition: background 0.1s; }
         .item-row:hover { background: rgba(255,255,255,0.05); }
         
-        /* Map Customization */
-        #map { height: 100%; width: 100%; border-radius: 1.5rem; z-index: 10; background: #0b1120; }
-        .leaflet-container { font-family: 'Tajawal', sans-serif; }
-        .driver-marker { width: 14px; height: 14px; background: #3b82f6; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 15px #3b82f6; animation: pulse-blue 2s infinite; }
-        .restaurant-marker { width: 14px; height: 14px; background: #10b981; border-radius: 0; transform: rotate(45deg); border: 2px solid white; box-shadow: 0 0 15px #10b981; }
-        
-        @keyframes pulse-blue { 0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); } 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); } }
-        
-        /* Scrollbars */
-        .custom-scroll::-webkit-scrollbar { width: 4px; }
-        .custom-scroll::-webkit-scrollbar-track { background: transparent; }
-        .custom-scroll::-webkit-scrollbar-thumb { background: #475569; border-radius: 10px; }
-        .custom-scroll:hover::-webkit-scrollbar-thumb { background: #3b82f6; }
+        .custom-scroll::-webkit-scrollbar { width: 3px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 10px; }
+        .hidden { display: none !important; }
     </style>
 </head>
-<body>
+<body class="p-4 md:p-6">
 
     <div id="login-block">
-        <div class="max-w-md w-full p-10 text-center glass-panel border-t-4 border-blue-500 relative overflow-hidden">
-            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent opacity-50"></div>
-            <div class="w-20 h-20 bg-blue-900/50 rounded-2xl mx-auto mb-6 flex items-center justify-center border border-blue-500/30 text-blue-400">
-                <i class="fas fa-fingerprint text-4xl"></i>
-            </div>
-            <h1 class="text-3xl font-black text-white mb-1 tracking-widest" style="font-family: 'Orbitron';">HUT<span class="text-blue-500">CORE</span></h1>
-            <p class="text-slate-400 text-[10px] mb-8 font-bold italic uppercase tracking-[0.3em]">Sufyan Control Panel</p>
-            
-            <input type="password" id="master-pass" placeholder="SECURITY KEY" class="cyber-input w-full rounded-xl p-4 text-center text-blue-400 mb-6 outline-none font-black text-xl tracking-[0.5em]" style="font-family: 'Orbitron';">
-            
-            <button onclick="checkAuth()" id="loginBtn" class="w-full bg-blue-600 text-white p-4 rounded-xl font-black hover:bg-blue-500 transition-all shadow-[0_0_20px_rgba(59,130,246,0.3)] tracking-wider">
-                AUTHORIZE ACCESS
-            </button>
+        <div class="max-w-md w-full p-10 text-center glass-panel border-t-4 border-blue-500">
+            <h1 class="text-3xl font-black text-white mb-6 tracking-widest" style="font-family: 'Orbitron';">HUT<span class="text-blue-500">CORE</span></h1>
+            <input type="password" id="master-pass" placeholder="SECURITY KEY" class="cyber-input w-full rounded-xl p-4 text-center text-blue-400 mb-6 font-black text-xl tracking-[0.5em]" autofocus>
+            <button onclick="checkAuth()" class="w-full bg-blue-600 text-white p-4 rounded-xl font-black hover:bg-blue-500 active:scale-95 transition-all shadow-lg">AUTHORIZE</button>
         </div>
     </div>
 
-    <div id="main-ui" class="hidden p-4 md:p-6 max-w-[1920px] mx-auto h-screen flex flex-col gap-6">
+    <div id="main-ui" class="hidden h-full flex flex-col gap-6">
         
-        <header class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
-            <div class="flex items-center gap-4">
-                <div class="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-[0_0_15px_rgba(59,130,246,0.4)]">
-                    <i class="fas fa-globe text-xl animate-pulse"></i>
-                </div>
+        <header class="flex flex-wrap justify-between items-center gap-4">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center text-white"><i class="fas fa-shield-halved"></i></div>
                 <div>
-                    <h1 class="text-2xl font-black text-white tracking-tight">مركز قيادة الحوت</h1>
-                    <div class="flex items-center gap-2 mt-1">
-                        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                        <span class="text-[10px] text-emerald-400 font-bold uppercase tracking-widest">System Online</span>
-                    </div>
+                    <h1 class="text-lg font-black text-white">COMMAND CENTER</h1>
+                    <p class="text-[9px] text-blue-400 font-bold uppercase tracking-[0.2em]">Sufyan Engine V10.3</p>
                 </div>
             </div>
 
-            <div class="flex gap-4 w-full lg:w-auto overflow-x-auto pb-2 lg:pb-0 custom-scroll">
-                <div class="kpi-card border-blue-500 rounded-2xl p-4 min-w-[160px]">
-                    <p class="text-[10px] text-slate-400 font-bold uppercase mb-1">طيارون بالخدمة</p>
-                    <div class="flex justify-between items-end">
-                        <span id="kpi-drivers" class="text-2xl font-black text-white" style="font-family: 'Orbitron';">0</span>
-                        <i class="fas fa-motorcycle text-blue-500/50 text-xl"></i>
-                    </div>
+            <div class="flex gap-3 overflow-x-auto pb-2 custom-scroll">
+                <div class="kpi-card border-blue-500 p-3 min-w-[140px] rounded-xl">
+                    <p class="text-[9px] text-slate-400 font-bold uppercase mb-1">طيارون متصلون</p>
+                    <span id="kpi-drivers" class="text-xl font-black text-white" style="font-family: 'Orbitron';">0</span>
                 </div>
-                <div class="kpi-card border-amber-500 rounded-2xl p-4 min-w-[160px]">
-                    <p class="text-[10px] text-slate-400 font-bold uppercase mb-1">طلبات نشطة</p>
-                    <div class="flex justify-between items-end">
-                        <span id="kpi-orders" class="text-2xl font-black text-white" style="font-family: 'Orbitron';">0</span>
-                        <i class="fas fa-boxes text-amber-500/50 text-xl"></i>
-                    </div>
+                <div class="kpi-card border-amber-500 p-3 min-w-[140px] rounded-xl">
+                    <p class="text-[9px] text-slate-400 font-bold uppercase mb-1">عمليات جارية</p>
+                    <span id="kpi-orders" class="text-xl font-black text-white" style="font-family: 'Orbitron';">0</span>
                 </div>
-                <div class="kpi-card border-emerald-500 rounded-2xl p-4 min-w-[160px]">
-                    <p class="text-[10px] text-slate-400 font-bold uppercase mb-1">مطاعم متصلة</p>
-                    <div class="flex justify-between items-end">
-                        <span id="kpi-rests" class="text-2xl font-black text-white" style="font-family: 'Orbitron';">0</span>
-                        <i class="fas fa-store text-emerald-500/50 text-xl"></i>
-                    </div>
-                </div>
-            </div>
-
-            <div class="flex items-center gap-3 ml-auto lg:ml-0">
-                <button onclick="loadMasterData()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 w-12 h-12 rounded-xl border border-slate-700 transition-all flex items-center justify-center">
-                    <i class="fas fa-sync-alt"></i>
-                </button>
-                <div id="clock" class="font-black text-white bg-slate-900 px-6 py-3 rounded-xl border border-slate-800 tracking-widest shadow-inner text-lg" style="font-family: 'Orbitron';">00:00</div>
+                <div id="clock" class="bg-slate-900 px-6 py-3 rounded-xl border border-slate-800 text-white font-black text-lg self-center" style="font-family: 'Orbitron';">00:00:00</div>
             </div>
         </header>
 
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 min-h-0">
-            
-            <section class="lg:col-span-7 xl:col-span-8 glass-panel p-2 flex flex-col relative">
-                <div class="absolute top-6 right-6 z-20 bg-slate-900/80 backdrop-blur px-4 py-2 rounded-lg border border-white/10">
-                    <p class="text-[10px] font-bold text-slate-300"><i class="fas fa-crosshairs text-blue-500 mr-2"></i> تتبع مباشر - كركوك</p>
-                </div>
+            <section class="lg:col-span-8 glass-panel p-2 flex flex-col relative overflow-hidden">
                 <div id="map"></div>
+                <button onclick="loadMasterData()" class="absolute top-6 left-6 z-20 bg-blue-600 text-white w-10 h-10 rounded-full shadow-lg hover:rotate-180 transition-transform duration-500"><i class="fas fa-sync-alt"></i></button>
             </section>
 
-            <section class="lg:col-span-5 xl:col-span-4 flex flex-col gap-6 min-h-0">
-                
-                <div class="glass-panel p-5 flex-1 flex flex-col min-h-0 border-t-2 border-amber-500">
-                    <div class="flex justify-between items-center mb-4">
-                        <h2 class="font-black text-sm text-amber-400 uppercase tracking-wider"><i class="fas fa-satellite-dish mr-2 animate-pulse"></i> العمليات الجارية</h2>
-                        <span class="bg-amber-500/20 text-amber-500 text-[10px] px-2 py-1 rounded font-bold">LIVE FEED</span>
-                    </div>
-                    <div id="orders-list" class="overflow-y-auto flex-1 custom-scroll pr-2 space-y-2">
-                        </div>
+            <section class="lg:col-span-4 flex flex-col gap-6 min-h-0">
+                <div class="glass-panel p-4 flex-1 flex flex-col min-h-0 border-t-2 border-amber-500">
+                    <h2 class="text-[10px] font-black text-amber-500 mb-3 uppercase tracking-widest"><i class="fas fa-bolt mr-2"></i> البث المباشر للعمليات</h2>
+                    <div id="orders-list" class="overflow-y-auto flex-1 custom-scroll space-y-2"></div>
                 </div>
 
-                <div class="grid grid-cols-2 gap-6 h-1/3 min-h-[250px]">
-                    <div class="glass-panel p-4 flex flex-col min-h-0 border-t-2 border-blue-500">
-                        <h2 class="font-black text-xs text-blue-400 mb-3 uppercase"><i class="fas fa-users mr-1"></i> الرادار</h2>
-                        <div id="drivers-list" class="overflow-y-auto flex-1 custom-scroll pr-1 space-y-2">
-                            </div>
-                    </div>
-                    
-                    <div class="glass-panel p-4 flex flex-col min-h-0 border-t-2 border-emerald-500">
-                        <h2 class="font-black text-xs text-emerald-400 mb-3 uppercase"><i class="fas fa-utensils mr-1"></i> المطاعم</h2>
-                        <div id="restaurants-list" class="overflow-y-auto flex-1 custom-scroll pr-1 space-y-2">
-                            </div>
-                    </div>
+                <div class="h-1/3 glass-panel p-4 overflow-hidden flex flex-col border-t-2 border-blue-500">
+                    <h2 class="text-[10px] font-black text-blue-400 mb-3 uppercase tracking-widest"><i class="fas fa-satellite mr-2"></i> رادار الطيارين</h2>
+                    <div id="drivers-list" class="overflow-y-auto flex-1 custom-scroll space-y-2"></div>
                 </div>
-                
             </section>
         </div>
     </div>
@@ -152,34 +92,33 @@
         let map, markers = {};
         const MASTER_PASS = "112233";
 
-        // تحديث الساعة
+        // تحديث الوقت
         setInterval(() => {
-            const now = new Date();
-            document.getElementById('clock').innerText = now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            document.getElementById('clock').innerText = new Date().toLocaleTimeString('en-GB');
         }, 1000);
 
-        async function checkAuth() {
+        // دخول فوري بدون تأخير وهمي
+        function checkAuth() {
             const pass = document.getElementById('master-pass').value;
-            const btn = document.getElementById('loginBtn');
-            const originalText = btn.innerHTML;
-            btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> AUTHENTICATING...';
-            
             if(pass === MASTER_PASS) { 
                 document.getElementById('login-block').classList.add('hidden');
                 document.getElementById('main-ui').classList.remove('hidden');
                 initMap();
                 loadMasterData();
-                setInterval(loadMasterData, 10000); // تحديث أسرع (كل 10 ثواني)
+                setInterval(loadMasterData, 10000); // تحديث كل 10 ثواني
             } else {
-                setTimeout(() => {
-                    alert("ACCESS DENIED");
-                    btn.innerHTML = originalText;
-                    document.getElementById('master-pass').value = '';
-                }, 500);
+                alert("ACCESS DENIED");
+                document.getElementById('master-pass').value = '';
             }
         }
 
+        // دعم زر Enter للدخول السريع
+        document.getElementById('master-pass').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') checkAuth();
+        });
+
         function initMap() {
+            if (map) return;
             map = L.map('map', { zoomControl: false, attributionControl: false }).setView([35.468, 44.392], 13);
             L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
         }
@@ -188,98 +127,63 @@
             try {
                 const res = await fetch(`${scriptURL}?action=get_master_data&pass=${MASTER_PASS}`);
                 const data = await res.json();
-
                 if(data.status === "success") {
-                    updateKPIs(data);
-                    renderOrders(data.orders);
-                    renderDrivers(data.drivers);
-                    renderRestaurants(data.restaurants);
-                    updateMapMarkers(data.drivers, data.restaurants);
+                    renderDashboard(data);
                 }
-            } catch(e) { console.warn("Syncing connection issues..."); }
+            } catch(e) { console.error("Sync Error"); }
         }
 
-        function updateKPIs(data) {
+        function renderDashboard(data) {
+            // تحديث الأرقام (KPIs)
             document.getElementById('kpi-drivers').innerText = data.drivers.filter(d => d.status === 'active').length;
             document.getElementById('kpi-orders').innerText = data.orders.filter(o => o.status !== 'delivered').length;
-            document.getElementById('kpi-rests').innerText = data.restaurants.length;
-        }
 
-        function renderOrders(data) {
-            const container = document.getElementById('orders-list');
-            container.innerHTML = data.reverse().map(o => {
-                let statusColor = o.status === 'waiting' ? 'text-red-400 border-red-500/30 bg-red-500/10' : 
-                                  o.status === 'picked' ? 'text-blue-400 border-blue-500/30 bg-blue-500/10' : 
-                                  'text-emerald-400 border-emerald-500/30 bg-emerald-500/10';
-                
-                return `
-                <div class="item-row border-r-2 ${o.status === 'waiting' ? 'border-r-red-500' : 'border-r-slate-600'}">
-                    <div class="flex justify-between items-center w-full">
-                        <span class="font-black text-white text-xs">${o.restaurant}</span>
-                        <span class="text-[9px] px-2 py-0.5 rounded border ${statusColor} font-black uppercase">${o.status}</span>
+            // رادار الطيارين
+            const dContainer = document.getElementById('drivers-list');
+            dContainer.innerHTML = data.drivers.map(d => `
+                <div class="item-row flex justify-between items-center">
+                    <div>
+                        <p class="font-bold text-[11px]">${d.name}</p>
+                        <p class="text-[9px] text-slate-500">${d.phone} | Bal: ${d.wallet_balance || 0}</p>
                     </div>
-                    <div class="flex justify-between items-center w-full mt-1">
-                        <span class="text-[10px] text-slate-400"><i class="fas fa-map-marker-alt text-amber-500 mr-1"></i> ${o.area}</span>
-                        <span class="text-[10px] text-slate-500 font-bold">سائق: ${o.driver_phone || 'N/A'}</span>
-                    </div>
+                    <button onclick="updateStatus('Drivers', '${d.phone}', '${d.status === 'active' ? 'banned' : 'active'}')" 
+                            class="text-[9px] font-black px-2 py-1 rounded ${d.status === 'active' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}">
+                        ${d.status.toUpperCase()}
+                    </button>
                 </div>
-            `}).join('');
-        }
+            `).join('');
 
-        function renderDrivers(data) {
-            const container = document.getElementById('drivers-list');
-            container.innerHTML = data.map(d => `
-                <div class="item-row">
+            // البث المباشر للطلبات
+            const oContainer = document.getElementById('orders-list');
+            oContainer.innerHTML = data.orders.reverse().map(o => `
+                <div class="item-row border-r-2 ${o.status === 'waiting' ? 'border-r-amber-500' : 'border-r-blue-500'}">
                     <div class="flex justify-between items-center">
-                        <div>
-                            <p class="font-bold text-white text-[11px]">${d.name}</p>
-                            <p class="text-[9px] text-slate-500" style="font-family: 'Orbitron';">${d.phone}</p>
-                        </div>
-                        <button onclick="updateStatus('Drivers', '${d.phone}', '${d.status === 'active' ? 'banned' : 'active'})" 
-                                class="text-[10px] font-bold px-2 py-1 rounded ${d.status === 'active' ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'}">
-                            ${d.status === 'active' ? 'إيقاف' : 'تفعيل'}
-                        </button>
+                        <span class="text-[10px] font-black text-white">${o.restaurant}</span>
+                        <span class="text-[8px] font-bold text-slate-400">${o.orderid}</span>
+                    </div>
+                    <div class="flex justify-between mt-1 items-end">
+                        <span class="text-[9px] text-slate-400"><i class="fas fa-location-arrow mr-1"></i> ${o.area}</span>
+                        <span class="text-[9px] font-bold text-blue-400">${o.status}</span>
                     </div>
                 </div>
             `).join('');
+
+            updateMarkers(data.drivers);
         }
 
-        function renderRestaurants(data) {
-            const container = document.getElementById('restaurants-list');
-            container.innerHTML = data.map(r => `
-                <div class="item-row">
-                    <div class="flex justify-between items-center">
-                        <p class="font-bold text-white text-[11px]">${r.name}</p>
-                        <button onclick="deleteItem('Restaurants', '${r.phone}')" class="text-slate-500 hover:text-red-400 transition-colors">
-                            <i class="fas fa-trash text-[10px]"></i>
-                        </button>
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        function updateMapMarkers(drivers, restaurants) {
-            // إيقونات مخصصة
-            const driverIcon = L.divIcon({ className: 'custom-icon', html: '<div class="driver-marker"></div>', iconSize: [14, 14], iconAnchor: [7, 7] });
-            // تحديث السائقين
+        function updateMarkers(drivers) {
+            const icon = L.divIcon({ className: 'custom-div-icon', html: "<div class='driver-marker'></div>", iconSize: [12, 12], iconAnchor: [6, 6] });
             drivers.forEach(d => {
                 if(d.lat && d.lng && d.status === 'active') {
-                    const latlng = [parseFloat(d.lat), parseFloat(d.lng)];
-                    if (isNaN(latlng[0])) return;
-                    if(markers['D_'+d.phone]) { markers['D_'+d.phone].setLatLng(latlng); } 
-                    else { markers['D_'+d.phone] = L.marker(latlng, {icon: driverIcon}).addTo(map).bindPopup(`<b class='text-slate-900'>${d.name}</b>`); }
+                    const pos = [parseFloat(d.lat), parseFloat(d.lng)];
+                    if(markers[d.phone]) { markers[d.phone].setLatLng(pos); } 
+                    else { markers[d.phone] = L.marker(pos, {icon: icon}).addTo(map).bindPopup(d.name); }
                 }
             });
         }
 
         async function updateStatus(type, id, status) {
             await fetch(scriptURL, { method: 'POST', body: JSON.stringify({ action: 'update_status', type: type, id: id, status: status }) });
-            loadMasterData();
-        }
-
-        async function deleteItem(type, id) {
-            if(!confirm("تأكيد الحذف من قاعدة البيانات؟")) return;
-            await fetch(scriptURL, { method: 'POST', body: JSON.stringify({ action: 'delete_item', type: type, id: id }) });
             loadMasterData();
         }
     </script>
