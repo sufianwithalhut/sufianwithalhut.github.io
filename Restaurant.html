@@ -25,7 +25,7 @@
     <div id="loader" class="loading-overlay">
         <div class="text-center">
             <div class="w-16 h-16 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <p id="loaderText" class="text-emerald-500 font-bold italic">جاري بث الطلب للرادار...</p>
+            <p id="loaderText" class="text-emerald-500 font-bold italic">جاري بث الطلب للرادار وتعيين كابتن...</p>
         </div>
     </div>
 
@@ -96,7 +96,8 @@
     </main>
 
     <script>
-        const scriptURL = 'https://script.google.com/macros/s/AKfycbzBTRYdugjCeYZoeaHng4JPIq0vBu-b3VHNuEX9ya0H1C022PDangGTOR9I-v4i83rDoA/exec';
+        // الرابط الجديد الخاص بك
+        const scriptURL = 'https://script.google.com/macros/s/AKfycbzf4_VqfC5fBq0uK2Hl7S-qR-XlS6Z0T5F8H4-X-Z/exec'; 
         let userLat, userLng;
 
         window.onload = () => {
@@ -139,14 +140,16 @@
             loader.classList.add('active');
 
             const payload = {
-                action: "submit_order",
-                restaurantName: document.getElementById('displayResName').innerText,
-                type: document.getElementById('manualSection').classList.contains('hidden') ? "Camera" : "Manual",
+                action: "restaurant_send_order", // تم تغيير الأكشن ليتناسب مع السكريبت المطور
+                restName: document.getElementById('displayResName').innerText,
+                type: document.getElementById('manualSection').classList.contains('hidden') ? "صورة وصل" : "يدوي",
                 area: document.getElementById('locationSelect').value,
                 details: "هاتف: " + document.getElementById('customerPhone').value + " | ملاحظات: " + document.getElementById('details').value,
-                lat: userLat || 0,
-                lng: userLng || 0,
-                fee: 500 // سيتم جلبه من إعداداتك لاحقاً
+                lat: userLat || 35.468, // افتراضي كركوك إذا فشل الـ GPS
+                lng: userLng || 44.392,
+                restLocation: "كركوك", 
+                fee: 500, // يمكن تعديله لاحقاً
+                image: "" 
             };
 
             const file = document.getElementById('cameraInput').files[0];
@@ -154,7 +157,7 @@
                 const reader = new FileReader();
                 reader.readAsDataURL(file);
                 reader.onload = async () => {
-                    payload.photoUrl = reader.result; // يتم معالجتها في Apps Script
+                    payload.image = reader.result; 
                     sendToEngine(payload);
                 };
             } else {
@@ -171,13 +174,17 @@
                 const result = await response.json();
                 
                 if (result.status === "success") {
-                    alert(`تم بث الطلب بنجاح! رقم الطلب: ${result.orderId}`);
+                    let msg = `✅ تم بث الطلب بنجاح!\nرقم الطلب: ${result.id}`;
+                    if(result.assigned) msg += `\n🚀 تم تعيين أقرب كابتن متاح تلقائياً.`;
+                    else msg += `\n⏳ بانتظار توفر كابتن قريب.`;
+                    
+                    alert(msg);
                     location.reload();
                 } else {
-                    alert("خطأ في البث: " + result.msg);
+                    alert("⚠️ خطأ في البث: " + result.msg);
                 }
             } catch (error) {
-                alert("حدث خطأ في الاتصال بسيرفر الحوت.");
+                alert("❌ فشل الاتصال بسيرفر منظومة الحوت.");
             } finally {
                 document.getElementById('loader').classList.remove('active');
             }
