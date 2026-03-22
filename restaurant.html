@@ -142,8 +142,8 @@
                 </select>
             </div>
             <div class="mb-4">
-                <label class="form-label small fw-bold">رقم هاتف الزبون وتفاصيل العنوان</label>
-                <textarea id="customerPhone" class="form-control" rows="3" placeholder="07XXXXXXXXX - مقابل جامع الصفا - الطابق الثاني" required></textarea>
+                <label class="form-label small fw-bold">هاتف الزبون وتفاصيل العنوان</label>
+                <textarea id="customerPhone" class="form-control" rows="3" placeholder="07XXXXXXXXX - مقابل جامع الصفا" required></textarea>
             </div>
 
             <button type="submit" class="btn btn-main w-100 py-3 shadow">
@@ -164,8 +164,9 @@
     let map, marker, currentRestaurant = null;
 
     function showLoading(s) { document.getElementById('loadingOverlay').style.display = s ? 'flex' : 'none'; }
+    
     function showRegistration() {
-        document.getElementById('loginCheckSection').classList.add('hidden-section');
+        document.getElementById('loginCheckSection').style.display = 'none';
         document.getElementById('registrationSection').classList.remove('hidden-section');
         document.getElementById('registrationSection').classList.add('show-section');
     }
@@ -180,7 +181,7 @@
         });
     }
 
-    // الدخول
+    // الدخول مع معالجة ذكية للحالة
     function checkRestaurantStatus() {
         const phone = document.getElementById('checkPhone').value.trim();
         if(!phone) return alert("يرجى إدخال رقم هاتفك");
@@ -194,20 +195,24 @@
 
     window.handleLogin = function(data) {
         showLoading(false);
-        if(data.status === "active") {
+        
+        // تنظيف الحالة (حذف المسافات، تحويل لنص، تحويل لأحرف صغيرة) لضمان المطابقة
+        const cleanStatus = String(data.status || "").trim().toLowerCase();
+        
+        if(cleanStatus === "active") {
             currentRestaurant = data;
             document.getElementById('loginCheckSection').style.display = 'none';
             document.getElementById('orderSection').classList.remove('hidden-section');
             document.getElementById('orderSection').classList.add('show-section');
             document.getElementById('activeResName').innerText = data.name;
-        } else if (data.status === "pending") {
-            alert("⏳ حسابك قيد المراجعة. يرجى انتظار تفعيل المدير.");
+        } else if (cleanStatus === "pending") {
+            alert("⏳ حسابك قيد المراجعة حالياً من قبل الإدارة.");
         } else {
-            alert("❌ الرقم غير مسجل. يرجى الضغط على 'اطلب الانضمام'.");
+            alert("❌ الرقم غير مسجل أو الحساب غير نشط. يرجى التأكد من البيانات.");
         }
     };
 
-    // التسجيل (POST)
+    // تسجيل مطعم جديد
     document.getElementById('regForm').onsubmit = function(e) {
         e.preventDefault();
         showLoading(true);
@@ -228,16 +233,20 @@
             body: JSON.stringify(payload)
         }).then(() => {
             showLoading(false);
-            alert("✅ تم إرسال طلبك! سيقوم فريق الحوت بالتواصل معك قريباً.");
+            alert("✅ تم إرسال طلب الانضمام! سنقوم بمراجعة طلبك وتفعيله قريباً.");
             location.reload();
+        }).catch(() => {
+            showLoading(false);
+            alert("حدث خطأ في الاتصال بالسيرفر.");
         });
     };
 
-    // إرسال طلب (POST مع استلام رد JSON)
+    // إرسال طلب جديد
     document.getElementById('orderForm').onsubmit = function(e) {
         e.preventDefault();
+        if(!currentRestaurant) return;
+        
         showLoading(true);
-
         const payload = {
             action: 'NEW_ORDER',
             token: API_TOKEN,
@@ -246,7 +255,6 @@
             details: document.getElementById('customerPhone').value
         };
 
-        // نستخدم POST مع نص عادي لتجنب تعقيدات CORS في Google Sheets
         fetch(API_URL, {
             method: 'POST',
             body: JSON.stringify(payload)
@@ -256,21 +264,21 @@
             showLoading(false);
             if(res.success) {
                 document.getElementById('statusMsg').innerHTML = `
-                    <div class="alert alert-success rounded-4 border-0 p-3">
+                    <div class="alert alert-success rounded-4 border-0 p-3 shadow-sm">
                         <i data-lucide="check-circle" class="text-success mb-2"></i><br>
                         <b>تم العثور على كابتن!</b><br>
                         الاسم: ${res.driverName}<br>
-                        كود التتبع: ${res.orderId}
+                        الرقم: ${res.orderId}
                     </div>`;
                 document.getElementById('customerPhone').value = '';
             } else {
-                alert("⚠️ " + res.msg);
+                alert("⚠️ نعتذر، " + res.msg);
             }
             lucide.createIcons();
         })
         .catch(() => {
             showLoading(false);
-            alert("فشل الاتصال بالسيرفر، تأكد من الإنترنت.");
+            alert("فشل في إرسال الطلب. تأكد من اتصال الإنترنت.");
         });
     };
 </script>
