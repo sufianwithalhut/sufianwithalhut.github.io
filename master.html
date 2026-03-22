@@ -1,74 +1,183 @@
-‏
-‏<!DOCTYPE html>
-‏<html lang="ar" dir="rtl">
-‏<head>
-‏    <meta charset="UTF-8">
-‏    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-‏    <title>لوحة تحكم سفيان | منظومة الحوت</title>
-‏    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-‏    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-‏    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
-‏    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-‏    <script src="https://cdn.tailwindcss.com"></script>
-‏    <style>
-‏        :root { --primary: #2563eb; --accent: #f59e0b; --bg-body: #f1f5f9; --card-bg: rgba(255, 255, 255, 0.9); --border: rgba(0, 0, 0, 0.05); }
-‏        body { background: var(--bg-body); color: #1e293b; font-family: 'Tajawal', sans-serif; min-height: 100vh; margin: 0; overflow-x: hidden; }
-‏        #login-block { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); display: flex; align-items: center; justify-content: center; position: fixed; inset: 0; z-index: 9999; }
-‏        #map { height: 350px; border-radius: 2rem; border: 4px solid white; margin: 1.5rem 0; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1); z-index: 10; }
-‏        .glass-panel { background: var(--card-bg); backdrop-filter: blur(10px); border: 1px solid white; border-radius: 1.5rem; padding: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
-‏        
-‏        .item-row { border-radius: 1rem; padding: 12px; margin-bottom: 10px; border: 1px solid var(--border); transition: all 0.2s ease; }
-‏        .row-active { background: white; }
-‏        .row-pending { background: #fffbeb; border: 1px solid #fde68a; }
-‏        .row-completed { background: #f0fdf4; border: 1px solid #bbf7d0; }
-‏
-‏        .btn-text { padding: 6px 12px; border-radius: 8px; font-weight: 700; font-size: 11px; cursor: pointer; transition: 0.2s; text-align: center; display: inline-block; }
-‏        .btn-text:active { transform: scale(0.95); }
-‏        
-‏        .btn-green { background: #22c55e; color: white; }
-‏        .btn-red { background: #ef4444; color: white; }
-‏        .btn-blue { background: #3b82f6; color: white; }
-‏        .btn-yellow { background: #f59e0b; color: white; }
-‏        .btn-gray { background: #64748b; color: white; }
-‏        .btn-outline-red { border: 1px solid #ef4444; color: #ef4444; background: white; }
-‏
-‏        .hidden { display: none; }
-‏        ::-webkit-scrollbar { width: 5px; }
-‏        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-‏    </style>
-‏</head>
-‏<body>
-‏
-‏    <div id="login-block">
-‏        <div class="max-w-[380px] w-full p-10 text-center glass-panel">
-‏            <div class="w-20 h-20 bg-blue-600 rounded-3xl mx-auto mb-6 flex items-center justify-center shadow-xl">
-‏                <i class="fas fa-shield-halved text-4xl text-white"></i>
-‏            </div>
-‏            <h1 class="text-2xl font-black text-slate-800 mb-2">لوحة تحكم سفيان</h1>
-‏            <input type="password" id="master-pass" placeholder="أدخل رمز الدخول" class="w-full bg-slate-100 border-2 border-slate-200 rounded-2xl p-4 text-center text-blue-600 mb-6 outline-none font-bold">
-‏            <button onclick="loadMasterData()" class="w-full bg-blue-600 text-white p-4 rounded-2xl font-black transition-all active:scale-95">دخول النظام</button>
-‏        </div>
-‏    </div>
-‏
-‏    <div id="main-ui" class="hidden p-6 max-w-[1700px] mx-auto">
-‏        <header class="flex justify-between items-center mb-6 bg-white p-4 rounded-3xl shadow-sm">
-‏            <div class="flex items-center gap-4">
-‏                <div class="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white text-xl font-black shadow-lg">S</div>
-‏                <div>
-‏                    <h1 class="text-lg font-black text-slate-800 leading-none">لوحة تحكم سفيان</h1>
-‏                    <span class="text-[10px] text-blue-600 font-bold uppercase">AL-HUT MASTER CONTROL</span>
-‏                </div>
-‏            </div>
-‏            <div id="clock" class="font-bold text-slate-600 bg-slate-100 px-6 py-2 rounded-2xl text-sm border border-slate-200">00:00:00</div>
-‏        </header>
-‏
-‏        <div id="map"></div>
-‏
-‏        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
-‏            <section class="glass-panel h-[650px] flex flex-col border-t-4 border-blue-600">
-‏                <h2 class="font-black text-sm mb-3"> رادار الطيارين</h2>
-‏                <input type="text" id="searchDriver" oninput="filterDrivers()" placeholder="بحث عن طيار..." class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs mb-4 outline-none focus:border-blue-500">
-‏                <div id="drivers-list" class="overflow-y-auto flex-1 space-y-2"></div>
-‏            </section>
-‏
-‏            <section class="glass-panel h-[650px] flex flex-col border-t-4 border-emerald-500">
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لوحة تحكم سفيان | منظومة الحوت</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root { --primary: #2563eb; --accent: #f59e0b; --bg-body: #f1f5f9; --card-bg: rgba(255, 255, 255, 0.9); --border: rgba(0, 0, 0, 0.05); }
+        body { background: var(--bg-body); color: #1e293b; font-family: 'Tajawal', sans-serif; min-height: 100vh; margin: 0; overflow-x: hidden; }
+        #login-block { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); display: flex; align-items: center; justify-content: center; position: fixed; inset: 0; z-index: 9999; }
+        #map { height: 350px; border-radius: 2rem; border: 4px solid white; margin: 1.5rem 0; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1); z-index: 10; }
+        .glass-panel { background: var(--card-bg); backdrop-filter: blur(10px); border: 1px solid white; border-radius: 1.5rem; padding: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+        
+        .item-row { border-radius: 1rem; padding: 12px; margin-bottom: 10px; border: 1px solid var(--border); transition: all 0.2s ease; font-size: 13px; }
+        .status-active { color: #16a34a; font-weight: bold; }
+        .status-banned { color: #dc2626; font-weight: bold; }
+        .status-away { color: #ca8a04; font-weight: bold; }
+
+        .btn-action { padding: 4px 8px; border-radius: 6px; font-size: 10px; font-weight: bold; color: white; cursor: pointer; }
+        .bg-btn-blue { background: #3b82f6; }
+        .bg-btn-red { background: #ef4444; }
+
+        .hidden { display: none; }
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+    </style>
+</head>
+<body>
+
+    <div id="login-block">
+        <div class="max-w-[380px] w-full p-10 text-center glass-panel">
+            <div class="w-20 h-20 bg-blue-600 rounded-3xl mx-auto mb-6 flex items-center justify-center shadow-xl">
+                <i class="fas fa-shield-halved text-4xl text-white"></i>
+            </div>
+            <h1 class="text-2xl font-black text-slate-800 mb-2">لوحة تحكم سفيان</h1>
+            <p class="text-slate-500 text-sm mb-6">منظومة الحوت - الإدارة المركزية</p>
+            <input type="password" id="master-pass" placeholder="أدخل رمز الدخول" class="w-full bg-slate-100 border-2 border-slate-200 rounded-2xl p-4 text-center text-blue-600 mb-6 outline-none font-bold">
+            <button onclick="checkAuth()" class="w-full bg-blue-600 text-white p-4 rounded-2xl font-black transition-all active:scale-95">دخول النظام</button>
+        </div>
+    </div>
+
+    <div id="main-ui" class="hidden p-6 max-w-[1700px] mx-auto">
+        <header class="flex justify-between items-center mb-6 bg-white p-4 rounded-3xl shadow-sm">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white text-xl font-black shadow-lg">S</div>
+                <div>
+                    <h1 class="text-lg font-black text-slate-800 leading-none">لوحة تحكم سفيان</h1>
+                    <span class="text-[10px] text-blue-600 font-bold uppercase">AL-HUT MASTER CONTROL</span>
+                </div>
+            </div>
+            <div id="clock" class="font-bold text-slate-600 bg-slate-100 px-6 py-2 rounded-2xl text-sm border border-slate-200">00:00:00</div>
+        </header>
+
+        <div id="map"></div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+            
+            <section class="glass-panel h-[600px] flex flex-col border-t-4 border-blue-600">
+                <div class="flex justify-between items-center mb-3">
+                    <h2 class="font-black text-sm"><i class="fas fa-motorcycle ml-2"></i> رادار الطيارين</h2>
+                    <span id="driver-count" class="bg-blue-100 text-blue-700 px-2 py-1 rounded text-[10px] font-bold">0</span>
+                </div>
+                <input type="text" id="searchDriver" placeholder="بحث عن طيار..." class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs mb-4 outline-none focus:border-blue-500">
+                <div id="drivers-list" class="overflow-y-auto flex-1 space-y-2">
+                    </div>
+            </section>
+
+            <section class="glass-panel h-[600px] flex flex-col border-t-4 border-emerald-500">
+                <h2 class="font-black text-sm mb-3"><i class="fas fa-utensils ml-2"></i> المطاعم المتصلة</h2>
+                <div id="restaurants-list" class="overflow-y-auto flex-1 space-y-2"></div>
+            </section>
+
+            <section class="glass-panel h-[600px] flex flex-col border-t-4 border-amber-500">
+                <h2 class="font-black text-sm mb-3"><i class="fas fa-shopping-basket ml-2"></i> مراقبة الطلبات</h2>
+                <div id="orders-list" class="overflow-y-auto flex-1 space-y-2"></div>
+            </section>
+
+            <section class="glass-panel h-[600px] flex flex-col border-t-4 border-slate-800">
+                <h2 class="font-black text-sm mb-3"><i class="fas fa-gears ml-2"></i> الإعدادات العامة</h2>
+                <div id="settings-area" class="space-y-4">
+                    <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                        <p class="text-[10px] text-slate-500 mb-1">العمولة الافتراضية</p>
+                        <div class="flex justify-between items-center">
+                            <span id="def-comm" class="font-bold text-slate-800">500 د.ع</span>
+                            <button class="text-blue-600 text-[10px] font-bold">تعديل</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </div>
+    </div>
+
+    <script>
+        let map;
+        const MASTER_PASS = "112233"; // بناءً على صورتك
+
+        // تشغيل الساعة
+        setInterval(() => {
+            document.getElementById('clock').innerText = new Date().toLocaleTimeString('ar-EG');
+        }, 1000);
+
+        // التحقق من الدخول
+        function checkAuth() {
+            const pass = document.getElementById('master-pass').value;
+            if(pass === MASTER_PASS) {
+                document.getElementById('login-block').classList.add('hidden');
+                document.getElementById('main-ui').classList.remove('hidden');
+                initMap();
+                loadData();
+            } else {
+                alert("رمز الدخول غير صحيح");
+            }
+        }
+
+        // تهيئة الخريطة (افتراضياً على كركوك)
+        function initMap() {
+            map = L.map('map').setView([35.468, 44.392], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        }
+
+        // محاكاة جلب البيانات (يتم استبدالها برابط الـ API الخاص بك لاحقاً)
+        function loadData() {
+            // بيانات تجريبية من الصور التي أرسلتها
+            const drivers = [
+                { name: "طه جليل هادي", phone: "7713225471", status: "banned", lat: 35.4873117, lng: 44.3847533 },
+                { name: "محمد تحسين", phone: "7715225471", status: "active", lat: 35.4595824, lng: 44.3823116 }
+            ];
+
+            const restaurants = [
+                { name: "مطعم جعفر", phone: "778...", status: "active", area: "عرفة" },
+                { name: "مطعم العساكر", phone: "7789456123", status: "active", area: "الماس" }
+            ];
+
+            renderDrivers(drivers);
+            renderRestaurants(restaurants);
+        }
+
+        function renderDrivers(list) {
+            const container = document.getElementById('drivers-list');
+            document.getElementById('driver-count').innerText = list.length;
+            container.innerHTML = list.map(d => `
+                <div class="item-row bg-white shadow-sm border-r-4 ${d.status === 'active' ? 'border-green-500' : 'border-red-500'}">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="font-bold text-slate-800">${d.name}</p>
+                            <p class="text-[10px] text-slate-500">${d.phone}</p>
+                        </div>
+                        <span class="status-${d.status}">${d.status === 'active' ? 'متصل' : 'محظور'}</span>
+                    </div>
+                    <div class="flex gap-2 mt-2">
+                        <button class="btn-action bg-btn-blue">تتبع</button>
+                        <button class="btn-action bg-btn-red">حظر</button>
+                    </div>
+                </div>
+            `).join('');
+
+            // إضافة ماركرات على الخريطة للسائقين النشطين
+            list.forEach(d => {
+                if(d.lat && d.lng) {
+                    L.marker([d.lat, d.lng]).addTo(map).bindPopup(d.name);
+                }
+            });
+        }
+
+        function renderRestaurants(list) {
+            const container = document.getElementById('restaurants-list');
+            container.innerHTML = list.map(r => `
+                <div class="item-row bg-white shadow-sm">
+                    <p class="font-bold">${r.name}</p>
+                    <p class="text-[10px] text-slate-500">${r.area} | ${r.phone}</p>
+                    <div class="mt-2 text-[10px] font-bold text-emerald-600 italic text-left">النظام: مطعم يدفع</div>
+                </div>
+            `).join('');
+        }
+    </script>
+</body>
+</html>
