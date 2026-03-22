@@ -2,260 +2,66 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>رادار الكابتن | منظومة الحوت 🐋 V10.0</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>رادار الطيار | الحوت</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&family=Orbitron:wght@700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        :root { --whale-blue: #2563eb; --whale-bg: #f8fafc; }
-        body { font-family: 'Tajawal', sans-serif; background: var(--whale-bg); color: #1e293b; overflow-x: hidden; }
-        .header-glass { background: white; border-bottom: 2px solid var(--whale-blue); box-shadow: 0 10px 30px rgba(37, 99, 235, 0.1); }
-        .order-card { background: white; border-radius: 2.5rem; border: 1px solid rgba(37, 99, 235, 0.1); box-shadow: 0 20px 40px rgba(0,0,0,0.05); }
-        .radar-ping { animation: ping 2s infinite; background: var(--whale-blue); }
-        @keyframes ping { 75%, 100% { transform: scale(3); opacity: 0; } }
-        .timer-font { font-family: 'Orbitron', sans-serif; letter-spacing: 2px; }
-        .hidden { display: none; }
-        .btn-action { transition: 0.3s; font-weight: 900; border-radius: 1.5rem; cursor: pointer; border: none; }
-        .btn-action:active { transform: scale(0.95); }
-        .receipt-preview { border-radius: 2rem; border: 4px solid #f1f5f9; transition: 0.3s; cursor: pointer; max-height: 350px; width: 100%; object-fit: contain; }
-    </style>
 </head>
-<body class="max-w-md mx-auto min-h-screen pb-10">
-    
-    <header class="p-4 header-glass flex justify-between items-center sticky top-0 z-50">
-        <div class="flex items-center gap-3">
-            <div class="relative w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-lg">
-                <i class="fas fa-satellite-dish animate-pulse text-xl"></i>
-                <div class="absolute inset-0 rounded-2xl radar-ping opacity-30"></div>
-            </div>
-            <div>
-                <h1 class="text-[10px] font-black text-blue-600 uppercase tracking-widest italic leading-none">Whale Pilot V10.0</h1>
-                <p id="welcomeName" class="text-xs text-slate-800 font-black mt-1 italic">Captain: Syncing...</p>
-            </div>
-        </div>
-        <button onclick="logout()" class="w-11 h-11 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center border border-red-100 active:scale-90 transition-all">
-            <i class="fas fa-power-off"></i>
-        </button>
+<body class="bg-slate-950 p-4 font-['Tajawal'] text-white">
+    <header class="bg-blue-600 p-4 rounded-2xl flex justify-between items-center mb-6">
+        <span id="pName" class="font-black italic">طيار الحوت</span>
+        <div id="posStatus" class="text-[10px] bg-black/20 px-2 py-1 rounded-full">تحديد الموقع.. 📡</div>
     </header>
 
-    <main class="p-6">
-        <div id="searchingStatus" class="text-center mb-8 py-3 bg-blue-50 rounded-2xl border border-blue-100">
-            <p id="radarText" class="text-[9px] text-blue-600 font-black uppercase tracking-[0.3em] italic animate-pulse">Scanning Kirkuk Grid 📡</p>
-        </div>
+    <div id="activeOrder" class="hidden bg-slate-900 p-6 rounded-[2rem] border-2 border-blue-500 animate-pulse">
+        <h3 class="text-blue-400 font-black text-sm mb-4 tracking-widest uppercase italic">New Mission Detected!</h3>
+        <div id="orderContent" class="space-y-3 font-bold"></div>
+        <button onclick="confirmOrder()" class="w-full bg-blue-500 py-4 rounded-2xl text-white font-black mt-6 shadow-xl">قبول وتوجه للمطعم</button>
+    </div>
 
-        <div id="orderCard" class="order-card p-6 relative overflow-hidden hidden animate-in fade-in zoom-in duration-300">
-            <div class="text-center mb-6 bg-slate-50 py-5 rounded-[2.5rem] border border-slate-100">
-                <p class="text-[9px] text-slate-400 uppercase font-black mb-1 italic">ETA Target Time</p>
-                <div id="timerDisplay" class="timer-font text-5xl font-black text-blue-600 tracking-tighter">30:00</div>
-            </div>
-
-            <div class="mb-6 flex flex-col items-center border-b border-slate-100 pb-6 text-center">
-                <div class="bg-blue-600 text-white px-5 py-1.5 rounded-full text-[10px] font-black mb-3 italic shadow-md">LIVE MISSION 🐋</div>
-                <h2 id="restaurantTitle" class="text-2xl font-black text-slate-800 italic leading-tight">اسم المطعم</h2>
-                <div class="flex gap-2 mt-2">
-                    <span id="resAreaName" class="bg-blue-50 text-blue-600 px-3 py-1 rounded-lg text-[10px] font-black italic">...</span>
-                    <span id="orderFee" class="bg-emerald-50 text-emerald-600 px-3 py-1 rounded-lg text-[10px] font-black italic">... د.ع</span>
-                </div>
-            </div>
-
-            <div id="receiptView" class="hidden space-y-4 mb-8">
-                <div class="rounded-[2.5rem] overflow-hidden bg-white shadow-inner p-1 border-2 border-slate-50">
-                    <img id="receiptImg" src="" class="receipt-preview" alt="Receipt">
-                </div>
-                <p class="text-[9px] text-center text-slate-400 font-bold italic uppercase tracking-widest">تحقق من تفاصيل الوصل أعلاه</p>
-            </div>
-
-            <div class="space-y-4">
-                <div class="bg-slate-50 p-5 rounded-3xl border border-slate-100">
-                    <p class="text-[9px] text-slate-400 font-black uppercase italic mb-2 tracking-widest"><i class="fas fa-map-marked-alt text-blue-500 ml-1"></i> موقع التوصيل</p>
-                    <p id="locationTxt" class="text-sm font-black text-slate-700 italic leading-relaxed text-right">...</p>
-                </div>
-                
-                <div id="customerPhoneSection" class="bg-emerald-50 p-5 rounded-3xl border border-emerald-100 flex justify-between items-center hidden">
-                    <div class="text-right">
-                        <p class="text-[9px] text-emerald-600 font-black uppercase italic mb-1 tracking-widest">Customer Line</p>
-                        <p id="phoneTxt" class="text-xl font-black text-emerald-700 font-mono tracking-widest">...</p>
-                    </div>
-                    <a id="phoneCall" href="#" class="bg-emerald-500 w-16 h-16 rounded-2xl text-white shadow-lg flex items-center justify-center text-3xl active:scale-90 transition-all animate-bounce">
-                        <i class="fas fa-phone-alt"></i>
-                    </a>
-                </div>
-            </div>
-
-            <div class="mt-10 space-y-4">
-                <button id="pickUpBtn" onclick="updateStatus('picked-up')" class="w-full bg-blue-600 text-white py-6 btn-action text-xl shadow-xl shadow-blue-200 flex items-center justify-center gap-4">
-                    <span>استلمت الطلب</span> <i class="fas fa-box-open"></i>
-                </button>
-                <button id="deliverBtn" onclick="updateStatus('delivered')" class="w-full bg-emerald-500 text-white py-6 btn-action text-xl shadow-xl shadow-emerald-200 flex items-center justify-center gap-4 hidden">
-                    <span>تمت المهمة بنجاح ✅</span>
-                </button>
-            </div>
-        </div>
-
-        <div id="noOrders" class="text-center py-28 opacity-40 flex flex-col items-center">
-            <div class="w-24 h-24 bg-blue-50 rounded-full flex items-center justify-center mb-8 animate-pulse">
-                <i class="fas fa-satellite text-4xl text-blue-400"></i>
-            </div>
-            <p class="text-sm font-black text-slate-800 tracking-widest italic uppercase">Waiting for next transmission...</p>
-        </div>
-    </main>
+    <div id="noOrders" class="text-center py-20 text-slate-600 font-black italic">
+        <div class="text-6xl mb-4">⚓</div>
+        لا توجد مهام حالية في كركوك
+    </div>
 
     <script>
-        const scriptURL = 'https://script.google.com/macros/s/AKfycbzywi3-mLv5H4bNHYvQbFDpy_FwA-AceD4g8JZX6Ah3QZhmC5LGXNLvBeQBjYO9tmt9vA/exec';
-        const driverPhone = localStorage.getItem('whale_driver_phone');
-        let currentOrderID = null;
-        let timerInterval = null;
+        const API = "https://script.google.com/macros/s/AKfycbzywi3-mLv5H4bNHYvQbFDpy_FwA-AceD4g8JZX6Ah3QZhmC5LGXNLvBeQBjYO9tmt9vA/exec";
+        const phone = localStorage.getItem('whale_driver_phone');
+        document.getElementById('pName').innerText = localStorage.getItem('whale_driver_name');
 
-        window.onload = () => {
-            if (!driverPhone) { window.location.href = 'driver_login.html'; return; }
-            document.getElementById('welcomeName').innerText = "كابتن: " + (localStorage.getItem('whale_driver_name') || "نشط");
-            
-            startGPS();
-            checkOrders();
-            setInterval(checkOrders, 7000); 
-        };
+        // تحديث الموقع الجغرافي للسيرفر
+        navigator.geolocation.watchPosition(pos => {
+            const coords = { action: "update_location", phone: phone, lat: pos.coords.latitude, lng: pos.coords.longitude };
+            fetch(API, { method: 'POST', body: JSON.stringify(coords) });
+            document.getElementById('posStatus').innerText = "Signal Locked 🛰️";
+        }, null, { enableHighAccuracy: true });
 
-        // تتبع الموقع المباشر (الأعمدة 6 و 7 في شيت Drivers)
-        function startGPS() {
-            if (navigator.geolocation) {
-                navigator.geolocation.watchPosition((pos) => {
-                    const data = { 
-                        action: "update_location", 
-                        phone: driverPhone, 
-                        lat: pos.coords.latitude, 
-                        lng: pos.coords.longitude 
-                    };
-                    fetch(scriptURL, { method: 'POST', body: JSON.stringify(data) }).catch(e => console.log("GPS Sync Delay"));
-                }, null, { enableHighAccuracy: true });
-            }
-        }
+        // فحص الطلبات المسندة
+        async function checkTasks() {
+            const res = await fetch(`${API}?action=get_master_data&pass=112233`);
+            const data = await res.json();
+            const myOrder = data.orders.find(o => String(o[6]) === String(phone) && o[5] === "pending_confirmation");
 
-        async function checkOrders() {
-            try {
-                // طلب البيانات من الماستر (بدون باسورد للأمان هنا نعتمد على الفلترة بالسائق)
-                const response = await fetch(`${scriptURL}?action=login_check&id=${driverPhone}`);
-                const res = await response.json();
-                
-                if (res.status === "active") {
-                    // جلب الطلبات النشطة المسندة لهذا الرقم
-                    const masterRes = await fetch(`${scriptURL}?action=get_master_data&pass=NONE`); // يتم التعامل مع الأمان داخلياً في V10.0
-                    const data = await masterRes.json();
-                    
-                    const myOrder = data.orders.find(o => String(o[6]) === String(driverPhone) && (o[5] === "assigned" || o[5] === "picked-up" || o[5] === "pending_confirmation"));
-
-                    if (myOrder) {
-                        renderOrder(myOrder);
-                    } else {
-                        hideOrder();
-                    }
-                }
-            } catch (e) { console.log("Radar Scan..."); }
-        }
-
-        function renderOrder(order) {
-            currentOrderID = order[0];
-            document.getElementById('noOrders').classList.add('hidden');
-            document.getElementById('orderCard').classList.remove('hidden');
-            document.getElementById('radarText').innerText = "TRANSMISSION RECEIVED 🐋";
-            
-            document.getElementById('restaurantTitle').innerText = order[1];
-            document.getElementById('resAreaName').innerText = order[9] || "كركوك";
-            document.getElementById('orderFee').innerText = (order[8] || "0") + " د.ع";
-
-            const status = order[5];
-            document.getElementById('pickUpBtn').classList.toggle('hidden', status === "picked-up");
-            document.getElementById('deliverBtn').classList.toggle('hidden', status !== "picked-up");
-
-            // عرض صورة الوصل
-            const imgUrl = order[4];
-            if (imgUrl && imgUrl.startsWith("http")) {
-                document.getElementById('receiptView').classList.remove('hidden');
-                document.getElementById('receiptImg').src = imgUrl;
+            if (myOrder) {
+                document.getElementById('noOrders').classList.add('hidden');
+                document.getElementById('activeOrder').classList.remove('hidden');
+                document.getElementById('orderContent').innerHTML = `
+                    <p class="text-xl">🏪 ${myOrder[1]}</p>
+                    <p class="text-sm text-slate-400">📍 ${myOrder[9]}</p>
+                    <hr class="border-slate-800 my-2">
+                    <p class="text-xs">${myOrder[3]}</p>
+                `;
             } else {
-                document.getElementById('receiptView').classList.add('hidden');
-            }
-
-            document.getElementById('locationTxt').innerText = order[3];
-            
-            // استخراج الهاتف
-            const phoneMatch = (order[3] || "").match(/07[0-9]{9}/);
-            const pSec = document.getElementById('customerPhoneSection');
-            if (phoneMatch) {
-                pSec.classList.remove('hidden');
-                document.getElementById('phoneTxt').innerText = phoneMatch[0];
-                document.getElementById('phoneCall').href = "tel:" + phoneMatch[0];
-            } else { pSec.classList.add('hidden'); }
-
-            if (!timerInterval) startTimer();
-        }
-
-        function hideOrder() {
-            document.getElementById('orderCard').classList.add('hidden');
-            document.getElementById('noOrders').classList.remove('hidden');
-            document.getElementById('radarText').innerText = "Scanning Kirkuk Grid 📡";
-            stopTimer();
-        }
-
-        async function updateStatus(newStatus) {
-            if (!currentOrderID) return;
-            const btn = document.getElementById(newStatus === 'picked-up' ? 'pickUpBtn' : 'deliverBtn');
-            const originalText = btn.innerHTML;
-            
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner animate-spin"></i> جاري المزامنة...';
-
-            try {
-                // استخدام دالة الماستر للتحديث (العمود 5 هو حالة الطلب)
-                const payload = { 
-                    action: "master_control", 
-                    pass: "112233", // تأكد من مطابقة هذا مع الباسورد في شيت Settings -> B3
-                    targetSheet: "Orders", 
-                    targetID: currentOrderID, 
-                    colIndex: 5, 
-                    newValue: newStatus 
-                };
-
-                const res = await fetch(scriptURL, { method: 'POST', body: JSON.stringify(payload) });
-                const result = await res.json();
-
-                if (result.status === "success") {
-                    if (newStatus === 'delivered') {
-                        alert("تم إكمال المهمة بنجاح! ننتظر طلبك القادم 🐋");
-                    }
-                    checkOrders();
-                }
-            } catch (e) { 
-                alert("خطأ في الاتصال، تحقق من الإنترنت"); 
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = originalText;
+                document.getElementById('noOrders').classList.remove('hidden');
+                document.getElementById('activeOrder').classList.add('hidden');
             }
         }
 
-        function startTimer() {
-            let timeLeft = 1800; // 30 دقيقة
-            timerInterval = setInterval(() => {
-                const m = Math.floor(timeLeft / 60);
-                const s = timeLeft % 60;
-                document.getElementById('timerDisplay').innerText = `${m}:${s < 10 ? '0' : ''}${s}`;
-                if (timeLeft <= 0) clearInterval(timerInterval);
-                timeLeft--;
-            }, 1000);
+        async function confirmOrder() {
+            // كود تأكيد الاستلام وتغيير حالة الطلب من pending_confirmation إلى assigned
+            alert("تم قبول المهمة! توجه للمطعم فوراً.");
         }
 
-        function stopTimer() {
-            clearInterval(timerInterval);
-            timerInterval = null;
-            document.getElementById('timerDisplay').innerText = "30:00";
-        }
-
-        function logout() { 
-            if(confirm("هل تريد تسجيل الخروج؟")) {
-                localStorage.clear(); 
-                window.location.href = 'driver_login.html'; 
-            }
-        }
+        setInterval(checkTasks, 5000);
     </script>
 </body>
 </html>
