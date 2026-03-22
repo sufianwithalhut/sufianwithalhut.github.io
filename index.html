@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>رادار الحوت | الإدارة المركزية V10.0</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Tajawal', sans-serif; background: #0f172a; color: white; }
+        .card { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        .status-active { color: #10b981; } .status-banned { color: #ef4444; }
+    </style>
+</head>
+<body class="p-4">
+    <header class="flex justify-between items-center mb-8 card p-6 rounded-3xl">
+        <h1 class="text-2xl font-black italic">🐋 منظومة الحوت - كركوك</h1>
+        <div id="connectionStatus" class="text-xs bg-emerald-500/20 text-emerald-400 px-4 py-2 rounded-full border border-emerald-500/30">متصل بالسيرفر V10.0</div>
+    </header>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="lg:col-span-2 card p-6 rounded-3xl">
+            <h2 class="text-xl font-bold mb-4 border-r-4 border-emerald-500 pr-3">الطلبات الحالية</h2>
+            <div id="ordersList" class="space-y-4 max-h-[70vh] overflow-y-auto"></div>
+        </div>
+
+        <div class="space-y-6">
+            <div class="card p-6 rounded-3xl">
+                <h2 class="text-lg font-bold mb-4">السائقين النشطين</h2>
+                <div id="driversList" class="space-y-3"></div>
+            </div>
+            <div class="card p-6 rounded-3xl">
+                <h2 class="text-lg font-bold mb-4">المطاعم المتصلة</h2>
+                <div id="resList" class="space-y-3"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API = "https://script.google.com/macros/s/AKfycbzywi3-mLv5H4bNHYvQbFDpy_FwA-AceD4g8JZX6Ah3QZhmC5LGXNLvBeQBjYO9tmt9vA/exec";
+        const PASS = "112233"; // الماستر باس كما في شيت Settings
+
+        async function refreshData() {
+            try {
+                const res = await fetch(`${API}?action=get_master_data&pass=${PASS}`);
+                const data = await res.json();
+                renderOrders(data.orders);
+                renderDrivers(data.drivers);
+                renderRestaurants(data.restaurants);
+            } catch (e) { console.error("Sync Error"); }
+        }
+
+        function renderOrders(orders) {
+            const container = document.getElementById('ordersList');
+            container.innerHTML = orders.slice(1).reverse().map(o => `
+                <div class="p-4 bg-slate-800 rounded-2xl flex justify-between items-center">
+                    <div>
+                        <p class="font-black text-emerald-400">${o[0]}</p>
+                        <p class="text-sm font-bold">${o[1]} ⬅️ ${o[9]}</p>
+                        <p class="text-[10px] text-slate-400">${o[5]}</p>
+                    </div>
+                    <div class="text-left font-mono text-xs">${o[8]} د.ع</div>
+                </div>
+            `).join('');
+        }
+
+        function renderDrivers(drivers) {
+            document.getElementById('driversList').innerHTML = drivers.slice(1).map(d => `
+                <div class="flex items-center justify-between p-2 bg-slate-900/50 rounded-xl">
+                    <span class="text-sm font-bold">${d[1]}</span>
+                    <span class="text-[10px] ${d[4] === 'active' ? 'text-emerald-500' : 'text-red-500'} font-black italic uppercase">${d[4]}</span>
+                </div>
+            `).join('');
+        }
+
+        function renderRestaurants(res) {
+            document.getElementById('resList').innerHTML = res.slice(1).map(r => `
+                <div class="flex items-center justify-between p-2 bg-slate-900/50 rounded-xl">
+                    <span class="text-sm font-bold">${r[1]}</span>
+                    <span class="text-[10px] text-blue-400 italic">${r[3]}</span>
+                </div>
+            `).join('');
+        }
+
+        setInterval(refreshData, 10000); refreshData();
+    </script>
+</body>
+</html>
