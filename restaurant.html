@@ -3,282 +3,149 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>بوابة المطاعم | نظام الحوت الذكي</title>
+    <title>بوابة المطاعم | نظام الحوت</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
-    
     <style>
-        :root {
-            --primary: #0f172a; 
-            --accent: #f97316;  
-            --glass: rgba(255, 255, 255, 0.95);
-            --bg: #f8fafc;
-        }
-
-        body { 
-            background-color: var(--bg); 
-            font-family: 'Cairo', sans-serif; 
-            color: var(--primary);
-            overflow-x: hidden;
-        }
-
+        :root { --primary: #0f172a; --accent: #f97316; --bg: #f8fafc; }
+        body { background-color: var(--bg); font-family: 'Cairo', sans-serif; color: var(--primary); }
         #loadingOverlay {
             position: fixed; top:0; left:0; width:100%; height:100%; 
             background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(8px);
-            z-index:9999; display:none; align-items:center; justify-content:center; flex-direction: column;
-            color: white;
+            z-index:9999; display:none; align-items:center; justify-content:center; flex-direction: column; color: white;
         }
-
-        .container { max-width: 550px; padding-bottom: 50px; }
-
-        .header-brand { padding: 40px 0 20px; text-align: center; }
-        .header-brand h2 { font-weight: 900; color: var(--primary); }
-        .header-brand span { color: var(--accent); }
-
-        .card {
-            border: none; border-radius: 28px; background: var(--glass);
-            box-shadow: 0 10px 30px rgba(0,0,0,0.04); transition: 0.3s;
-            margin-bottom: 20px; border: 1px solid rgba(0,0,0,0.02);
-        }
-
-        .card-title { font-weight: 800; display: flex; align-items: center; gap: 12px; margin-bottom: 20px; font-size: 1.1rem; }
-
-        .form-control, .form-select {
-            border-radius: 16px; padding: 12px 18px; border: 2px solid #e2e8f0; transition: 0.3s;
-        }
-        .form-control:focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.1); }
-
-        #map { 
-            height: 220px; width: 100%; border-radius: 20px; 
-            margin-top: 10px; border: 4px solid white; box-shadow: 0 5px 15px rgba(0,0,0,0.05);
-        }
-
-        .btn-main {
-            background: var(--primary); color: white; border-radius: 18px; padding: 15px;
-            font-weight: 700; border: none; transition: 0.3s; display: flex; align-items: center; justify-content: center; gap: 10px;
-        }
-        .btn-main:hover { background: #1e293b; transform: translateY(-2px); color: white; }
-
-        .status-badge { background: #f0fdf4; color: #166534; padding: 8px 15px; border-radius: 12px; font-weight: 800; font-size: 0.9rem; border: 1px solid #dcfce7; }
-        
+        .container { max-width: 550px; padding: 20px; }
+        .card { border: none; border-radius: 28px; background: white; box-shadow: 0 10px 30px rgba(0,0,0,0.05); margin-bottom: 20px; padding: 25px; }
+        .btn-main { background: var(--primary); color: white; border-radius: 18px; padding: 15px; font-weight: 700; border: none; width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; }
         .hidden-section { display: none; }
-        .show-section { display: block; animation: slideUp 0.5s ease-out; }
-        @keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+        #map { height: 200px; width: 100%; border-radius: 15px; margin-top: 10px; border: 2px solid #eee; }
     </style>
 </head>
 <body>
 
 <div id="loadingOverlay">
     <div class="spinner-border text-warning" style="width: 3rem; height: 3rem;"></div>
-    <span class="mt-3 fw-bold">جاري الاتصال بالسيرفر...</span>
+    <span class="mt-3 fw-bold" id="loadingText">جاري الاتصال بالسيرفر...</span>
+    <button id="cancelBtn" class="btn btn-sm btn-outline-light mt-3 hidden-section" onclick="location.reload()">إلغاء المحاولة</button>
 </div>
 
 <div class="container">
-    <div class="header-brand">
-        <div class="mb-2"><i data-lucide="utensils-crosses" size="50" color="#f97316"></i></div>
-        <h2>بوابة <span>المطاعم</span></h2>
-        <p class="text-muted fw-bold">نظام توصيل الحوت - كركوك</p>
+    <div class="text-center py-4">
+        <h2 class="fw-black">بوابة <span>المطاعم</span></h2>
+        <p class="text-muted">نظام الحوت الذكي</p>
     </div>
 
-    <div id="loginCheckSection" class="card p-4 shadow-sm">
-        <div class="card-title"><i data-lucide="shield-check" color="#f97316"></i> تسجيل الدخول</div>
+    <div id="loginSection" class="card">
         <div class="mb-3">
-            <label class="form-label small fw-bold">رقم الهاتف المسجل</label>
-            <input type="tel" id="checkPhone" class="form-control text-center fs-5 fw-bold" placeholder="07XXXXXXXXX">
+            <label class="form-label fw-bold">رقم هاتف المطعم</label>
+            <input type="tel" id="checkPhone" class="form-control text-center fs-4" placeholder="07XXXXXXXXX">
         </div>
-        <button class="btn btn-main w-100" onclick="checkRestaurantStatus()">
-            دخول اللوحة <i data-lucide="arrow-left"></i>
-        </button>
-        <hr class="my-4 opacity-25">
-        <button class="btn btn-light w-100 border rounded-4 fw-bold" onclick="showRegistration()">
-            ليس لديك حساب؟ اطلب الانضمام
-        </button>
+        <button class="btn btn-main" onclick="checkRestaurantStatus()">دخول اللوحة</button>
+        <button class="btn btn-link w-100 mt-3 text-muted" onclick="showReg()">طلب انضمام جديد</button>
     </div>
 
-    <div id="registrationSection" class="card p-4 hidden-section">
-        <div class="card-title"><i data-lucide="user-plus" color="#f97316"></i> انضمام شريك جديد</div>
-        <form id="regForm">
-            <div class="row g-3">
-                <div class="col-12">
-                    <label class="form-label small fw-bold">اسم المطعم</label>
-                    <input type="text" id="resName" class="form-control" placeholder="اسم المطعم الرسمي" required>
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label small fw-bold">رقم الهاتف</label>
-                    <input type="tel" id="resPhone" class="form-control" placeholder="07XXXXXXXXX" required>
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label small fw-bold">المنطقة</label>
-                    <select id="resArea" class="form-select">
-                        <option>المنطقة المركزية</option><option>تسعين</option><option>حي النصر</option>
-                        <option>طريق بغداد</option><option>عرفات</option>
-                    </select>
-                </div>
-                <div class="col-12">
-                    <label class="form-label small fw-bold">موقعك على الخريطة</label>
-                    <div id="map"></div>
-                    <input type="hidden" id="lat" value="35.468">
-                    <input type="hidden" id="lng" value="44.392">
-                </div>
-                <button type="submit" class="btn btn-main w-100 mt-2">إرسال الطلب للمراجعة</button>
-                <button type="button" class="btn btn-link text-muted btn-sm" onclick="location.reload()">العودة للدخول</button>
-            </div>
-        </form>
-    </div>
-
-    <div id="orderSection" class="card p-4 hidden-section">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <div class="card-title m-0"><i data-lucide="plus-circle" color="#f97316"></i> طلب جديد</div>
-            <span class="status-badge" id="activeResName">...</span>
-        </div>
-
+    <div id="orderSection" class="card hidden-section">
+        <h5 class="fw-bold mb-3" id="resTitle">مرحباً بك</h5>
         <form id="orderForm">
             <div class="mb-3">
-                <label class="form-label small fw-bold">منطقة التوصيل للزبون</label>
                 <select id="customerArea" class="form-select">
-                    <option>المنطقة المركزية</option><option>حي الواسطي</option><option>حي الخضراء</option>
-                    <option>حي النصر</option><option>تسعين</option><option>بنجة علي</option>
+                    <option>المنطقة المركزية</option><option>تسعين</option><option>طريق بغداد</option>
                 </select>
             </div>
-            <div class="mb-4">
-                <label class="form-label small fw-bold">هاتف الزبون وتفاصيل العنوان</label>
-                <textarea id="customerPhone" class="form-control" rows="3" placeholder="07XXXXXXXXX - مقابل جامع الصفا" required></textarea>
+            <div class="mb-3">
+                <textarea id="customerDetails" class="form-control" placeholder="رقم الزبون وتفاصيل العنوان" required></textarea>
             </div>
-
-            <button type="submit" class="btn btn-main w-100 py-3 shadow">
-                <i data-lucide="navigation"></i> اطلب كابتن توصيل الآن
-            </button>
+            <button type="submit" class="btn btn-main">اطلب كابتن الآن</button>
         </form>
-        <div id="statusMsg" class="mt-4 text-center"></div>
-        <button class="btn btn-link w-100 text-danger mt-3 btn-sm" onclick="location.reload()">تسجيل الخروج</button>
+        <div id="statusMsg" class="mt-3"></div>
     </div>
 </div>
 
-<script async defer src="https://maps.googleapis.com/maps/api/js?callback=initMap"></script>
 <script>
     lucide.createIcons();
-
+    
+    // الرابط الرسمي - تأكد من تحديثه إذا قمت بنشر جديد
     const API_URL = "https://script.google.com/macros/s/AKfycbw11obhblN_1MpuDLZqKk337YPRrnqbkcoVJFqDrbHxUoZdxc49qHVNv7Oq2RgD2gYbMA/exec";
     const API_TOKEN = "HUT_SECURE_99";
-    let map, marker, currentRestaurant = null;
+    let currentRes = null;
 
-    function showLoading(s) { document.getElementById('loadingOverlay').style.display = s ? 'flex' : 'none'; }
-    
-    function showRegistration() {
-        document.getElementById('loginCheckSection').style.display = 'none';
-        document.getElementById('registrationSection').classList.remove('hidden-section');
-        document.getElementById('registrationSection').classList.add('show-section');
+    function showLoading(s) { 
+        document.getElementById('loadingOverlay').style.display = s ? 'flex' : 'none';
+        // إظهار زر الإلغاء إذا استغرق الأمر أكثر من 5 ثوانٍ
+        if(s) setTimeout(() => document.getElementById('cancelBtn').classList.remove('hidden-section'), 5000);
     }
 
-    function initMap() {
-        const center = { lat: 35.468, lng: 44.392 };
-        map = new google.maps.Map(document.getElementById("map"), { zoom: 14, center: center, disableDefaultUI: true });
-        marker = new google.maps.Marker({ position: center, map: map, draggable: true });
-        marker.addListener('dragend', () => {
-            document.getElementById('lat').value = marker.getPosition().lat();
-            document.getElementById('lng').value = marker.getPosition().lng();
-        });
-    }
-
-    // الدخول مع معالجة ذكية للحالة
     function checkRestaurantStatus() {
         const phone = document.getElementById('checkPhone').value.trim();
-        if(!phone) return alert("يرجى إدخال رقم هاتفك");
+        if(!phone) return alert("أدخل الرقم");
 
         showLoading(true);
+        
+        // استخدام JSONP لتفادي مشاكل CORS
         const script = document.createElement('script');
-        script.src = `${API_URL}?action=checkRes&phone=${phone}&token=${API_TOKEN}&callback=handleLogin`;
+        // تم إضافة timestamp لمنع التخزين المؤقت (Cache)
+        script.src = `${API_URL}?action=checkRes&phone=${phone}&token=${API_TOKEN}&callback=handleLogin&ts=${Date.now()}`;
+        
+        script.onerror = () => {
+            showLoading(false);
+            alert("فشل الاتصال بالسيرفر. تأكد من أن السكريبت منشور (Deployed) كـ Anyone.");
+        };
+        
         document.body.appendChild(script);
-        script.onload = () => script.remove();
     }
 
     window.handleLogin = function(data) {
         showLoading(false);
+        console.log("Response:", data); // للفحص في Console
         
-        // تنظيف الحالة (حذف المسافات، تحويل لنص، تحويل لأحرف صغيرة) لضمان المطابقة
-        const cleanStatus = String(data.status || "").trim().toLowerCase();
-        
-        if(cleanStatus === "active") {
-            currentRestaurant = data;
-            document.getElementById('loginCheckSection').style.display = 'none';
+        if(!data || !data.status) {
+            alert("رد غير صالح من السيرفر.");
+            return;
+        }
+
+        const status = String(data.status).trim().toLowerCase();
+        if(status === "active") {
+            currentRes = data;
+            document.getElementById('loginSection').classList.add('hidden-section');
             document.getElementById('orderSection').classList.remove('hidden-section');
-            document.getElementById('orderSection').classList.add('show-section');
-            document.getElementById('activeResName').innerText = data.name;
-        } else if (cleanStatus === "pending") {
-            alert("⏳ حسابك قيد المراجعة حالياً من قبل الإدارة.");
+            document.getElementById('resTitle').innerText = "مطعم: " + data.name;
+        } else if(status === "pending") {
+            alert("حسابك قيد الانتظار..");
         } else {
-            alert("❌ الرقم غير مسجل أو الحساب غير نشط. يرجى التأكد من البيانات.");
+            alert("الرقم غير مسجل أو الحساب غير مفعل.");
         }
     };
 
-    // تسجيل مطعم جديد
-    document.getElementById('regForm').onsubmit = function(e) {
-        e.preventDefault();
-        showLoading(true);
-        const payload = {
-            action: 'RESTAURANT_REG',
-            token: API_TOKEN,
-            name: document.getElementById('resName').value,
-            phone: document.getElementById('resPhone').value,
-            area: document.getElementById('resArea').value,
-            lat: document.getElementById('lat').value,
-            lng: document.getElementById('lng').value,
-            comm: 0, pay: "cash"
-        };
-
-        fetch(API_URL, {
-            method: 'POST',
-            mode: 'no-cors',
-            body: JSON.stringify(payload)
-        }).then(() => {
-            showLoading(false);
-            alert("✅ تم إرسال طلب الانضمام! سنقوم بمراجعة طلبك وتفعيله قريباً.");
-            location.reload();
-        }).catch(() => {
-            showLoading(false);
-            alert("حدث خطأ في الاتصال بالسيرفر.");
-        });
-    };
-
-    // إرسال طلب جديد
+    // إرسال طلب (POST)
     document.getElementById('orderForm').onsubmit = function(e) {
         e.preventDefault();
-        if(!currentRestaurant) return;
-        
         showLoading(true);
         const payload = {
             action: 'NEW_ORDER',
             token: API_TOKEN,
-            restaurantName: currentRestaurant.name,
+            restaurantName: currentRes.name,
             area: document.getElementById('customerArea').value,
-            details: document.getElementById('customerPhone').value
+            details: document.getElementById('customerDetails').value
         };
 
         fetch(API_URL, {
             method: 'POST',
             body: JSON.stringify(payload)
         })
-        .then(res => res.json())
+        .then(r => r.json())
         .then(res => {
             showLoading(false);
             if(res.success) {
-                document.getElementById('statusMsg').innerHTML = `
-                    <div class="alert alert-success rounded-4 border-0 p-3 shadow-sm">
-                        <i data-lucide="check-circle" class="text-success mb-2"></i><br>
-                        <b>تم العثور على كابتن!</b><br>
-                        الاسم: ${res.driverName}<br>
-                        الرقم: ${res.orderId}
-                    </div>`;
-                document.getElementById('customerPhone').value = '';
+                document.getElementById('statusMsg').innerHTML = `<div class="alert alert-success">تم! الكابتن: ${res.driverName}</div>`;
+                document.getElementById('customerDetails').value = "";
             } else {
-                alert("⚠️ نعتذر، " + res.msg);
+                alert(res.msg);
             }
-            lucide.createIcons();
         })
-        .catch(() => {
+        .catch(err => {
             showLoading(false);
-            alert("فشل في إرسال الطلب. تأكد من اتصال الإنترنت.");
+            alert("خطأ في الشبكة");
         });
     };
 </script>
