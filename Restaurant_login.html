@@ -31,7 +31,8 @@
         <div id="authUI" class="hidden">
             <header class="text-center mb-6">
                 <h2 class="text-2xl font-black italic" style="font-family: 'Orbitron';">WHALE <span class="text-emerald-500">KITCHEN</span></h2>
-                <p class="text-[10px] text-gray-400 mt-1 font-bold italic opacity-60">تفعيل رادار الشركاء V6.2</p>
+                <p class="text-[10px] text-gray-400 mt-1 font-bold italic opacity-60">تفعيل رادار الشركاء V10.2</p>
+                <p id="geoStatus" class="text-[9px] text-amber-500 font-bold mt-2 italic">⚠️ يرجى السماح بالوصول للموقع لضبط الرادار</p>
             </header>
             
             <form id="smartForm" class="space-y-4">
@@ -41,7 +42,7 @@
                 </div>
                 <div class="relative">
                     <i class="fas fa-phone absolute right-4 top-1/2 -translate-y-1/2 text-emerald-500/50"></i>
-                    <input type="tel" id="resPhone" required placeholder="رقم هاتف المطعم" class="whale-input text-right">
+                    <input type="tel" id="resPhone" required placeholder="رقم هاتف المطعم (المعرف)" class="whale-input text-right">
                 </div>
                 <div class="relative">
                     <i class="fas fa-map-marker-alt absolute right-4 top-1/2 -translate-y-1/2 text-emerald-500/50"></i>
@@ -76,10 +77,14 @@
     </div>
 
     <script>
-        const scriptURL = 'https://script.google.com/macros/s/AKfycbzBTRYdugjCeYZoeaHng4JPIq0vBu-b3VHNuEX9ya0H1C022PDangGTOR9I-v4i83rDoA/exec';
+        const scriptURL = 'https://script.google.com/macros/s/AKfycbzf4_VqfC5fBq0uK2Hl7S-qR-XlS6Z0T5F8H4-X-Z/exec'; 
         let checkInterval;
+        let restaurantCoords = { lat: 0, lng: 0 };
 
         window.onload = () => {
+            // طلب الموقع فوراً عند الفتح
+            getLocation();
+            
             const savedPhone = localStorage.getItem('whale_res_phone');
             if (savedPhone) {
                 checkResStatus(savedPhone);
@@ -87,6 +92,22 @@
                 showView('authUI');
             }
         };
+
+        function getLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                        restaurantCoords.lat = pos.coords.latitude;
+                        restaurantCoords.lng = pos.coords.longitude;
+                        document.getElementById('geoStatus').innerText = "✅ تم تحديد موقع المطعم بدقة";
+                        document.getElementById('geoStatus').className = "text-[9px] text-emerald-500 font-bold mt-2 italic";
+                    },
+                    (err) => {
+                        console.warn("Location access denied");
+                    }
+                );
+            }
+        }
 
         function showView(viewId) {
             document.getElementById('loader').classList.add('hidden');
@@ -99,64 +120,57 @@
             try {
                 const res = await fetch(`${scriptURL}?action=login_check&type=Restaurant&id=${phone}`);
                 const data = await res.json();
-
                 if (data.status === 'active') {
                     localStorage.setItem('whale_res_name', data.name);
                     localStorage.setItem('whale_res_phone', phone);
                     window.location.href = 'Restaurant.html';
                 } else if (data.status === 'banned') {
-                    alert("تم حظر وصول هذا المطعم للمنظومة.");
+                    alert("❌ تم حظر هذا المطعم.");
                     clearRegistration();
                 } else {
                     showView('waitMessage');
-                    if (!checkInterval) {
-                        checkInterval = setInterval(() => checkResStatus(phone), 10000);
-                    }
+                    if (!checkInterval) checkInterval = setInterval(() => checkResStatus(phone), 8000);
                 }
-            } catch (error) {
-                showView('authUI');
-            }
+            } catch (error) { showView('authUI'); }
         }
 
         document.getElementById('smartForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             const btn = document.getElementById('mainBtn');
-            const btnText = document.getElementById('btnText');
             btn.disabled = true;
-            btnText.innerText = "جاري البث...";
+            document.getElementById('btnText').innerText = "جاري ربط الإحداثيات...";
 
-            const phone = document.getElementById('resPhone').value;
             const payload = {
                 action: "register",
                 type: "Restaurant",
                 name: document.getElementById('resName').value,
-                phone: phone,
+                phone: document.getElementById('resPhone').value,
                 map: document.getElementById('resMapLink').value,
                 fee: document.getElementById('fixedFee').value,
-                payment: document.getElementById('paySystem').value
+                payment: document.getElementById('paySystem').value,
+                lat: restaurantCoords.lat, // إرسال خط العرض
+                lng: restaurantCoords.lng  // إرسال خط الطول
             };
 
             try {
-                await fetch(scriptURL, { 
-                    method: 'POST', 
-                    body: JSON.stringify(payload) 
-                });
-                localStorage.setItem('whale_res_phone', phone);
-                showView('waitMessage');
-                checkResStatus(phone);
+                const response = await fetch(scriptURL, { method: 'POST', body: JSON.stringify(payload) });
+                const result = await response.json();
+                if(result.status === "success" || result.status === "exists") {
+                    localStorage.setItem('whale_res_phone', payload.phone);
+                    showView('waitMessage');
+                    checkResStatus(payload.phone);
+                }
             } catch (error) {
-                alert("فشل الاتصال بالسيرفر، حاول مجدداً.");
+                alert("⚠️ فشل الاتصال بالسيرفر.");
                 btn.disabled = false;
-                btnText.innerText = "إرسال طلب الانضمام";
+                document.getElementById('btnText').innerText = "إرسال طلب الانضمام";
             }
         });
 
         function clearRegistration() {
-            if(confirm("هل تريد إلغاء الطلب الحالي؟")) {
-                clearInterval(checkInterval);
-                localStorage.clear();
-                location.reload();
-            }
+            clearInterval(checkInterval);
+            localStorage.clear();
+            location.reload();
         }
     </script>
 </body>
