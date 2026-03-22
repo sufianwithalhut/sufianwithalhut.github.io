@@ -14,9 +14,9 @@
         .glass-card { background: rgba(13, 17, 23, 0.85); backdrop-filter: blur(25px); border: 1px solid rgba(251, 191, 36, 0.15); box-shadow: 0 0 50px rgba(251, 191, 36, 0.05); }
         .whale-input { width: 100%; padding: 1.1rem 3.5rem 1.1rem 1.1rem; background: rgba(0, 0, 0, 0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 1.2rem; color: white; outline: none; transition: 0.3s; }
         .whale-input:focus { border-color: var(--whale-amber); box-shadow: 0 0 15px rgba(251, 191, 36, 0.2); }
-        .action-btn { background: var(--whale-amber); color: #020617; font-weight: 900; clip-path: polygon(5% 0, 100% 0, 95% 100%, 0% 100%); transition: 0.3s; cursor: pointer; }
+        .action-btn { background: var(--whale-amber); color: #020617; font-weight: 900; clip-path: polygon(5% 0, 100% 0, 95% 100%, 0% 100%); transition: 0.3s; cursor: pointer; border: none; }
         .action-btn:active:not(:disabled) { transform: scale(0.95); }
-        .hidden { display: none; }
+        .hidden { display: none !important; }
     </style>
 </head>
 <body class="p-6">
@@ -27,7 +27,7 @@
         
         <div id="loader" class="text-center py-12">
             <div class="w-14 h-14 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
-            <p class="text-[10px] text-amber-500 font-black italic uppercase tracking-widest">Scanning Pilot ID...</p>
+            <p class="text-[10px] text-amber-500 font-black italic uppercase tracking-widest">Booting Whale System...</p>
         </div>
 
         <div id="authUI" class="hidden text-center">
@@ -38,7 +38,7 @@
                 <h2 class="text-2xl font-black tracking-widest uppercase italic" style="font-family: 'Orbitron', sans-serif;">
                     WHALE <span class="text-amber-500">PILOT</span>
                 </h2>
-                <p class="text-[9px] text-gray-500 mt-2 font-bold italic uppercase tracking-widest">قطاع كركوك الميداني V6.2</p>
+                <p class="text-[9px] text-gray-500 mt-2 font-bold italic uppercase tracking-widest leading-loose">منظومة الحوت - كركوك V10.0</p>
             </header>
 
             <form id="loginForm" class="space-y-4">
@@ -57,7 +57,7 @@
                 </div>
 
                 <button type="submit" id="mainBtn" class="w-full py-5 action-btn mt-6 flex items-center justify-center gap-3 italic shadow-lg shadow-amber-500/10">
-                    <span id="btnText">تفعيل ودخول الرادار</span>
+                    <span id="btnText">فحص حالة الهوية</span>
                     <i class="fas fa-crosshairs"></i>
                 </button>
             </form>
@@ -66,13 +66,15 @@
         <div id="statusMessage" class="hidden text-center py-12">
             <div id="statusIcon" class="text-6xl mb-6">🛰️</div>
             <h3 id="statusTitle" class="text-xl font-black text-amber-500 italic uppercase">بانتظار الإشارة</h3>
-            <p id="statusDesc" class="text-[10px] text-slate-400 mt-6 leading-relaxed italic">يتم مراجعة طلبك من قبل الإدارة.<br>سيفتح الرادار تلقائياً فور التفعيل.</p>
-            <button onclick="window.location.reload()" class="mt-10 text-[9px] text-red-500 font-black border-b border-red-500/30 pb-1">خروج وتعديل البيانات</button>
+            <p id="statusDesc" class="text-[10px] text-slate-400 mt-6 leading-relaxed italic">يتم مراجعة هويتك الآن من قبل طه.<br>سيفتح الرادار تلقائياً فور تفعيل حسابك.</p>
+            <button onclick="window.location.reload()" class="mt-10 text-[9px] text-red-500 font-black border-b border-red-500/30 pb-1">محاولة مرة أخرى</button>
         </div>
     </div>
 
     <script>
-        // إخفاء التحميل بعد ثانية ونصف
+        const scriptURL = 'https://script.google.com/macros/s/AKfycbzywi3-mLv5H4bNHYvQbFDpy_FwA-AceD4g8JZX6Ah3QZhmC5LGXNLvBeQBjYO9tmt9vA/exec';
+
+        // إخفاء التحميل الأولي
         setTimeout(() => {
             document.getElementById('loader').classList.add('hidden');
             document.getElementById('authUI').classList.remove('hidden');
@@ -87,26 +89,52 @@
             const btnText = document.getElementById('btnText');
             const regFields = document.getElementById('regFields');
 
-            // محاكاة الاتصال بقاعدة بياناتك
-            btnText.innerText = "جاري الفحص...";
+            btnText.innerText = "جاري الاتصال بالسيرفر...";
             
-            setTimeout(() => {
-                // منطق: إذا لم يكن هناك اسم، نطلب الاسم أولاً (تسجيل جديد)
-                if (!name && phone !== "07713225471") { 
-                    regFields.classList.remove('hidden');
-                    btnText.innerText = "إرسال طلب الانضمام";
-                    return;
-                }
+            try {
+                // الخطوة 1: فحص إذا كان الرقم موجوداً أصلاً
+                const response = await fetch(`${scriptURL}?action=login_check&id=${phone}`);
+                const result = await response.json();
 
-                // فحص الحظر (بناءً على صورتك لجدول السائقين)
-                if (phone === "07713225471") {
-                    showStatus("محظور من المنظومة", "تم حظر هذا الرقم بسبب مخالفة القوانين.", "🚫");
-                } else {
-                    // تسجيل دخول ناجح أو طلب جديد
-                    showStatus("قيد المراجعة", "أهلاً كابتن، طلبك الآن عند طه للموافقة.", "⏳");
-                    // هنا سيتم التوجه لـ Driver.html بعد تفعيلك له في Google Sheets
+                if (result.status === "active") {
+                    // الكابتن مسجل ونشط -> دخله فوراً للرادار
+                    localStorage.setItem('whale_driver_phone', phone);
+                    window.location.href = "Driver.html";
+                } 
+                else if (result.status === "banned") {
+                    // الكابتن محظور
+                    showStatus("هوية محظورة 🚫", "تم حظر وصولك للمنظومة لمخالفة قوانين الحوت.", "🛑");
+                } 
+                else if (result.status === "waiting") {
+                    // الكابتن سجل وبانتظار موافقتك
+                    showStatus("قيد المعالجة ⏳", "أهلاً كابتن، هويتك وصلت لطه وبانتظار التفعيل النهائي.", "🛰️");
+                } 
+                else {
+                    // الرقم غير موجود -> تسجيل جديد
+                    if (!name) {
+                        regFields.classList.remove('hidden');
+                        btnText.innerText = "إرسال طلب انضمام للأسطول";
+                        return;
+                    }
+                    
+                    // إرسال طلب تسجيل جديد (إضافة صف في شيت Drivers)
+                    await fetch(scriptURL, {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            action: "master_control",
+                            pass: "guest", // رمز افتراضي للتسجيل
+                            targetSheet: "Drivers_Pending", // نرسلها لجدول مؤقت أو نعالجها في السكربت
+                            phone: phone,
+                            name: name
+                        })
+                    });
+                    
+                    showStatus("تم إرسال الطلب 🚀", "سيتم التواصل معك فور تفعيل حسابك من قبل الإدارة.", "✅");
                 }
-            }, 1500);
+            } catch (err) {
+                alert("خطأ في الاتصال بالشبكة. تأكد من الإنترنت.");
+                btnText.innerText = "فحص حالة الهوية";
+            }
         });
 
         function showStatus(title, desc, icon) {
