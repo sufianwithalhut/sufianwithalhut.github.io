@@ -2,45 +2,208 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>دخول الطيار | الحوت</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>رادار الطيارين | منظومة الحوت 🐋 V10.0</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&family=Orbitron:wght@700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root { --whale-blue: #3b82f6; --whale-glow: #60a5fa; --whale-dark: #0f172a; }
+        body { font-family: 'Tajawal', sans-serif; background: var(--whale-dark); color: white; min-height: 100vh; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        
+        /* خلفية الرادار المتحركة */
+        .radar-bg { position: fixed; inset: 0; background: radial-gradient(circle at center, #1e293b 0%, #020617 100%); z-index: -1; }
+        .radar-line { position: absolute; top: 50%; left: 50%; width: 200%; height: 200%; background: conic-gradient(from 0deg, transparent, var(--whale-blue), transparent 30%); transform: translate(-50%, -50%); animation: rotate 4s linear infinite; opacity: 0.1; }
+        @keyframes rotate { from { transform: translate(-50%, -50%) rotate(0deg); } to { transform: translate(-50%, -50%) rotate(360deg); } }
+
+        .login-card { background: rgba(30, 41, 59, 0.4); backdrop-filter: blur(25px); border-radius: 3.5rem; border: 1px solid rgba(255, 255, 255, 0.1); width: 100%; max-width: 400px; padding: 3rem; position: relative; box-shadow: 0 0 50px rgba(0,0,0,0.5); }
+        
+        .whale-input { width: 100%; padding: 1.2rem; background: rgba(15, 23, 42, 0.6); border: 2px solid rgba(255,255,255,0.05); border-radius: 1.8rem; font-weight: 900; text-align: center; transition: 0.4s; color: white; }
+        .whale-input:focus { border-color: var(--whale-blue); box-shadow: 0 0 20px rgba(59, 130, 246, 0.3); outline: none; background: rgba(15, 23, 42, 0.9); }
+
+        .btn-pilot { background: linear-gradient(135deg, var(--whale-blue), #2563eb); color: white; font-weight: 900; border-radius: 1.8rem; transition: 0.4s; border: none; cursor: pointer; position: relative; overflow: hidden; }
+        .btn-pilot::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent); transform: translateX(-100%); transition: 0.5s; }
+        .btn-pilot:hover::after { transform: translateX(100%); }
+        .btn-pilot:disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(1); }
+
+        .status-pulse { animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { transform: scale(1); filter: drop-shadow(0 0 0px var(--whale-blue)); } 50% { transform: scale(1.05); filter: drop-shadow(0 0 15px var(--whale-blue)); } 100% { transform: scale(1); filter: drop-shadow(0 0 0px var(--whale-blue)); } }
+        
+        .hidden { display: none; }
+        .fade-in { animation: fadeIn 0.6s cubic-bezier(0.23, 1, 0.32, 1) both; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); scale: 0.95; } to { opacity: 1; transform: translateY(0); scale: 1; } }
+    </style>
 </head>
-<body class="bg-slate-900 min-height-screen flex items-center justify-center p-6 font-['Tajawal']">
-    <div class="w-full max-w-sm bg-slate-800 p-8 rounded-[3rem] text-center border border-white/5 shadow-2xl">
-        <div class="text-5xl mb-4">🏍️</div>
-        <h2 class="text-2xl font-black text-white italic mb-8">رادار الطيارين <span class="text-blue-500 uppercase">V10</span></h2>
-        <input type="tel" id="dPhone" placeholder="077XXXXXXXX" class="w-full p-4 bg-slate-900 rounded-2xl text-white font-black text-center text-xl tracking-widest outline-none border-2 border-transparent focus:border-blue-500 mb-4">
-        <button id="loginBtn" onclick="login()" class="w-full bg-blue-600 py-4 rounded-2xl text-white font-black text-lg shadow-lg shadow-blue-500/20 active:scale-95 transition-all">تشغيل المحرك</button>
-        <div id="status" class="mt-4 text-xs font-bold text-slate-400 italic">...</div>
+<body class="p-6">
+    <div class="radar-bg"><div class="radar-line"></div></div>
+
+    <div class="login-card shadow-blue-900/20">
+        <div id="loader" class="text-center py-10">
+            <div class="relative w-20 h-20 mx-auto mb-6">
+                <div class="absolute inset-0 border-4 border-blue-500/20 rounded-full"></div>
+                <div class="absolute inset-0 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                <i class="fas fa-satellite absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-blue-500"></i>
+            </div>
+            <p class="text-[10px] text-blue-400 font-black tracking-[0.4em] uppercase italic">System Booting...</p>
+        </div>
+
+        <div id="authUI" class="hidden text-center fade-in">
+            <header class="mb-10">
+                <div class="inline-block relative">
+                    <div class="w-24 h-24 bg-gradient-to-br from-blue-500 to-blue-700 text-white rounded-[2.5rem] flex items-center justify-center text-5xl mx-auto shadow-2xl rotate-3">
+                        <i class="fas fa-motorcycle"></i>
+                    </div>
+                    <div class="absolute -bottom-2 -right-2 bg-emerald-500 w-8 h-8 rounded-full border-4 border-slate-900 flex items-center justify-center text-[10px]">
+                        <i class="fas fa-check"></i>
+                    </div>
+                </div>
+                <h2 class="text-3xl font-black text-white italic mt-6" style="font-family: 'Orbitron';">WHALE <span class="text-blue-500">PRO</span></h2>
+                <p class="text-[10px] text-blue-400/60 mt-2 font-bold tracking-[0.3em] uppercase italic">Kirkuk Logistics Grid</p>
+            </header>
+
+            <form id="loginForm" class="space-y-5">
+                <div class="group">
+                    <input type="tel" id="driverPhone" required maxlength="11" placeholder="رقم الموبايل" class="whale-input text-2xl tracking-[0.2em]" dir="ltr">
+                </div>
+
+                <div id="regFields" class="hidden space-y-4 pt-6 border-t border-white/5 mt-6 fade-in">
+                    <div class="bg-blue-500/10 py-2 rounded-full">
+                        <p class="text-[9px] text-blue-400 font-black uppercase tracking-widest">ملاحة جديدة | سجل اسمك الثلاثي</p>
+                    </div>
+                    <input type="text" id="driverName" placeholder="الاسم الثلاثي للكابتن" class="whale-input text-sm italic">
+                </div>
+
+                <button type="submit" id="mainBtn" class="w-full py-5 btn-pilot mt-8 flex items-center justify-center gap-4 group">
+                    <span id="btnText" class="text-lg italic uppercase">دخول النظام</span>
+                    <i class="fas fa-bolt group-hover:animate-bounce"></i>
+                </button>
+            </form>
+        </div>
+
+        <div id="statusMessage" class="hidden text-center py-6 fade-in">
+            <div id="statusIcon" class="text-7xl mb-8 status-pulse text-blue-500">
+                <i class="fas fa-shield-halved"></i>
+            </div>
+            <h3 id="statusTitle" class="text-2xl font-black text-white italic uppercase mb-4">Verifying</h3>
+            <div class="bg-white/5 p-6 rounded-[2rem] border border-white/5">
+                <p id="statusDesc" class="text-sm text-slate-300 leading-relaxed font-bold italic">
+                    جاري فحص التشفير الأمني وحالة الحساب...
+                </p>
+            </div>
+            
+            <button onclick="logout()" class="mt-12 text-[11px] text-slate-500 font-black uppercase tracking-[0.2em] flex items-center justify-center gap-2 mx-auto hover:text-red-400 transition-colors">
+                <i class="fas fa-power-off"></i> إلغاء العملية
+            </button>
+        </div>
     </div>
 
     <script>
-        const API = "https://script.google.com/macros/s/AKfycbzywi3-mLv5H4bNHYvQbFDpy_FwA-AceD4g8JZX6Ah3QZhmC5LGXNLvBeQBjYO9tmt9vA/exec";
+        const scriptURL = 'https://script.google.com/macros/s/AKfycbzywi3-mLv5H4bNHYvQbFDpy_FwA-AceD4g8JZX6Ah3QZhmC5LGXNLvBeQBjYO9tmt9vA/exec';
+        let checkTimer = null;
 
-        async function login() {
-            const phone = document.getElementById('dPhone').value;
-            const btn = document.getElementById('loginBtn');
-            const status = document.getElementById('status');
+        // تأثير الاهتزاز الذكي
+        const vibrate = (ms) => { if (navigator.vibrate) navigator.vibrate(ms); };
 
-            btn.disabled = true; status.innerText = "جاري البحث في الرادار...";
+        window.onload = () => {
+            setTimeout(() => {
+                const savedPhone = localStorage.getItem('whale_driver_phone');
+                if (savedPhone) checkDriverStatus(savedPhone);
+                else showSection('authUI');
+            }, 1500);
+        };
 
+        async function checkDriverStatus(phone) {
             try {
-                const res = await fetch(`${API}?action=login_check&id=${phone}`);
-                const data = await res.json();
-
-                if (data.status === "active") {
+                const response = await fetch(`${scriptURL}?action=login_check&id=${encodeURIComponent(phone)}`);
+                const res = await response.json();
+                
+                if (res.status === 'active') {
+                    vibrate(100);
                     localStorage.setItem('whale_driver_phone', phone);
-                    localStorage.setItem('whale_driver_name', data.data[1]);
-                    window.location.href = "driver.html";
-                } else if (data.status === "pending") {
-                    status.innerText = "طلبك معلق.. بانتظار موافقة طه";
-                    btn.disabled = false;
-                } else if (data.status === "not_found") {
-                    status.innerText = "الرقم غير مسجل. يرجى مراجعة الإدارة";
-                    btn.disabled = false;
+                    localStorage.setItem('whale_driver_name', res.data[1]);
+                    window.location.replace('driver.html');
+                } else if (res.status === 'pending') {
+                    showStatusView('pending');
+                    if (!checkTimer) checkTimer = setInterval(() => checkDriverStatus(phone), 8000);
+                } else if (res.status === 'banned') {
+                    showStatusView('banned');
+                } else {
+                    showSection('authUI');
                 }
-            } catch (e) { status.innerText = "خطأ في الشبكة"; btn.disabled = false; }
+            } catch (e) { showSection('authUI'); }
+        }
+
+        document.getElementById('loginForm').onsubmit = async function(e) {
+            e.preventDefault();
+            const phone = document.getElementById('driverPhone').value.trim();
+            const name = document.getElementById('driverName').value.trim();
+            const btn = document.getElementById('mainBtn');
+            const btnText = document.getElementById('btnText');
+            const regFields = document.getElementById('regFields');
+
+            if (phone.length < 10) { vibrate([50, 50, 50]); return alert("الرقم غير مكتمل!"); }
+            
+            btn.disabled = true;
+            btnText.innerText = "Connecting...";
+
+            if (!regFields.classList.contains('hidden')) {
+                if(!name) { alert("اكتب اسمك لتكتمل الهوية"); btn.disabled = false; return; }
+                
+                try {
+                    const response = await fetch(scriptURL, { 
+                        method: 'POST', 
+                        body: JSON.stringify({ action: "register_user", type: "Driver", name: name, phone: phone }) 
+                    });
+                    const result = await response.json();
+                    if(result.status === "success") {
+                        localStorage.setItem('whale_driver_phone', phone);
+                        showStatusView('pending');
+                        checkTimer = setInterval(() => checkDriverStatus(phone), 8000);
+                    }
+                } catch (e) { btn.disabled = false; btnText.innerText = "إعادة المحاولة"; }
+            } else {
+                try {
+                    const response = await fetch(`${scriptURL}?action=login_check&id=${encodeURIComponent(phone)}`);
+                    const res = await response.json();
+                    
+                    if (res.status !== "not_found") {
+                        checkDriverStatus(phone);
+                    } else {
+                        vibrate(50);
+                        regFields.classList.remove('hidden');
+                        btn.disabled = false;
+                        btnText.innerText = "إرسال طلب الانضمام";
+                    }
+                } catch (e) { btn.disabled = false; }
+            }
+        };
+
+        function showSection(id) {
+            document.querySelectorAll('.login-card > div').forEach(div => div.classList.add('hidden'));
+            document.getElementById(id).classList.remove('hidden');
+        }
+
+        function showStatusView(status) {
+            showSection('statusMessage');
+            const title = document.getElementById('statusTitle');
+            const desc = document.getElementById('statusDesc');
+            const icon = document.getElementById('statusIcon');
+
+            if (status === 'banned') {
+                title.innerText = "Access Denied";
+                icon.innerHTML = `<i class="fas fa-user-lock text-red-500"></i>`;
+                desc.innerText = "عذراً كابتن، تم تقييد وصولك للنظام. تواصل مع الإدارة لمعرفة السبب.";
+            } else {
+                title.innerText = "Pending Hub";
+                icon.innerHTML = `<i class="fas fa-broadcast-tower text-blue-500 animate-pulse"></i>`;
+                desc.innerText = "طلبك الآن في غرفة عمليات الحوت. سيتم فتح الرادار فور تفعيل حسابك من قبل طه.";
+            }
+        }
+
+        function logout() { 
+            if(checkTimer) clearInterval(checkTimer);
+            localStorage.clear(); 
+            location.reload(); 
         }
     </script>
 </body>
