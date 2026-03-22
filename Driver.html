@@ -12,11 +12,13 @@
         .receipt-card { background: linear-gradient(145deg, #0f172a, #020617); border: 1px solid rgba(251, 191, 36, 0.2); box-shadow: 0 20px 50px rgba(0,0,0,0.5); position: relative; }
         .radar-ping { animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite; }
         @keyframes ping { 75%, 100% { transform: scale(2); opacity: 0; } }
-        .img-zoom { transition: transform 0.3s; width: 100%; height: auto; border-radius: 1rem; cursor: zoom-in; }
-        .img-zoom:active { transform: scale(1.8); z-index: 100; position: relative; }
+        .img-zoom { transition: transform 0.3s; width: 100%; height: auto; border-radius: 1rem; cursor: zoom-in; max-height: 300px; object-fit: contain; }
+        .img-zoom:active { transform: scale(1.5); z-index: 100; position: relative; }
         .hidden { display: none !important; }
         .active-mission { border-top: 4px solid #fbbf24; }
         .btn-amber { background: #fbbf24; color: #000; font-weight: 900; }
+        .pulse-text { animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
     </style>
 </head>
 <body class="max-w-md mx-auto min-h-screen pb-10">
@@ -28,8 +30,8 @@
                 <div class="w-3 h-3 bg-amber-500 rounded-full relative z-10"></div>
             </div>
             <div>
-                <h1 class="text-[10px] font-black text-amber-500 italic uppercase tracking-tighter">Whale Pilot Radar V6.2</h1>
-                <p id="welcomeName" class="text-xs text-white font-bold italic text-right tracking-wide">كابتن: جاري التحميل...</p>
+                <h1 class="text-[10px] font-black text-amber-500 italic uppercase tracking-tighter">Whale Pilot Radar V10.2</h1>
+                <p id="welcomeName" class="text-xs text-white font-bold italic text-right tracking-wide">جاري التحميل...</p>
             </div>
         </div>
         <button onclick="logout()" class="text-[10px] bg-red-500/10 text-red-400 px-4 py-2 rounded-xl font-black italic border border-red-500/20 active:scale-90 transition-all">خروج</button>
@@ -38,8 +40,8 @@
     <main class="p-6">
         <div id="searchingStatus" class="text-center mb-8 py-20">
             <div class="w-24 h-24 border-4 border-amber-500/20 border-t-amber-500 rounded-full animate-spin mx-auto mb-6"></div>
-            <p id="radarText" class="text-[11px] text-amber-500 font-black uppercase tracking-[0.4em] italic animate-pulse">Scanning Sector...</p>
-            <p class="text-slate-500 text-[10px] mt-4 italic">بانتظار تخصيص طلب لك من لوحة التحكم</p>
+            <p id="radarText" class="text-[11px] text-amber-500 font-black uppercase tracking-[0.4em] italic pulse-text">Scanning Kirkuk...</p>
+            <p class="text-slate-500 text-[10px] mt-4 italic">بانتظار وصول طلب جديد إلى رادارك</p>
         </div>
 
         <div id="orderCard" class="receipt-card p-6 rounded-[2.5rem] relative overflow-hidden hidden active-mission">
@@ -47,40 +49,41 @@
                 <span class="text-[8px] bg-amber-500 text-black px-3 py-0.5 rounded-full font-black uppercase mb-3 italic tracking-widest">مهمة نشطة 🛰️</span>
                 <h2 id="restaurantTitle" class="text-2xl font-black text-white italic tracking-tight">اسم المطعم</h2>
                 <div id="orderStatusBadge" class="mt-3 px-4 py-1.5 rounded-full bg-white/5 text-[10px] font-bold text-amber-400 border border-amber-500/20 italic">تم تعيينك لهذه المهمة</div>
-                
-                <a id="restMapLink" href="#" target="_blank" class="mt-4 flex items-center gap-2 text-amber-400 bg-amber-500/10 px-4 py-2 rounded-full border border-amber-500/30 text-[10px] font-black italic">
-                    <i class="fas fa-location-arrow"></i>
-                    <span>فتح موقع المطعم 📍</span>
-                </a>
             </div>
 
             <div id="receiptView" class="hidden space-y-4 mb-6 text-center">
-                <p class="text-[9px] text-gray-500 font-black italic uppercase">تكبير الوصل 🔍</p>
+                <p class="text-[9px] text-gray-500 font-black italic uppercase">اضغط على الوصل للتكبير 🔍</p>
                 <img id="receiptImg" src="" class="img-zoom border border-white/10 shadow-2xl">
             </div>
 
             <div class="space-y-4 mb-8">
                 <div class="bg-white/5 p-4 rounded-2xl border border-white/5">
-                    <p class="text-[8px] text-gray-500 font-black uppercase italic mb-1">📍 تفاصيل الزبون والعنوان</p>
+                    <p class="text-[8px] text-gray-500 font-black uppercase italic mb-1">📍 المنطقة والزبون</p>
                     <p id="locationTxt" class="text-sm font-black text-white italic leading-relaxed text-right">...</p>
+                </div>
+                <div class="bg-white/5 p-4 rounded-2xl border border-white/5">
+                    <p class="text-[8px] text-gray-500 font-black uppercase italic mb-1">💰 الأجرة المقدرة</p>
+                    <p id="feeTxt" class="text-sm font-black text-emerald-400 italic">500 دينار</p>
                 </div>
             </div>
 
             <div class="grid grid-cols-1 gap-3">
-                <button id="confirmBtn" onclick="updateMission('assigned')" class="btn-amber p-5 rounded-2xl font-black text-sm italic active:scale-95 shadow-lg shadow-amber-500/20">تأكيد الاستلام ✅</button>
+                <button id="confirmBtn" onclick="updateMission('accepted')" class="btn-amber p-5 rounded-2xl font-black text-sm italic active:scale-95 shadow-lg shadow-amber-500/20">تأكيد وقبول المهمة ✅</button>
                 
                 <div id="actionBtns" class="grid grid-cols-2 gap-3 hidden">
                     <button onclick="updateMission('picked')" class="bg-blue-500/20 text-blue-400 p-4 rounded-2xl font-black text-[10px] italic border border-blue-500/20">استلمت الطلب 📦</button>
-                    <button onclick="updateMission('delivered')" class="bg-green-500 text-black p-4 rounded-2xl font-black text-[10px] italic">تم التوصيل 🏁</button>
+                    <button onclick="updateMission('delivered')" class="bg-green-500 text-black p-4 rounded-2xl font-black text-[10px] italic">تم التوصيل بنجاح 🏁</button>
                 </div>
             </div>
         </div>
     </main>
 
     <script>
-        const scriptURL = 'https://script.google.com/macros/s/AKfycbzBTRYdugjCeYZoeaHng4JPIq0vBu-b3VHNuEX9ya0H1C022PDangGTOR9I-v4i83rDoA/exec';
+        // الرابط الجديد الخاص بك
+        const scriptURL = 'https://script.google.com/macros/s/AKfycbzf4_VqfC5fBq0uK2Hl7S-qR-XlS6Z0T5F8H4-X-Z/exec'; 
         const driverPhone = localStorage.getItem('whale_driver_phone');
         let activeOrderID = null;
+        let isProcessing = false;
 
         if (!driverPhone) window.location.href = "Driver_login.html";
 
@@ -90,71 +93,91 @@
             trackLocation();
         };
 
-        // 1. الرادار: يفحص شيت Orders للبحث عن طلب يحمل رقم هاتف السائق
+        // الرادار: يفحص قاعدة البيانات كل 8 ثواني للبحث عن طلب مخصص لهذا الرقم
         async function startRadar() {
             setInterval(async () => {
-                if (activeOrderID) return; 
+                if (activeOrderID || isProcessing) return; 
 
                 try {
-                    const res = await fetch(`${scriptURL}?action=login_check&type=Driver&id=${driverPhone}`);
+                    const res = await fetch(`${scriptURL}?action=get_master_data&pass=112233`);
                     const data = await res.json();
                     
-                    // سنقوم بطلب قائمة الطلبات (تحتاج تفعيل أكشن get_orders في السكريبت)
-                    const ordersRes = await fetch(`${scriptURL}?action=get_settings`); // نستخدم الإعدادات مؤقتاً أو نطلب قائمة الطلبات
-                    // ملاحظة: يفضل تحديث Apps Script لإضافة دالة تجلب الطلبات الموجهة للسائق فقط
-                    
-                    // كود افتراضي للبحث (سيتم تحسينه بربط الأكشن المناسب)
-                    fetchOrders();
-                } catch (e) { console.log("Radar Scanning..."); }
+                    if (data.status === "success") {
+                        // البحث عن طلب حالته "waiting" أو "pending" ومرتبط بهاتف هذا السائق
+                        const myOrder = data.orders.find(o => String(o.driver_phone) === String(driverPhone) && o.status !== "delivered");
+                        
+                        if (myOrder) {
+                            showOrder(myOrder);
+                        }
+                    }
+                } catch (e) { console.warn("Radar Scanning..."); }
             }, 8000);
         }
 
-        async function fetchOrders() {
-             const res = await fetch(`${scriptURL}?action=get_settings`); // سيتم استبدالها بطلب الطلبات الفعلي
-             // ... منطق جلب الطلب المخصص للسائق ...
-        }
-
         function showOrder(order) {
-            activeOrderID = order.id;
+            activeOrderID = order.orderid;
             document.getElementById('searchingStatus').classList.add('hidden');
             document.getElementById('orderCard').classList.remove('hidden');
             document.getElementById('restaurantTitle').innerText = order.restaurant;
-            document.getElementById('locationTxt').innerText = order.details;
+            document.getElementById('locationTxt').innerText = `${order.area} - ${order.details}`;
+            document.getElementById('feeTxt').innerText = (order.fee || 500) + " دينار";
             
-            if (order.photo && order.photo !== "No Photo") {
+            if (order.image && order.image !== "") {
                 document.getElementById('receiptView').classList.remove('hidden');
-                document.getElementById('receiptImg').src = order.photo;
+                document.getElementById('receiptImg').src = order.image;
             }
-        }
 
-        async function updateMission(status) {
-            await fetch(scriptURL, {
-                method: 'POST',
-                body: JSON.stringify({ action: 'update_status', type: 'Orders', id: activeOrderID, status: status })
-            });
-            if(status === 'delivered') location.reload();
-            else {
+            // إذا كان السائق قد قبل الطلب مسبقاً في الشيت
+            if (order.status === "accepted" || order.status === "picked") {
                 document.getElementById('confirmBtn').classList.add('hidden');
                 document.getElementById('actionBtns').classList.remove('hidden');
             }
         }
 
-        function trackLocation() {
-            navigator.geolocation.watchPosition(pos => {
-                fetch(scriptURL, {
+        async function updateMission(newStatus) {
+            isProcessing = true;
+            try {
+                const response = await fetch(scriptURL, {
                     method: 'POST',
-                    body: JSON.stringify({
-                        action: 'update_driver_location',
-                        phone: driverPhone,
-                        lat: pos.coords.latitude,
-                        lng: pos.coords.longitude
+                    body: JSON.stringify({ 
+                        action: 'update_status', 
+                        type: 'Orders', 
+                        id: activeOrderID, 
+                        status: newStatus 
                     })
                 });
-            }, null, { enableHighAccuracy: true });
+                
+                if (newStatus === 'delivered') {
+                    alert("عاش كابتن! تم إكمال المهمة بنجاح 🏁");
+                    location.reload();
+                } else {
+                    document.getElementById('confirmBtn').classList.add('hidden');
+                    document.getElementById('actionBtns').classList.remove('hidden');
+                }
+            } catch (e) {
+                alert("فشل تحديث الحالة، حاول مرة أخرى.");
+            }
+            isProcessing = false;
+        }
+
+        function trackLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.watchPosition(pos => {
+                    fetch(scriptURL, {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            action: 'update_location',
+                            phone: driverPhone,
+                            lat: pos.coords.latitude,
+                            lng: pos.coords.longitude
+                        })
+                    });
+                }, null, { enableHighAccuracy: true });
+            }
         }
 
         function logout() {
-            if(confirm("هل تريد إنهاء نوبة العمل؟")) {
+            if(confirm("هل تريد إنهاء نوبة العمل (تسجيل خروج)؟")) {
                 localStorage.clear();
                 window.location.href = "Driver_login.html";
             }
