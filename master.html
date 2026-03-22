@@ -15,16 +15,13 @@
         #login-block { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); display: flex; align-items: center; justify-content: center; position: fixed; inset: 0; z-index: 9999; }
         #map { height: 350px; border-radius: 2rem; border: 4px solid white; margin: 1.5rem 0; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1); z-index: 10; }
         .glass-panel { background: var(--card-bg); backdrop-filter: blur(10px); border: 1px solid white; border-radius: 1.5rem; padding: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
-        
-        .item-row { border-radius: 1rem; padding: 12px; margin-bottom: 10px; border: 1px solid var(--border); transition: all 0.2s ease; font-size: 13px; }
+        .item-row { border-radius: 1rem; padding: 12px; margin-bottom: 10px; border: 1px solid var(--border); transition: all 0.2s ease; font-size: 13px; background: white; }
         .status-active { color: #16a34a; font-weight: bold; }
+        .status-waiting { color: #ca8a04; font-weight: bold; }
         .status-banned { color: #dc2626; font-weight: bold; }
-        .status-away { color: #ca8a04; font-weight: bold; }
-
-        .btn-action { padding: 4px 8px; border-radius: 6px; font-size: 10px; font-weight: bold; color: white; cursor: pointer; }
+        .btn-action { padding: 4px 8px; border-radius: 6px; font-size: 10px; font-weight: bold; color: white; cursor: pointer; border: none; }
         .bg-btn-blue { background: #3b82f6; }
         .bg-btn-red { background: #ef4444; }
-
         .hidden { display: none; }
         ::-webkit-scrollbar { width: 5px; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
@@ -40,7 +37,7 @@
             <h1 class="text-2xl font-black text-slate-800 mb-2">لوحة تحكم سفيان</h1>
             <p class="text-slate-500 text-sm mb-6">منظومة الحوت - الإدارة المركزية</p>
             <input type="password" id="master-pass" placeholder="أدخل رمز الدخول" class="w-full bg-slate-100 border-2 border-slate-200 rounded-2xl p-4 text-center text-blue-600 mb-6 outline-none font-bold">
-            <button onclick="checkAuth()" class="w-full bg-blue-600 text-white p-4 rounded-2xl font-black transition-all active:scale-95">دخول النظام</button>
+            <button onclick="checkAuth()" id="loginBtn" class="w-full bg-blue-600 text-white p-4 rounded-2xl font-black transition-all active:scale-95">دخول النظام</button>
         </div>
     </div>
 
@@ -53,7 +50,10 @@
                     <span class="text-[10px] text-blue-600 font-bold uppercase">AL-HUT MASTER CONTROL</span>
                 </div>
             </div>
-            <div id="clock" class="font-bold text-slate-600 bg-slate-100 px-6 py-2 rounded-2xl text-sm border border-slate-200">00:00:00</div>
+            <div class="flex gap-3">
+                <button onclick="loadMasterData()" class="bg-slate-100 p-2 px-4 rounded-xl text-xs font-bold hover:bg-slate-200"><i class="fas fa-sync-alt ml-1"></i> تحديث البيانات</button>
+                <div id="clock" class="font-bold text-slate-600 bg-slate-100 px-6 py-2 rounded-2xl text-sm border border-slate-200 italic">00:00:00</div>
+            </div>
         </header>
 
         <div id="map"></div>
@@ -65,118 +65,180 @@
                     <h2 class="font-black text-sm"><i class="fas fa-motorcycle ml-2"></i> رادار الطيارين</h2>
                     <span id="driver-count" class="bg-blue-100 text-blue-700 px-2 py-1 rounded text-[10px] font-bold">0</span>
                 </div>
-                <input type="text" id="searchDriver" placeholder="بحث عن طيار..." class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs mb-4 outline-none focus:border-blue-500">
-                <div id="drivers-list" class="overflow-y-auto flex-1 space-y-2">
-                    </div>
+                <div id="drivers-list" class="overflow-y-auto flex-1 space-y-2"></div>
             </section>
 
             <section class="glass-panel h-[600px] flex flex-col border-t-4 border-emerald-500">
-                <h2 class="font-black text-sm mb-3"><i class="fas fa-utensils ml-2"></i> المطاعم المتصلة</h2>
+                <h2 class="font-black text-sm mb-3"><i class="fas fa-utensils ml-2"></i> المطاعم</h2>
                 <div id="restaurants-list" class="overflow-y-auto flex-1 space-y-2"></div>
             </section>
 
             <section class="glass-panel h-[600px] flex flex-col border-t-4 border-amber-500">
-                <h2 class="font-black text-sm mb-3"><i class="fas fa-shopping-basket ml-2"></i> مراقبة الطلبات</h2>
+                <h2 class="font-black text-sm mb-3"><i class="fas fa-shopping-basket ml-2"></i> الطلبات المباشرة</h2>
                 <div id="orders-list" class="overflow-y-auto flex-1 space-y-2"></div>
             </section>
 
             <section class="glass-panel h-[600px] flex flex-col border-t-4 border-slate-800">
-                <h2 class="font-black text-sm mb-3"><i class="fas fa-gears ml-2"></i> الإعدادات العامة</h2>
+                <h2 class="font-black text-sm mb-3"><i class="fas fa-gears ml-2"></i> الإعدادات والتحكم</h2>
                 <div id="settings-area" class="space-y-4">
                     <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
-                        <p class="text-[10px] text-slate-500 mb-1">العمولة الافتراضية</p>
+                        <p class="text-[10px] text-slate-500 mb-1">حالة السيرفر</p>
                         <div class="flex justify-between items-center">
-                            <span id="def-comm" class="font-bold text-slate-800">500 د.ع</span>
-                            <button class="text-blue-600 text-[10px] font-bold">تعديل</button>
+                            <span class="text-xs font-bold text-green-600"><i class="fas fa-circle text-[8px] animate-pulse"></i> متصل بالمنظومة</span>
                         </div>
                     </div>
                 </div>
             </section>
-
         </div>
     </div>
 
     <script>
-        let map;
-        const MASTER_PASS = "112233"; // بناءً على صورتك
+        const scriptURL = 'https://script.google.com/macros/s/AKfycbzywi3-mLv5H4bNHYvQbFDpy_FwA-AceD4g8JZX6Ah3QZhmC5LGXNLvBeQBjYO9tmt9vA/exec';
+        let map, markers = {};
 
-        // تشغيل الساعة
+        // تحديث الساعة
         setInterval(() => {
             document.getElementById('clock').innerText = new Date().toLocaleTimeString('ar-EG');
         }, 1000);
 
         // التحقق من الدخول
-        function checkAuth() {
+        async function checkAuth() {
             const pass = document.getElementById('master-pass').value;
-            if(pass === MASTER_PASS) {
-                document.getElementById('login-block').classList.add('hidden');
-                document.getElementById('main-ui').classList.remove('hidden');
-                initMap();
-                loadData();
-            } else {
-                alert("رمز الدخول غير صحيح");
+            const btn = document.getElementById('loginBtn');
+            btn.innerText = "جاري التحقق...";
+            
+            // محاولة جلب البيانات كاختبار لكلمة السر
+            try {
+                const response = await fetch(`${scriptURL}?action=get_master_data&pass=${pass}`);
+                const data = await response.json();
+                
+                if(data.status === "success") {
+                    localStorage.setItem('master_pass', pass);
+                    document.getElementById('login-block').classList.add('hidden');
+                    document.getElementById('main-ui').classList.remove('hidden');
+                    initMap();
+                    renderFullData(data);
+                    // تحديث تلقائي كل 30 ثانية
+                    setInterval(loadMasterData, 30000);
+                } else {
+                    alert("رمز الدخول غير صحيح");
+                    btn.innerText = "دخول النظام";
+                }
+            } catch (e) {
+                alert("خطأ في الاتصال بالسيرفر");
+                btn.innerText = "دخول النظام";
             }
         }
 
-        // تهيئة الخريطة (افتراضياً على كركوك)
         function initMap() {
             map = L.map('map').setView([35.468, 44.392], 13);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
         }
 
-        // محاكاة جلب البيانات (يتم استبدالها برابط الـ API الخاص بك لاحقاً)
-        function loadData() {
-            // بيانات تجريبية من الصور التي أرسلتها
-            const drivers = [
-                { name: "طه جليل هادي", phone: "7713225471", status: "banned", lat: 35.4873117, lng: 44.3847533 },
-                { name: "محمد تحسين", phone: "7715225471", status: "active", lat: 35.4595824, lng: 44.3823116 }
-            ];
-
-            const restaurants = [
-                { name: "مطعم جعفر", phone: "778...", status: "active", area: "عرفة" },
-                { name: "مطعم العساكر", phone: "7789456123", status: "active", area: "الماس" }
-            ];
-
-            renderDrivers(drivers);
-            renderRestaurants(restaurants);
+        async function loadMasterData() {
+            const pass = localStorage.getItem('master_pass');
+            const response = await fetch(`${scriptURL}?action=get_master_data&pass=${pass}`);
+            const data = await response.json();
+            if(data.status === "success") renderFullData(data);
         }
 
-        function renderDrivers(list) {
+        function renderFullData(data) {
+            renderDrivers(data.drivers);
+            renderRestaurants(data.restaurants);
+            renderOrders(data.orders);
+        }
+
+        function renderDrivers(rows) {
             const container = document.getElementById('drivers-list');
-            document.getElementById('driver-count').innerText = list.length;
-            container.innerHTML = list.map(d => `
-                <div class="item-row bg-white shadow-sm border-r-4 ${d.status === 'active' ? 'border-green-500' : 'border-red-500'}">
+            document.getElementById('driver-count').innerText = rows.length - 1;
+            container.innerHTML = rows.slice(1).map(d => `
+                <div class="item-row border-r-4 ${d[4] === 'active' ? 'border-green-500' : 'border-red-500'}">
                     <div class="flex justify-between items-start">
                         <div>
-                            <p class="font-bold text-slate-800">${d.name}</p>
-                            <p class="text-[10px] text-slate-500">${d.phone}</p>
+                            <p class="font-bold">${d[1]}</p>
+                            <p class="text-[10px] text-slate-500">${d[2]}</p>
                         </div>
-                        <span class="status-${d.status}">${d.status === 'active' ? 'متصل' : 'محظور'}</span>
+                        <span class="status-${d[4]} text-[10px]">${d[4] === 'active' ? 'نشط' : 'محظور'}</span>
                     </div>
                     <div class="flex gap-2 mt-2">
-                        <button class="btn-action bg-btn-blue">تتبع</button>
-                        <button class="btn-action bg-btn-red">حظر</button>
+                        <button onclick="controlItem('Drivers', '${d[2]}', 4, '${d[4] === 'active' ? 'banned' : 'active'}')" class="btn-action ${d[4] === 'active' ? 'bg-btn-red' : 'bg-btn-blue'}">
+                            ${d[4] === 'active' ? 'حظر' : 'تفعيل'}
+                        </button>
                     </div>
                 </div>
             `).join('');
 
-            // إضافة ماركرات على الخريطة للسائقين النشطين
-            list.forEach(d => {
-                if(d.lat && d.lng) {
-                    L.marker([d.lat, d.lng]).addTo(map).bindPopup(d.name);
+            // تحديث المواقع على الخريطة
+            rows.slice(1).forEach(d => {
+                if(d[5] && d[6]) {
+                    if(markers[d[2]]) map.removeLayer(markers[d[2]]);
+                    markers[d[2]] = L.marker([d[5], d[6]]).addTo(map).bindPopup(`الكابتن: ${d[1]}`);
                 }
             });
         }
 
-        function renderRestaurants(list) {
+        function renderRestaurants(rows) {
             const container = document.getElementById('restaurants-list');
-            container.innerHTML = list.map(r => `
-                <div class="item-row bg-white shadow-sm">
-                    <p class="font-bold">${r.name}</p>
-                    <p class="text-[10px] text-slate-500">${r.area} | ${r.phone}</p>
-                    <div class="mt-2 text-[10px] font-bold text-emerald-600 italic text-left">النظام: مطعم يدفع</div>
+            container.innerHTML = rows.slice(1).map(r => `
+                <div class="item-row border-r-4 border-emerald-500">
+                    <p class="font-bold">${r[1]}</p>
+                    <p class="text-[10px] text-slate-500">${r[2]} | ${r[4] || 'كركوك'}</p>
+                    <div class="flex justify-between mt-2 items-center">
+                        <span class="text-[9px] font-bold text-emerald-600">${r[6] || 'مطعم يدفع'}</span>
+                        <button onclick="deleteItem('Restaurants', '${r[2]}')" class="text-red-500 text-[10px]"><i class="fas fa-trash"></i></button>
+                    </div>
                 </div>
             `).join('');
+        }
+
+        function renderOrders(rows) {
+            const container = document.getElementById('orders-list');
+            container.innerHTML = rows.slice(1).reverse().map(o => `
+                <div class="item-row border-r-4 ${o[5] === 'waiting' ? 'border-amber-500' : 'border-blue-500'}">
+                    <div class="flex justify-between">
+                        <span class="font-black text-blue-600 text-[10px]">${o[0]}</span>
+                        <span class="text-[9px] text-slate-400">${new Date(o[7]).toLocaleTimeString('ar-EG')}</span>
+                    </div>
+                    <p class="font-bold mt-1 text-xs">${o[1]} <i class="fas fa-arrow-left mx-1 text-[8px]"></i> ${o[9]}</p>
+                    <p class="text-[10px] text-slate-500 mt-1">${o[3]}</p>
+                    <div class="flex justify-between items-center mt-2">
+                        <span class="bg-slate-100 px-2 py-0.5 rounded text-[9px] font-bold">${o[5]}</span>
+                        <button onclick="deleteItem('Orders', '${o[0]}')" class="text-red-400 text-[9px]">حذف</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // دوال التحكم بالبيانات
+        async function controlItem(sheet, id, col, val) {
+            const pass = localStorage.getItem('master_pass');
+            await fetch(scriptURL, {
+                method: 'POST',
+                body: JSON.stringify({
+                    action: "master_control",
+                    pass: pass,
+                    targetSheet: sheet,
+                    targetID: id,
+                    colIndex: col,
+                    newValue: val
+                })
+            });
+            loadMasterData();
+        }
+
+        async function deleteItem(sheet, id) {
+            if(!confirm("هل أنت متأكد من الحذف النهائي؟")) return;
+            const pass = localStorage.getItem('master_pass');
+            await fetch(scriptURL, {
+                method: 'POST',
+                body: JSON.stringify({
+                    action: "delete_item",
+                    pass: pass,
+                    targetSheet: sheet,
+                    targetID: id
+                })
+            });
+            loadMasterData();
         }
     </script>
 </body>
