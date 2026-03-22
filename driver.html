@@ -12,30 +12,42 @@
         .timer-circle { width: 80px; height: 80px; border: 5px solid #e74c3c; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: bold; margin: 10px auto; color: #e74c3c; }
         #orderAlert { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 9999; display: none; color: white; padding: 20px; text-align: center; }
         .hidden-section { display: none; }
-        #driverMap { height: 200px; border-radius: 15px; margin-bottom: 15px; }
+        #loadingOverlay { position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:10000; display:none; align-items:center; justify-content:center; }
     </style>
 </head>
 <body>
 
+<div id="loadingOverlay">
+    <div class="spinner-border text-light"></div>
+</div>
+
 <div class="container mt-4">
-    <div id="driverRegSection" class="card p-4 mb-4">
-        <h3 class="text-center mb-4">تسجيل سائق جديد</h3>
+    <div id="driverLoginSection" class="card p-4 mb-4">
+        <h3 class="text-center mb-3">دخول السائق</h3>
+        <input type="tel" id="checkDriverPhone" class="form-control mb-3" placeholder="أدخل رقم هاتفك المسجل">
+        <button class="btn btn-primary w-100 p-3" onclick="checkDriverStatus()">دخول للنظام</button>
+        <hr>
+        <button class="btn btn-outline-secondary w-100" onclick="toggleRegForm()">تسجيل سائق جديد</button>
+    </div>
+
+    <div id="driverRegSection" class="card p-4 mb-4 hidden-section">
+        <h3 class="text-center mb-4">انضمام لفريق الحوت</h3>
         <form id="driverRegForm">
             <div class="mb-3">
                 <label class="form-label">الاسم الثلاثي</label>
-                <input type="text" id="driverName" class="form-control" placeholder="أدخل اسمك الكامل" required>
+                <input type="text" id="driverName" class="form-control" required>
             </div>
             <div class="mb-3">
                 <label class="form-label">رقم الهاتف</label>
-                <input type="tel" id="driverPhone" class="form-control" placeholder="07XXXXXXXX" required>
+                <input type="tel" id="driverPhone" class="form-control" required>
             </div>
-            <button type="submit" class="btn btn-primary w-100 p-3">إرسال طلب الانضمام</button>
+            <button type="submit" class="btn btn-success w-100 p-3">إرسال الطلب</button>
         </form>
     </div>
 
     <div id="driverDashboard" class="hidden-section">
         <div class="card p-3 mb-3 text-center">
-            <h5 id="welcomeMsg">مرحباً، جاري التحميل...</h5>
+            <h5 id="welcomeMsg">مرحباً بك</h5>
             <div class="d-flex justify-content-around mt-3">
                 <div>
                     <small class="text-muted d-block">طلبات اليوم</small>
@@ -48,116 +60,120 @@
             </div>
         </div>
 
-        <div id="driverMap"></div>
-
         <div class="card p-3 text-center">
-            <span id="onlineStatus" class="status-badge bg-success text-white mb-3">أنت متصل الآن وبانتظار طلبات</span>
-            <button class="btn btn-outline-danger btn-sm" onclick="toggleStatus()">إيقاف الاستقبال مؤقتاً</button>
+            <span id="onlineStatus" class="status-badge bg-success text-white mb-3">رادارك نشط الآن</span>
+            <small class="d-block mb-3 text-muted">إحداثياتك الحالية: <span id="coordsDisplay">جاري الجلب...</span></small>
+            <button class="btn btn-danger w-100" onclick="location.reload()">تسجيل خروج</button>
         </div>
     </div>
 </div>
 
 <div id="orderAlert">
-    <h2 class="mt-5">طلب جديد متاح!</h2>
+    <h2 class="mt-5">طلب جديد لك!</h2>
     <div class="timer-circle" id="timer">60</div>
-    <div class="card bg-dark border-secondary p-3 mt-4 text-white text-end">
+    <div class="card bg-dark p-3 mt-4 text-white text-end mx-auto" style="max-width: 400px;">
         <p><strong>المطعم:</strong> <span id="alertResName">...</span></p>
         <p><strong>المنطقة:</strong> <span id="alertArea">...</span></p>
-        <p><strong>المسافة إليك:</strong> <span id="alertDist">...</span></p>
     </div>
-    <div class="d-flex gap-3 mt-5">
-        <button class="btn btn-success btn-lg flex-grow-1 p-3" onclick="acceptOrder()">قبول الطلب</button>
-        <button class="btn btn-danger btn-lg flex-grow-1 p-3" onclick="rejectOrder()">رفض</button>
+    <div class="d-flex gap-3 mt-5 justify-content-center">
+        <button class="btn btn-success btn-lg px-5 p-3" onclick="acceptOrder()">قبول</button>
+        <button class="btn btn-danger btn-lg px-5 p-3" onclick="rejectOrder()">رفض</button>
     </div>
 </div>
 
-<script async defer src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY"></script>
 <script>
-    let driverPos = { lat: 0, lng: 0 };
+    const API_URL = "https://script.google.com/macros/s/AKfycby7a-gZ44EKeTLJWHnayDvUhiWwKnX8eKZp8BudmWf7xaLLTVBnAdOSgtVa3DTJe9lUJA/exec";
+    let driverPhone = "";
     let waitSeconds = 0;
-    let countdownInterval;
+    let driverPos = { lat: 0, lng: 0 };
 
-    // 1. تتبع الموقع اللحظي
+    function toggleRegForm() {
+        document.getElementById('driverRegSection').classList.toggle('hidden-section');
+    }
+
+    function checkDriverStatus() {
+        const phone = document.getElementById('checkDriverPhone').value;
+        if(!phone) return alert("أدخل الرقم");
+        
+        showLoading(true);
+        fetch(`${API_URL}?action=checkDriver&phone=${phone}`)
+        .then(res => res.json())
+        .then(data => {
+            showLoading(false);
+            if(data.status === "active") {
+                driverPhone = phone;
+                startDriverSystem(data.name);
+            } else {
+                alert("الحساب غير مفعل أو غير موجود");
+            }
+        });
+    }
+
+    function startDriverSystem(name) {
+        document.getElementById('driverLoginSection').classList.add('hidden-section');
+        document.getElementById('driverRegSection').classList.add('hidden-section');
+        document.getElementById('driverDashboard').classList.remove('hidden-section');
+        document.getElementById('welcomeMsg').innerText = "مرحباً يا بطل، " + name;
+        
+        trackLocation();
+        setInterval(updateWaitTime, 1000);
+        setInterval(checkForNewOrders, 10000); // يفحص الشيت كل 10 ثواني بحثاً عن طلبات موجهة له
+    }
+
     function trackLocation() {
         if (navigator.geolocation) {
             navigator.geolocation.watchPosition(pos => {
                 driverPos.lat = pos.coords.latitude;
                 driverPos.lng = pos.coords.longitude;
-                updateSystem(); // إرسال الموقع للنظام
-            }, err => console.error(err), { enableHighAccuracy: true });
+                document.getElementById('coordsDisplay').innerText = `${driverPos.lat.toFixed(4)}, ${driverPos.lng.toFixed(4)}`;
+                syncLocation();
+            });
         }
     }
 
-    // 2. تحديث بيانات السائق في Google Sheets لحظياً
-    function updateSystem() {
-        const data = {
-            lat: driverPos.lat,
-            lng: driverPos.lng,
-            waitTime: Math.floor(waitSeconds / 60),
-            status: 'online',
-            type: 'DRIVER_UPDATE'
-        };
-        // استدعاء Apps Script بصمت
-        if (typeof google !== 'undefined') {
-            google.script.run.syncDriverData(data);
-        }
+    function syncLocation() {
+        const url = `${API_URL}?action=DRIVER_UPDATE&phone=${driverPhone}&lat=${driverPos.lat}&lng=${driverPos.lng}&wait=${Math.floor(waitSeconds/60)}`;
+        fetch(url); // تحديث صامت للشيت
     }
 
-    // 3. عداد وقت الانتظار
-    setInterval(() => {
+    function updateWaitTime() {
         waitSeconds++;
         document.getElementById('waitTime').innerText = Math.floor(waitSeconds / 60) + " دقيقة";
-    }, 1000);
+    }
 
-    // 4. محاكاة استقبال طلب (يتم استدعاؤها من Apps Script)
-    function showNewOrder(orderInfo) {
-        document.getElementById('alertResName').innerText = orderInfo.resName;
-        document.getElementById('alertArea').innerText = orderInfo.customerArea;
-        document.getElementById('alertDist').innerText = orderInfo.distance + " كم";
-        
+    function checkForNewOrders() {
+        if(!driverPhone) return;
+        fetch(`${API_URL}?action=checkMyOrders&phone=${driverPhone}`)
+        .then(res => res.json())
+        .then(order => {
+            if(order.id) showNewOrder(order);
+        });
+    }
+
+    function showNewOrder(order) {
+        document.getElementById('alertResName').innerText = order.resName;
+        document.getElementById('alertArea').innerText = order.customerArea;
         document.getElementById('orderAlert').style.display = 'block';
-        let timeLeft = 60;
-        
-        countdownInterval = setInterval(() => {
-            timeLeft--;
-            document.getElementById('timer').innerText = timeLeft;
-            if (timeLeft <= 0) {
-                rejectOrder();
-            }
-        }, 1000);
+        // بدء عد تنازلي 60 ثانية هنا...
     }
 
-    function acceptOrder() {
-        clearInterval(countdownInterval);
-        document.getElementById('orderAlert').style.display = 'none';
-        // إرسال تأكيد القبول للـ Apps Script
-        google.script.run.withSuccessHandler(res => {
-            alert('تم قبول الطلب، توجه للمطعم الآن');
-        }).driverAccepts(true);
-    }
-
-    function rejectOrder() {
-        clearInterval(countdownInterval);
-        document.getElementById('orderAlert').style.display = 'none';
-        google.script.run.driverAccepts(false);
-    }
-
-    // التسجيل لأول مرة
     document.getElementById('driverRegForm').onsubmit = function(e) {
         e.preventDefault();
-        const driverData = {
+        showLoading(true);
+        const data = {
             name: document.getElementById('driverName').value,
             phone: document.getElementById('driverPhone').value,
-            type: 'DRIVER_REG'
+            action: 'DRIVER_REG'
         };
-        google.script.run.withSuccessHandler(() => {
-            alert('تم إرسال طلبك للمدير للمراجعة.');
-        }).processData(driverData);
+        fetch(API_URL, { method: 'POST', body: JSON.stringify(data) })
+        .then(() => {
+            showLoading(false);
+            alert("تم إرسال طلب الانضمام بنجاح.");
+            location.reload();
+        });
     };
 
-    window.onload = trackLocation;
+    function showLoading(s) { document.getElementById('loadingOverlay').style.display = s ? 'flex' : 'none'; }
 </script>
-
 </body>
 </html>
-
