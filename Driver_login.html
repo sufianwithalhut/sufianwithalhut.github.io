@@ -27,7 +27,7 @@
         
         <div id="loader" class="text-center py-12">
             <div class="w-14 h-14 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
-            <p class="text-[10px] text-amber-500 font-black italic uppercase tracking-widest">Booting Whale System...</p>
+            <p class="text-[10px] text-amber-500 font-black italic uppercase tracking-widest">Booting Pilot System V10.3...</p>
         </div>
 
         <div id="authUI" class="hidden text-center">
@@ -38,7 +38,7 @@
                 <h2 class="text-2xl font-black tracking-widest uppercase italic" style="font-family: 'Orbitron', sans-serif;">
                     WHALE <span class="text-amber-500">PILOT</span>
                 </h2>
-                <p class="text-[9px] text-gray-500 mt-2 font-bold italic uppercase tracking-widest leading-loose">منظومة الحوت - كركوك V6.2</p>
+                <p class="text-[9px] text-gray-500 mt-2 font-bold italic uppercase tracking-widest leading-loose">منظومة الحوت - كركوك V10.3</p>
             </header>
 
             <form id="loginForm" class="space-y-4">
@@ -54,6 +54,7 @@
                         <input type="text" id="driverName" placeholder="الاسم الثلاثي واللقب" 
                                class="whale-input text-center font-bold">
                     </div>
+                    <p class="text-[9px] text-amber-500/70 italic">سيطلب النظام إذن الموقع لربط هويتك بالرادار 🛰️</p>
                 </div>
 
                 <button type="submit" id="mainBtn" class="w-full py-5 action-btn mt-6 flex items-center justify-center gap-3 italic shadow-lg shadow-amber-500/10">
@@ -66,19 +67,28 @@
         <div id="statusMessage" class="hidden text-center py-12">
             <div id="statusIcon" class="text-6xl mb-6">🛰️</div>
             <h3 id="statusTitle" class="text-xl font-black text-amber-500 italic uppercase">بانتظار الإشارة</h3>
-            <p id="statusDesc" class="text-[10px] text-slate-400 mt-6 leading-relaxed italic">يتم مراجعة هويتك الآن من قبل الإدارة.<br>سيفتح الرادار تلقائياً فور تفعيل حسابك.</p>
-            <button onclick="window.location.reload()" class="mt-10 text-[9px] text-red-500 font-black border-b border-red-500/30 pb-1">محاولة مرة أخرى</button>
+            <p id="statusDesc" class="text-[10px] text-slate-400 mt-6 leading-relaxed italic">يتم مراجعة هويتك الآن من قبل سفيان.<br>سيفتح الرادار تلقائياً فور تفعيل حسابك.</p>
+            <button onclick="window.location.reload()" class="mt-10 text-[9px] text-red-500 font-black border-b border-red-500/30 pb-1">محاولة دخول مجدداً</button>
         </div>
     </div>
 
     <script>
-        const scriptURL = 'https://script.google.com/macros/s/AKfycbzBTRYdugjCeYZoeaHng4JPIq0vBu-b3VHNuEX9ya0H1C022PDangGTOR9I-v4i83rDoA/exec';
+        // رابط السكريبت الموحد V10.3
+        const scriptURL = 'https://script.google.com/macros/s/AKfycbzf4_VqfC5fBq0uK2Hl7S-qR-XlS6Z0T5F8H4-X-Z/exec';
+        let driverLat = 0, driverLng = 0;
 
-        // إخفاء التحميل الأولي
         setTimeout(() => {
             document.getElementById('loader').classList.add('hidden');
             document.getElementById('authUI').classList.remove('hidden');
         }, 1200);
+
+        // جلب الموقع فوراً استعداداً للتسجيل
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(pos => {
+                driverLat = pos.coords.latitude;
+                driverLng = pos.coords.longitude;
+            });
+        }
 
         const loginForm = document.getElementById('loginForm');
         
@@ -89,10 +99,10 @@
             const btnText = document.getElementById('btnText');
             const regFields = document.getElementById('regFields');
 
-            btnText.innerText = "جاري الاتصال بالسيرفر...";
+            btnText.innerText = "جاري الاتصال بالرادار...";
             
             try {
-                // فحص حالة السائق من الشيت
+                // فحص حالة السائق (Login Check)
                 const response = await fetch(`${scriptURL}?action=login_check&type=Driver&id=${phone}`);
                 const result = await response.json();
 
@@ -102,32 +112,43 @@
                     window.location.href = "Driver.html";
                 } 
                 else if (result.status === "banned") {
-                    showStatus("هوية محظورة 🚫", "تم حظر وصولك للمنظومة لمخالفة القوانين.", "🛑");
+                    showStatus("هوية محظورة 🛑", "نعتذر كابتن، تم حظر وصولك للمنظومة مؤقتاً.", "🚫");
                 } 
-                else if (result.status === "pending") {
-                    showStatus("قيد المعالجة ⏳", "أهلاً كابتن، حسابك بانتظار تفعيل سفيان.", "🛰️");
+                else if (result.status === "pending" || result.status === "waiting") {
+                    showStatus("قيد المراجعة ⏳", "أهلاً كابتن، هويتك وصلت لسفيان وبانتظار التفعيل.", "🛰️");
                 } 
                 else {
-                    // الرقم غير موجود -> تسجيل جديد
+                    // السائق غير موجود -> عرض حقول التسجيل
                     if (!regFields.classList.contains('hidden')) {
-                        // إرسال طلب تسجيل جديد
-                        await fetch(scriptURL, {
+                        if (!name) { alert("يرجى كتابة الاسم الثلاثي"); return; }
+                        
+                        btnText.innerText = "جاري تسجيل الهوية...";
+                        
+                        // إرسال طلب تسجيل جديد مع الإحداثيات الأولية
+                        const regRes = await fetch(scriptURL, {
                             method: 'POST',
                             body: JSON.stringify({
                                 action: "register",
                                 type: "Driver",
                                 phone: phone,
-                                name: name
+                                name: name,
+                                lat: driverLat,
+                                lng: driverLng
                             })
                         });
-                        showStatus("تم إرسال الطلب 🚀", "سيتم تفعيل حسابك فور مراجعته من الإدارة.", "✅");
+                        const regData = await regRes.json();
+                        
+                        if(regData.status === "success" || regData.status === "exists") {
+                            showStatus("تم البث بنجاح 🚀", "سيتم تفعيل الرادار الخاص بك فور مراجعة سفيان لبياناتك.", "✅");
+                        }
                     } else {
+                        // إظهار حقل الاسم في المحاولة الأولى إذا لم يكن مسجلاً
                         regFields.classList.remove('hidden');
-                        btnText.innerText = "تأكيد طلب الانضمام";
+                        btnText.innerText = "تأكيد الانضمام للحوت";
                     }
                 }
             } catch (err) {
-                alert("خطأ في الشبكة، يرجى المحاولة لاحقاً.");
+                alert("⚠️ خطأ في الاتصال، تأكد من جودة الإنترنت.");
                 btnText.innerText = "فحص حالة الهوية";
             }
         });
