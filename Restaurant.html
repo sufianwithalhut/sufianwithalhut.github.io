@@ -43,7 +43,7 @@
     <main class="max-w-xl mx-auto glass-card p-6 rounded-[2.5rem] shadow-2xl relative border-t-4 border-emerald-500">
         <div class="text-center mb-6">
             <h2 class="text-xl font-black italic">إرسال سريع للرادار 🚀</h2>
-            <p id="gpsStatus" class="text-[9px] text-emerald-500 font-bold uppercase mt-1 italic tracking-widest animate-pulse">جاري تحديد موقعك 📍</p>
+            <p id="gpsStatus" class="text-[9px] text-emerald-500 font-bold uppercase mt-1 italic tracking-widest animate-pulse">جاري المزامنة مع القمر الصناعي 🛰️</p>
         </div>
 
         <div class="flex gap-2 mb-6 bg-white/5 p-1 rounded-2xl">
@@ -96,24 +96,24 @@
     </main>
 
     <script>
-        // الرابط الجديد الخاص بك
         const scriptURL = 'https://script.google.com/macros/s/AKfycbzf4_VqfC5fBq0uK2Hl7S-qR-XlS6Z0T5F8H4-X-Z/exec'; 
         let userLat, userLng;
+        const resPhone = localStorage.getItem('whale_res_phone');
 
         window.onload = () => {
             const savedName = localStorage.getItem('whale_res_name');
-            const savedPhone = localStorage.getItem('whale_res_phone');
-            if (!savedPhone) window.location.href = "Restaurant_login.html";
+            if (!resPhone) window.location.href = "Restaurant_login.html";
             if (savedName) document.getElementById('displayResName').innerText = savedName;
             
+            // محاولة جلب الموقع الحالي ولكن الأهم هو إرسال رقم الهاتف للبحث عن الموقع المحفوظ
             navigator.geolocation.getCurrentPosition(pos => {
                 userLat = pos.coords.latitude;
                 userLng = pos.coords.longitude;
-                document.getElementById('gpsStatus').innerText = "تم تحديد موقعك بدقة 📍";
+                document.getElementById('gpsStatus').innerText = "تم تأكيد الموقع الحالي 📍";
                 document.getElementById('gpsStatus').classList.remove('animate-pulse');
             }, err => {
-                document.getElementById('gpsStatus').innerText = "يرجى تفعيل الموقع ⚠️";
-                document.getElementById('gpsStatus').style.color = "#ef4444";
+                document.getElementById('gpsStatus').innerText = "سيتم استخدام الموقع المحفوظ للمطعم 🛰️";
+                document.getElementById('gpsStatus').style.color = "#fbbf24";
             });
         };
 
@@ -140,15 +140,15 @@
             loader.classList.add('active');
 
             const payload = {
-                action: "restaurant_send_order", // تم تغيير الأكشن ليتناسب مع السكريبت المطور
+                action: "restaurant_send_order",
+                restPhone: resPhone, // إضافة رقم الهاتف لضمان مطابقة الإحداثيات المحفوظة
                 restName: document.getElementById('displayResName').innerText,
                 type: document.getElementById('manualSection').classList.contains('hidden') ? "صورة وصل" : "يدوي",
                 area: document.getElementById('locationSelect').value,
                 details: "هاتف: " + document.getElementById('customerPhone').value + " | ملاحظات: " + document.getElementById('details').value,
-                lat: userLat || 35.468, // افتراضي كركوك إذا فشل الـ GPS
-                lng: userLng || 44.392,
-                restLocation: "كركوك", 
-                fee: 500, // يمكن تعديله لاحقاً
+                lat: userLat || 0, 
+                lng: userLng || 0,
+                fee: 500,
                 image: "" 
             };
 
@@ -174,17 +174,13 @@
                 const result = await response.json();
                 
                 if (result.status === "success") {
-                    let msg = `✅ تم بث الطلب بنجاح!\nرقم الطلب: ${result.id}`;
-                    if(result.assigned) msg += `\n🚀 تم تعيين أقرب كابتن متاح تلقائياً.`;
-                    else msg += `\n⏳ بانتظار توفر كابتن قريب.`;
-                    
-                    alert(msg);
+                    alert(`✅ تم بث الطلب بنجاح!\nرقم الطلب: ${result.id}\n${result.assigned ? '🚀 تم تعيين كابتن فوراً.' : '⏳ جاري البحث عن كابتن.'}`);
                     location.reload();
                 } else {
                     alert("⚠️ خطأ في البث: " + result.msg);
                 }
             } catch (error) {
-                alert("❌ فشل الاتصال بسيرفر منظومة الحوت.");
+                alert("❌ فشل الاتصال بالسيرفر.");
             } finally {
                 document.getElementById('loader').classList.remove('active');
             }
