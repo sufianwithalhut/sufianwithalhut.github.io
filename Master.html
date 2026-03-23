@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>مركز قيادة الحوت | Al-Hut Command Center PRO</title>
+    
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        :root { --sidebar-width: 280px; --primary-dark: #0f172a; --accent-orange: #f97316; --bg-light: #f8fafc; }
+        body { background-color: var(--bg-light); font-family: 'Cairo', sans-serif; margin: 0; color: var(--primary-dark); overflow-x: hidden; }
+        #authOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%); z-index: 10000; display: flex; align-items: center; justify-content: center; }
+        .auth-card { background: white; border-radius: 40px; padding: 50px; width: 90%; max-width: 420px; box-shadow: 0 25px 60px rgba(0,0,0,0.4); text-align: center; }
+        .sidebar { width: var(--sidebar-width); background: var(--primary-dark); height: 100vh; position: fixed; right: 0; top: 0; color: white; padding: 30px 20px; z-index: 1001; transition: 0.4s; box-shadow: -10px 0 30px rgba(0,0,0,0.1); }
+        .main-content { margin-right: var(--sidebar-width); padding: 40px; min-height: 100vh; transition: 0.4s; }
+        .nav-item { display: flex; align-items: center; gap: 15px; padding: 16px 22px; color: #94a3b8; text-decoration: none; border-radius: 20px; margin-bottom: 10px; cursor: pointer; transition: 0.3s; font-weight: 600; }
+        .nav-item.active { background: var(--accent-orange); color: white; box-shadow: 0 10px 20px rgba(249, 115, 22, 0.25); }
+        .stat-card { background: white; border-radius: 30px; padding: 25px; border: 1px solid rgba(0,0,0,0.02); height: 100%; transition: 0.3s; }
+        #adminMap { height: 500px; width: 100%; border-radius: 40px; border: 10px solid white; box-shadow: 0 20px 50px rgba(0,0,0,0.08); background: #e5e7eb; }
+        .table-card { background: white; border-radius: 35px; padding: 30px; box-shadow: 0 10px 30px rgba(0,0,0,0.02); }
+        .btn-action { border-radius: 12px; padding: 8px 12px; font-weight: 700; border: none; display: inline-flex; align-items: center; gap: 6px; }
+        .btn-whatsapp { background: #25D366; color: white; }
+        .status-badge { padding: 6px 12px; border-radius: 10px; font-size: 0.75rem; font-weight: 800; }
+        #actionLoader { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15,23,42,0.8); z-index: 11000; display: none; align-items: center; justify-content: center; color: white; backdrop-filter: blur(5px); }
+        @media (max-width: 1100px) { .sidebar { transform: translateX(100%); } .main-content { margin-right: 0; } .sidebar.show { transform: translateX(0); } }
+    </style>
+</head>
+<body>
+
+<div id="actionLoader">
+    <div class="text-center"><div class="spinner-border text-warning mb-3"></div><h4 class="fw-bold">جاري تحديث البيانات...</h4></div>
+</div>
+
+<div id="authOverlay">
+    <div class="auth-card">
+        <h3 class="fw-black">نظام الحوت</h3>
+        <p class="text-muted small fw-bold">أدخل رمز الدخول</p>
+        <input type="password" id="masterPass" class="form-control form-control-lg text-center mb-4 rounded-4" placeholder="••••••">
+        <button class="btn btn-dark w-100 py-3 fw-black rounded-4" onclick="checkAuth()">دخول</button>
+    </div>
+</div>
+
+<div class="d-none" id="mainDashboard">
+    <aside class="sidebar">
+        <div class="d-flex align-items-center gap-3 mb-5 px-3">
+            <div class="bg-warning p-2 rounded-3"><i data-lucide="anchor" color="#0f172a"></i></div>
+            <h4 class="m-0 fw-black">AL-HUT PRO</h4>
+        </div>
+        <nav>
+            <div class="nav-item active" onclick="showTab(event, 'live')"><i data-lucide="activity"></i> <span>الخريطة الحية</span></div>
+            <div class="nav-item" onclick="showTab(event, 'orders')"><i data-lucide="shopping-cart"></i> <span>الطلبات</span></div>
+            <div class="nav-item" onclick="showTab(event, 'restaurants')"><i data-lucide="store"></i> <span>المطاعم</span></div>
+            <div class="nav-item" onclick="showTab(event, 'drivers')"><i data-lucide="truck"></i> <span>الكباتن</span></div>
+        </nav>
+    </aside>
+
+    <main class="main-content">
+        <header class="d-flex justify-content-between align-items-center mb-5">
+            <h1 class="fw-black m-0">لوحة التحكم</h1>
+            <div id="liveTime" class="bg-white px-4 py-2 rounded-4 shadow-sm fw-black border">00:00:00</div>
+        </header>
+
+        <div id="tab-live" class="admin-tab">
+            <div class="row g-4 mb-4">
+                <div class="col-md-4"><div class="stat-card p-4"><h6>الطلبات</h6><h2 id="count-orders">0</h2></div></div>
+                <div class="col-md-4"><div class="stat-card p-4"><h6>كابتن متصل</h6><h2 id="count-drivers" class="text-success">0</h2></div></div>
+                <div class="col-md-4"><div class="stat-card p-4"><h6>المطاعم</h6><h2 id="count-res" class="text-warning">0</h2></div></div>
+            </div>
+            <div id="adminMap"></div>
+        </div>
+
+        <div id="tab-orders" class="admin-tab d-none">
+            <div class="table-card table-responsive">
+                <table class="table align-middle">
+                    <thead><tr><th>ID</th><th>المطعم</th><th>الحالة</th><th>تواصل</th><th>إجراء</th></tr></thead>
+                    <tbody id="ordersTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="tab-restaurants" class="admin-tab d-none"><div class="row g-4" id="resListContainer"></div></div>
+        <div id="tab-drivers" class="admin-tab d-none"><div class="row g-4" id="driverListContainer"></div></div>
+    </main>
+</div>
+
+<script async defer src="https://maps.googleapis.com/maps/api/js?callback=initMasterMap"></script>
+<script>
+    lucide.createIcons();
+    // تم استبدال الرابط بالرابط الصحيح الذي ظهر في صورك
+    const API_URL = "https://script.google.com/macros/s/AKfycbwu6JbaHhvoKidHcbZP5HiYisWuBNl07OltajXKSAdEi3JWEDHwadOMybszR2CeP_WPsQ/exec";
+    const TOKEN = "HUT_SECURE_99";
+    
+    let adminMap;
+    let driverMarkers = {};
+
+    function checkAuth() {
+        if(document.getElementById('masterPass').value === "223344") {
+            document.getElementById('authOverlay').style.display = 'none';
+            document.getElementById('mainDashboard').classList.remove('d-none');
+            startClock(); refreshData(); setInterval(refreshData, 15000);
+        } else { alert("رمز خاطئ"); }
+    }
+
+    function showTab(e, name) {
+        document.querySelectorAll('.admin-tab').forEach(t => t.classList.add('d-none'));
+        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+        document.getElementById('tab-' + name).classList.remove('d-none');
+        e.currentTarget.classList.add('active');
+        lucide.createIcons();
+    }
+
+    function initMasterMap() {
+        adminMap = new google.maps.Map(document.getElementById("adminMap"), {
+            zoom: 13, center: { lat: 35.468, lng: 44.392 },
+            styles: [{ "featureType": "poi", "stylers": [{ "visibility": "off" }] }]
+        });
+    }
+
+    function startClock() { setInterval(() => { document.getElementById('liveTime').innerText = new Date().toLocaleTimeString('ar-EG'); }, 1000); }
+
+    function refreshData() {
+        const script = document.createElement('script');
+        script.src = `${API_URL}?action=getGlobalData&callback=renderData&ts=${Date.now()}`;
+        document.body.appendChild(script);
+        script.onload = () => script.remove();
+    }
+
+    window.renderData = function(data) {
+        // تحديث الأرقام بناءً على طول المصفوفات (مع حذف الهيدر)
+        document.getElementById('count-orders').innerText = data.orders.length - 1;
+        document.getElementById('count-drivers').innerText = data.drivers.filter(d => d[4] === 'active').length;
+        document.getElementById('count-res').innerText = data.restaurants.filter(r => r[4] === 'active').length;
+
+        // 1. معالجة الطلبات (الأعمدة صحيحة بناءً على صورك)
+        let oHtml = '';
+        data.orders.slice(1).reverse().slice(0, 15).forEach(o => {
+            let status = o[5]; // في صورتك الـ Status هو العمود 5
+            let stColor = status === 'accepted' ? '#dcfce7; color: #15803d' : '#fff7ed; color: #c2410c';
+            
+            oHtml += `<tr>
+                <td><small>#${o[0]}</small></td>
+                <td><b>${o[1]}</b></td>
+                <td><span class="status-badge" style="background:${stColor}">${status}</span></td>
+                <td><a href="https://wa.me/${o[8]}" target="_blank" class="btn-action btn-whatsapp"><i data-lucide="message-circle" size="14"></i></a></td>
+                <td><button onclick="changeSystemStatus('ORDER', '${o[0]}', 'completed')" class="btn-action bg-dark text-white">إنجاز</button></td>
+            </tr>`;
+        });
+        document.getElementById('ordersTableBody').innerHTML = oHtml;
+
+        // 2. معالجة المطاعم والكباتن
+        renderGrid('resListContainer', data.restaurants, 'store', 'RESTAURANT');
+        renderGrid('driverListContainer', data.drivers, 'user', 'DRIVER');
+        
+        // 3. تحديث الخريطة
+        updateLiveMap(data.drivers.slice(1));
+        lucide.createIcons();
+    };
+
+    function renderGrid(containerId, list, icon, type) {
+        let html = '';
+        list.slice(1).forEach(item => {
+            let isAct = item[4] === 'active';
+            html += `<div class="col-md-4"><div class="stat-card p-3">
+                <div class="d-flex justify-content-between">
+                    <b>${item[1]}</b>
+                    <span class="badge ${isAct?'bg-success':'bg-danger'}">${item[4]}</span>
+                </div>
+                <div class="mt-3 d-flex gap-2">
+                    <button onclick="changeSystemStatus('${type}', '${item[2]}', '${isAct?'inactive':'active'}')" class="btn btn-sm ${isAct?'btn-outline-danger':'btn-success'} w-100">
+                        ${isAct?'إيقاف':'تفعيل'}
+                    </button>
+                </div>
+            </div></div>`;
+        });
+        document.getElementById(containerId).innerHTML = html;
+    }
+
+    function changeSystemStatus(type, id, status) {
+        document.getElementById('actionLoader').style.display = 'flex';
+        const script = document.createElement('script');
+        script.src = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${id}&status=${status}&token=${TOKEN}&callback=actionDone`;
+        document.body.appendChild(script);
+    }
+
+    window.actionDone = function() {
+        document.getElementById('actionLoader').style.display = 'none';
+        refreshData();
+    };
+
+    function updateLiveMap(drivers) {
+        drivers.forEach(d => {
+            let lat = parseFloat(d[5]); let lng = parseFloat(d[6]);
+            if(lat && lng) {
+                if(driverMarkers[d[2]]) {
+                    driverMarkers[d[2]].setPosition({lat, lng});
+                } else {
+                    driverMarkers[d[2]] = new google.maps.Marker({
+                        position: {lat, lng}, map: adminMap,
+                        icon: { path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW, scale: 5, fillColor: '#10b981', fillOpacity: 1, strokeWeight: 2 },
+                        title: d[1]
+                    });
+                }
+            }
+        });
+    }
+</script>
+</body>
+</html>
