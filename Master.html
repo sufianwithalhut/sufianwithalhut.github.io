@@ -100,7 +100,6 @@
         }
         .menu-toggle-btn:hover { background: #f1f5f9; }
 
-        /* خلفية شفافة عند فتح القائمة في الموبايل */
         .sidebar-overlay {
             position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1002;
             display: none; backdrop-filter: blur(3px);
@@ -127,7 +126,6 @@
 </div>
 
 <div class="d-none" id="mainDashboard">
-    
     <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
 
     <aside class="sidebar" id="sidebar">
@@ -189,7 +187,9 @@
 
 <script>
     lucide.createIcons();
-    const API_URL = "https://script.google.com/macros/s/AKfycbwIELSbF-1Fioo5mTwhsJw4jZ3MRcAgOY5G43ma1vDu6OkOHvItLH3HOOCSZAguWd0Ssw/exec";
+    // الرابط المحدث والتوكن
+    const API_URL = "https://script.google.com/macros/s/AKfycbznHSOuvIqqhFU5g1PiI7T-PU7gAXpzmV9NAHqb-dkg9HUCA2Nb-mVgLJYznf6CCNhAww/exec";
+    const API_TOKEN = "HUT_SECURE_99";
     
     function checkAuth() {
         const pass = document.getElementById('masterPass').value;
@@ -202,7 +202,6 @@
 
     function startClock() { setInterval(() => { document.getElementById('liveTime').innerText = new Date().toLocaleTimeString('ar-EG'); }, 1000); }
 
-    // دالة إظهار وإخفاء القائمة الجانبية للموبايل
     function toggleSidebar() {
         document.getElementById('sidebar').classList.toggle('show');
         document.getElementById('sidebarOverlay').classList.toggle('show');
@@ -215,18 +214,26 @@
     }
 
     window.renderData = function(data) {
-        document.getElementById('count-orders').innerText = data.orders.length - 1;
+        document.getElementById('count-orders').innerText = data.orders.length > 1 ? data.orders.length - 1 : 0;
         document.getElementById('count-drivers').innerText = data.drivers.filter(d => d[4] === 'active').length;
         document.getElementById('count-res').innerText = data.restaurants.filter(r => r[4] === 'active').length;
 
         let smartHtml = '';
-        const activeOrders = data.orders.slice(1).filter(o => o[6] !== 'completed' && o[6] !== 'مكتمل');
+        // حسب جداولك: العمود F (اندكس 5) هو الحالة
+        const activeOrders = data.orders.slice(1).filter(o => o[5] !== 'completed' && o[5] !== 'مكتمل');
         
         activeOrders.forEach(o => {
-            const hasDriver = o[7] ? true : false;
-            const isPickedUp = (o[6] === 'picked_up' || o[6] === 'في الطريق');
+            const orderId = o[0];
+            const restName = o[1];
+            const details = o[3];
+            const status = o[5];
+            const driverPhone = o[6]; // هاتف السائق العمود G
+            const orderTimeStr = o[7]; // الوقت العمود H
             
-            const orderTime = o[0] ? new Date(o[0]) : new Date();
+            const hasDriver = (driverPhone && driverPhone.toString().trim() !== "" && driverPhone !== "pending_driver");
+            const isPickedUp = (status === 'picked_up' || status === 'في الطريق');
+            
+            const orderTime = orderTimeStr ? new Date(orderTimeStr) : new Date();
             const diffMins = Math.floor((new Date() - orderTime) / 60000);
             const isDelayed = diffMins > 30; 
 
@@ -249,26 +256,24 @@
                     
                     <div class="d-flex justify-content-between align-items-center mb-4">
                         <div>
-                            <h5 class="fw-black m-0 mb-1">طلب #${o[1]}</h5>
+                            <h5 class="fw-black m-0 mb-1">طلب #${orderId}</h5>
                             <small class="fw-bold ${hasDriver ? 'text-dark' : 'text-danger'}">${statusDesc}</small>
                         </div>
-                        ${hasDriver ? `<button class="btn btn-dark rounded-pill px-3 shadow-sm d-flex align-items-center gap-2" onclick="trackDriver('${o[1]}')"><i data-lucide="map-pin" size="16"></i> تتبع الكابتن</button>` : `<span class="badge bg-danger p-2">جاري البحث</span>`}
+                        ${hasDriver ? `<button class="btn btn-dark rounded-pill px-3 shadow-sm d-flex align-items-center gap-2" onclick="trackDriver('${orderId}')"><i data-lucide="map-pin" size="16"></i> تتبع الكابتن</button>` : `<span class="badge bg-danger p-2">جاري البحث</span>`}
                     </div>
 
                     <div class="d-flex flex-column gap-1">
                         <div class="info-row">
-                            <div class="d-flex align-items-center gap-2"><i data-lucide="user" class="text-primary" size="18"></i> <span class="fw-bold">الزبون:</span> ${o[3] || 'غير متوفر'}</div>
-                            <button class="btn-call-mini text-primary" onclick="window.open('tel:${o[4] || ''}')" title="اتصال بالزبون"><i data-lucide="phone" size="14"></i></button>
+                            <div class="d-flex align-items-center gap-2"><i data-lucide="info" class="text-primary" size="18"></i> <span class="fw-bold">التفاصيل:</span> ${details || 'لا توجد تفاصيل'}</div>
                         </div>
                         
                         <div class="info-row">
-                            <div class="d-flex align-items-center gap-2"><i data-lucide="store" class="text-warning" size="18"></i> <span class="fw-bold">المطعم:</span> ${o[2] || 'غير متوفر'}</div>
-                            <button class="btn-call-mini text-warning" onclick="window.open('tel:${o[5] || ''}')" title="اتصال بالمطعم"><i data-lucide="phone" size="14"></i></button>
+                            <div class="d-flex align-items-center gap-2"><i data-lucide="store" class="text-warning" size="18"></i> <span class="fw-bold">المطعم:</span> ${restName || 'غير متوفر'}</div>
                         </div>
 
                         <div class="info-row">
-                            <div class="d-flex align-items-center gap-2"><i data-lucide="bike" class="text-success" size="18"></i> <span class="fw-bold">الكابتن:</span> ${o[7] || '<span class="text-danger">لا يوجد</span>'}</div>
-                            ${hasDriver ? `<button class="btn-call-mini text-success" onclick="window.open('tel:${o[8] || ''}')" title="اتصال بالكابتن"><i data-lucide="phone" size="14"></i></button>` : ''}
+                            <div class="d-flex align-items-center gap-2"><i data-lucide="bike" class="text-success" size="18"></i> <span class="fw-bold">هاتف السائق:</span> <span dir="ltr">${driverPhone || '<span class="text-danger">لا يوجد</span>'}</span></div>
+                            ${hasDriver ? `<button class="btn-call-mini text-success" onclick="window.open('tel:${driverPhone}')" title="اتصال بالكابتن"><i data-lucide="phone" size="14"></i></button>` : ''}
                         </div>
                     </div>
                 </div>
@@ -276,15 +281,18 @@
         });
         document.getElementById('smartOrdersContainer').innerHTML = smartHtml || '<div class="col-12 text-center p-4 fw-bold text-success">الرادار نظيف، لا توجد طلبات معلقة حالياً.</div>';
 
-        renderControlCards('resListContainer', data.restaurants, 'store', 'RESTAURANT');
-        renderControlCards('driverListContainer', data.drivers, 'user', 'DRIVER');
+        // رقم الهاتف في العمود C (اندكس 2)
+        renderControlCards('resListContainer', data.restaurants, 'store', 'RESTAURANT', 2);
+        renderControlCards('driverListContainer', data.drivers, 'user', 'DRIVER', 2);
         
         lucide.createIcons();
     };
 
-    function renderControlCards(containerId, list, icon, type) {
+    function renderControlCards(containerId, list, icon, type, phoneIndex) {
         let html = '';
         list.slice(1).forEach(item => {
+            const name = item[1];
+            const phone = item[phoneIndex];
             const isActive = item[4] === 'active';
             html += `
             <div class="col-md-6 col-xl-4">
@@ -292,18 +300,18 @@
                     <div class="d-flex align-items-center gap-3 mb-4">
                         <div class="bg-light p-3 rounded-4"><i data-lucide="${icon}" size="24" class="text-dark"></i></div>
                         <div class="flex-grow-1">
-                            <h6 class="m-0 fw-black mb-1">${item[1]}</h6>
+                            <h6 class="m-0 fw-black mb-1">${name}</h6>
                             <span class="badge ${isActive ? 'bg-success' : 'bg-secondary'} px-2 py-1 rounded-2">${isActive ? 'نشط' : 'غير نشط'}</span>
                         </div>
                     </div>
                     
                     <div class="d-flex justify-content-between align-items-center pt-3 border-top">
                         <div class="d-flex gap-2">
-                            <button class="sov-btn sov-accept" onclick="adminAction('ACCEPT', '${type}', '${item[1]}')" title="قبول انضمام / تفعيل"><i data-lucide="check" size="20"></i></button>
-                            <button class="sov-btn sov-pause" onclick="adminAction('PAUSE', '${type}', '${item[1]}')" title="إيقاف مؤقت / تجميد"><i data-lucide="pause" size="20"></i></button>
-                            <button class="sov-btn sov-delete" onclick="adminAction('DELETE', '${type}', '${item[1]}')" title="حذف نهائي"><i data-lucide="trash-2" size="20"></i></button>
+                            <button class="sov-btn sov-accept" onclick="adminAction('ACCEPT', '${type}', '${type === 'ORDER' ? item[0] : phone}')" title="قبول انضمام / تفعيل"><i data-lucide="check" size="20"></i></button>
+                            <button class="sov-btn sov-pause" onclick="adminAction('PAUSE', '${type}', '${type === 'ORDER' ? item[0] : phone}')" title="إيقاف مؤقت / تجميد"><i data-lucide="pause" size="20"></i></button>
+                            <button class="sov-btn sov-delete" onclick="adminAction('DELETE', '${type}', '${type === 'ORDER' ? item[0] : phone}')" title="حذف نهائي"><i data-lucide="trash-2" size="20"></i></button>
                         </div>
-                        <button class="sov-btn sov-call shadow-sm" onclick="window.open('tel:${item[3]}')" title="اتصال سريع"><i data-lucide="phone-call" size="20"></i></button>
+                        <button class="sov-btn sov-call shadow-sm" onclick="window.open('tel:${phone}')" title="اتصال سريع"><i data-lucide="phone-call" size="20"></i></button>
                     </div>
                 </div>
             </div>`;
@@ -311,12 +319,27 @@
         document.getElementById(containerId).innerHTML = html;
     }
 
-    function adminAction(cmd, type, name) {
-        let actionName = cmd === 'ACCEPT' ? 'قبول وتفعيل' : cmd === 'PAUSE' ? 'إيقاف مؤقت لـ' : 'حذف نهائي لـ';
-        if(confirm(`⚠️ سيادة المدير، هل أنت متأكد من (${actionName}) [${name}]؟`)) {
-            alert(`تم إرسال أمر (${actionName}) بنجاح.`);
+    function adminAction(cmd, type, id) {
+        const statusMap = { 'ACCEPT': 'active', 'PAUSE': 'inactive', 'DELETE': 'deleted' };
+        const newStatus = statusMap[cmd];
+        const actionText = cmd === 'ACCEPT' ? 'تفعيل' : cmd === 'PAUSE' ? 'إيقاف' : 'حذف';
+
+        if(confirm(`⚠️ سيادة المدير، هل أنت متأكد من (${actionText}) لـ [${id}]؟`)) {
+            const url = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${id}&status=${newStatus}&token=${API_TOKEN}`;
+            const script = document.createElement('script');
+            script.src = `${url}&callback=afterAdminAction`;
+            document.body.appendChild(script);
         }
     }
+
+    window.afterAdminAction = function(response) {
+        if(response.success) {
+            alert("✅ تم تنفيذ الأمر بنجاح في قاعدة البيانات.");
+            refreshData();
+        } else {
+            alert("❌ فشل التحديث: " + (response.msg || "خطأ غير معروف"));
+        }
+    };
 
     function trackDriver(orderId) { 
         alert(`📍 جاري فتح رادار التتبع المباشر للسائق المرتبط بالطلب رقم #${orderId}...`); 
@@ -329,7 +352,6 @@
         e.currentTarget.classList.add('active');
         lucide.createIcons();
 
-        // إغلاق القائمة الجانبية تلقائياً في الموبايل بعد اختيار أي تبويب
         if(window.innerWidth <= 1100) {
             document.getElementById('sidebar').classList.remove('show');
             document.getElementById('sidebarOverlay').classList.remove('show');
@@ -342,9 +364,4 @@
     function initMap() {
         new google.maps.Map(document.getElementById("adminMap"), {
             zoom: 13, center: { lat: 35.468, lng: 44.392 },
-            styles: [{ "featureType": "all", "elementType": "labels.text.fill", "stylers": [{"color": "#ffffff"}] }] 
-        });
-    }
-</script>
-</body>
-</html>
+            styles: [{ "featu
