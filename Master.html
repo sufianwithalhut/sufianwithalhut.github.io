@@ -129,7 +129,7 @@
             .sidebar.show { transform: translateX(0); box-shadow: -10px 0 50px rgba(0,0,0,0.5); }
             .menu-toggle-btn { display: flex; align-items: center; justify-content: center; }
             .sidebar-overlay.show { display: block; }
-            #adminMap { height: 350px; }
+            #adminMap { height: 300px; }
         }
     </style>
 </head>
@@ -207,21 +207,8 @@
         </div>
 
         <div id="tab-orders" class="admin-tab d-none">
-            <div class="stat-widget table-responsive">
-                <table class="table align-middle">
-                    <thead>
-                        <tr style="color: var(--primary-blue);">
-                            <th>ID الطلب</th>
-                            <th>المطعم</th>
-                            <th>هاتف السائق</th>
-                            <th>الحالة</th>
-                        </tr>
-                    </thead>
-                    <tbody id="ordersTableBody"></tbody>
-                </table>
-            </div>
+            <div class="stat-widget table-responsive"><table class="table align-middle"><thead><tr><th>ID</th><th>المطعم</th><th>السائق</th><th>الحالة</th></tr></thead><tbody id="ordersTableBody"></tbody></table></div>
         </div>
-
         <div id="tab-restaurants" class="admin-tab d-none"><div class="row g-4" id="resListContainer"></div></div>
         <div id="tab-drivers" class="admin-tab d-none"><div class="row g-4" id="driverListContainer"></div></div>
     </main>
@@ -235,12 +222,11 @@
     
     function checkAuth() {
         const pass = document.getElementById('masterPass').value;
-        if(pass === "223344") {
+        if(pass === "112233") {
             document.getElementById('authOverlay').style.display = 'none';
             document.getElementById('mainDashboard').classList.remove('d-none');
             startClock(); refreshData(); setInterval(refreshData, 15000);
             
-            // تهيئة الخريطة الحرارية بعد الدخول
             if(typeof google !== 'undefined') initMap();
         } else { alert("❌ رمز المرور غير صحيح"); }
     }
@@ -263,7 +249,7 @@
         document.getElementById('count-drivers').innerText = data.drivers.filter(d => d[4] === 'active').length;
         document.getElementById('count-res').innerText = data.restaurants.filter(r => r[4] === 'active').length;
 
-        // --- 1. بناء الرادار الميداني ---
+        // --- 1. بناء الرادار الذكي للطلبات الميدانية ---
         let smartHtml = '';
         const activeOrders = data.orders.slice(1).filter(o => o[5] !== 'completed' && o[5] !== 'مكتمل' && o[5] !== 'deleted');
         
@@ -272,20 +258,22 @@
             const hasDriver = (driverPhone && driverPhone.toString().trim() !== "" && driverPhone !== "pending_driver");
             const isPickedUp = (status === 'picked_up' || status === 'في الطريق');
             
-            // استخراج اسم السائق وهاتف المطعم وهاتف الزبون لزر الاتصال السريع
-            let driverName = 'جاري البحث...';
-            const driverInfo = data.drivers.find(d => String(d[2]) === String(driverPhone));
-            if(driverInfo) driverName = driverInfo[1];
-
+            // استخراج اسم السائق وهاتف المطعم
+            let driverName = 'غير محدد';
             let restPhone = '';
+            
+            if(hasDriver) {
+                const driverInfo = data.drivers.find(d => String(d[2]) === String(driverPhone));
+                if(driverInfo) driverName = driverInfo[1];
+            }
+            
             const restInfo = data.restaurants.find(r => r[1] === restName);
             if(restInfo) restPhone = restInfo[2];
 
-            // استخراج رقم هاتف الزبون من التفاصيل إن وجد (07...)
-            let custPhoneMatch = details ? details.match(/(07\d{8,9})/) : null;
+            // استخراج هاتف الزبون من التفاصيل
+            let custPhoneMatch = details ? details.match(/(07[0-9]{8,9})/) : null;
             let custPhone = custPhoneMatch ? custPhoneMatch[0] : '';
-            // عرض تفاصيل مختصرة
-            let shortDetails = details ? (details.length > 40 ? details.substring(0, 40) + '...' : details) : 'لا توجد تفاصيل';
+            let shortDetails = details ? (details.length > 35 ? details.substring(0, 35) + '...' : details) : 'لا توجد تفاصيل';
 
             const orderTime = orderTimeStr ? new Date(orderTimeStr) : new Date();
             const diffMins = Math.floor((new Date() - orderTime) / 60000);
@@ -309,7 +297,7 @@
                         <div class="info-row">
                             <div class="d-flex align-items-center gap-2"><i data-lucide="user" class="text-primary" size="18"></i> <span class="text-muted">الزبون:</span></div> 
                             <div class="d-flex align-items-center gap-3">
-                                <span class="text-dark small" title="${details}">${shortDetails}</span>
+                                <span class="text-dark small text-truncate" style="max-width: 120px;" title="${details}">${shortDetails}</span>
                                 ${custPhone ? `<button class="btn-call-mini call-primary" onclick="window.open('tel:${custPhone}')"><i data-lucide="phone" size="14"></i></button>` : ''}
                             </div>
                         </div>
@@ -323,7 +311,7 @@
                         <div class="info-row">
                             <div class="d-flex align-items-center gap-2"><i data-lucide="bike" class="text-success" size="18"></i> <span class="text-muted">الكابتن:</span></div> 
                             <div class="d-flex align-items-center gap-3">
-                                <span class="text-dark ${!hasDriver ? 'text-danger' : ''}">${hasDriver ? driverName : 'لا يوجد'}</span>
+                                <span class="text-dark fw-bold ${!hasDriver ? 'text-danger' : ''}">${hasDriver ? driverName + ' | ' + driverPhone : 'لا يوجد'}</span>
                                 ${hasDriver ? `<button class="btn-call-mini call-success text-success" onclick="window.open('tel:${driverPhone}')"><i data-lucide="phone" size="14"></i></button>` : ''}
                             </div>
                         </div>
@@ -333,24 +321,30 @@
         });
         document.getElementById('smartOrdersContainer').innerHTML = smartHtml || '<div class="col-12 text-center p-4 fw-bold text-success">الرادار نظيف، لا توجد طلبات معلقة حالياً.</div>';
 
-        // --- 2. تحديث الخريطة الحرارية ونقاط السائقين ---
+        // --- 2. تحديث بيانات الخريطة الحرارية (Heatmap) ---
         if (map && heatmap) {
             const heatMapPoints = [];
             
-            // إضافة نقاط المطاعم النشطة للخريطة الحرارية
+            // إضافة المطاعم كنقاط عادية للخريطة الحرارية
             data.restaurants.slice(1).forEach(r => {
-                if(r[4] === 'active' && r[6] && r[7]) { // Lat=6, Lng=7
+                if(r[4] === 'active' && r[6] && r[7]) { 
                     const lat = parseFloat(r[6]), lng = parseFloat(r[7]);
                     if(!isNaN(lat) && !isNaN(lng)) heatMapPoints.push(new google.maps.LatLng(lat, lng));
                 }
             });
 
-            // مسح أيقونات السائقين القديمة
+            // مسح علامات السائقين القديمة
             driverMarkers.forEach(m => m.setMap(null));
             driverMarkers = [];
 
-            // إضافة نقاط السائقين للخريطة الحرارية ورسم أيقوناتهم
+            // إضافة السائقين بوزن أعلى (Weight: 3) للكثافة، ورسم أيقوناتهم
             data.drivers.slice(1).forEach(d => {
-                if(d[4] === 'active' && d[5] && d[6]) { // Lat=5, Lng=6
+                if(d[4] === 'active' && d[5] && d[6]) { 
                     const lat = parseFloat(d[5]), lng = parseFloat(d[6]);
-                    if(!isNaN(lat) &
+                    if(!isNaN(lat) && !isNaN(lng)) {
+                        heatMapPoints.push({location: new google.maps.LatLng(lat, lng), weight: 3});
+                        
+                        const marker = new google.maps.Marker({
+                            position: {lat: lat, lng: lng},
+                            map: map,
+              
