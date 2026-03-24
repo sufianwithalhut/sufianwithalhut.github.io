@@ -2,20 +2,27 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>مكتب سفيان | الإدارة العليا</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
+
     <style>
         :root { --sidebar-width: 280px; --primary-blue: #1e3a8a; --accent-blue: #3b82f6; --bg-light: #f8fafc; --card-bg: #ffffff; --text-main: #0f172a; }
         body { background-color: var(--bg-light); font-family: 'Cairo', sans-serif; margin: 0; overflow-x: hidden; color: var(--text-main); }
         
         #authOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%); z-index: 10000; display: flex; align-items: center; justify-content: center; }
-        .auth-card { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-radius: 30px; padding: 50px 40px; width: 90%; max-width: 420px; box-shadow: 0 25px 50px rgba(0,0,0,0.3); text-align: center; border: 1px solid rgba(255,255,255,0.2); }
+        .auth-card { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-radius: 30px; padding: 40px; width: 90%; max-width: 420px; box-shadow: 0 25px 50px rgba(0,0,0,0.3); text-align: center; }
+        
         .sidebar { width: var(--sidebar-width); background: var(--primary-blue); height: 100vh; position: fixed; right: 0; top: 0; color: white; padding: 30px 20px; z-index: 1005; transition: transform 0.3s ease; box-shadow: -5px 0 25px rgba(0,0,0,0.05); }
         .main-content { margin-right: var(--sidebar-width); padding: 30px; min-height: 100vh; transition: margin 0.3s ease; }
-        .nav-item { display: flex; align-items: center; gap: 15px; padding: 16px 20px; color: #cbd5e1; text-decoration: none; border-radius: 16px; margin-bottom: 8px; cursor: pointer; transition: all 0.3s ease; font-weight: 600; }
+        
+        .nav-item { display: flex; align-items: center; gap: 15px; padding: 14px 20px; color: #cbd5e1; text-decoration: none; border-radius: 16px; margin-bottom: 8px; cursor: pointer; transition: all 0.3s ease; font-weight: 600; }
         .nav-item:hover { background: rgba(255,255,255,0.05); color: white; transform: translateX(-5px); }
         .nav-item.active { background: white; color: var(--primary-blue); box-shadow: 0 10px 20px rgba(0,0,0,0.1); font-weight: 900; }
         
@@ -26,57 +33,82 @@
         .stat-compact p { margin: 0; font-weight: 700; font-size: 0.8rem; color: #64748b; }
 
         .stat-widget { background: var(--card-bg); border-radius: 24px; padding: 25px; box-shadow: 0 4px 20px rgba(0,0,0,0.03); border: 1px solid #e2e8f0; height: 100%; transition: 0.3s; }
-        .stat-widget:hover { transform: translateY(-5px); box-shadow: 0 10px 25px rgba(0,0,0,0.06); }
-        #adminMap { height: 400px; width: 100%; border-radius: 24px; border: 8px solid white; box-shadow: 0 10px 30px rgba(0,0,0,0.06); background: #e2e8f0; }
+        
+        /* الخريطة المجانية */
+        #adminMap { height: 400px; width: 100%; border-radius: 24px; border: 6px solid white; box-shadow: 0 10px 30px rgba(0,0,0,0.06); background: #e2e8f0; z-index: 1; }
+        .leaflet-popup-content-wrapper { font-family: 'Cairo', sans-serif; text-align: center; border-radius: 12px; }
 
-        /* الرادار الميداني والتتبع */
-        .radar-filter-btn { background: white; border: 1px solid #e2e8f0; padding: 8px 16px; border-radius: 12px; font-weight: 700; color: #64748b; cursor: pointer; transition: 0.2s; }
+        .radar-filter-btn { background: white; border: 1px solid #e2e8f0; padding: 8px 16px; border-radius: 12px; font-weight: 700; color: #64748b; cursor: pointer; transition: 0.2s; font-size: 0.9rem;}
         .radar-filter-btn.active { background: var(--primary-blue); color: white; border-color: var(--primary-blue); }
         
-        .smart-order-card { background: var(--card-bg); border-radius: 20px; padding: 20px; margin-bottom: 20px; border: 1px solid #e2e8f0; border-right: 6px solid #94a3b8; box-shadow: 0 4px 15px rgba(0,0,0,0.02); position: relative; transition: 0.3s; }
-        .smart-order-card:hover { box-shadow: 0 10px 30px rgba(0,0,0,0.08); }
+        .smart-order-card { background: var(--card-bg); border-radius: 20px; padding: 20px; margin-bottom: 15px; border: 1px solid #e2e8f0; border-right: 6px solid #94a3b8; box-shadow: 0 4px 15px rgba(0,0,0,0.02); position: relative; transition: 0.3s; }
         .status-danger { border-right-color: #ef4444; } .status-warning { border-right-color: #f59e0b; } .status-success { border-right-color: #10b981; } .status-primary { border-right-color: #3b82f6; }
-        .delay-badge { position: absolute; top: -12px; right: 20px; background: #ef4444; color: white; padding: 6px 16px; border-radius: 20px; font-size: 0.8rem; font-weight: 900; animation: pulse 2s infinite; box-shadow: 0 4px 10px rgba(239, 68, 68, 0.4); }
+        .delay-badge { position: absolute; top: -10px; right: 20px; background: #ef4444; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 900; animation: pulse 2s infinite; box-shadow: 0 4px 10px rgba(239, 68, 68, 0.4); }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
         
-        .info-row { display: flex; justify-content: space-between; align-items: center; background: #f8fafc; padding: 10px 15px; border-radius: 12px; margin-bottom: 8px; border: 1px solid #f1f5f9; transition: 0.2s; font-weight: 600; font-size: 0.95rem; }
-        .btn-call-mini { background: white; border: 1px solid #e2e8f0; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
-        .btn-call-mini:hover { transform: scale(1.1); }
-        .btn-track { background: #eff6ff; color: #3b82f6; border: 1px solid #bfdbfe; border-radius: 10px; padding: 6px 12px; font-size: 0.8rem; font-weight: 800; cursor: pointer; transition: 0.2s; display: flex; align-items: center; gap: 5px; }
-        .btn-track:hover { background: #3b82f6; color: white; }
-        .manual-assign-select { border: 1px solid #e2e8f0; border-radius: 8px; padding: 4px 8px; font-size: 0.8rem; font-weight: 700; color: #0f172a; outline: none; }
-
-        /* الأرشيف المركزي */
-        .archive-toolbar { background: white; border-radius: 20px; padding: 20px; border: 1px solid #e2e8f0; box-shadow: 0 4px 15px rgba(0,0,0,0.02); margin-bottom: 20px; }
-        .analytics-bar { background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); color: white; border-radius: 15px; padding: 15px 25px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; box-shadow: 0 10px 20px rgba(59, 130, 246, 0.2); }
-        .table-hover tbody tr:hover { background-color: #f1f5f9; cursor: pointer; }
+        .info-row { display: flex; justify-content: space-between; align-items: center; background: #f8fafc; padding: 10px 12px; border-radius: 12px; margin-bottom: 6px; border: 1px solid #f1f5f9; font-weight: 600; font-size: 0.9rem; }
+        .btn-call-mini { background: white; border: 1px solid #e2e8f0; border-radius: 50%; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; box-shadow: 0 2px 5px rgba(0,0,0,0.05); flex-shrink: 0;}
+        .btn-call-mini:active { transform: scale(0.9); }
+        .btn-call-mini.call-primary { color: var(--primary-blue); border-color: #bfdbfe; background: #eff6ff;}
+        .btn-call-mini.call-warning { color: #d97706; border-color: #fde68a; background: #fffbeb;}
+        .btn-call-mini.call-success { color: #059669; border-color: #a7f3d0; background: #ecfdf5;}
         
-        /* نافذة الفاتورة المنبثقة (Modal) */
-        #invoiceModal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15,23,42,0.6); z-index: 10000; display: none; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
-        .invoice-card { background: white; border-radius: 24px; padding: 30px; width: 90%; max-width: 500px; box-shadow: 0 25px 50px rgba(0,0,0,0.2); position: relative; }
-        .invoice-header { text-align: center; border-bottom: 2px dashed #e2e8f0; padding-bottom: 20px; margin-bottom: 20px; }
-        .invoice-row { display: flex; justify-content: space-between; margin-bottom: 12px; font-weight: 700; font-size: 0.95rem; }
-        .invoice-row span:first-child { color: #64748b; }
-        .invoice-close { position: absolute; top: 20px; left: 20px; background: #f1f5f9; border: none; border-radius: 50%; width: 35px; height: 35px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #64748b; }
+        .btn-track { background: #eff6ff; color: #3b82f6; border: 1px solid #bfdbfe; border-radius: 10px; padding: 6px 10px; font-size: 0.8rem; font-weight: 800; cursor: pointer; transition: 0.2s; display: flex; align-items: center; gap: 4px; }
+        .btn-delete-order { background: #fef2f2; border: 1px solid #fca5a5; color: #ef4444; border-radius: 10px; padding: 6px 10px; font-size: 0.8rem; font-weight: 800; cursor: pointer; transition: 0.2s; display: flex; align-items: center; gap: 4px; }
+        .manual-assign-select { border: 1px solid #e2e8f0; border-radius: 8px; padding: 4px; font-size: 0.8rem; font-weight: 700; max-width: 110px;}
 
-        /* التحكم والمطاعم */
-        .sov-btn { border: none; border-radius: 14px; width: 38px; height: 38px; display: inline-flex; align-items: center; justify-content: center; transition: 0.2s; cursor: pointer; }
-        .sov-accept { background: #eff6ff; color: var(--accent-blue); }
-        .sov-pause { background: #fffbeb; color: #d97706; }
-        .sov-delete { background: #fef2f2; color: #ef4444; }
-        .sov-reset { background: #ecfdf5; color: #10b981; }
-        .sov-call { background: var(--primary-blue); color: white; }
-        .sov-btn:hover { filter: brightness(0.95); transform: scale(1.05); }
+        /* الأرشيف والفاتورة */
+        .archive-toolbar { background: white; border-radius: 16px; padding: 15px; border: 1px solid #e2e8f0; margin-bottom: 15px; }
+        .analytics-bar { background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); color: white; border-radius: 15px; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .table-responsive { font-size: 0.9rem; }
+        #invoiceModal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15,23,42,0.6); z-index: 10000; display: none; align-items: center; justify-content: center; backdrop-filter: blur(4px); padding: 15px; }
+        .invoice-card { background: white; border-radius: 24px; padding: 25px; width: 100%; max-width: 400px; box-shadow: 0 25px 50px rgba(0,0,0,0.2); position: relative; }
+        .invoice-row { display: flex; justify-content: space-between; margin-bottom: 10px; font-weight: 700; font-size: 0.9rem; }
 
-        .menu-toggle-btn { display: none; background: white; border: 1px solid #e2e8f0; border-radius: 14px; padding: 12px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.05); color: var(--primary-blue); }
+        /* كروت الإدارة */
+        .sov-btn { border: none; border-radius: 12px; width: 38px; height: 38px; display: inline-flex; align-items: center; justify-content: center; transition: 0.2s; cursor: pointer; }
+        .sov-accept { background: #eff6ff; color: var(--accent-blue); } .sov-pause { background: #fffbeb; color: #d97706; } .sov-delete { background: #fef2f2; color: #ef4444; } .sov-reset { background: #ecfdf5; color: #10b981; } .sov-call { background: var(--primary-blue); color: white; }
+
+        .menu-toggle-btn { display: none; background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 10px; cursor: pointer; color: var(--primary-blue); }
         .sidebar-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); z-index: 1002; display: none; backdrop-filter: blur(4px); }
-        @media (max-width: 1100px) { .sidebar { transform: translateX(100%); } .main-content { margin-right: 0; padding: 20px; } .sidebar.show { transform: translateX(0); box-shadow: -10px 0 50px rgba(0,0,0,0.5); } .menu-toggle-btn { display: flex; align-items: center; justify-content: center; } .sidebar-overlay.show { display: block; } }
+
+        @media (max-width: 768px) {
+            .sidebar { transform: translateX(100%); }
+            .sidebar.show { transform: translateX(0); }
+            .sidebar-overlay.show { display: block; }
+            .menu-toggle-btn { display: flex; align-items: center; justify-content: center; }
+            .main-content { margin-right: 0; padding: 15px 10px; }
+            .main-content header h2 { font-size: 1.4rem; }
+            .main-content header p { font-size: 0.8rem; }
+            #liveTime { font-size: 0.85rem; padding: 6px 12px !important; }
+            .stat-compact { padding: 12px 15px; }
+            .stat-compact h3 { font-size: 1.2rem; }
+            .stat-compact p { font-size: 0.75rem; }
+            .stat-compact .icon-box { width: 38px; height: 38px; }
+            .stat-compact .icon-box svg { width: 20px; height: 20px; }
+            #adminMap { height: 280px; border-width: 4px; }
+            #radarFilters { flex-wrap: wrap; justify-content: flex-end; }
+            .radar-filter-btn { padding: 6px 10px; font-size: 0.8rem; flex: 1; text-align: center; }
+            .smart-order-card { padding: 15px; border-radius: 16px; border-right-width: 4px; }
+            .smart-order-card h5 { font-size: 1.1rem; }
+            .delay-badge { font-size: 0.7rem; padding: 3px 10px; top: -10px; right: 10px; }
+            .btn-track, .btn-delete-order { font-size: 0.75rem; padding: 5px 8px; }
+            .archive-toolbar { padding: 10px; }
+            .archive-toolbar .col-md-2, .archive-toolbar .col-md-3, .archive-toolbar .col-md-1 { margin-bottom: 8px; }
+            .analytics-bar { padding: 12px 15px; flex-direction: column; align-items: flex-start; gap: 10px; }
+            .analytics-bar .text-end { text-align: right !important; }
+            .invoice-card { padding: 20px; }
+            .invoice-header h4 { font-size: 1.2rem; }
+        }
     </style>
 </head>
 <body>
 
 <div id="authOverlay">
     <div class="auth-card">
-        <div class="mb-4 d-inline-block bg-light p-4 rounded-circle shadow-sm"><i data-lucide="building-2" size="50" color="#1e3a8a"></i></div>
+        <div class="mb-4 d-inline-block bg-light p-4 rounded-circle shadow-sm">
+            <i data-lucide="building-2" size="50" color="#1e3a8a"></i>
+        </div>
         <h3 class="fw-black text-dark mb-1">مكتب سفيان</h3>
         <p class="text-muted small fw-bold mb-4">بالتعاون مع نظام الحوت</p>
         <input type="password" id="masterPass" class="form-control form-control-lg text-center mb-4 shadow-none bg-light border-0 py-3 rounded-4" placeholder="رمز المرور الآمن" onkeypress="if(event.key === 'Enter') checkAuth()">
@@ -100,8 +132,8 @@
         <nav>
             <div class="nav-item active" onclick="showTab(event, 'live')"><i data-lucide="layout-dashboard"></i> <span>الرصد الميداني</span></div>
             <div class="nav-item" onclick="showTab(event, 'orders')"><i data-lucide="database"></i> <span>الأرشيف المركزي</span></div>
-            <div class="nav-item" onclick="showTab(event, 'restaurants')"><i data-lucide="store"></i> <span>إدارة الشركاء (المطاعم)</span></div>
-            <div class="nav-item" onclick="showTab(event, 'drivers')"><i data-lucide="users"></i> <span>إدارة الأسطول (الكباتن)</span></div>
+            <div class="nav-item" onclick="showTab(event, 'restaurants')"><i data-lucide="store"></i> <span>إدارة الشركاء</span></div>
+            <div class="nav-item" onclick="showTab(event, 'drivers')"><i data-lucide="users"></i> <span>إدارة الأسطول</span></div>
         </nav>
     </aside>
 
@@ -110,28 +142,29 @@
             <div class="d-flex align-items-center gap-3">
                 <button class="menu-toggle-btn" onclick="toggleSidebar()"><i data-lucide="menu"></i></button>
                 <div>
-                    <h2 class="fw-black m-0" style="color: var(--primary-blue);">لوحة الإدارة المركزية</h2>
-                    <p class="text-muted m-0 fw-bold">مكتب سفيان - كركوك</p>
+                    <h2 class="fw-black m-0" style="color: var(--primary-blue);">الإدارة المركزية</h2>
+                    <p class="text-muted m-0 fw-bold">الرصد المباشر لمدينة كركوك</p>
                 </div>
             </div>
-            <div id="liveTime" class="bg-white px-4 py-2 rounded-pill shadow-sm fw-bold border text-primary">00:00:00</div>
+            <div id="liveTime" class="bg-white px-3 py-2 rounded-pill shadow-sm fw-bold border text-primary">00:00</div>
         </header>
 
         <div id="tab-live" class="admin-tab">
-            <div class="row g-3 mb-4">
-                <div class="col-md-4"><div class="stat-compact"><div><p>الطلبات النشطة</p><h3 id="count-orders" class="text-primary">0</h3></div><div class="icon-box bg-primary bg-opacity-10"><i data-lucide="package" class="text-primary" size="24"></i></div></div></div>
-                <div class="col-md-4"><div class="stat-compact"><div><p>كباتن بالميدان</p><h3 id="count-drivers" class="text-success">0</h3></div><div class="icon-box bg-success bg-opacity-10"><i data-lucide="truck" class="text-success" size="24"></i></div></div></div>
-                <div class="col-md-4"><div class="stat-compact"><div><p>مطاعم متصلة</p><h3 id="count-res" class="text-warning">0</h3></div><div class="icon-box bg-warning bg-opacity-10"><i data-lucide="store" class="text-warning" size="24"></i></div></div></div>
+            <div class="row g-3 mb-3">
+                <div class="col-12 col-md-4"><div class="stat-compact"><div><p>الطلبات النشطة</p><h3 id="count-orders" class="text-primary">0</h3></div><div class="icon-box bg-primary bg-opacity-10"><i data-lucide="package" class="text-primary"></i></div></div></div>
+                <div class="col-6 col-md-4"><div class="stat-compact"><div><p>كباتن بالميدان</p><h3 id="count-drivers" class="text-success">0</h3></div><div class="icon-box bg-success bg-opacity-10"><i data-lucide="truck" class="text-success"></i></div></div></div>
+                <div class="col-6 col-md-4"><div class="stat-compact"><div><p>مطاعم متصلة</p><h3 id="count-res" class="text-warning">0</h3></div><div class="icon-box bg-warning bg-opacity-10"><i data-lucide="store" class="text-warning"></i></div></div></div>
             </div>
+            
             <div id="adminMap"></div>
             
             <div class="mt-4">
-                <div class="d-flex justify-content-between align-items-center border-bottom pb-2 mb-3">
+                <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center border-bottom pb-2 mb-3 gap-2">
                     <h5 class="fw-black m-0 d-flex align-items-center gap-2" style="color: var(--primary-blue);"><i data-lucide="activity" class="text-danger" size="20"></i> الرادار الميداني</h5>
-                    <div class="d-flex gap-2" id="radarFilters">
+                    <div class="d-flex gap-2 w-100 w-md-auto" id="radarFilters">
                         <button class="radar-filter-btn active" onclick="filterRadar('all', this)">الكل</button>
                         <button class="radar-filter-btn text-danger border-danger bg-danger bg-opacity-10" onclick="filterRadar('pending', this)">معلق</button>
-                        <button class="radar-filter-btn text-success border-success bg-success bg-opacity-10" onclick="filterRadar('active', this)">قيد التوصيل</button>
+                        <button class="radar-filter-btn text-success border-success bg-success bg-opacity-10" onclick="filterRadar('active', this)">بالطريق</button>
                     </div>
                 </div>
                 <div class="row g-3" id="smartOrdersContainer"><div class="text-center p-4 text-muted fw-bold small">جاري جلب الإشارات...</div></div>
@@ -140,31 +173,31 @@
 
         <div id="tab-orders" class="admin-tab d-none">
             <div class="archive-toolbar">
-                <div class="row g-3">
-                    <div class="col-md-3"><input type="text" id="arcSearch" class="form-control" placeholder="بحث ברقم الطلب أو الزبون" oninput="renderArchive()"></div>
-                    <div class="col-md-2"><select id="arcRes" class="form-select" onchange="renderArchive()"><option value="">كل المطاعم</option></select></div>
-                    <div class="col-md-2"><select id="arcDriver" class="form-select" onchange="renderArchive()"><option value="">كل الكباتن</option></select></div>
-                    <div class="col-md-2"><input type="date" id="arcDateFrom" class="form-control" onchange="renderArchive()"></div>
-                    <div class="col-md-2"><input type="date" id="arcDateTo" class="form-control" onchange="renderArchive()"></div>
-                    <div class="col-md-1"><button class="btn btn-success w-100 fw-bold d-flex align-items-center justify-content-center gap-2" onclick="exportExcel()" title="تصدير لملف Excel"><i data-lucide="download" size="18"></i></button></div>
+                <div class="row g-2">
+                    <div class="col-12 col-md-3"><input type="text" id="arcSearch" class="form-control form-control-sm" placeholder="بحث ברقم الطلب..." oninput="renderArchive()"></div>
+                    <div class="col-6 col-md-2"><select id="arcRes" class="form-select form-select-sm" onchange="renderArchive()"><option value="">كل المطاعم</option></select></div>
+                    <div class="col-6 col-md-2"><select id="arcDriver" class="form-select form-select-sm" onchange="renderArchive()"><option value="">كل الكباتن</option></select></div>
+                    <div class="col-6 col-md-2"><input type="date" id="arcDateFrom" class="form-control form-control-sm" onchange="renderArchive()"></div>
+                    <div class="col-6 col-md-2"><input type="date" id="arcDateTo" class="form-control form-control-sm" onchange="renderArchive()"></div>
+                    <div class="col-12 col-md-1"><button class="btn btn-success btn-sm w-100 fw-bold d-flex align-items-center justify-content-center gap-1" onclick="exportExcel()"><i data-lucide="download" size="16"></i> تصدير</button></div>
                 </div>
             </div>
 
             <div class="analytics-bar">
-                <div><span class="opacity-75 small">عدد الطلبات بالفلتر:</span> <h4 class="fw-black m-0" id="arcTotalCount">0</h4></div>
-                <div class="text-end"><span class="opacity-75 small">إجمالي العمولات المستحقة:</span> <h4 class="fw-black m-0" id="arcTotalComm">0 <span class="fs-6">د.ع</span></h4></div>
+                <div><span class="opacity-75 small">عدد الطلبات:</span> <h4 class="fw-black m-0" id="arcTotalCount">0</h4></div>
+                <div class="text-end"><span class="opacity-75 small">العمولات المستحقة:</span> <h4 class="fw-black m-0" id="arcTotalComm">0 <span class="fs-6">د.ع</span></h4></div>
             </div>
 
             <div class="stat-widget table-responsive p-0">
-                <table class="table table-hover align-middle m-0" id="archiveTable">
+                <table class="table table-hover align-middle m-0" id="archiveTable" style="min-width: 600px;">
                     <thead class="bg-light"><tr style="color: var(--primary-blue);"><th>ID الطلب</th><th>التاريخ</th><th>المطعم</th><th>الكابتن</th><th>الحالة</th></tr></thead>
                     <tbody id="ordersTableBody"></tbody>
                 </table>
             </div>
         </div>
         
-        <div id="tab-restaurants" class="admin-tab d-none"><div class="row g-4" id="resListContainer"></div></div>
-        <div id="tab-drivers" class="admin-tab d-none"><div class="row g-4" id="driverListContainer"></div></div>
+        <div id="tab-restaurants" class="admin-tab d-none"><div class="row g-3" id="resListContainer"></div></div>
+        <div id="tab-drivers" class="admin-tab d-none"><div class="row g-3" id="driverListContainer"></div></div>
     </main>
 </div>
 
@@ -179,11 +212,11 @@
         <div class="invoice-row"><span>تاريخ ووقت الطلب:</span> <span id="invDate">---</span></div>
         <div class="invoice-row"><span>المطعم الشريك:</span> <span class="text-warning" id="invRes">---</span></div>
         <div class="invoice-row"><span>الكابتن المنفذ:</span> <span class="text-success" id="invDriver">---</span></div>
-        <div class="invoice-row"><span>تفاصيل الزبون:</span> <span id="invCust">---</span></div>
+        <div class="invoice-row"><span>تفاصيل الزبون:</span> <span id="invCust" style="max-width: 60%; text-align: left;">---</span></div>
         <div class="invoice-row"><span>سعر الطلب:</span> <span id="invPrice">---</span></div>
         <hr class="my-3 opacity-25">
         <div class="invoice-row"><span>العمولة المفروضة:</span> <span id="invComm">---</span></div>
-        <div class="invoice-row"><span>نظام دفع العمولة:</span> <span id="invPayType">---</span></div>
+        <div class="invoice-row"><span>نظام الدفع:</span> <span id="invPayType">---</span></div>
         <div class="invoice-row"><span>حالة المحاسبة:</span> <span id="invStatus">---</span></div>
     </div>
 </div>
@@ -192,8 +225,8 @@
     lucide.createIcons();
     const API_URL = "https://script.google.com/macros/s/AKfycbznHSOuvIqqhFU5g1PiI7T-PU7gAXpzmV9NAHqb-dkg9HUCA2Nb-mVgLJYznf6CCNhAww/exec";
     const API_TOKEN = "HUT_SECURE_99";
-    let map, heatmap, driverMarkers = [];
-    let globalData = null; // حفظ البيانات محلياً للفلترة السريعة
+    let map, heatLayer, driverMarkers = [];
+    let globalData = null; 
     let currentRadarFilter = 'all';
 
     function checkAuth() {
@@ -202,12 +235,19 @@
             document.getElementById('authOverlay').style.display = 'none';
             document.getElementById('mainDashboard').classList.remove('d-none');
             startClock(); refreshData(); setInterval(refreshData, 15000);
-            if(typeof google !== 'undefined' && !map) initMap();
+            initMap();
         } else { alert("❌ رمز المرور غير صحيح"); }
     }
 
-    function startClock() { setInterval(() => { document.getElementById('liveTime').innerText = new Date().toLocaleTimeString('ar-EG'); }, 1000); }
-    function toggleSidebar() { document.getElementById('sidebar').classList.toggle('show'); document.getElementById('sidebarOverlay').classList.toggle('show'); }
+    function startClock() { setInterval(() => { 
+        const now = new Date();
+        document.getElementById('liveTime').innerText = now.toLocaleTimeString('ar-EG', {hour: '2-digit', minute:'2-digit'}); 
+    }, 1000); }
+    
+    function toggleSidebar() { 
+        document.getElementById('sidebar').classList.toggle('show'); 
+        document.getElementById('sidebarOverlay').classList.toggle('show'); 
+    }
 
     function refreshData() {
         const script = document.createElement('script');
@@ -216,9 +256,8 @@
     }
 
     window.renderData = function(data) {
-        globalData = data; // تخزين البيانات
+        globalData = data; 
         
-        // تعبئة قوائم الأرشيف (مرة واحدة)
         if(document.getElementById('arcRes').options.length === 1) {
             data.restaurants.slice(1).forEach(r => document.getElementById('arcRes').innerHTML += `<option value="${r[1]}">${r[1]}</option>`);
             data.drivers.slice(1).forEach(d => document.getElementById('arcDriver').innerHTML += `<option value="${String(d[2])}">${d[1]}</option>`);
@@ -229,7 +268,6 @@
         document.getElementById('count-drivers').innerText = data.drivers.filter(d => d[4] === 'active').length;
         document.getElementById('count-res').innerText = data.restaurants.filter(r => r[4] === 'active').length;
 
-        // 1. حساب الديون + (عدد الطلبيات غير المسددة) للمطاعم
         let resDebts = {}; let resUnpaidCounts = {}; let driverDebts = {};
         data.restaurants.slice(1).forEach(r => { resDebts[r[1]] = 0; resUnpaidCounts[r[1]] = 0; }); 
         data.drivers.slice(1).forEach(d => driverDebts[String(d[2])] = 0); 
@@ -241,7 +279,7 @@
                 const rData = data.restaurants.find(r => r[1] === rName);
                 if (rData) {
                     const comm = parseFloat(rData[5]) || 0; const payType = String(rData[8]); 
-                    if (resUnpaidCounts[rName] !== undefined) resUnpaidCounts[rName]++; // زيادة العداد
+                    if (resUnpaidCounts[rName] !== undefined) resUnpaidCounts[rName]++; 
                     if (payType.includes('مناصفة')) {
                         if (resDebts[rName] !== undefined) resDebts[rName] += (comm / 2);
                         if (driverDebts[dPhone] !== undefined) driverDebts[dPhone] += (comm / 2);
@@ -257,41 +295,43 @@
         renderControlCards('resListContainer', data.restaurants, 'store', 'RESTAURANT', 2, resDebts, 1, resUnpaidCounts); 
         renderControlCards('driverListContainer', data.drivers, 'user', 'DRIVER', 2, driverDebts, 2, null); 
         
-        // الخريطة
-        if (map && heatmap) {
+        // تحديث الخريطة المجانية (Leaflet)
+        if (map && heatLayer) {
             const heatMapPoints = [];
             data.restaurants.slice(1).forEach(r => {
                 if(r[4] === 'active' && r[6] && r[7]) { 
                     const lat = parseFloat(r[6]), lng = parseFloat(r[7]);
-                    if(!isNaN(lat) && !isNaN(lng)) heatMapPoints.push(new google.maps.LatLng(lat, lng));
+                    if(!isNaN(lat) && !isNaN(lng)) heatMapPoints.push([lat, lng, 0.5]);
                 }
             });
-            driverMarkers.forEach(m => m.setMap(null));
+            driverMarkers.forEach(m => map.removeLayer(m));
             driverMarkers = [];
             data.drivers.slice(1).forEach(d => {
                 if(d[4] === 'active' && d[5] && d[6]) { 
                     const lat = parseFloat(d[5]), lng = parseFloat(d[6]);
                     if(!isNaN(lat) && !isNaN(lng)) {
-                        heatMapPoints.push({location: new google.maps.LatLng(lat, lng), weight: 3});
-                        const marker = new google.maps.Marker({
-                            position: {lat: lat, lng: lng}, map: map,
-                            icon: { path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: '#10b981', fillOpacity: 1, strokeWeight: 3, strokeColor: '#ffffff' },
-                            title: `الكابتن: ${d[1]} | هاتف: ${d[2]}`
+                        heatMapPoints.push([lat, lng, 1.0]);
+                        const driverIcon = L.divIcon({
+                            className: 'custom-div-icon',
+                            html: `<div style="background-color: #10b981; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>`,
+                            iconSize: [16, 16],
+                            iconAnchor: [8, 8]
                         });
-                        marker.addListener('click', () => { map.setZoom(16); map.panTo(marker.getPosition()); });
+                        const marker = L.marker([lat, lng], {icon: driverIcon})
+                            .bindPopup(`<div class="text-center fw-bold" style="font-family:'Cairo';"><span class="text-success">الكابتن:</span> ${d[1]}<br><span class="text-primary">هاتف:</span> ${d[2]}</div>`)
+                            .addTo(map);
                         driverMarkers.push(marker);
                     }
                 }
             });
-            heatmap.setData(heatMapPoints); 
+            heatLayer.setLatLngs(heatMapPoints); 
         }
         lucide.createIcons();
     };
 
-    // --- قسم الرصد الميداني (مطور) ---
     function filterRadar(type, btnElement) {
         currentRadarFilter = type;
-        document.querySelectorAll('.radar-filter-btn').forEach(b => b.classList.remove('active', 'border-opacity-10'));
+        document.querySelectorAll('.radar-filter-btn').forEach(b => b.classList.remove('active', 'border-danger', 'border-success'));
         btnElement.classList.add('active');
         renderRadar();
     }
@@ -300,8 +340,7 @@
         if(!globalData) return;
         let smartHtml = '';
         
-        // خيارات قائمة السائقين النشطين (للتعيين اليدوي)
-        let activeDriversOptions = '<option value="">اختيار كابتن</option>';
+        let activeDriversOptions = '<option value="">تعيين يدوي</option>';
         globalData.drivers.slice(1).forEach(d => {
             if(d[4] === 'active') activeDriversOptions += `<option value="${String(d[2])}">${d[1]}</option>`;
         });
@@ -328,15 +367,15 @@
 
             let custPhoneMatch = details ? details.match(/(07[0-9]{8,9})/) : null;
             let custPhone = custPhoneMatch ? custPhoneMatch[0] : '';
-            let shortDetails = details ? (details.length > 35 ? details.substring(0, 35) + '...' : details) : 'لا توجد تفاصيل';
+            let shortDetails = details ? (details.length > 25 ? details.substring(0, 25) + '...' : details) : '-';
 
             const diffMins = Math.floor((new Date() - new Date(orderTimeStr)) / 60000);
             const isDelayed = diffMins > 30; 
 
-            let cardClass = "status-danger", statusDesc = "🔴 بانتظار تعيين كابتن";
-            if(hasDriver && !isPickedUp && !isArrived) { cardClass = "status-primary"; statusDesc = "🔵 الكابتن متوجه للمطعم"; }
-            if(hasDriver && isArrived) { cardClass = "status-warning"; statusDesc = "🟠 الكابتن في المطعم"; }
-            if(hasDriver && isPickedUp) { cardClass = "status-success"; statusDesc = "🟢 في الطريق للزبون"; }
+            let cardClass = "status-danger", statusDesc = "🔴 بانتظار كابتن";
+            if(hasDriver && !isPickedUp && !isArrived) { cardClass = "status-primary"; statusDesc = "🔵 متوجه للمطعم"; }
+            if(hasDriver && isArrived) { cardClass = "status-warning"; statusDesc = "🟠 في المطعم"; }
+            if(hasDriver && isPickedUp) { cardClass = "status-success"; statusDesc = "🟢 في الطريق"; }
 
             smartHtml += `
             <div class="col-xl-6 col-lg-6">
@@ -345,20 +384,20 @@
                     
                     <div class="d-flex justify-content-between align-items-start mb-3 pb-2 border-bottom">
                         <div>
-                            <h5 class="fw-black m-0 mb-1" style="color: var(--primary-blue);">طلب #${orderId}</h5>
+                            <h6 class="fw-black m-0 mb-1" style="color: var(--primary-blue);">#${orderId}</h6>
                             <small class="fw-bold ${!hasDriver ? 'text-danger' : 'text-dark'}">${statusDesc}</small>
                         </div>
-                        <div class="d-flex gap-2 align-items-center">
+                        <div class="d-flex gap-1 align-items-center">
                             ${hasDriver ? `<button class="btn-track" onclick="trackDriver('${driverPhone}')"><i data-lucide="map-pin" size="14"></i> تتبع</button>` : ''}
-                            <button class="btn btn-sm btn-outline-danger border-0 p-1" onclick="adminAction('DELETE', 'ORDER', '${orderId}')" title="حذف الطلب"><i data-lucide="trash-2" size="18"></i></button>
+                            <button class="btn btn-sm btn-outline-danger border-0 p-1" onclick="adminAction('DELETE', 'ORDER', '${orderId}')" title="حذف الطلب"><i data-lucide="trash-2" size="16"></i></button>
                         </div>
                     </div>
 
                     <div class="d-flex flex-column gap-2">
-                        <div class="info-row"><div class="d-flex align-items-center gap-2"><i data-lucide="user" class="text-primary" size="16"></i> <span class="text-muted">الزبون:</span></div> <div class="d-flex align-items-center gap-2"><span class="text-dark small text-truncate" style="max-width:120px;" title="${details}">${shortDetails}</span>${custPhone ? `<button class="btn-call-mini call-primary" onclick="window.open('tel:${custPhone}')"><i data-lucide="phone" size="14"></i></button>` : ''}</div></div>
-                        <div class="info-row"><div class="d-flex align-items-center gap-2"><i data-lucide="store" class="text-warning" size="16"></i> <span class="text-muted">المطعم:</span></div> <div class="d-flex align-items-center gap-2"><span class="text-dark small">${restName || '-'}</span>${restPhone ? `<button class="btn-call-mini call-warning text-warning" onclick="window.open('tel:${restPhone}')"><i data-lucide="phone" size="14"></i></button>` : ''}</div></div>
+                        <div class="info-row"><div class="d-flex align-items-center gap-2"><i data-lucide="user" class="text-primary" size="16"></i></div> <div class="d-flex align-items-center gap-2"><span class="text-dark small text-truncate" style="max-width:100px;" title="${details}">${shortDetails}</span>${custPhone ? `<button class="btn-call-mini call-primary" onclick="window.open('tel:${custPhone}')"><i data-lucide="phone" size="14"></i></button>` : ''}</div></div>
+                        <div class="info-row"><div class="d-flex align-items-center gap-2"><i data-lucide="store" class="text-warning" size="16"></i></div> <div class="d-flex align-items-center gap-2"><span class="text-dark small">${restName || '-'}</span>${restPhone ? `<button class="btn-call-mini call-warning text-warning" onclick="window.open('tel:${restPhone}')"><i data-lucide="phone" size="14"></i></button>` : ''}</div></div>
                         <div class="info-row">
-                            <div class="d-flex align-items-center gap-2"><i data-lucide="bike" class="text-success" size="16"></i> <span class="text-muted">الكابتن:</span></div> 
+                            <div class="d-flex align-items-center gap-2"><i data-lucide="bike" class="text-success" size="16"></i></div> 
                             <div class="d-flex align-items-center gap-2">
                                 ${hasDriver ? `<span class="text-dark small fw-bold">${driverName}</span> <button class="btn-call-mini call-success text-success" onclick="window.open('tel:${driverPhone}')"><i data-lucide="phone" size="14"></i></button>` : 
                                 `<select class="manual-assign-select" onchange="assignDriver('${orderId}', this.value)">${activeDriversOptions}</select>`}
@@ -372,32 +411,26 @@
         lucide.createIcons();
     }
 
-    // دالة تتبع السائق
     function trackDriver(driverPhone) {
         if(!map || !globalData) return;
         const driver = globalData.drivers.find(d => String(d[2]) === String(driverPhone));
         if(driver && driver[5] && driver[6]) {
             const lat = parseFloat(driver[5]); const lng = parseFloat(driver[6]);
             if(!isNaN(lat) && !isNaN(lng)) {
-                map.setZoom(17);
-                map.panTo({lat: lat, lng: lng});
-                window.scrollTo({ top: document.getElementById('adminMap').offsetTop - 50, behavior: 'smooth' });
+                map.flyTo([lat, lng], 16, { duration: 1.5 }); // حركة سلسة في مكتبة Leaflet
+                window.scrollTo({ top: document.getElementById('adminMap').offsetTop - 20, behavior: 'smooth' });
             } else { alert("لا توجد إحداثيات حالية لهذا الكابتن."); }
         }
     }
 
-    // دالة تعيين كابتن يدوياً (ملاحظة: تتطلب دالة ASSIGN_DRIVER في الـ GAS)
     function assignDriver(orderId, driverPhone) {
         if(!driverPhone) return;
-        if(confirm("هل تريد تعيين هذا الكابتن إجبارياً للطلب؟")) {
+        if(confirm("تعيين إجباري للكابتن؟")) {
             const url = `${API_URL}?action=ASSIGN_DRIVER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}`;
-            const script = document.createElement('script');
-            script.src = `${url}&callback=afterAdminAction`;
-            document.body.appendChild(script);
+            const script = document.createElement('script'); script.src = `${url}&callback=afterAdminAction`; document.body.appendChild(script);
         }
     }
 
-    // --- قسم الأرشيف المركزي (مطور) ---
     function renderArchive() {
         if(!globalData) return;
         const search = document.getElementById('arcSearch').value.trim().toLowerCase();
@@ -406,20 +439,15 @@
         const dateFrom = document.getElementById('arcDateFrom').value;
         const dateTo = document.getElementById('arcDateTo').value;
 
-        let archiveHtml = '';
-        let totalOrders = 0;
-        let totalComm = 0;
+        let archiveHtml = ''; let totalOrders = 0; let totalComm = 0;
 
-        // جلب الطلبات المنجزة فقط للفلترة
         const completedOrders = globalData.orders.slice(1).filter(o => o[5] === 'completed' || o[5] === 'مكتمل' || o[5] === 'settled');
 
         completedOrders.forEach(o => {
             const orderId = o[0], restName = o[1], price = o[4], details = o[3], status = o[5], driverPhone = o[6];
-            const orderDateStr = o[7];
-            const orderDateObj = new Date(orderDateStr);
-            const orderDateISO = orderDateObj.toISOString().split('T')[0]; // YYYY-MM-DD
+            const orderDateObj = new Date(o[7]);
+            const orderDateISO = orderDateObj.toISOString().split('T')[0]; 
             
-            // تطبيق الفلاتر
             let match = true;
             if(search && !String(orderId).toLowerCase().includes(search) && !String(details).toLowerCase().includes(search)) match = false;
             if(resFilter && restName !== resFilter) match = false;
@@ -431,13 +459,11 @@
                 totalOrders++;
                 const isSettled = (status === 'settled');
                 
-                // حساب العمولة للطلب
                 let comm = 0, payType = "المطعم يدفع";
                 const rData = globalData.restaurants.find(r => r[1] === restName);
                 if(rData) { comm = parseFloat(rData[5]) || 0; payType = String(rData[8]); }
                 totalComm += comm;
 
-                // تحويل بيانات الطلب لنص JSON ليمرر للنافذة المنبثقة
                 let driverName = driverPhone;
                 const dData = globalData.drivers.find(d => String(d[2]) === String(driverPhone));
                 if(dData) driverName = dData[1];
@@ -446,11 +472,11 @@
                 const orderDataStr = encodeURIComponent(JSON.stringify(orderDataObj));
 
                 archiveHtml += `<tr onclick="openInvoice('${orderDataStr}')">
-                    <td class="fw-bold" style="color: var(--primary-blue);">${orderId || '-'}</td>
-                    <td class="small fw-bold text-muted">${orderDateISO}</td>
-                    <td class="fw-bold text-dark">${restName || '-'}</td>
-                    <td class="text-muted fw-bold">${driverName}</td>
-                    <td><span class="badge ${isSettled ? 'bg-secondary' : 'bg-success'} px-3 py-1 rounded-pill">${isSettled ? 'تمت المحاسبة' : 'مكتمل'}</span></td>
+                    <td class="fw-bold text-nowrap" style="color: var(--primary-blue); font-size:0.85rem;">${orderId || '-'}</td>
+                    <td class="small fw-bold text-muted text-nowrap">${orderDateISO}</td>
+                    <td class="fw-bold text-dark text-truncate" style="max-width: 100px;">${restName || '-'}</td>
+                    <td class="text-muted fw-bold text-truncate" style="max-width: 100px;">${driverName}</td>
+                    <td><span class="badge ${isSettled ? 'bg-secondary' : 'bg-success'} px-2 py-1 rounded-pill" style="font-size:0.7rem;">${isSettled ? 'مسدد' : 'مكتمل'}</span></td>
                 </tr>`;
             }
         });
@@ -460,7 +486,6 @@
         document.getElementById('ordersTableBody').innerHTML = archiveHtml || `<tr><td colspan="5" class="text-center text-muted py-5 fw-bold">لا توجد طلبات تطابق الفلتر</td></tr>`;
     }
 
-    // عرض وتصدير
     function openInvoice(dataStr) {
         const data = JSON.parse(decodeURIComponent(dataStr));
         document.getElementById('invOrderId').innerText = "#" + data.id;
@@ -472,14 +497,12 @@
         document.getElementById('invComm').innerText = data.comm + " د.ع";
         document.getElementById('invPayType').innerText = data.payType;
         document.getElementById('invStatus').innerHTML = data.isSettled ? '<span class="badge bg-secondary">تم تسوية الحساب</span>' : '<span class="badge bg-success">مكتمل (غير مسدد)</span>';
-        
         document.getElementById('invoiceModal').style.display = 'flex';
     }
     function closeInvoice(e) { if(!e || e.target.id === 'invoiceModal') document.getElementById('invoiceModal').style.display = 'none'; }
 
-    // تصدير إلى Excel (CSV)
     function exportExcel() {
-        let csv = '\uFEFF'; // لدعم اللغة العربية في الاكسل
+        let csv = '\uFEFF'; 
         csv += "ID الطلب,التاريخ,المطعم,الكابتن,الحالة\n";
         const rows = document.querySelectorAll("#archiveTable tbody tr");
         if(rows.length === 0 || rows[0].cells.length === 1) return alert("لا توجد بيانات للتصدير");
@@ -492,52 +515,46 @@
         
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement("a");
-        const url = URL.createObjectURL(blob);
-        link.setAttribute("href", url);
-        link.setAttribute("download", "تقرير_الحوت_" + new Date().toISOString().split('T')[0] + ".csv");
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        link.href = URL.createObjectURL(blob);
+        link.download = "تقرير_الحوت_" + new Date().toISOString().split('T')[0] + ".csv";
+        document.body.appendChild(link); link.click(); document.body.removeChild(link);
     }
 
-    // --- كروت المطاعم (المطورة) والكباتن ---
     function renderControlCards(containerId, list, icon, type, phoneIndex, debtsMap, mapKeyIndex, unpaidCounts) {
         let html = '';
         list.slice(1).filter(item => item[4] !== 'deleted').forEach(item => {
             const name = item[1], phone = item[phoneIndex], isActive = item[4] === 'active';
             const debtAmount = debtsMap[item[mapKeyIndex]] || 0; 
             
-            // إضافة عدد الطلبيات الغير مسددة للمطاعم
             let unpaidBadge = '';
             if (type === 'RESTAURANT' && unpaidCounts && unpaidCounts[name] > 0) {
-                unpaidBadge = `<span class="badge bg-danger rounded-pill ms-1">${unpaidCounts[name]} طلبات</span>`;
+                unpaidBadge = `<span class="badge bg-danger rounded-pill ms-1" style="font-size:0.7rem;">${unpaidCounts[name]} طلبات</span>`;
             }
 
             html += `
             <div class="col-md-6 col-xl-4">
-                <div class="stat-widget flex-column align-items-stretch">
-                    <div class="d-flex justify-content-between align-items-start mb-3">
-                        <div class="bg-light p-3 rounded-4"><i data-lucide="${icon}" size="24" style="color: var(--primary-blue);"></i></div>
+                <div class="stat-widget flex-column align-items-stretch" style="padding: 15px;">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div class="bg-light p-2 rounded-3"><i data-lucide="${icon}" size="20" style="color: var(--primary-blue);"></i></div>
                         <span class="badge ${isActive ? 'bg-success' : 'bg-secondary'} px-2 py-1 rounded-2">${isActive ? 'نشط' : 'غير نشط'}</span>
                     </div>
                     
-                    <h6 class="m-0 fw-black mb-1">${name}</h6>
+                    <h6 class="m-0 fw-black mb-1 text-truncate">${name}</h6>
                     
-                    <div class="mt-2 mb-4 d-inline-flex align-items-center gap-2 bg-danger bg-opacity-10 text-danger px-3 py-1 rounded-pill" style="width: fit-content;">
-                        <i data-lucide="wallet" size="14"></i>
-                        <span class="small fw-bold">غير مسدد: ${debtAmount} د.ع ${unpaidBadge}</span>
+                    <div class="mt-2 mb-3 d-inline-flex align-items-center gap-1 bg-danger bg-opacity-10 text-danger px-2 py-1 rounded-pill" style="width: fit-content;">
+                        <i data-lucide="wallet" size="12"></i>
+                        <span class="small fw-bold" style="font-size: 0.75rem;">غير مسدد: ${debtAmount} د.ع ${unpaidBadge}</span>
                     </div>
 
-                    <div class="d-flex justify-content-between align-items-center pt-3 border-top">
-                        <div class="d-flex gap-2">
-                            <button class="sov-btn sov-accept" onclick="adminAction('ACCEPT', '${type}', '${type === 'RESTAURANT' ? name : phone}')" title="تفعيل"><i data-lucide="check" size="18"></i></button>
-                            <button class="sov-btn sov-pause" onclick="adminAction('PAUSE', '${type}', '${type === 'RESTAURANT' ? name : phone}')" title="إيقاف"><i data-lucide="pause" size="18"></i></button>
-                            <button class="sov-btn sov-delete" onclick="adminAction('DELETE', '${type}', '${type === 'RESTAURANT' ? name : phone}')" title="حذف"><i data-lucide="trash-2" size="18"></i></button>
+                    <div class="d-flex justify-content-between align-items-center pt-2 border-top">
+                        <div class="d-flex gap-1">
+                            <button class="sov-btn sov-accept" style="width:32px;height:32px;" onclick="adminAction('ACCEPT', '${type}', '${type === 'RESTAURANT' ? name : phone}')"><i data-lucide="check" size="16"></i></button>
+                            <button class="sov-btn sov-pause" style="width:32px;height:32px;" onclick="adminAction('PAUSE', '${type}', '${type === 'RESTAURANT' ? name : phone}')"><i data-lucide="pause" size="16"></i></button>
+                            <button class="sov-btn sov-delete" style="width:32px;height:32px;" onclick="adminAction('DELETE', '${type}', '${type === 'RESTAURANT' ? name : phone}')"><i data-lucide="trash-2" size="16"></i></button>
                         </div>
-                        <div class="d-flex gap-2">
-                            <button class="sov-btn sov-reset" onclick="resetDebt('${type}', '${type === 'RESTAURANT' ? name : phone}')" title="تصفير الديون"><i data-lucide="banknote" size="18"></i></button>
-                            <button class="sov-btn sov-call shadow-sm" onclick="window.open('tel:${phone}')"><i data-lucide="phone-call" size="18"></i></button>
+                        <div class="d-flex gap-1">
+                            <button class="sov-btn sov-reset" style="width:32px;height:32px;" onclick="resetDebt('${type}', '${type === 'RESTAURANT' ? name : phone}')" title="تصفير الديون"><i data-lucide="banknote" size="16"></i></button>
+                            <button class="sov-btn sov-call shadow-sm" style="width:32px;height:32px;" onclick="window.open('tel:${phone}')"><i data-lucide="phone-call" size="16"></i></button>
                         </div>
                     </div>
                 </div>
@@ -548,7 +565,7 @@
     }
 
     function resetDebt(type, id) {
-        if(confirm(`تصفير الديون؟\nسيتم تحويل حالة طلباته إلى "تمت المحاسبة".`)) {
+        if(confirm(`تصفير الديون لـ (${id})؟\nسيتم تحويل الحسابات إلى "تمت المحاسبة".`)) {
             const url = `${API_URL}?action=RESET_DEBT&type=${type}&id=${id}&token=${API_TOKEN}`;
             const script = document.createElement('script'); script.src = `${url}&callback=afterAdminAction`; document.body.appendChild(script);
         }
@@ -557,15 +574,12 @@
     function adminAction(cmd, type, id) {
         const statusMap = { 'ACCEPT': 'active', 'PAUSE': 'inactive', 'DELETE': 'deleted' };
         if(confirm("تأكيد الإجراء؟")) {
-            const script = document.createElement('script');
-            script.src = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${id}&status=${statusMap[cmd]}&token=${API_TOKEN}&callback=afterAdminAction`;
-            document.body.appendChild(script);
+            const script = document.createElement('script'); script.src = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${id}&status=${statusMap[cmd]}&token=${API_TOKEN}&callback=afterAdminAction`; document.body.appendChild(script);
         }
     }
 
     window.afterAdminAction = function(response) {
-        if(response.success) { alert("تم بنجاح."); refreshData(); } 
-        else { alert("خطأ: " + (response.msg || "")); }
+        if(response.success) { alert("تم بنجاح."); refreshData(); } else { alert("خطأ: " + (response.msg || "")); }
     };
 
     function showTab(e, name) {
@@ -576,18 +590,30 @@
         lucide.createIcons();
         if(window.innerWidth <= 1100) toggleSidebar();
     }
-</script>
 
-<script async defer src="https://maps.googleapis.com/maps/api/js?libraries=visualization&callback=initMap"></script>
-<script>
+    // إعداد خريطة Leaflet المجانية بالكامل
     function initMap() {
-        const kirkukLocation = { lat: 35.468, lng: 44.392 };
-        map = new google.maps.Map(document.getElementById("adminMap"), {
-            zoom: 13, center: kirkukLocation, mapTypeControl: false, streetViewControl: false, fullscreenControl: true,
-            styles: [ { elementType: "geometry", stylers: [{ color: "#f5f5f5" }] }, { elementType: "labels.icon", stylers: [{ visibility: "off" }] }, { elementType: "labels.text.fill", stylers: [{ color: "#616161" }] }, { elementType: "labels.text.stroke", stylers: [{ color: "#f5f5f5" }] }, { featureType: "administrative.land_parcel", elementType: "labels.text.fill", stylers: [{ color: "#bdbdbd" }] }, { featureType: "poi", elementType: "geometry", stylers: [{ color: "#eeeeee" }] }, { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#757575" }] }, { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#e5e5e5" }] }, { featureType: "road", elementType: "geometry", stylers: [{ color: "#ffffff" }] }, { featureType: "road.arterial", elementType: "labels.text.fill", stylers: [{ color: "#757575" }] }, { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#dadada" }] }, { featureType: "water", elementType: "geometry", stylers: [{ color: "#c9c9c9" }] }, { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#9e9e9e" }] } ]
-        });
-        heatmap = new google.maps.visualization.HeatmapLayer({ map: map, radius: 40, opacity: 0.8, gradient: ['rgba(0, 255, 255, 0)', 'rgba(0, 255, 255, 1)', 'rgba(0, 191, 255, 1)', 'rgba(0, 127, 255, 1)', 'rgba(0, 63, 255, 1)', 'rgba(0, 0, 255, 1)', 'rgba(0, 0, 223, 1)', 'rgba(0, 0, 191, 1)', 'rgba(0, 0, 159, 1)', 'rgba(0, 0, 127, 1)', 'rgba(63, 0, 91, 1)', 'rgba(127, 0, 63, 1)', 'rgba(191, 0, 31, 1)', 'rgba(255, 0, 0, 1)'] });
+        const kirkukLocation = [35.468, 44.392];
+        
+        map = L.map('adminMap', {
+            zoomControl: false 
+        }).setView(kirkukLocation, 13);
+
+        L.control.zoom({ position: 'bottomleft' }).addTo(map);
+
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; OpenStreetMap',
+            maxZoom: 19
+        }).addTo(map);
+
+        heatLayer = L.heatLayer([], {
+            radius: 25,
+            blur: 15,
+            maxZoom: 14,
+            gradient: {0.4: 'blue', 0.6: 'cyan', 0.7: 'lime', 0.8: 'yellow', 1.0: 'red'}
+        }).addTo(map);
     }
 </script>
+
 </body>
 </html>
