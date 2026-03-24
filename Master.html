@@ -99,6 +99,17 @@
             border: 1px solid #f1f5f9; transition: 0.2s; font-weight: 600;
         }
 
+        /* زر الاتصال السريع الدائري */
+        .btn-call-mini {
+            background: white; border: 1px solid #e2e8f0; border-radius: 50%; width: 34px; height: 34px;
+            display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        .btn-call-mini:hover { transform: scale(1.1); }
+        .btn-call-mini.call-primary:hover { background: var(--primary-blue); color: white; border-color: var(--primary-blue); }
+        .btn-call-mini.call-warning:hover { background: #f59e0b; color: white; border-color: #f59e0b; }
+        .btn-call-mini.call-success:hover { background: #10b981; color: white; border-color: #10b981; }
+
         /* زر القائمة للموبايل (Hamburger) */
         .menu-toggle-btn {
             display: none; background: white; border: 1px solid #e2e8f0; 
@@ -118,7 +129,7 @@
             .sidebar.show { transform: translateX(0); box-shadow: -10px 0 50px rgba(0,0,0,0.5); }
             .menu-toggle-btn { display: flex; align-items: center; justify-content: center; }
             .sidebar-overlay.show { display: block; }
-            #adminMap { height: 300px; }
+            #adminMap { height: 350px; }
         }
     </style>
 </head>
@@ -196,8 +207,21 @@
         </div>
 
         <div id="tab-orders" class="admin-tab d-none">
-            <div class="stat-widget table-responsive"><table class="table align-middle"><thead><tr><th>ID</th><th>المطعم</th><th>السائق</th><th>الحالة</th></tr></thead><tbody id="ordersTableBody"></tbody></table></div>
+            <div class="stat-widget table-responsive">
+                <table class="table align-middle">
+                    <thead>
+                        <tr style="color: var(--primary-blue);">
+                            <th>ID الطلب</th>
+                            <th>المطعم</th>
+                            <th>هاتف السائق</th>
+                            <th>الحالة</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ordersTableBody"></tbody>
+                </table>
+            </div>
         </div>
+
         <div id="tab-restaurants" class="admin-tab d-none"><div class="row g-4" id="resListContainer"></div></div>
         <div id="tab-drivers" class="admin-tab d-none"><div class="row g-4" id="driverListContainer"></div></div>
     </main>
@@ -207,6 +231,7 @@
     lucide.createIcons();
     const API_URL = "https://script.google.com/macros/s/AKfycbznHSOuvIqqhFU5g1PiI7T-PU7gAXpzmV9NAHqb-dkg9HUCA2Nb-mVgLJYznf6CCNhAww/exec";
     const API_TOKEN = "HUT_SECURE_99";
+    let map, heatmap, driverMarkers = [];
     
     function checkAuth() {
         const pass = document.getElementById('masterPass').value;
@@ -215,7 +240,7 @@
             document.getElementById('mainDashboard').classList.remove('d-none');
             startClock(); refreshData(); setInterval(refreshData, 15000);
             
-            // تهيئة الخريطة بعد الدخول لضمان ظهورها بشكل صحيح
+            // تهيئة الخريطة الحرارية بعد الدخول
             if(typeof google !== 'undefined') initMap();
         } else { alert("❌ رمز المرور غير صحيح"); }
     }
@@ -238,6 +263,7 @@
         document.getElementById('count-drivers').innerText = data.drivers.filter(d => d[4] === 'active').length;
         document.getElementById('count-res').innerText = data.restaurants.filter(r => r[4] === 'active').length;
 
+        // --- 1. بناء الرادار الميداني ---
         let smartHtml = '';
         const activeOrders = data.orders.slice(1).filter(o => o[5] !== 'completed' && o[5] !== 'مكتمل' && o[5] !== 'deleted');
         
@@ -246,6 +272,21 @@
             const hasDriver = (driverPhone && driverPhone.toString().trim() !== "" && driverPhone !== "pending_driver");
             const isPickedUp = (status === 'picked_up' || status === 'في الطريق');
             
+            // استخراج اسم السائق وهاتف المطعم وهاتف الزبون لزر الاتصال السريع
+            let driverName = 'جاري البحث...';
+            const driverInfo = data.drivers.find(d => String(d[2]) === String(driverPhone));
+            if(driverInfo) driverName = driverInfo[1];
+
+            let restPhone = '';
+            const restInfo = data.restaurants.find(r => r[1] === restName);
+            if(restInfo) restPhone = restInfo[2];
+
+            // استخراج رقم هاتف الزبون من التفاصيل إن وجد (07...)
+            let custPhoneMatch = details ? details.match(/(07\d{8,9})/) : null;
+            let custPhone = custPhoneMatch ? custPhoneMatch[0] : '';
+            // عرض تفاصيل مختصرة
+            let shortDetails = details ? (details.length > 40 ? details.substring(0, 40) + '...' : details) : 'لا توجد تفاصيل';
+
             const orderTime = orderTimeStr ? new Date(orderTimeStr) : new Date();
             const diffMins = Math.floor((new Date() - orderTime) / 60000);
             const isDelayed = diffMins > 30; 
@@ -264,89 +305,52 @@
                             <small class="fw-bold ${hasDriver ? 'text-dark' : 'text-danger'}">${statusDesc}</small>
                         </div>
                     </div>
-                    <div class="d-flex flex-column gap-1">
-                        <div class="info-row"><div class="d-flex align-items-center gap-2"><i data-lucide="store" class="text-warning" size="18"></i> <span>المطعم:</span></div> <span class="text-dark">${restName || 'غير متوفر'}</span></div>
-                        <div class="info-row"><div class="d-flex align-items-center gap-2"><i data-lucide="user" class="text-success" size="18"></i> <span>الكابتن:</span></div> <span dir="ltr">${driverPhone || '<span class="text-danger">لا يوجد</span>'}</span></div>
+                    <div class="d-flex flex-column gap-2">
+                        <div class="info-row">
+                            <div class="d-flex align-items-center gap-2"><i data-lucide="user" class="text-primary" size="18"></i> <span class="text-muted">الزبون:</span></div> 
+                            <div class="d-flex align-items-center gap-3">
+                                <span class="text-dark small" title="${details}">${shortDetails}</span>
+                                ${custPhone ? `<button class="btn-call-mini call-primary" onclick="window.open('tel:${custPhone}')"><i data-lucide="phone" size="14"></i></button>` : ''}
+                            </div>
+                        </div>
+                        <div class="info-row">
+                            <div class="d-flex align-items-center gap-2"><i data-lucide="store" class="text-warning" size="18"></i> <span class="text-muted">المطعم:</span></div> 
+                            <div class="d-flex align-items-center gap-3">
+                                <span class="text-dark">${restName || 'غير متوفر'}</span>
+                                ${restPhone ? `<button class="btn-call-mini call-warning text-warning" onclick="window.open('tel:${restPhone}')"><i data-lucide="phone" size="14"></i></button>` : ''}
+                            </div>
+                        </div>
+                        <div class="info-row">
+                            <div class="d-flex align-items-center gap-2"><i data-lucide="bike" class="text-success" size="18"></i> <span class="text-muted">الكابتن:</span></div> 
+                            <div class="d-flex align-items-center gap-3">
+                                <span class="text-dark ${!hasDriver ? 'text-danger' : ''}">${hasDriver ? driverName : 'لا يوجد'}</span>
+                                ${hasDriver ? `<button class="btn-call-mini call-success text-success" onclick="window.open('tel:${driverPhone}')"><i data-lucide="phone" size="14"></i></button>` : ''}
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>`;
         });
         document.getElementById('smartOrdersContainer').innerHTML = smartHtml || '<div class="col-12 text-center p-4 fw-bold text-success">الرادار نظيف، لا توجد طلبات معلقة حالياً.</div>';
 
-        renderControlCards('resListContainer', data.restaurants, 'store', 'RESTAURANT', 2);
-        renderControlCards('driverListContainer', data.drivers, 'user', 'DRIVER', 2);
-        lucide.createIcons();
-    };
+        // --- 2. تحديث الخريطة الحرارية ونقاط السائقين ---
+        if (map && heatmap) {
+            const heatMapPoints = [];
+            
+            // إضافة نقاط المطاعم النشطة للخريطة الحرارية
+            data.restaurants.slice(1).forEach(r => {
+                if(r[4] === 'active' && r[6] && r[7]) { // Lat=6, Lng=7
+                    const lat = parseFloat(r[6]), lng = parseFloat(r[7]);
+                    if(!isNaN(lat) && !isNaN(lng)) heatMapPoints.push(new google.maps.LatLng(lat, lng));
+                }
+            });
 
-    function renderControlCards(containerId, list, icon, type, phoneIndex) {
-        let html = '';
-        list.slice(1).filter(item => item[4] !== 'deleted').forEach(item => {
-            const name = item[1], phone = item[phoneIndex], isActive = item[4] === 'active';
-            html += `
-            <div class="col-md-6 col-xl-4">
-                <div class="stat-widget flex-column align-items-stretch">
-                    <div class="d-flex align-items-center gap-3 mb-4">
-                        <div class="bg-light p-3 rounded-4"><i data-lucide="${icon}" size="24" style="color: var(--primary-blue);"></i></div>
-                        <div class="flex-grow-1">
-                            <h6 class="m-0 fw-black mb-1">${name}</h6>
-                            <span class="badge ${isActive ? 'bg-success' : 'bg-secondary'} px-2 py-1 rounded-2">${isActive ? 'نشط' : 'غير نشط'}</span>
-                        </div>
-                    </div>
-                    <div class="d-flex justify-content-between align-items-center pt-3 border-top">
-                        <div class="d-flex gap-2">
-                            <button class="sov-btn sov-accept" onclick="adminAction('ACCEPT', '${type}', '${phone}')" title="تفعيل"><i data-lucide="check" size="20"></i></button>
-                            <button class="sov-btn sov-pause" onclick="adminAction('PAUSE', '${type}', '${phone}')" title="إيقاف"><i data-lucide="pause" size="20"></i></button>
-                            <button class="sov-btn sov-delete" onclick="adminAction('DELETE', '${type}', '${phone}')" title="حذف"><i data-lucide="trash-2" size="20"></i></button>
-                        </div>
-                        <button class="sov-btn sov-call shadow-sm" onclick="window.open('tel:${phone}')"><i data-lucide="phone-call" size="20"></i></button>
-                    </div>
-                </div>
-            </div>`;
-        });
-        document.getElementById(containerId).innerHTML = html;
-    }
+            // مسح أيقونات السائقين القديمة
+            driverMarkers.forEach(m => m.setMap(null));
+            driverMarkers = [];
 
-    function adminAction(cmd, type, id) {
-        const statusMap = { 'ACCEPT': 'active', 'PAUSE': 'inactive', 'DELETE': 'deleted' };
-        if(confirm(`هل أنت متأكد من الإجراء؟`)) {
-            const script = document.createElement('script');
-            script.src = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${id}&status=${statusMap[cmd]}&token=${API_TOKEN}&callback=afterAdminAction`;
-            document.body.appendChild(script);
-        }
-    }
-
-    window.afterAdminAction = function(response) {
-        if(response.success) { alert("تم التنفيذ بنجاح."); refreshData(); } 
-        else { alert("حدث خطأ."); }
-    };
-
-    function showTab(e, name) {
-        document.querySelectorAll('.admin-tab').forEach(t => t.classList.add('d-none'));
-        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-        document.getElementById('tab-' + name).classList.remove('d-none');
-        e.currentTarget.classList.add('active');
-        lucide.createIcons();
-        if(window.innerWidth <= 1100) { toggleSidebar(); }
-    }
-</script>
-
-<script async defer src="https://maps.googleapis.com/maps/api/js?callback=initMap"></script>
-<script>
-    let map;
-    function initMap() {
-        const kirkukLocation = { lat: 35.468, lng: 44.392 };
-        const mapOptions = {
-            zoom: 13,
-            center: kirkukLocation,
-            mapTypeControl: false,
-            streetViewControl: false,
-            fullscreenControl: true,
-            styles: [
-                { elementType: "geometry", stylers: [{ color: "#f5f5f5" }] },
-                { elementType: "labels.icon", stylers: [{ visibility: "off" }] },
-                { elementType: "labels.text.fill", stylers: [{ color: "#616161" }] },
-                { elementType: "labels.text.stroke", stylers: [{ color: "#f5f5f5" }] },
-                { featureType: "administrative.land_parcel", elementType: "labels.text.fill", stylers: [{ color: "#bdbdbd" }] },
-                { featureType: "poi", elementType: "geometry", stylers: [{ color: "#eeeeee" }] },
-                { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
-                { featureType: "poi.park", eleme
+            // إضافة نقاط السائقين للخريطة الحرارية ورسم أيقوناتهم
+            data.drivers.slice(1).forEach(d => {
+                if(d[4] === 'active' && d[5] && d[6]) { // Lat=5, Lng=6
+                    const lat = parseFloat(d[5]), lng = parseFloat(d[6]);
+                    if(!isNaN(lat) &
