@@ -17,13 +17,14 @@
         .nav-item { display: flex; align-items: center; gap: 15px; padding: 16px 20px; color: #cbd5e1; text-decoration: none; border-radius: 16px; margin-bottom: 8px; cursor: pointer; transition: all 0.3s ease; font-weight: 600; }
         .nav-item:hover { background: rgba(255,255,255,0.05); color: white; transform: translateX(-5px); }
         .nav-item.active { background: white; color: var(--primary-blue); box-shadow: 0 10px 20px rgba(0,0,0,0.1); font-weight: 900; }
-        .stat-widget { background: var(--card-bg); border-radius: 24px; padding: 30px; box-shadow: 0 4px 20px rgba(0,0,0,0.03); border: 1px solid #e2e8f0; height: 100%; transition: 0.3s; }
+        .stat-widget { background: var(--card-bg); border-radius: 24px; padding: 25px; box-shadow: 0 4px 20px rgba(0,0,0,0.03); border: 1px solid #e2e8f0; height: 100%; transition: 0.3s; }
         .stat-widget:hover { transform: translateY(-5px); box-shadow: 0 10px 25px rgba(0,0,0,0.06); }
         #adminMap { height: 450px; width: 100%; border-radius: 24px; border: 8px solid white; box-shadow: 0 10px 30px rgba(0,0,0,0.06); background: #e2e8f0; }
-        .sov-btn { border: none; border-radius: 14px; width: 45px; height: 45px; display: inline-flex; align-items: center; justify-content: center; transition: 0.2s; cursor: pointer; }
+        .sov-btn { border: none; border-radius: 14px; width: 42px; height: 42px; display: inline-flex; align-items: center; justify-content: center; transition: 0.2s; cursor: pointer; }
         .sov-accept { background: #eff6ff; color: var(--accent-blue); }
         .sov-pause { background: #fffbeb; color: #d97706; }
         .sov-delete { background: #fef2f2; color: #ef4444; }
+        .sov-reset { background: #ecfdf5; color: #10b981; } /* زر التصفير المالي */
         .sov-call { background: var(--primary-blue); color: white; }
         .sov-btn:hover { filter: brightness(0.95); transform: scale(1.05); }
         .smart-order-card { background: var(--card-bg); border-radius: 20px; padding: 25px; margin-bottom: 20px; border: 1px solid #e2e8f0; border-right: 6px solid #94a3b8; box-shadow: 0 4px 15px rgba(0,0,0,0.02); position: relative; transition: 0.3s; }
@@ -72,8 +73,8 @@
         <nav>
             <div class="nav-item active" onclick="showTab(event, 'live')"><i data-lucide="layout-dashboard"></i> <span>الرصد الميداني</span></div>
             <div class="nav-item" onclick="showTab(event, 'orders')"><i data-lucide="database"></i> <span>الأرشيف المركزي</span></div>
-            <div class="nav-item" onclick="showTab(event, 'restaurants')"><i data-lucide="store"></i> <span>إدارة الشركاء</span></div>
-            <div class="nav-item" onclick="showTab(event, 'drivers')"><i data-lucide="users"></i> <span>إدارة الأسطول</span></div>
+            <div class="nav-item" onclick="showTab(event, 'restaurants')"><i data-lucide="store"></i> <span>إدارة الشركاء (المطاعم)</span></div>
+            <div class="nav-item" onclick="showTab(event, 'drivers')"><i data-lucide="users"></i> <span>إدارة الأسطول (الكباتن)</span></div>
         </nav>
     </aside>
 
@@ -112,6 +113,7 @@
                 </table>
             </div>
         </div>
+        
         <div id="tab-restaurants" class="admin-tab d-none"><div class="row g-4" id="resListContainer"></div></div>
         <div id="tab-drivers" class="admin-tab d-none"><div class="row g-4" id="driverListContainer"></div></div>
     </main>
@@ -147,13 +149,47 @@
         document.getElementById('count-drivers').innerText = data.drivers.filter(d => d[4] === 'active').length;
         document.getElementById('count-res').innerText = data.restaurants.filter(r => r[4] === 'active').length;
 
+        // 1. حساب الديون (الشفافية المالية)
+        let resDebts = {};
+        let driverDebts = {};
+        
+        // تهيئة الحسابات بأصفار
+        data.restaurants.slice(1).forEach(r => resDebts[r[1]] = 0); // r[1] هو اسم المطعم
+        data.drivers.slice(1).forEach(d => driverDebts[String(d[2])] = 0); // d[2] هو هاتف السائق
+        
+        // التجميع للطلبات المنجزة (التي لم يتم تصفيرها/تسويتها بعد)
+        data.orders.slice(1).forEach(o => {
+            const status = o[5];
+            // إذا كان الطلب 'completed' فهذا يعني أنه تم توصيله ولم تُدفع عمولته للمكتب بعد
+            if (status === 'completed' || status === 'مكتمل') {
+                const rName = o[1];
+                const dPhone = String(o[6]);
+                
+                const rData = data.restaurants.find(r => r[1] === rName);
+                if (rData) {
+                    const comm = parseFloat(rData[5]) || 0; // مقدار العمولة
+                    const payType = String(rData[8]); // نظام الدفع
+                    
+                    if (payType.includes('مناصفة')) {
+                        if (resDebts[rName] !== undefined) resDebts[rName] += (comm / 2);
+                        if (driverDebts[dPhone] !== undefined) driverDebts[dPhone] += (comm / 2);
+                    } else {
+                        // المطعم يدفع كامل العمولة
+                        if (resDebts[rName] !== undefined) resDebts[rName] += comm;
+                    }
+                }
+            }
+        });
+
+        // 2. بناء الرادار الميداني
         let smartHtml = '';
-        const activeOrders = data.orders.slice(1).filter(o => o[5] !== 'completed' && o[5] !== 'مكتمل' && o[5] !== 'deleted');
+        const activeOrders = data.orders.slice(1).filter(o => o[5] !== 'completed' && o[5] !== 'مكتمل' && o[5] !== 'settled' && o[5] !== 'deleted');
         
         activeOrders.forEach(o => {
             const orderId = o[0], restName = o[1], details = o[3], status = o[5], driverPhone = o[6], orderTimeStr = o[7];
             const hasDriver = (driverPhone && driverPhone.toString().trim() !== "" && driverPhone !== "pending_driver");
             const isPickedUp = (status === 'picked_up' || status === 'في الطريق');
+            const isArrived = (status === 'arrived_at_res');
             
             let driverName = 'جاري البحث...';
             let restPhone = '';
@@ -175,7 +211,8 @@
             const isDelayed = diffMins > 30; 
 
             let cardClass = "status-danger", statusDesc = "🔴 بانتظار تعيين كابتن";
-            if(hasDriver && !isPickedUp) { cardClass = "status-warning"; statusDesc = "🟠 الكابتن متوجه للمطعم"; }
+            if(hasDriver && !isPickedUp && !isArrived) { cardClass = "status-primary"; statusDesc = "🔵 الكابتن متوجه للمطعم"; }
+            if(hasDriver && isArrived) { cardClass = "status-warning"; statusDesc = "🟠 الكابتن في المطعم"; }
             if(hasDriver && isPickedUp) { cardClass = "status-success"; statusDesc = "🟢 في الطريق للزبون"; }
 
             smartHtml += `
@@ -185,7 +222,7 @@
                     <div class="d-flex justify-content-between align-items-center mb-4">
                         <div>
                             <h5 class="fw-black m-0 mb-1" style="color: var(--primary-blue);">طلب #${orderId}</h5>
-                            <small class="fw-bold ${hasDriver ? 'text-dark' : 'text-danger'}">${statusDesc}</small>
+                            <small class="fw-bold ${!hasDriver ? 'text-danger' : 'text-dark'}">${statusDesc}</small>
                         </div>
                     </div>
                     <div class="d-flex flex-column gap-2">
@@ -244,48 +281,72 @@
         }
 
         let archiveHtml = '';
-        const completedOrders = data.orders.slice(1).filter(o => o[5] === 'completed' || o[5] === 'مكتمل');
+        const completedOrders = data.orders.slice(1).filter(o => o[5] === 'completed' || o[5] === 'مكتمل' || o[5] === 'settled');
         completedOrders.forEach(o => {
+            const isSettled = (o[5] === 'settled');
             archiveHtml += `<tr style="border-bottom: 1px solid #e2e8f0; transition: background 0.2s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
                 <td class="fw-bold" style="color: var(--primary-blue);">${o[0] || '-'}</td>
                 <td class="fw-bold text-dark">${o[1] || '-'}</td>
                 <td dir="ltr" class="text-muted fw-bold">${o[6] || '-'}</td>
-                <td><span class="badge bg-success px-3 py-2 rounded-pill shadow-sm">مكتمل</span></td>
+                <td><span class="badge ${isSettled ? 'bg-secondary' : 'bg-success'} px-3 py-2 rounded-pill shadow-sm">${isSettled ? 'تمت المحاسبة' : 'مكتمل (غير محاسب)'}</span></td>
             </tr>`;
         });
         document.getElementById('ordersTableBody').innerHTML = archiveHtml || `<tr><td colspan="4" class="text-center text-muted py-4 fw-bold">لا توجد طلبات منجزة في الأرشيف حالياً</td></tr>`;
 
-        renderControlCards('resListContainer', data.restaurants, 'store', 'RESTAURANT', 2);
-        renderControlCards('driverListContainer', data.drivers, 'user', 'DRIVER', 2);
+        // 3. بناء كروت الإدارة مع عرض الديون وزر التصفير
+        renderControlCards('resListContainer', data.restaurants, 'store', 'RESTAURANT', 2, resDebts, 1); // Index 1 is name
+        renderControlCards('driverListContainer', data.drivers, 'user', 'DRIVER', 2, driverDebts, 2); // Index 2 is phone
         lucide.createIcons();
     };
 
-    function renderControlCards(containerId, list, icon, type, phoneIndex) {
+    // الدالة المحدثة لاستقبال وطباعة الديون
+    function renderControlCards(containerId, list, icon, type, phoneIndex, debtsMap, mapKeyIndex) {
         let html = '';
         list.slice(1).filter(item => item[4] !== 'deleted').forEach(item => {
             const name = item[1], phone = item[phoneIndex], isActive = item[4] === 'active';
+            const debtAmount = debtsMap[item[mapKeyIndex]] || 0; // جلب الدين المحسوب
+            
             html += `
             <div class="col-md-6 col-xl-4">
                 <div class="stat-widget flex-column align-items-stretch">
-                    <div class="d-flex align-items-center gap-3 mb-4">
+                    <div class="d-flex justify-content-between align-items-start mb-3">
                         <div class="bg-light p-3 rounded-4"><i data-lucide="${icon}" size="24" style="color: var(--primary-blue);"></i></div>
-                        <div class="flex-grow-1">
-                            <h6 class="m-0 fw-black mb-1">${name}</h6>
-                            <span class="badge ${isActive ? 'bg-success' : 'bg-secondary'} px-2 py-1 rounded-2">${isActive ? 'نشط' : 'غير نشط'}</span>
-                        </div>
+                        <span class="badge ${isActive ? 'bg-success' : 'bg-secondary'} px-2 py-1 rounded-2">${isActive ? 'نشط' : 'غير نشط'}</span>
                     </div>
+                    
+                    <h6 class="m-0 fw-black mb-1">${name}</h6>
+                    
+                    <div class="mt-2 mb-4 d-inline-flex align-items-center gap-2 bg-danger bg-opacity-10 text-danger px-3 py-1 rounded-pill" style="width: fit-content;">
+                        <i data-lucide="wallet" size="14"></i>
+                        <span class="small fw-bold">حساب غير مسدد: ${debtAmount} د.ع</span>
+                    </div>
+
                     <div class="d-flex justify-content-between align-items-center pt-3 border-top">
                         <div class="d-flex gap-2">
-                            <button class="sov-btn sov-accept" onclick="adminAction('ACCEPT', '${type}', '${phone}')" title="تفعيل"><i data-lucide="check" size="20"></i></button>
-                            <button class="sov-btn sov-pause" onclick="adminAction('PAUSE', '${type}', '${phone}')" title="إيقاف"><i data-lucide="pause" size="20"></i></button>
-                            <button class="sov-btn sov-delete" onclick="adminAction('DELETE', '${type}', '${phone}')" title="حذف"><i data-lucide="trash-2" size="20"></i></button>
+                            <button class="sov-btn sov-accept" onclick="adminAction('ACCEPT', '${type}', '${type === 'RESTAURANT' ? name : phone}')" title="تفعيل"><i data-lucide="check" size="18"></i></button>
+                            <button class="sov-btn sov-pause" onclick="adminAction('PAUSE', '${type}', '${type === 'RESTAURANT' ? name : phone}')" title="إيقاف"><i data-lucide="pause" size="18"></i></button>
+                            <button class="sov-btn sov-delete" onclick="adminAction('DELETE', '${type}', '${type === 'RESTAURANT' ? name : phone}')" title="حذف"><i data-lucide="trash-2" size="18"></i></button>
                         </div>
-                        <button class="sov-btn sov-call shadow-sm" onclick="window.open('tel:${phone}')"><i data-lucide="phone-call" size="20"></i></button>
+                        <div class="d-flex gap-2">
+                            <button class="sov-btn sov-reset" onclick="resetDebt('${type}', '${type === 'RESTAURANT' ? name : phone}')" title="تصفير الديون (تسوية الحساب)"><i data-lucide="banknote" size="18"></i></button>
+                            <button class="sov-btn sov-call shadow-sm" onclick="window.open('tel:${phone}')"><i data-lucide="phone-call" size="18"></i></button>
+                        </div>
                     </div>
                 </div>
             </div>`;
         });
         document.getElementById(containerId).innerHTML = html;
+    }
+
+    // دالة تصفير الديون
+    function resetDebt(type, id) {
+        if(confirm(`سيادة المدير، هل استلمت/دفعت الحساب وأنت متأكد من تصفير ديون (${id}) بالكامل؟\nسيتم تحويل حالة طلباته إلى "تمت المحاسبة".`)) {
+            // نستخدم دالة جديدة في السكريبت اسمها RESET_DEBT
+            const url = `${API_URL}?action=RESET_DEBT&type=${type}&id=${id}&token=${API_TOKEN}`;
+            const script = document.createElement('script');
+            script.src = `${url}&callback=afterAdminAction`;
+            document.body.appendChild(script);
+        }
     }
 
     function adminAction(cmd, type, id) {
@@ -299,7 +360,7 @@
 
     window.afterAdminAction = function(response) {
         if(response.success) { alert("تم التنفيذ بنجاح."); refreshData(); } 
-        else { alert("حدث خطأ."); }
+        else { alert("حدث خطأ: " + (response.msg || "")); }
     };
 
     function showTab(e, name) {
