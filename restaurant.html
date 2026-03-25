@@ -3,8 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>بوابة المطاعم | مكتب سفيان</title>
     
+    <title>بوابة المطاعم | مكتب سفيان</title>
+    <meta name="theme-color" content="#1e3a8a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3081/3081308.png"> <link rel="manifest" href='data:application/manifest+json;utf-8,{"name":"الحوت - بوابة المطاعم","short_name":"المطاعم","display":"standalone","background_color":"#f8fafc","theme_color":"#1e3a8a","start_url":".","icons":[{"src":"https://cdn-icons-png.flaticon.com/512/3081/3081308.png","sizes":"512x512","type":"image/png"}]}'>
+
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
@@ -308,14 +314,22 @@
 <script>
     lucide.createIcons();
 
-    // الرابط الجديد
-    const API_URL = "https://script.google.com/macros/s/AKfycbxzR1cciyLOA4arw_jzWlkJbjUi6HTbyone_GBoc3Qx6jbffTw-Q4H8J-ASNL5cK7lmTA/exec";
+    // --- تحديث الرابط الجديد ---
+    const API_URL = "https://script.google.com/macros/s/AKfycbyBP0z0KJyYJfo1qUUpncQuRMvUyAoyuoiu0z4qFP2EoLv6uOLepb1KB19kx6uCfjlC7A/exec";
     const API_TOKEN = "HUT_SECURE_99";
+    
     let currentResName = "";
     let isRegistering = false;
     let currentOrderMode = 'manual';
     let base64Receipt = null;
     let dataRefreshInterval;
+
+    // تسجيل Service Worker ليعمل التطبيق (PWA)
+    if ('serviceWorker' in navigator) {
+        const swCode = `self.addEventListener('fetch', function(event) {});`;
+        const blob = new Blob([swCode], { type: 'application/javascript' });
+        navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(console.error);
+    }
 
     function showLoading(s, text = "جاري المعالجة...") { 
         document.getElementById('loadingText').innerText = text;
@@ -517,7 +531,7 @@
             if(o[1] === currentResName) {
                 const status = o[5];
                 const orderId = o[0];
-                const orderArea = o[2]; // سحب المنطقة من البيانات
+                const orderArea = o[2]; // المنطقة في العمود J مسبقاً وتُرجمت إلى [2] في السيرفر
                 const driverPhone = o[6];
                 
                 const orderDateStr = o[7];
@@ -536,7 +550,7 @@
                     
                     // 2. أرشيف اليوم
                     if(orderISO === todayISO) {
-                        const priceVal = parseFloat(o[4]) || 0;
+                        const priceVal = parseFloat(o[4]) || 0; // السعر في العمود H وتُرجم إلى [4]
                         todaySalesTotal += priceVal;
                         
                         let driverName = "مكتمل";
@@ -632,7 +646,7 @@
         lucide.createIcons();
     };
 
-    // الإرسال السريع والصفري (Optimistic UI & Background Processing)
+    // الإرسال السريع والصفري
     document.getElementById('orderForm').onsubmit = function(e) {
         e.preventDefault();
 
@@ -663,28 +677,22 @@
             image: imagePayload
         };
 
-        // 1. الاستجابة الفورية للمطعم (بدون شاشة تحميل)
         document.getElementById('orderStatusBox').classList.remove('hidden-section');
         document.getElementById('statusMsg').innerHTML = `<span class="fw-bold">تم الإطلاق بنجاح!</span><br><span class="text-warning small fw-bold">الطلب الآن يسبح في الرادار بانتظار كابتن 📡</span>`;
         
-        // 2. تصفير الحقول فوراً لطلب جديد
         document.getElementById('customerPhone').value = "";
         document.getElementById('customerDetails').value = "";
         if(document.getElementById('orderPrice')) document.getElementById('orderPrice').value = "";
         removePhoto();
 
-        // إخفاء رسالة النجاح بعد 6 ثوانٍ
         setTimeout(() => { document.getElementById('orderStatusBox').classList.add('hidden-section'); }, 6000);
 
-        // 3. الإرسال الفعلي للسيرفر في الخلفية (Background Task)
         fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) })
         .then(r => r.json())
         .then(res => {
             if(res.success) {
-                // تحديث القائمة صمتاً ليظهر الطلب برقمه
                 fetchResDashboardData();
             } else {
-                // عرض الخطأ التفصيلي في حالة الرفض
                 alert("تنبيه: " + (res.msg || res.error || "خطأ غير معروف في السيرفر"));
             }
         })
