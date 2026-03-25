@@ -126,7 +126,7 @@
             <input type="text" id="driverName" class="custom-input" placeholder="الاسم الثلاثي">
         </div>
         
-        <button class="btn-big btn-login" id="mainAuthBtn" onclick="authAction()">
+        <button class="btn-big btn-login" id="mainAuthBtn" onclick="initAudioAndAuth()">
             فحص الإشارة <i data-lucide="radar"></i>
         </button>
     </div>
@@ -255,7 +255,7 @@
 <script>
     lucide.createIcons();
 
-    // --- تحديث الرابط الجديد ---
+    // --- الرابط الجديد ---
     const API_URL = "https://script.google.com/macros/s/AKfycbz0ksDT0r1ZTul2-xHuB6enUr8cl-ZtMPH4baqSnOGawAZpkUOlhn34U2xuPw6jYixzNA/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
@@ -265,11 +265,22 @@
     let isRegistering = false;
     let isOnline = true;
 
-    // تسجيل Service Worker ليعمل التطبيق (PWA) ويسمح بـ "الإضافة إلى الشاشة الرئيسية"
+    // تسجيل Service Worker ليعمل التطبيق (PWA)
     if ('serviceWorker' in navigator) {
         const swCode = `self.addEventListener('fetch', function(event) {});`;
         const blob = new Blob([swCode], { type: 'application/javascript' });
         navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(console.error);
+    }
+
+    // تعديل 2: دالة تهيئة الصوت والأذونات (مهمة لـ APK)
+    function initAudioAndAuth() {
+        let audio = document.getElementById('alertSound');
+        audio.play().then(() => {
+            audio.pause();
+            audio.currentTime = 0;
+        }).catch(e => console.log("Audio prep bypassed by policy"));
+        
+        authAction();
     }
 
     window.onload = function() {
@@ -409,6 +420,7 @@
     }
 
     function startSystem() {
+        // نبض الرادار: تم ضبطه على 10 ثوانٍ كما طلبت لسرعة الاستجابة
         setInterval(checkForOrders, 10000);
         updateStats(); 
         setInterval(updateStats, 20000); 
@@ -417,7 +429,6 @@
             navigator.geolocation.watchPosition(pos => {
                 if(!isOnline && activeOrders.length === 0) return; 
                 
-                // حفظ الموقع الحي للكابتن لاستخدامه في منع الاحتيال
                 driverData.currentLat = pos.coords.latitude;
                 driverData.currentLng = pos.coords.longitude;
 
@@ -437,7 +448,6 @@
     window.renderDriverData = function(data) {
         if(!data || !data.orders) return;
         
-        // 1. مزامنة حالة الطلبات النشطة
         for (let i = activeOrders.length - 1; i >= 0; i--) {
             const order = activeOrders[i];
             const serverOrder = data.orders.find(o => String(o[0]) === String(order.id));
@@ -447,7 +457,6 @@
                 const status = serverOrder[5];
                 const assignedDriver = String(serverOrder[6]);
                 
-                // تحديث رابط الصورة في حال كان الطلب مصوراً (يأتي من العمود E / index 8 في السيرفر)
                 const photoUrl = serverOrder[8]; 
                 if (photoUrl && photoUrl.toString().startsWith("http")) {
                     order.photoUrl = photoUrl;
@@ -472,7 +481,6 @@
         });
         displayActiveOrders(); 
 
-        // 2. حساب الإحصائيات وبناء الأرشيف
         let myCompletedCount = 0, myDebt = 0, todayTotalCash = 0;
         const myPhone = String(driverData.phone);
         const todayISO = new Date().toISOString().split('T')[0];
@@ -536,6 +544,11 @@
             document.getElementById('orderAlertOverlay').classList.remove('hidden');
             let audio = document.getElementById('alertSound');
             audio.currentTime = 0; audio.play().catch(e=>{});
+            
+            // تعديل 3: إرسال إشعار للنظام الأندرويد إذا كان التطبيق مغلفاً (WebView)
+            if (window.AndroidInterface && typeof window.AndroidInterface.showNotification === 'function') {
+                window.AndroidInterface.showNotification("طلب جديد من " + data.resName, "اضغط لفتح التطبيق!");
+            }
 
             startCountdown(60);
         }
@@ -564,7 +577,6 @@
             price: currentOrderData.price || '---', 
             area: currentOrderData.area || '---',
             state: 'heading',
-            // فلترة وقائية للرابط لحظة القبول أيضاً
             photoUrl: (currentOrderData.photoUrl && currentOrderData.photoUrl.toString().startsWith("http")) ? currentOrderData.photoUrl : null
         };
         activeOrders.push(newOrder); 
@@ -588,12 +600,11 @@
 
     function arriveAtRestaurant(id) { 
         const order = activeOrders.find(o => String(o.id) === String(id));
-        // 🛡️ درع الحماية: منع تسجيل الوصول إذا كان الكابتن أبعد من 300 متر عن المطعم
         if (order && order.resLat && order.resLng && driverData.currentLat && driverData.currentLng) {
             const dist = calculateDistance(driverData.currentLat, driverData.currentLng, order.resLat, order.resLng);
-            if (dist > 0.3) { // 0.3 كم تعني 300 متر
+            if (dist > 0.3) { 
                 alert(`⚠️ عذراً كابتن! الرادار يوضح أنك بعيد عن المطعم بمسافة (${(dist).toFixed(2)} كم). يرجى الوصول للمطعم أولاً لتفعيل هذا الزر.`);
-                return; // إيقاف العملية
+                return; 
             }
         }
         updateOrderStateLocally(id, 'arrived', 'arrived_at_res'); 
@@ -601,12 +612,11 @@
 
     function pickUpOrder(id) { 
         const order = activeOrders.find(o => String(o.id) === String(id));
-        // 🛡️ درع الحماية: منع تسجيل استلام الطلب إذا كان الكابتن بعيداً عن المطعم
         if (order && order.resLat && order.resLng && driverData.currentLat && driverData.currentLng) {
             const dist = calculateDistance(driverData.currentLat, driverData.currentLng, order.resLat, order.resLng);
             if (dist > 0.3) {
                 alert("⚠️ لا يمكنك تسجيل استلام الطلب وأنت غير متواجد في موقع المطعم!");
-                return; // إيقاف العملية
+                return; 
             }
         }
         updateOrderStateLocally(id, 'picked_up', 'picked_up'); 
@@ -615,10 +625,9 @@
     function finishOrder(id) {
         const order = activeOrders.find(o => String(o.id) === String(id));
 
-        // 🛡️ درع الحماية: منع إنهاء الطلب إذا كان الكابتن بجوار المطعم
         if (order && order.resLat && order.resLng && driverData.currentLat && driverData.currentLng) {
             const dist = calculateDistance(driverData.currentLat, driverData.currentLng, order.resLat, order.resLng);
-            if (dist < 0.2) { // 0.2 كم تعني 200 متر
+            if (dist < 0.2) { 
                 alert("⚠️ عذراً كابتن! الرادار يوضح أنك لا تزال بجوار المطعم (أقل من 200 متر). يرجى التوجه نحو الزبون أولاً لكي تتمكن من إنهاء الطلب.");
                 return; 
             }
@@ -664,15 +673,13 @@
             let resBtns = '';
             if(order.resPhone) resBtns += `<button class="btn-call-mini" style="background: #fffbeb; color: #f59e0b; border-color: #f59e0b;" onclick="window.open('tel:${order.resPhone}')"><i data-lucide="phone" size="16"></i></button>`;
             
-            // زر الملاحة (GPS) إلى المطعم، يظهر فقط إذا توفرت الإحداثيات للمطعم
             if(order.resLat && order.resLng && order.resLat !== 0) {
-                resBtns += `<button class="btn-call-mini" style="background: #eff6ff; color: #3b82f6; border-color: #3b82f6;" onclick="window.open('http://maps.google.com/maps?q=${order.resLat},${order.resLng}', '_blank')"><i data-lucide="navigation" size="16"></i></button>`;
+                resBtns += `<button class="btn-call-mini" style="background: #eff6ff; color: #3b82f6; border-color: #3b82f6;" onclick="window.open('http://maps.google.com/maps?q=$${order.resLat},${order.resLng}', '_blank')"><i data-lucide="navigation" size="16"></i></button>`;
             }
 
             const cardBorder = activeOrders.length > 1 ? 'border-color: #c4b5fd; border-top-color: #8b5cf6;' : '';
             const badgeColor = activeOrders.length > 1 ? 'bg-purple' : 'bg-primary';
 
-            // زر إظهار الصورة (يظهر فقط إذا كان الرابط سليماً)
             let photoBtnHtml = '';
             if (order.photoUrl && order.photoUrl.toString().startsWith("http")) {
                 photoBtnHtml = `<button class="btn-photo-view w-100 mt-2" onclick="window.open('${order.photoUrl}', '_blank')"><i data-lucide="image" size="18"></i> عرض صورة الوصل</button>`;
