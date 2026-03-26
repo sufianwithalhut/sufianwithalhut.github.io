@@ -255,13 +255,44 @@
 
     function checkAuth() {
         const pass = document.getElementById('masterPass').value;
-        if(pass === "112233") {
+        if(!pass) return alert("الرجاء إدخال رمز المرور");
+        
+        // تغيير شكل الزر أثناء التحميل
+        const btn = document.querySelector('.auth-card button');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = 'جاري التحقق من السيرفر...';
+        btn.disabled = true;
+
+        // إرسال كلمة السر للسيرفر لمطابقتها مع ورقة Settings
+        const script = document.createElement('script');
+        script.src = `${API_URL}?action=VERIFY_MASTER_PASS&pass=${pass}&token=${API_TOKEN}&callback=authResult`;
+        document.body.appendChild(script);
+        
+        // صمام أمان في حال ضعف الإنترنت
+        setTimeout(() => {
+            if(btn.disabled) {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+                alert("⏳ تأخر السيرفر في الرد، يرجى التأكد من اتصال الإنترنت.");
+            }
+        }, 10000);
+    }
+
+    // دالة استقبال الرد من السيرفر
+    window.authResult = function(response) {
+        const btn = document.querySelector('.auth-card button');
+        btn.innerHTML = 'تسجيل الدخول';
+        btn.disabled = false;
+
+        if(response.success) {
             document.getElementById('authOverlay').style.display = 'none';
             document.getElementById('mainDashboard').classList.remove('d-none');
             startClock(); refreshData(); setInterval(refreshData, 15000);
             initMap();
-        } else { alert("❌ رمز المرور غير صحيح"); }
-    }
+        } else {
+            alert("❌ رمز المرور غير صحيح أو لا يطابق ورقة الإعدادات");
+        }
+    };
 
     function startClock() { setInterval(() => { 
         const now = new Date();
@@ -678,12 +709,12 @@
 
                     <div class="d-flex justify-content-between align-items-center pt-2 border-top">
                         <div class="d-flex gap-1">
-                            <button class="sov-btn sov-accept" style="width:32px;height:32px;" onclick="adminAction('ACCEPT', '${type}', '${type === 'RESTAURANT' ? name : phone}')"><i data-lucide="check" size="16"></i></button>
-                            <button class="sov-btn sov-pause" style="width:32px;height:32px;" onclick="adminAction('PAUSE', '${type}', '${type === 'RESTAURANT' ? name : phone}')"><i data-lucide="pause" size="16"></i></button>
-                            <button class="sov-btn sov-delete" style="width:32px;height:32px;" onclick="adminAction('DELETE', '${type}', '${type === 'RESTAURANT' ? name : phone}')"><i data-lucide="trash-2" size="16"></i></button>
+                            <button class="sov-btn sov-accept" style="width:32px;height:32px;" onclick="adminAction('ACCEPT', '${type}', '${phone}')"><i data-lucide="check" size="16"></i></button>
+                            <button class="sov-btn sov-pause" style="width:32px;height:32px;" onclick="adminAction('PAUSE', '${type}', '${phone}')"><i data-lucide="pause" size="16"></i></button>
+                            <button class="sov-btn sov-delete" style="width:32px;height:32px;" onclick="adminAction('DELETE', '${type}', '${phone}')"><i data-lucide="trash-2" size="16"></i></button>
                         </div>
                         <div class="d-flex gap-1">
-                            <button class="sov-btn sov-reset" style="width:32px;height:32px;" onclick="resetDebt('${type}', '${type === 'RESTAURANT' ? name : phone}')" title="تصفير الديون"><i data-lucide="banknote" size="16"></i></button>
+                            <button class="sov-btn sov-reset" style="width:32px;height:32px;" onclick="resetDebt('${type}', '${phone}')" title="تصفير الديون"><i data-lucide="banknote" size="16"></i></button>
                             <button class="sov-btn sov-call shadow-sm" style="width:32px;height:32px;" onclick="window.open('tel:${phone}')"><i data-lucide="phone-call" size="16"></i></button>
                         </div>
                     </div>
