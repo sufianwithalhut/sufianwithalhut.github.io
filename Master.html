@@ -238,15 +238,15 @@
 <script>
     lucide.createIcons();
     
-    // --- تحديث الرابط الجديد ---
-    const API_URL = "https://script.google.com/macros/s/AKfycby4fyF_319zOOMtufCrj7WLkDkrWxYp6wHr7Yj6xeG7ih3CoIg92yInUqpe7IDt-p9ytg/exec";
+    // --- الرابط الجديد بعد تحديث 2026 ---
+    const API_URL = "https://script.google.com/macros/s/AKfycbx6X9FtlbV-gAzdCX3g0cCtc6RIRldsbcNjO29m5Z4JhLr6FU5ulAdIBbFl_7SQCi3pnA/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
     let map, heatLayer, driverMarkers = [];
     let globalData = null; 
     let currentRadarFilter = 'all';
 
-    // تسجيل Service Worker ليعمل التطبيق (PWA) ويسمح بـ "الإضافة إلى الشاشة الرئيسية"
+    // تسجيل Service Worker ليعمل التطبيق (PWA)
     if ('serviceWorker' in navigator) {
         const swCode = `self.addEventListener('fetch', function(event) {});`;
         const blob = new Blob([swCode], { type: 'application/javascript' });
@@ -257,18 +257,16 @@
         const pass = document.getElementById('masterPass').value;
         if(!pass) return alert("الرجاء إدخال رمز المرور");
         
-        // تغيير شكل الزر أثناء التحميل
         const btn = document.querySelector('.auth-card button');
         const originalText = btn.innerHTML;
         btn.innerHTML = 'جاري التحقق من السيرفر...';
         btn.disabled = true;
 
-        // إرسال كلمة السر للسيرفر لمطابقتها مع ورقة Settings
+        // إرسال كلمة السر مع التوكن لاجتياز الجدار الناري
         const script = document.createElement('script');
         script.src = `${API_URL}?action=VERIFY_MASTER_PASS&pass=${pass}&token=${API_TOKEN}&callback=authResult`;
         document.body.appendChild(script);
         
-        // صمام أمان في حال ضعف الإنترنت
         setTimeout(() => {
             if(btn.disabled) {
                 btn.innerHTML = originalText;
@@ -278,7 +276,6 @@
         }, 10000);
     }
 
-    // دالة استقبال الرد من السيرفر
     window.authResult = function(response) {
         const btn = document.querySelector('.auth-card button');
         btn.innerHTML = 'تسجيل الدخول';
@@ -306,7 +303,8 @@
 
     function refreshData() {
         const script = document.createElement('script');
-        script.src = `${API_URL}?action=getGlobalData&callback=renderData&ts=${Date.now()}`;
+        // تم إضافة التوكن للسماح بمرور الطلب عبر الجدار الناري
+        script.src = `${API_URL}?action=getGlobalData&token=${API_TOKEN}&callback=renderData&ts=${Date.now()}`;
         document.body.appendChild(script);
     }
 
@@ -598,7 +596,6 @@
         completedOrders.forEach(o => {
             const orderId = o[0], restName = o[1], price = o[4], details = o[3], status = o[5], driverPhone = o[6];
             
-            // حماية التاريخ من الأعطال (الصفوف القديمة)
             let orderDateISO = ""; 
             let orderDateFormatted = "---";
             if (o[7]) {
