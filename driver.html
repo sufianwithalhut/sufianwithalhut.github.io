@@ -123,6 +123,8 @@
 <body>
 
 <audio id="alertSound" loop src="https://actions.google.com/sounds/v1/alarms/beep_loop.ogg"></audio>
+<audio id="doubleOrderSound" loop src="https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg"></audio>
+<audio id="cancelSound" src="https://actions.google.com/sounds/v1/alarms/bugle_tune.ogg"></audio>
 
 <div id="loginPage" class="login-wrapper">
     <div class="login-card" id="authBox">
@@ -280,6 +282,7 @@
     let isOnline = true;
     let checkOrdersTimer = null; 
     let currentPollingRate = 20000; 
+    let wakeLock = null; // التعديل 2: متغير لإبقاء الشاشة مستيقظة
 
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
@@ -291,34 +294,82 @@
 
     document.addEventListener('contextmenu', event => event.preventDefault());
 
-    function initAudioAndAuth() {
-        let audio = document.getElementById('alertSound');
-        audio.volume = 0;
-        let playPromise = audio.play();
-        if (playPromise !== undefined) {
-            playPromise.then(() => {
-                audio.pause();
-                audio.currentTime = 0;
-                audio.volume = 1; 
-            }).catch(error => {
-                console.log("Audio prep bypassed by policy");
-            });
+    // التعديل 3: طلب صلاحية استيقاظ الشاشة
+    async function requestWakeLock() {
+        if ('wakeLock' in navigator) {
+            try {
+                wakeLock = await navigator.wakeLock.request('screen');
+                wakeLock.addEventListener('release', () => {
+                    console.log('Wake Lock released');
+                });
+                console.log('Wake Lock is active!');
+            } catch (err) {
+                console.error(`${err.name}, ${err.message}`);
+            }
         }
+    }
+
+    function releaseWakeLock() {
+        if (wakeLock !== null) {
+            wakeLock.release()
+                .then(() => { wakeLock = null; });
+        }
+    }
+
+    function initAudioAndAuth() {
+        // تهيئة جميع الأصوات لخداع المتصفح (Autoplay Policy)
+        const sounds = ['alertSound', 'doubleOrderSound', 'cancelSound'];
+        sounds.forEach(id => {
+            let audio = document.getElementById(id);
+            audio.volume = 0;
+            let playPromise = audio.play();
+            if (playPromise !== undefined) {
+                playPromise.then(() => {
+                    audio.pause();
+                    audio.currentTime = 0;
+                    audio.volume = 1; 
+                }).catch(error => { console.log("Audio prep bypassed by policy"); });
+            }
+        });
+
         if ("Notification" in window) {
             Notification.requestPermission();
         }
         authAction();
     }
 
+    // التعديل 4: تسجيل الدخول الذكي
+    function checkSavedSession() {
+        const sessionStr = localStorage.getItem('hut_driver_session');
+        if (sessionStr) {
+            try {
+                const session = JSON.parse(sessionStr);
+                const diffHours = (Date.now() - session.timestamp) / (1000 * 60 * 60);
+                if (diffHours < 24) {
+                    driverData = session;
+                    document.getElementById('driverPhone').value = session.phone.startsWith('0') ? session.phone : '0' + session.phone;
+                    showDashboard();
+                    
+                    const savedOrders = localStorage.getItem('hut_active_orders');
+                    if (savedOrders) { activeOrders = JSON.parse(savedOrders); }
+                    displayActiveOrders();
+                    return true;
+                }
+            } catch(e) {}
+        }
+        return false;
+    }
+
     window.onload = function() {
-        const savedDriver = localStorage.getItem('hut_driver');
-        if (savedDriver) {
-            driverData = JSON.parse(savedDriver);
-            // إضافة الصفر للشكل الجمالي أمام الكابتن
-            document.getElementById('driverPhone').value = driverData.phone.startsWith('0') ? driverData.phone : '0' + driverData.phone;
-            authAction(); 
-            const savedOrders = localStorage.getItem('hut_active_orders');
-            if (savedOrders) { activeOrders = JSON.parse(savedOrders); }
+        if (!checkSavedSession()) {
+            const savedDriver = localStorage.getItem('hut_driver');
+            if (savedDriver) {
+                driverData = JSON.parse(savedDriver);
+                document.getElementById('driverPhone').value = driverData.phone.startsWith('0') ? driverData.phone : '0' + driverData.phone;
+                authAction(); 
+                const savedOrders = localStorage.getItem('hut_active_orders');
+                if (savedOrders) { activeOrders = JSON.parse(savedOrders); }
+            }
         }
     };
 
@@ -338,7 +389,6 @@
         let rawPhone = document.getElementById('driverPhone').value.trim();
         if(!rawPhone) return alert("يرجى إدخال رقم الهاتف");
 
-        // 🛡️ الدرع الذكي: إزالة الصفر من بداية الرقم برمجياً لتطابق الاكسل
         let phone = rawPhone.startsWith('0') ? rawPhone.substring(1) : rawPhone;
 
         if (isRegistering) {
@@ -369,8 +419,9 @@
         let phone = rawPhone.startsWith('0') ? rawPhone.substring(1) : rawPhone;
 
         if(data.status === "active") {
-            driverData = { phone: phone, name: data.name }; // حفظ الرقم بدون صفر
+            driverData = { phone: phone, name: data.name, timestamp: Date.now() }; 
             localStorage.setItem('hut_driver', JSON.stringify(driverData));
+            localStorage.setItem('hut_driver_session', JSON.stringify(driverData)); // حفظ الجلسة
             showDashboard();
             displayActiveOrders();
         } else if (data.status === "pending" || data.status === "waiting") {
@@ -379,6 +430,7 @@
         } else if (data.status === "banned") {
             alert("⚠️ عذراً، حسابك محظور من قبل الإدارة.");
             localStorage.removeItem('hut_driver');
+            localStorage.removeItem('hut_driver_session');
             location.reload();
         } else {
             isRegistering = true;
@@ -393,11 +445,19 @@
         document.getElementById('dashboardPage').classList.remove('hidden');
         document.getElementById('driverNameDisplay').innerText = "كابتن " + driverData.name;
         startSystem();
+        
+        // إعادة تفعيل WakeLock إذا غادر المتصفح وعاد
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && isOnline) {
+                requestWakeLock();
+            }
+        });
     }
 
     function logout() {
         if(activeOrders.length > 0) return alert("⚠️ لا يمكنك الخروج ولديك طلبات نشطة. قم بإنهاء الطلبات أولاً.");
         if(confirm("تأكيد تسجيل الخروج؟ سيتم تطهير كافة البيانات المؤقتة.")) {
+            releaseWakeLock();
             localStorage.clear();
             sessionStorage.clear();
             location.reload();
@@ -421,6 +481,7 @@
             radarIcon.setAttribute('color', '#3b82f6');
             updateDriverStatusApi('active'); 
             adjustPollingRate(); 
+            requestWakeLock(); // إبقاء الشاشة مضاءة
         } else {
             badge.className = "status-badge offline";
             badge.innerHTML = `<i data-lucide="coffee" size="14"></i> <span id="onlineStatusText">في استراحة</span>`;
@@ -430,6 +491,7 @@
             radarIcon.setAttribute('color', '#64748b');
             updateDriverStatusApi('inactive'); 
             adjustPollingRate(); 
+            releaseWakeLock(); // السماح للشاشة بالانطفاء
         }
         lucide.createIcons();
     }
@@ -454,6 +516,7 @@
     }
 
     function startSystem() {
+        if (isOnline) requestWakeLock(); // تفعيل استيقاظ الشاشة عند البدء
         adjustPollingRate(); 
         updateStats(); 
         setInterval(updateStats, 20000); 
@@ -470,6 +533,10 @@
     }
 
     function forceRemoveActiveOrder(msg, orderId) {
+        // تشغيل صوت الإلغاء المميز
+        let cancelAudio = document.getElementById('cancelSound');
+        cancelAudio.currentTime = 0; cancelAudio.play().catch(e => {});
+
         alert(`⚠️ تنبيه للطلب #${orderId}: ${msg}`);
         activeOrders = activeOrders.filter(o => String(o.id) !== String(orderId));
         localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
@@ -557,12 +624,18 @@
         if(data && data.id) {
             if(activeOrders.find(o => String(o.id) === String(data.id))) return;
             currentOrderData = data; 
+            
+            // تشغيل الصوت المناسب بناءً على وجود طلبات مسبقة
+            let audioId = activeOrders.length > 0 ? 'doubleOrderSound' : 'alertSound';
+            let audio = document.getElementById(audioId);
+            
             document.getElementById('alertTitleText').innerText = activeOrders.length > 0 ? "طلب مزدوج إضافي!" : "طلب جديد!";
             document.getElementById('alertResName').innerText = data.resName || 'غير متوفر';
             document.getElementById('alertArea').innerText = data.area || 'منطقة غير محددة';
             document.getElementById('orderAlertOverlay').classList.remove('hidden');
-            let audio = document.getElementById('alertSound');
+            
             audio.currentTime = 0; audio.play().catch(e => {});
+            
             if ("Notification" in window && Notification.permission === "granted") {
                 new Notification("طلب توصيل جديد 🐋", {
                     body: `من مطعم ${data.resName} إلى ${data.area}`,
@@ -654,6 +727,7 @@
     function closeAlert() {
         document.getElementById('orderAlertOverlay').classList.add('hidden');
         document.getElementById('alertSound').pause();
+        document.getElementById('doubleOrderSound').pause();
         clearInterval(countdownInterval);
     }
 
