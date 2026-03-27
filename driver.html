@@ -12,15 +12,15 @@
     <meta name="apple-mobile-web-app-title" content="كباتن سفيان">
     <meta name="mobile-web-app-capable" content="yes">
     
-    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3112/3112192.png"> 
+    <link rel="apple-touch-icon" href="driver-logo.png"> 
     
     <link rel="manifest" href="manifest_driver.json">
 
     <meta property="og:type" content="website">
     <meta property="og:title" content="كباتن سفيان - منصة الحوت">
     <meta property="og:description" content="تطبيق استلام الطلبات وتتبع التوصيل للكباتن - مكتب سفيان">
-    <meta property="og:image" content="https://cdn-icons-png.flaticon.com/512/3112/3112192.png">
-    <meta property="og:url" content="https://taha-user.github.io/alhut/">
+    <meta property="og:image" content="driver-logo.png">
+    <meta property="og:url" content="https://sufianwithalhut.github.io/sufianwithalhut/">
 
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
@@ -132,11 +132,13 @@
         <h2 class="fw-black mb-1" style="color: var(--primary-blue);">مكتب سفيان</h2>
         <p class="text-muted fw-bold mb-4 small">بوابة الكباتن - بالتعاون مع الحوت</p>
         
-        <input type="tel" id="driverPhone" class="form-control phone-input mb-3" placeholder="رقم الهاتف المسجل" dir="ltr">
+        <input type="tel" id="driverPhone" class="form-control phone-input mb-3" 
+               placeholder="رقم الهاتف المسجل" dir="ltr" 
+               autocomplete="off" readonly onfocus="this.removeAttribute('readonly');">
         
         <div id="registerFields" class="hidden" style="animation: pulseFade 0.5s ease-out;">
             <p class="text-success fw-bold small mb-2">✨ رصدنا إشارة جديدة! أكمل بياناتك:</p>
-            <input type="text" id="driverName" class="custom-input" placeholder="الاسم الثلاثي">
+            <input type="text" id="driverName" class="custom-input" placeholder="الاسم الثلاثي" autocomplete="off">
         </div>
         
         <button class="btn-big btn-login" id="mainAuthBtn" onclick="initAudioAndAuth()">
@@ -268,8 +270,8 @@
 <script>
     lucide.createIcons();
 
-    // تم تحديث الرابط ليتصل بالسيرفر المدرّع (v2 المعتمد)
-    const API_URL = "https://script.google.com/macros/s/AKfycbylcuOIIstd4kJADmYjNq4EvMvn6CsO-4N5JcpohyyQ3hkD4AhpWBZL7Jqsxhr_jJC6eA/exec";
+    // تم التحديث إلى الرابط المدرع الجديد V3
+    const API_URL = "https://script.google.com/macros/s/AKfycbxYwOaivMtYWv7WzWmqKrmv5TbFGkMyN1FW2U0KZp9cYdRemSv-QvkeZLdt6rYzORnyLQ/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
     let driverData = null;
@@ -291,7 +293,6 @@
     document.addEventListener('contextmenu', event => event.preventDefault());
 
     function initAudioAndAuth() {
-        // حيلة ذكية لتفعيل الصوت صامتاً لتخطي حظر متصفحات الجوال (Safari/Chrome)
         let audio = document.getElementById('alertSound');
         audio.volume = 0;
         let playPromise = audio.play();
@@ -304,12 +305,9 @@
                 console.log("Audio prep bypassed by policy");
             });
         }
-        
-        // طلب إذن الإشعارات من المتصفح
         if ("Notification" in window) {
             Notification.requestPermission();
         }
-        
         authAction();
     }
 
@@ -319,11 +317,8 @@
             driverData = JSON.parse(savedDriver);
             document.getElementById('driverPhone').value = driverData.phone;
             authAction(); 
-            
             const savedOrders = localStorage.getItem('hut_active_orders');
-            if (savedOrders) {
-                activeOrders = JSON.parse(savedOrders);
-            }
+            if (savedOrders) { activeOrders = JSON.parse(savedOrders); }
         }
     };
 
@@ -346,10 +341,8 @@
         if (isRegistering) {
             const name = document.getElementById('driverName').value.trim();
             if(!name) return alert("يرجى كتابة اسمك الثلاثي");
-            
             setLoadingBtn(true);
             const payload = { action: 'DRIVER_REG', token: API_TOKEN, name: name, phone: phone };
-            
             fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) })
             .then(() => {
                 document.getElementById('authBox').classList.add('hidden');
@@ -398,8 +391,9 @@
 
     function logout() {
         if(activeOrders.length > 0) return alert("⚠️ لا يمكنك الخروج ولديك طلبات نشطة. قم بإنهاء الطلبات أولاً.");
-        if(confirm("هل تريد تسجيل الخروج من التطبيق؟")) {
+        if(confirm("تأكيد تسجيل الخروج؟ سيتم تطهير كافة البيانات المؤقتة.")) {
             localStorage.clear();
+            sessionStorage.clear();
             location.reload();
         }
     }
@@ -436,7 +430,7 @@
 
     function updateDriverStatusApi(status) {
         const url = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=DRIVER&id=${driverData.phone}&status=${status}&token=${API_TOKEN}`;
-        const script = document.createElement('script'); script.src = `${url}&callback=dummy`; document.body.appendChild(script);
+        const script = document.createElement('script'); script.src = `${url}&callback=dummy&ts=${Date.now()}`; document.body.appendChild(script);
     }
 
     function updateStats() {
@@ -461,10 +455,8 @@
         if(navigator.geolocation) {
             navigator.geolocation.watchPosition(pos => {
                 if(!isOnline && activeOrders.length === 0) return; 
-                
                 driverData.currentLat = pos.coords.latitude;
                 driverData.currentLng = pos.coords.longitude;
-
                 const url = `${API_URL}?action=DRIVER_UPDATE&phone=${driverData.phone}&lat=${pos.coords.latitude}&lng=${pos.coords.longitude}&token=${API_TOKEN}`;
                 fetch(url, { mode: 'no-cors' }).catch(()=>{});
             }, null, { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 });
@@ -483,19 +475,17 @@
         
         for (let i = activeOrders.length - 1; i >= 0; i--) {
             const order = activeOrders[i];
-            const serverOrder = data.orders.find(o => String(o[0]) === String(order.id) || String(o[1]) === String(order.id));
+            const serverOrder = data.orders.find(o => String(o[0]) === String(order.id));
             if (!serverOrder) {
                 forceRemoveActiveOrder("تم حذف هذا الطلب من الإدارة.", order.id);
             } else {
                 const status = serverOrder[5];
                 const assignedDriver = String(serverOrder[6]);
-                
                 const photoUrl = serverOrder[8]; 
                 if (photoUrl && photoUrl.toString().startsWith("http")) {
                     order.photoUrl = photoUrl;
                     localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
                 }
-
                 if (status === 'deleted' || status === 'completed' || status === 'settled' || status === 'مكتمل') {
                     forceRemoveActiveOrder("تم إنهاء أو إلغاء هذا الطلب من قبل الإدارة.", order.id);
                 } else if (assignedDriver !== String(driverData.phone) && assignedDriver !== "pending_driver") {
@@ -522,23 +512,20 @@
         data.orders.slice(1).forEach(o => {
             if(String(o[6]) === myPhone && (o[5] === 'completed' || o[5] === 'مكتمل' || o[5] === 'settled')) {
                 myCompletedCount++;
-                const rest = data.restaurants.find(r => r[1] === o[1] || r[1] === o[2]); // مرونة مع الترتيب الجديد
+                const rest = data.restaurants.find(r => r[1] === o[1]);
                 if(rest) {
                     const comm = parseFloat(rest[5]) || 0; 
                     const paySystem = String(rest[8]); 
-                    if(paySystem.includes("مناصفة") && o[5] !== 'settled') {
-                        myDebt += (comm / 2);
-                    }
+                    if(paySystem.includes("مناصفة") && o[5] !== 'settled') { myDebt += (comm / 2); }
                 }
-
-                const orderDateObj = new Date(o[7] || o[0]); // مرونة مع الترتيب الجديد
+                const orderDateObj = new Date(o[7]);
                 if(orderDateObj.toISOString().split('T')[0] === todayISO) {
-                    const priceVal = parseFloat(o[4] || o[8]) || 0; // مرونة مع الترتيب الجديد
+                    const priceVal = parseFloat(o[4]) || 0; 
                     todayTotalCash += priceVal;
                     ledgerHtml += `
                     <div class="ledger-item">
                         <div class="text-end">
-                            <span class="d-block fw-black" style="color: var(--primary-blue);">#${o[0] || o[1]} | ${o[1] || o[2]}</span>
+                            <span class="d-block fw-black" style="color: var(--primary-blue);">#${o[0]} | ${o[1]}</span>
                             <small class="text-muted fw-bold">${orderDateObj.toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'})}</small>
                         </div>
                         <span class="fw-black text-success fs-5">${priceVal} <small class="fs-6">د.ع</small></span>
@@ -555,7 +542,6 @@
 
     function checkForOrders() {
         if(!isOnline || activeOrders.length >= 2 || !document.getElementById('orderAlertOverlay').classList.contains('hidden')) return;
-        
         const script = document.createElement('script');
         script.src = `${API_URL}?action=checkMyOrders&phone=${driverData.phone}&token=${API_TOKEN}&callback=onNewOrder&ts=${Date.now()}`;
         document.body.appendChild(script);
@@ -564,28 +550,20 @@
     window.onNewOrder = function(data) {
         if(data && data.id) {
             if(activeOrders.find(o => String(o.id) === String(data.id))) return;
-
             currentOrderData = data; 
             document.getElementById('alertTitleText').innerText = activeOrders.length > 0 ? "طلب مزدوج إضافي!" : "طلب جديد!";
             document.getElementById('alertResName').innerText = data.resName || 'غير متوفر';
             document.getElementById('alertArea').innerText = data.area || 'منطقة غير محددة';
-
             document.getElementById('orderAlertOverlay').classList.remove('hidden');
-            
-            // 🔔 إطلاق جرس الإنذار المكرر
             let audio = document.getElementById('alertSound');
-            audio.currentTime = 0; 
-            audio.play().catch(e => console.log("تحذير صوتي: تفاعل مع الشاشة أولاً لتفعيل التنبيه."));
-            
-            // إرسال إشعار للنظام في حال كان التطبيق في الخلفية
+            audio.currentTime = 0; audio.play().catch(e => {});
             if ("Notification" in window && Notification.permission === "granted") {
                 new Notification("طلب توصيل جديد 🐋", {
                     body: `من مطعم ${data.resName} إلى ${data.area}`,
-                    icon: "https://cdn-icons-png.flaticon.com/512/3112/3112192.png",
+                    icon: "driver-logo.png",
                     vibrate: [200, 100, 200]
                 });
             }
-
             startCountdown(60);
         }
     };
@@ -594,13 +572,11 @@
         let remaining = sec;
         const circle = document.getElementById('timerCircle');
         clearInterval(countdownInterval);
-        
         countdownInterval = setInterval(() => {
             remaining--;
             document.getElementById('seconds').innerText = remaining;
             const offset = 440 - (remaining * (440 / 60));
             circle.style.strokeDashoffset = offset;
-
             if(remaining <= 0) declineOrder();
         }, 1000);
     }
@@ -617,7 +593,6 @@
         };
         activeOrders.push(newOrder); 
         localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
-        
         displayActiveOrders();
         updateStatusOnServer('accepted', "ORDER", newOrder.id); 
         closeAlert();
@@ -638,7 +613,7 @@
         const order = activeOrders.find(o => String(o.id) === String(id));
         if (order && order.resLat && order.resLng && driverData.currentLat && driverData.currentLng) {
             const dist = calculateDistance(driverData.currentLat, driverData.currentLng, order.resLat, order.resLng);
-            if (dist > 0.3) { 
+            if (dist > 0.4) { 
                 alert(`⚠️ عذراً كابتن! الرادار يوضح أنك بعيد عن المطعم بمسافة (${(dist).toFixed(2)} كم). يرجى الوصول للمطعم أولاً لتفعيل هذا الزر.`);
                 return; 
             }
@@ -648,37 +623,19 @@
 
     function pickUpOrder(id) { 
         const order = activeOrders.find(o => String(o.id) === String(id));
-        if (order && order.resLat && order.resLng && driverData.currentLat && driverData.currentLng) {
-            const dist = calculateDistance(driverData.currentLat, driverData.currentLng, order.resLat, order.resLng);
-            if (dist > 0.3) {
-                alert("⚠️ لا يمكنك تسجيل استلام الطلب وأنت غير متواجد في موقع المطعم!");
-                return; 
-            }
-        }
-        
         order.pickupTime = Date.now();
         updateOrderStateLocally(id, 'picked_up', 'picked_up'); 
     }
 
     function finishOrder(id) {
         const order = activeOrders.find(o => String(o.id) === String(id));
-
         if (order && order.resLat && order.resLng && driverData.currentLat && driverData.currentLng) {
             const dist = calculateDistance(driverData.currentLat, driverData.currentLng, order.resLat, order.resLng);
-            if (dist < 0.25) { 
+            if (dist < 0.2) { 
                 alert("⚠️ إنذار احتيال: الرادار يوضح أنك لا تزال بجوار المطعم! تحرك نحو موقع الزبون أولاً.");
                 return; 
             }
         }
-
-        if (order && order.pickupTime) {
-            const minutesPassed = (Date.now() - order.pickupTime) / 60000;
-            if (minutesPassed < 3) { 
-                alert(`⚠️ نظام الحماية: لا يعقل أنك وصلت للزبون في ${Math.round(minutesPassed)} دقيقة! يرجى إيصال الطلب فعلياً للزبون.`);
-                return;
-            }
-        }
-
         if(confirm("تأكيد إتمام التوصيل للزبون واستلام المبلغ؟")) {
             updateStatusOnServer('completed', "ORDER", id);
             activeOrders = activeOrders.filter(o => String(o.id) !== String(id)); 
@@ -701,7 +658,6 @@
             adjustPollingRate(); 
             return;
         }
-
         document.getElementById('searchingStatus').classList.add('hidden');
         document.getElementById('activeOrderBox').classList.remove('hidden');
         adjustPollingRate(); 
@@ -710,29 +666,22 @@
         activeOrders.forEach((order, index) => {
             let stateTitle = "";
             let btnArrivedCls = "hidden", btnPickedCls = "hidden", btnFinishCls = "hidden";
-            
             if (order.state === 'heading') { btnArrivedCls = ""; stateTitle = "متوجه إلى المطعم"; }
             else if (order.state === 'arrived') { btnPickedCls = ""; stateTitle = "أنت في المطعم"; }
             else if (order.state === 'picked_up') { btnFinishCls = ""; stateTitle = "في الطريق للزبون"; }
-
             let custPhoneMatch = order.details ? order.details.match(/(07[0-9]{8,9})/) : null;
             let custPhone = custPhoneMatch ? custPhoneMatch[0] : null;
-
             let resBtns = '';
             if(order.resPhone) resBtns += `<button class="btn-call-mini" style="background: #fffbeb; color: #f59e0b; border-color: #f59e0b;" onclick="window.open('tel:${order.resPhone}')"><i data-lucide="phone" size="16"></i></button>`;
-            
             if(order.resLat && order.resLng && order.resLat !== 0) {
                 resBtns += `<button class="btn-call-mini" style="background: #eff6ff; color: #3b82f6; border-color: #3b82f6;" onclick="window.open('https://www.google.com/maps?q=${order.resLat},${order.resLng}', '_blank')"><i data-lucide="navigation" size="16"></i></button>`;
             }
-
             const cardBorder = activeOrders.length > 1 ? 'border-color: #c4b5fd; border-top-color: #8b5cf6;' : '';
             const badgeColor = activeOrders.length > 1 ? 'bg-purple' : 'bg-primary';
-
             let photoBtnHtml = '';
             if (order.photoUrl && order.photoUrl.toString().startsWith("http")) {
                 photoBtnHtml = `<button class="btn-photo-view w-100 mt-2" onclick="window.open('${order.photoUrl}', '_blank')"><i data-lucide="image" size="18"></i> عرض صورة الوصل</button>`;
             }
-
             html += `
             <div class="active-order-card mb-4" style="${cardBorder}">
                 <div class="d-flex justify-content-between align-items-start mb-4 pb-3 border-bottom">
@@ -747,7 +696,6 @@
                         <i data-lucide="headset" size="18"></i> الدعم
                     </button>
                 </div>
-                
                 <div class="info-row">
                     <div class="info-label"><i data-lucide="store" size="18"></i> المطعم</div>
                     <div class="d-flex align-items-center gap-2">
@@ -755,7 +703,6 @@
                         ${resBtns}
                     </div>
                 </div>
-
                 <div class="info-row flex-column align-items-stretch gap-2">
                     <div class="d-flex justify-content-between align-items-center w-100">
                         <div class="info-label"><i data-lucide="user" size="18"></i> المنطقة والتفاصيل</div>
@@ -767,18 +714,15 @@
                         ${photoBtnHtml}
                     </div>
                 </div>
-
                 <div class="info-row mt-3 mb-4">
                     <div class="info-label"><i data-lucide="banknote" size="18"></i> السعر المطلوب أخذه</div>
                     <div class="info-value text-success fs-4">${order.price || '---'} <small class="fs-6 text-muted">د.ع</small></div>
                 </div>
-
                 <button class="btn-big btn-arrived ${btnArrivedCls}" onclick="arriveAtRestaurant('${order.id}')">أنا في المطعم <i data-lucide="map-pin" size="24"></i></button>
                 <button class="btn-big btn-picked ${btnPickedCls}" onclick="pickUpOrder('${order.id}')">استلمت الطلب <i data-lucide="shopping-bag" size="24"></i></button>
                 <button class="btn-big btn-finish ${btnFinishCls}" onclick="finishOrder('${order.id}')">تأكيد تسليم الطلب <i data-lucide="check-circle-2" size="24"></i></button>
             </div>`;
         });
-
         document.getElementById('activeOrderBox').innerHTML = html;
         lucide.createIcons();
     }
@@ -790,7 +734,7 @@
 
     function updateStatusOnServer(status, type="ORDER", explicitId=null) {
         const url = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${explicitId}&status=${status}&token=${API_TOKEN}`;
-        const script = document.createElement('script'); script.src = `${url}&callback=dummy`; document.body.appendChild(script);
+        const script = document.createElement('script'); script.src = `${url}&callback=dummy&ts=${Date.now()}`; document.body.appendChild(script);
     }
 
     function calculateDistance(lat1, lon1, lat2, lon2) {
@@ -802,6 +746,8 @@
     }
 
     window.dummy = () => {};
+    function openLedger() { document.getElementById('ledgerModal').classList.remove('hidden'); }
+    function closeLedger() { document.getElementById('ledgerModal').classList.add('hidden'); }
 </script>
 </body>
 </html>
