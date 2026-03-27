@@ -32,7 +32,6 @@
 
     <style>
         :root { --sidebar-width: 280px; --primary-blue: #1e3a8a; --accent-blue: #3b82f6; --bg-light: #f8fafc; --card-bg: #ffffff; --text-main: #0f172a; }
-        /* تمت إضافة overscroll-behavior لمنع سحب الصفحة المزعج مع السماح بنسخ النصوص للمدير */
         body { background-color: var(--bg-light); font-family: 'Cairo', sans-serif; margin: 0; overflow-x: hidden; color: var(--text-main); -webkit-tap-highlight-color: transparent; overscroll-behavior-y: contain;}
         
         #authOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%); z-index: 10000; display: flex; align-items: center; justify-content: center; }
@@ -128,6 +127,8 @@
     </style>
 </head>
 <body>
+
+<audio id="adminAlertSound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" preload="auto"></audio>
 
 <div id="authOverlay">
     <div class="auth-card">
@@ -249,14 +250,17 @@
 <script>
     lucide.createIcons();
     
-    const API_URL = "https://script.google.com/macros/s/AKfycbx6X9FtlbV-gAzdCX3g0cCtc6RIRldsbcNjO29m5Z4JhLr6FU5ulAdIBbFl_7SQCi3pnA/exec";
+    // الرابط السحابي الجديد
+    const API_URL = "https://script.google.com/macros/s/AKfycbyqVEGyBYvIEwboHInBEF-bCQU4pfTSGrOca6m8m02UsHB9uTcFaM-4zpI4RssTwEeMRA/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
     let map, heatLayer, driverMarkers = [];
     let globalData = null; 
     let currentRadarFilter = 'all';
+    
+    let masterPassword = ""; // الدرع: حفظ كلمة السر المؤقتة
+    let lastPendingCount = 0; // للمنبه الصوتي
 
-    // 🟢 تسجيل المحرك العصبي لنسخة الإدارة (PWA)
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('sw.js')
@@ -269,13 +273,15 @@
         const pass = document.getElementById('masterPass').value;
         if(!pass) return alert("الرجاء إدخال رمز المرور");
         
+        masterPassword = encodeURIComponent(pass); // حفظ كلمة المرور مشفرة ومؤمنة في المتصفح
+        
         const btn = document.querySelector('.auth-card button');
         const originalText = btn.innerHTML;
         btn.innerHTML = 'جاري التحقق من السيرفر...';
         btn.disabled = true;
 
         const script = document.createElement('script');
-        script.src = `${API_URL}?action=VERIFY_MASTER_PASS&pass=${pass}&token=${API_TOKEN}&callback=authResult`;
+        script.src = `${API_URL}?action=VERIFY_MASTER_PASS&pass=${masterPassword}&token=${API_TOKEN}&callback=authResult`;
         document.body.appendChild(script);
         
         setTimeout(() => {
@@ -295,9 +301,15 @@
         if(response.success) {
             document.getElementById('authOverlay').style.display = 'none';
             document.getElementById('mainDashboard').classList.remove('d-none');
+            
+            // تفعيل ملف الصوت صامتاً لتخطي حظر المتصفح
+            const audio = document.getElementById('adminAlertSound');
+            audio.volume = 0; audio.play().then(() => { audio.pause(); audio.currentTime = 0; audio.volume = 1; }).catch(e=>{});
+
             startClock(); refreshData(); setInterval(refreshData, 15000);
             initMap();
         } else {
+            masterPassword = ""; // تفريغ الذاكرة في حال الخطأ
             alert("❌ رمز المرور غير صحيح أو لا يطابق ورقة الإعدادات");
         }
     };
@@ -327,6 +339,15 @@
         }
 
         const activeOrdersList = data.orders.slice(1).filter(o => o[5] !== 'completed' && o[5] !== 'مكتمل' && o[5] !== 'settled' && o[5] !== 'deleted');
+        
+        // 🔔 نظام المراقبة الصوتية
+        const currentPendingCount = activeOrdersList.filter(o => !o[6] || o[6] === "pending_driver").length;
+        if(currentPendingCount > lastPendingCount) {
+            const audio = document.getElementById('adminAlertSound');
+            audio.currentTime = 0; audio.play().catch(e=>{});
+        }
+        lastPendingCount = currentPendingCount;
+
         document.getElementById('count-orders').innerText = activeOrdersList.length;
         document.getElementById('count-drivers').innerText = data.drivers.filter(d => d[4] === 'active').length;
         document.getElementById('count-res').innerText = data.restaurants.filter(r => r[4] === 'active').length;
@@ -583,13 +604,35 @@
         }
     }
 
+    // ----------------------------------------------------
+    // إضافة كلمة السر (masterPassword) لجميع أوامر التحكم الإداري
+    // ----------------------------------------------------
+    
     function assignDriver(orderId, driverPhone) {
         if(!driverPhone) return;
         if(confirm("تعيين إجباري للكابتن المختار؟")) {
-            const url = `${API_URL}?action=ASSIGN_DRIVER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}`;
+            const url = `${API_URL}?action=ASSIGN_DRIVER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}&pass=${masterPassword}`;
             const script = document.createElement('script'); script.src = `${url}&callback=afterAdminAction`; document.body.appendChild(script);
         }
     }
+
+    function resetDebt(type, id) {
+        if(confirm(`تصفير الديون لـ (${id})؟\nسيتم تحويل الحسابات إلى "تمت المحاسبة".`)) {
+            const url = `${API_URL}?action=RESET_DEBT&type=${type}&id=${id}&token=${API_TOKEN}&pass=${masterPassword}`;
+            const script = document.createElement('script'); script.src = `${url}&callback=afterAdminAction`; document.body.appendChild(script);
+        }
+    }
+
+    function adminAction(cmd, type, id) {
+        const statusMap = { 'ACCEPT': 'active', 'PAUSE': 'inactive', 'DELETE': 'deleted' };
+        if(confirm("تأكيد الإجراء؟")) {
+            const script = document.createElement('script'); script.src = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${id}&status=${statusMap[cmd]}&token=${API_TOKEN}&pass=${masterPassword}&callback=afterAdminAction`; document.body.appendChild(script);
+        }
+    }
+
+    window.afterAdminAction = function(response) {
+        if(response.success) { refreshData(); } else { alert("خطأ: " + (response.msg || response.error || "")); }
+    };
 
     function renderArchive() {
         if(!globalData) return;
@@ -731,24 +774,6 @@
         document.getElementById(containerId).innerHTML = html;
         lucide.createIcons();
     }
-
-    function resetDebt(type, id) {
-        if(confirm(`تصفير الديون لـ (${id})؟\nسيتم تحويل الحسابات إلى "تمت المحاسبة".`)) {
-            const url = `${API_URL}?action=RESET_DEBT&type=${type}&id=${id}&token=${API_TOKEN}`;
-            const script = document.createElement('script'); script.src = `${url}&callback=afterAdminAction`; document.body.appendChild(script);
-        }
-    }
-
-    function adminAction(cmd, type, id) {
-        const statusMap = { 'ACCEPT': 'active', 'PAUSE': 'inactive', 'DELETE': 'deleted' };
-        if(confirm("تأكيد الإجراء؟")) {
-            const script = document.createElement('script'); script.src = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${id}&status=${statusMap[cmd]}&token=${API_TOKEN}&callback=afterAdminAction`; document.body.appendChild(script);
-        }
-    }
-
-    window.afterAdminAction = function(response) {
-        if(response.success) { refreshData(); } else { alert("خطأ: " + (response.msg || "")); }
-    };
 
     function showTab(e, name) {
         document.querySelectorAll('.admin-tab').forEach(t => t.classList.add('d-none'));
