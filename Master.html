@@ -2,15 +2,25 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     
     <title>مكتب سفيان | الإدارة العليا</title>
+    
     <meta name="theme-color" content="#1e3a8a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="إدارة الحوت">
     <meta name="mobile-web-app-capable" content="yes">
+    
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2830/2830305.png">
-    <link rel="manifest" href='data:application/manifest+json;utf-8,{"name":"مكتب سفيان | الإدارة","short_name":"إدارة الحوت","display":"standalone","background_color":"#f8fafc","theme_color":"#1e3a8a","start_url":".","icons":[{"src":"https://cdn-icons-png.flaticon.com/512/2830/2830305.png","sizes":"512x512","type":"image/png"}]}'>
+    
+    <link rel="manifest" href="manifest_master.json">
+
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="الإدارة المركزية - مكتب سفيان">
+    <meta property="og:description" content="لوحة التحكم والرصد الميداني لنظام الحوت">
+    <meta property="og:image" content="https://cdn-icons-png.flaticon.com/512/2830/2830305.png">
+    <meta property="og:url" content="https://taha-user.github.io/alhut/">
 
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
@@ -22,7 +32,8 @@
 
     <style>
         :root { --sidebar-width: 280px; --primary-blue: #1e3a8a; --accent-blue: #3b82f6; --bg-light: #f8fafc; --card-bg: #ffffff; --text-main: #0f172a; }
-        body { background-color: var(--bg-light); font-family: 'Cairo', sans-serif; margin: 0; overflow-x: hidden; color: var(--text-main); -webkit-tap-highlight-color: transparent;}
+        /* تمت إضافة overscroll-behavior لمنع سحب الصفحة المزعج مع السماح بنسخ النصوص للمدير */
+        body { background-color: var(--bg-light); font-family: 'Cairo', sans-serif; margin: 0; overflow-x: hidden; color: var(--text-main); -webkit-tap-highlight-color: transparent; overscroll-behavior-y: contain;}
         
         #authOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%); z-index: 10000; display: flex; align-items: center; justify-content: center; }
         .auth-card { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-radius: 30px; padding: 40px; width: 90%; max-width: 420px; box-shadow: 0 25px 50px rgba(0,0,0,0.3); text-align: center; }
@@ -238,7 +249,6 @@
 <script>
     lucide.createIcons();
     
-    // --- الرابط الجديد بعد تحديث 2026 ---
     const API_URL = "https://script.google.com/macros/s/AKfycbx6X9FtlbV-gAzdCX3g0cCtc6RIRldsbcNjO29m5Z4JhLr6FU5ulAdIBbFl_7SQCi3pnA/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
@@ -246,11 +256,13 @@
     let globalData = null; 
     let currentRadarFilter = 'all';
 
-    // تسجيل Service Worker ليعمل التطبيق (PWA)
+    // 🟢 تسجيل المحرك العصبي لنسخة الإدارة (PWA)
     if ('serviceWorker' in navigator) {
-        const swCode = `self.addEventListener('fetch', function(event) {});`;
-        const blob = new Blob([swCode], { type: 'application/javascript' });
-        navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(console.error);
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('sw.js')
+                .then(reg => console.log('✅ لوحة الإدارة تعمل بنظام PWA بنجاح!'))
+                .catch(err => console.error('❌ فشل في تشغيل المحرك:', err));
+        });
     }
 
     function checkAuth() {
@@ -262,7 +274,6 @@
         btn.innerHTML = 'جاري التحقق من السيرفر...';
         btn.disabled = true;
 
-        // إرسال كلمة السر مع التوكن لاجتياز الجدار الناري
         const script = document.createElement('script');
         script.src = `${API_URL}?action=VERIFY_MASTER_PASS&pass=${pass}&token=${API_TOKEN}&callback=authResult`;
         document.body.appendChild(script);
@@ -303,7 +314,6 @@
 
     function refreshData() {
         const script = document.createElement('script');
-        // تم إضافة التوكن للسماح بمرور الطلب عبر الجدار الناري
         script.src = `${API_URL}?action=getGlobalData&token=${API_TOKEN}&callback=renderData&ts=${Date.now()}`;
         document.body.appendChild(script);
     }
