@@ -2,15 +2,25 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     
-    <title>كابتن | مكتب سفيان</title>
+    <title>كباتن سفيان | نظام الحوت</title>
+    
     <meta name="theme-color" content="#1e3a8a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="كباتن سفيان">
     <meta name="mobile-web-app-capable" content="yes">
+    
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3112/3112192.png"> 
-    <link rel="manifest" href='data:application/manifest+json;utf-8,{"name":"الحوت - تطبيق الكباتن","short_name":"الحوت كابتن","display":"standalone","background_color":"#f8fafc","theme_color":"#1e3a8a","start_url":".","icons":[{"src":"https://cdn-icons-png.flaticon.com/512/3112/3112192.png","sizes":"512x512","type":"image/png"}]}'>
+    
+    <link rel="manifest" href="manifest_driver.json">
+
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="كباتن سفيان - منصة الحوت">
+    <meta property="og:description" content="تطبيق استلام الطلبات وتتبع التوصيل - مكتب سفيان">
+    <meta property="og:image" content="https://cdn-icons-png.flaticon.com/512/3112/3112192.png">
+    <meta property="og:url" content="https://taha-user.github.io/alhut/">
 
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
@@ -31,8 +41,12 @@
 
         body { 
             background: var(--bg-light); font-family: 'Cairo', sans-serif; 
-            overflow-x: hidden; user-select: none; color: var(--text-main);
+            overflow-x: hidden; color: var(--text-main);
             -webkit-tap-highlight-color: transparent;
+            /* تحسينات PWA */
+            user-select: none;
+            -webkit-user-select: none;
+            overscroll-behavior-y: contain;
         }
         .hidden { display: none !important; }
 
@@ -255,7 +269,6 @@
 <script>
     lucide.createIcons();
 
-    // --- الرابط الجديد والتوكن السري لحماية السيرفر ---
     const API_URL = "https://script.google.com/macros/s/AKfycbx6X9FtlbV-gAzdCX3g0cCtc6RIRldsbcNjO29m5Z4JhLr6FU5ulAdIBbFl_7SQCi3pnA/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
@@ -267,11 +280,17 @@
     let checkOrdersTimer = null; 
     let currentPollingRate = 20000; 
 
+    // تسجيل محرك التطبيق (Service Worker) لعمل التطبيق PWA
     if ('serviceWorker' in navigator) {
-        const swCode = `self.addEventListener('fetch', function(event) {});`;
-        const blob = new Blob([swCode], { type: 'application/javascript' });
-        navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(console.error);
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('sw.js')
+                .then(reg => console.log('✅ نظام الكباتن العصبي يعمل بنجاح!'))
+                .catch(err => console.error('❌ فشل في تشغيل المحرك:', err));
+        });
     }
+
+    // منع قائمة النقر الأيمن للحفاظ على مظهر التطبيق
+    document.addEventListener('contextmenu', event => event.preventDefault());
 
     function initAudioAndAuth() {
         let audio = document.getElementById('alertSound');
@@ -283,15 +302,11 @@
         authAction();
     }
 
-    // --- نظام الدخول التلقائي (Auto-Login) ---
     window.onload = function() {
         const savedDriver = localStorage.getItem('hut_driver');
         if (savedDriver) {
             driverData = JSON.parse(savedDriver);
-            // ضع الرقم في الحقل لكي لا يكون فارغاً
             document.getElementById('driverPhone').value = driverData.phone;
-            
-            // تحقق صامت لضمان أن الكابتن غير محظور أو محذوف
             authAction(); 
             
             const savedOrders = localStorage.getItem('hut_active_orders');
@@ -345,7 +360,6 @@
 
         setLoadingBtn(true);
         const script = document.createElement('script');
-        // 🛡️ تم إضافة التوكن هنا لاجتياز الجدار الناري!
         script.src = `${API_URL}?action=checkDriver&phone=${phone}&token=${API_TOKEN}&callback=handleLoginCheck&ts=${Date.now()}`;
         document.body.appendChild(script);
     }
@@ -424,7 +438,6 @@
     function updateStats() {
         if (!driverData) return;
         const script = document.createElement('script');
-        // 🛡️ تم إضافة التوكن هنا أيضاً لكي يسمح السيرفر بجلب الإحصائيات!
         script.src = `${API_URL}?action=getGlobalData&token=${API_TOKEN}&callback=renderDriverData&ts=${Date.now()}`;
         document.body.appendChild(script);
     }
@@ -634,17 +647,30 @@
                 return; 
             }
         }
+        
+        // ⏰ زرع الختم الزمني عند استلام الطلب لمنع الإنهاء السريع
+        order.pickupTime = Date.now();
         updateOrderStateLocally(id, 'picked_up', 'picked_up'); 
     }
 
     function finishOrder(id) {
         const order = activeOrders.find(o => String(o.id) === String(id));
 
+        // 🛡️ الجدار الأول: فحص المسافة
         if (order && order.resLat && order.resLng && driverData.currentLat && driverData.currentLng) {
             const dist = calculateDistance(driverData.currentLat, driverData.currentLng, order.resLat, order.resLng);
-            if (dist < 0.2) { 
-                alert("⚠️ عذراً كابتن! الرادار يوضح أنك لا تزال بجوار المطعم (أقل من 200 متر). يرجى التوجه نحو الزبون أولاً لكي تتمكن من إنهاء الطلب.");
+            if (dist < 0.25) { 
+                alert("⚠️ إنذار احتيال: الرادار يوضح أنك لا تزال بجوار المطعم! تحرك نحو موقع الزبون أولاً.");
                 return; 
+            }
+        }
+
+        // 🛡️ الجدار الثاني: فحص الوقت (يجب أن تمر 3 دقائق على الأقل)
+        if (order && order.pickupTime) {
+            const minutesPassed = (Date.now() - order.pickupTime) / 60000;
+            if (minutesPassed < 3) { 
+                alert(`⚠️ نظام الحماية: لا يعقل أنك وصلت للزبون في ${Math.round(minutesPassed)} دقيقة! يرجى إيصال الطلب فعلياً للزبون.`);
+                return;
             }
         }
 
