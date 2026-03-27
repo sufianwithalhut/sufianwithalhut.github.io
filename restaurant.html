@@ -320,7 +320,6 @@
 <script>
     lucide.createIcons();
 
-    // تم التحديث إلى الرابط المدرع الجديد V3
     const API_URL = "https://script.google.com/macros/s/AKfycbxYwOaivMtYWv7WzWmqKrmv5TbFGkMyN1FW2U0KZp9cYdRemSv-QvkeZLdt6rYzORnyLQ/exec";
     const API_TOKEN = "HUT_SECURE_99";
     let currentResName = "";
@@ -455,7 +454,8 @@
         initAreasDropdown(); 
         const savedPhone = localStorage.getItem('hut_res_phone');
         if(savedPhone) {
-            document.getElementById('checkPhone').value = savedPhone;
+            // إضافة الصفر للشكل الجمالي أمام المستخدم فقط
+            document.getElementById('checkPhone').value = savedPhone.startsWith('0') ? savedPhone : '0' + savedPhone;
             authAction();
         }
     };
@@ -540,8 +540,11 @@
     }
 
     function authAction() {
-        const phone = document.getElementById('checkPhone').value.trim();
-        if(!phone) return alert("يرجى إدخال رقم الهاتف");
+        let rawPhone = document.getElementById('checkPhone').value.trim();
+        if(!rawPhone) return alert("يرجى إدخال رقم الهاتف");
+
+        // 🛡️ الدرع الذكي: إزالة الصفر من بداية الرقم برمجياً لتطابق الاكسل
+        let phone = rawPhone.startsWith('0') ? rawPhone.substring(1) : rawPhone;
 
         if (isRegistering) {
             const name = document.getElementById('regName').value.trim();
@@ -566,7 +569,6 @@
 
         showLoading(true, "جاري فحص حالة المطعم...");
         const script = document.createElement('script');
-        // كسر الكاش بإضافة ts
         script.src = `${API_URL}?action=checkRes&phone=${phone}&token=${API_TOKEN}&callback=handleLogin&ts=${Date.now()}`;
         document.body.appendChild(script);
     }
@@ -584,10 +586,13 @@
 
     window.handleLogin = function(data) {
         showLoading(false);
+        
+        let rawPhone = document.getElementById('checkPhone').value.trim();
+        let phone = rawPhone.startsWith('0') ? rawPhone.substring(1) : rawPhone;
+
         if(data.status === "active") {
             currentResName = data.name;
-            const currentPhone = document.getElementById('checkPhone').value.trim();
-            if(currentPhone) localStorage.setItem('hut_res_phone', currentPhone); 
+            if(phone) localStorage.setItem('hut_res_phone', phone); // حفظ الرقم بدون صفر
             
             document.getElementById('loginSection').classList.add('hidden-section');
             document.getElementById('orderSection').classList.remove('hidden-section');
@@ -599,8 +604,7 @@
             dataRefreshInterval = setInterval(fetchResDashboardData, 15000);
 
         } else if(data.status === "pending" || data.status === "waiting") {
-            const currentPhone = document.getElementById('checkPhone').value.trim();
-            if(currentPhone) localStorage.setItem('hut_res_phone', currentPhone);
+            if(phone) localStorage.setItem('hut_res_phone', phone);
             
             document.getElementById('authBox').classList.add('hidden-section');
             document.getElementById('waitingBox').classList.remove('hidden-section');
