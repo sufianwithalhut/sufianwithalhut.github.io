@@ -18,7 +18,7 @@
 
     <meta property="og:type" content="website">
     <meta property="og:title" content="كباتن سفيان - منصة الحوت">
-    <meta property="og:description" content="تطبيق استلام الطلبات وتتبع التوصيل - مكتب سفيان">
+    <meta property="og:description" content="تطبيق استلام الطلبات وتتبع التوصيل للكباتن - مكتب سفيان">
     <meta property="og:image" content="https://cdn-icons-png.flaticon.com/512/3112/3112192.png">
     <meta property="og:url" content="https://taha-user.github.io/alhut/">
 
@@ -268,8 +268,8 @@
 <script>
     lucide.createIcons();
 
-    // تم تحديث الرابط ليتصل بالسيرفر المدرّع
-    const API_URL = "https://script.google.com/macros/s/AKfycbyqVEGyBYvIEwboHInBEF-bCQU4pfTSGrOca6m8m02UsHB9uTcFaM-4zpI4RssTwEeMRA/exec";
+    // تم تحديث الرابط ليتصل بالسيرفر المدرّع (v2 المعتمد)
+    const API_URL = "https://script.google.com/macros/s/AKfycbypSUB2Uv36xlQ9dsLK7WDwwTEnDzWOPDkRLc-VvRSJooRRrob8qjJaRWh1_cudT-QA/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
     let driverData = null;
@@ -304,6 +304,12 @@
                 console.log("Audio prep bypassed by policy");
             });
         }
+        
+        // طلب إذن الإشعارات من المتصفح
+        if ("Notification" in window) {
+            Notification.requestPermission();
+        }
+        
         authAction();
     }
 
@@ -317,13 +323,6 @@
             const savedOrders = localStorage.getItem('hut_active_orders');
             if (savedOrders) {
                 activeOrders = JSON.parse(savedOrders);
-            } else {
-                const oldOrder = localStorage.getItem('hut_active_order');
-                if (oldOrder) {
-                    activeOrders.push(JSON.parse(oldOrder));
-                    localStorage.removeItem('hut_active_order');
-                    localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
-                }
             }
         }
     };
@@ -450,7 +449,7 @@
     function adjustPollingRate() {
         if (checkOrdersTimer) clearInterval(checkOrdersTimer);
         if (!isOnline) return; 
-        currentPollingRate = (activeOrders.length === 0) ? 20000 : 10000;
+        currentPollingRate = (activeOrders.length === 0) ? 15000 : 8000;
         checkOrdersTimer = setInterval(checkForOrders, currentPollingRate);
     }
 
@@ -497,7 +496,7 @@
                     localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
                 }
 
-                if (status === 'deleted' || status === 'completed' || status === 'settled') {
+                if (status === 'deleted' || status === 'completed' || status === 'settled' || status === 'مكتمل') {
                     forceRemoveActiveOrder("تم إنهاء أو إلغاء هذا الطلب من قبل الإدارة.", order.id);
                 } else if (assignedDriver !== String(driverData.phone) && assignedDriver !== "pending_driver") {
                     forceRemoveActiveOrder("تم سحب الطلب وتعيينه لكابتن آخر.", order.id);
@@ -554,9 +553,6 @@
         document.getElementById('ledgerList').innerHTML = ledgerHtml || `<div class="text-center text-muted fw-bold py-3 small">لم تنجز أي رحلة اليوم بعد.</div>`;
     };
 
-    function openLedger() { document.getElementById('ledgerModal').classList.remove('hidden'); }
-    function closeLedger() { document.getElementById('ledgerModal').classList.add('hidden'); }
-
     function checkForOrders() {
         if(!isOnline || activeOrders.length >= 2 || !document.getElementById('orderAlertOverlay').classList.contains('hidden')) return;
         
@@ -570,21 +566,24 @@
             if(activeOrders.find(o => String(o.id) === String(data.id))) return;
 
             currentOrderData = data; 
-            
             document.getElementById('alertTitleText').innerText = activeOrders.length > 0 ? "طلب مزدوج إضافي!" : "طلب جديد!";
             document.getElementById('alertResName').innerText = data.resName || 'غير متوفر';
             document.getElementById('alertArea').innerText = data.area || 'منطقة غير محددة';
 
             document.getElementById('orderAlertOverlay').classList.remove('hidden');
             
-            // 🔔 إطلاق جرس الإنذار المدوي للكابتن!
+            // 🔔 إطلاق جرس الإنذار المكرر
             let audio = document.getElementById('alertSound');
             audio.currentTime = 0; 
-            audio.play().catch(e => console.log("تحذير: المتصفح يمنع تشغيل الصوت، يجب التفاعل مع الشاشة أولاً."));
+            audio.play().catch(e => console.log("تحذير صوتي: تفاعل مع الشاشة أولاً لتفعيل التنبيه."));
             
-            // إشعار نظام أندرويد
+            // إرسال إشعار للنظام في حال كان التطبيق في الخلفية
             if ("Notification" in window && Notification.permission === "granted") {
-                new Notification("طلب جديد!", { body: "لديك طلب جديد من " + data.resName, icon: "https://cdn-icons-png.flaticon.com/512/3112/3112192.png" });
+                new Notification("طلب توصيل جديد 🐋", {
+                    body: `من مطعم ${data.resName} إلى ${data.area}`,
+                    icon: "https://cdn-icons-png.flaticon.com/512/3112/3112192.png",
+                    vibrate: [200, 100, 200]
+                });
             }
 
             startCountdown(60);
@@ -723,7 +722,7 @@
             if(order.resPhone) resBtns += `<button class="btn-call-mini" style="background: #fffbeb; color: #f59e0b; border-color: #f59e0b;" onclick="window.open('tel:${order.resPhone}')"><i data-lucide="phone" size="16"></i></button>`;
             
             if(order.resLat && order.resLng && order.resLat !== 0) {
-                resBtns += `<button class="btn-call-mini" style="background: #eff6ff; color: #3b82f6; border-color: #3b82f6;" onclick="window.open('http://maps.google.com/maps?q=$${order.resLat},${order.resLng}', '_blank')"><i data-lucide="navigation" size="16"></i></button>`;
+                resBtns += `<button class="btn-call-mini" style="background: #eff6ff; color: #3b82f6; border-color: #3b82f6;" onclick="window.open('https://www.google.com/maps?q=${order.resLat},${order.resLng}', '_blank')"><i data-lucide="navigation" size="16"></i></button>`;
             }
 
             const cardBorder = activeOrders.length > 1 ? 'border-color: #c4b5fd; border-top-color: #8b5cf6;' : '';
@@ -801,13 +800,6 @@
         const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
         return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
-
-    // السماح للكابتن بتفعيل الإشعارات في متصفح النظام
-    document.addEventListener('DOMContentLoaded', function() {
-        if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
-            Notification.requestPermission();
-        }
-    });
 
     window.dummy = () => {};
 </script>
