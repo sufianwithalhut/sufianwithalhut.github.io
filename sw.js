@@ -1,19 +1,21 @@
-// تم تغيير الاسم للإصدار الثاني لكي نجبر هواتف المستخدمين على التحديث
-const CACHE_NAME = 'sufian-system-v2';
+// تم تغيير الإصدار إلى v3 لتحديث هواتف كل المستخدمين والمطاعم
+const CACHE_NAME = 'sufian-system-v3';
 
-// أضفنا ملفات الكباتن إلى جانب ملفات المطاعم ليفتح كلاهما بسرعة الصاروخ
+// الثلاثي المكتمل: المطاعم، الكباتن، والإدارة
 const ASSETS_TO_CACHE = [
   './restaurant.html',
   './manifest_restaurant.json',
   './driver.html',
-  './manifest_driver.json'
+  './manifest_driver.json',
+  './Master.html',
+  './manifest_master.json'
 ];
 
-// 1. مرحلة التثبيت (تخزين ملفات التطبيقين معاً)
+// 1. مرحلة التثبيت (تخزين ملفات المنظومة بالكامل)
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => {
-      console.log('[Service Worker] جاري تخزين ملفات المطاعم والكباتن...');
+      console.log('[Service Worker] جاري تخزين النظام الثلاثي (مطاعم، كباتن، إدارة)...');
       return cache.addAll(ASSETS_TO_CACHE);
     })
   );
