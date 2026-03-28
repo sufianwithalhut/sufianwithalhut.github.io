@@ -334,8 +334,8 @@
 <script>
     lucide.createIcons();
 
-    // تم التحديث إلى الرابط السحابي الجديد V9
-    const API_URL = "https://script.google.com/macros/s/AKfycbx10FQJTjT-MbJ9QhtQH86izt_OGpr8umJQvdew7alUP8Z_iOYq8rbg5NnZPKGbk_XU-g/exec";
+    // تم التحديث إلى الرابط السحابي النهائي والأخير (V11)
+    const API_URL = "https://script.google.com/macros/s/AKfycbyyWwn8q7MYWoj6DVfEJwpPVXzl1RUEK5ak4KKaO40lwXt3CZPFk688aX-WthSMGHgmCA/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
     let currentResName = "";
@@ -344,7 +344,6 @@
     let base64Receipt = null;
     let dataRefreshInterval;
     
-    // متغير لتخزين لستة أسعار المطعم بعد جلبها من السيرفر
     let myCustomPriceList = {};
 
     function saveDraft() {
@@ -381,7 +380,6 @@
         sessionStorage.removeItem('hut_order_draft');
     }
 
-    // بناء القائمة المنسدلة من لستة المطعم فقط
     function buildCustomAreaDropdown() {
         const select = document.getElementById('customerArea');
         select.innerHTML = '<option value="" disabled selected>-- اختر منطقة الزبون --</option>';
@@ -391,7 +389,6 @@
             return;
         }
 
-        // ترتيب المناطق أبجدياً لسهولة البحث
         const sortedAreas = Object.keys(myCustomPriceList).sort();
         
         sortedAreas.forEach(area => {
@@ -400,7 +397,6 @@
         
         select.innerHTML += '<option value="أخرى">أخرى (غير مدرجة في اللستة)</option>';
         
-        // إذا كان هناك مسودة، نعيد اختيار المنطقة بعد بناء القائمة
         const draftStr = sessionStorage.getItem('hut_order_draft');
         if(draftStr) {
             try {
@@ -413,7 +409,6 @@
         }
     }
 
-    // عرض السعر مباشرة بدون حسابات GPS
     function showSelectedPrice() {
         const areaName = document.getElementById('customerArea').value;
         const priceHint = document.getElementById('priceHint');
@@ -433,34 +428,23 @@
         }
     }
 
-    // الدالة السحرية لتنظيف نص الواتساب وتحويله لـ JSON
     function parseCustomPriceList(rawText) {
         if (!rawText || rawText.trim() === "") return "{}";
         
         let resultObj = {};
-        
-        // 1. إزالة الإيموجيات والرموز الغريبة
         let cleanText = rawText.replace(/[\u1000-\uFFFF]/g, ''); 
-        
-        // 2. تقسيم النص إلى أسطر
         let lines = cleanText.split('\n');
         
         lines.forEach(line => {
-            // 3. تجاهل الأسطر الفارغة أو التي تحتوي على كلمة "تسعيرة" (مثل العنوان)
             if(line.trim() === "" || line.includes("تسعيرة")) return;
-            
-            // 4. تقسيم السطر إذا كان يحتوي على (+) مثل: قادسيه 2000+قادسيه اولى2000
             let subLines = line.split('+');
             
             subLines.forEach(sub => {
-                // 5. استخراج الكلمات (اسم المنطقة) والأرقام (السعر)
-                // يبحث عن أي رقم متصل ببعضه في نهاية أو وسط الجملة
                 let match = sub.match(/([^\d]+)(\d+)/);
                 if (match && match.length >= 3) {
                     let area = match[1].trim();
                     let price = match[2].trim();
                     
-                    // تنظيف إضافي لاسم المنطقة (إزالة أي شرطات أو نقاط زائدة)
                     area = area.replace(/^[-.]+|[-.]+$/g, '').trim();
                     
                     if(area !== "" && price !== "") {
@@ -610,7 +594,6 @@
 
             if(!name || !area || !mapLink || !comm) return alert("يرجى ملئ جميع التفاصيل.");
             
-            // تحويل اللستة من نص إلى JSON مضغوط
             const packedPriceList = parseCustomPriceList(rawPriceListText);
             
             showLoading(true, "جاري إرسال طلب الشراكة وحفظ اللستة...");
@@ -643,7 +626,7 @@
             pay: pay, 
             lat: lat, 
             lng: lng,
-            priceList: priceListStr // إرسال اللستة المضغوطة
+            priceList: priceListStr 
         };
         
         fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) })
@@ -664,7 +647,6 @@
             currentResName = data.name;
             localStorage.setItem('hut_res_phone', phone);
             
-            // قراءة اللستة التي أرسلها السيرفر
             try {
                 if (data.priceList && data.priceList.trim() !== "") {
                     myCustomPriceList = JSON.parse(data.priceList);
@@ -697,7 +679,7 @@
         document.getElementById('resPhoneDisplay').innerText = "شريك معتمد - الحوت";
         lucide.createIcons();
         
-        buildCustomAreaDropdown(); // بناء القائمة المنسدلة
+        buildCustomAreaDropdown(); 
         restoreDraft();
         
         fetchResDashboardData();
@@ -734,7 +716,6 @@
         const resInfo = data.restaurants.find(r => r[1] === currentResName);
         if(!resInfo) return;
 
-        // إذا تم الدخول عن طريق الـ Session (Refresh) ولم يتم جلب اللستة في الـ Login
         if (Object.keys(myCustomPriceList).length === 0 && resInfo[12] && resInfo[12].trim() !== "") {
             try {
                 myCustomPriceList = JSON.parse(resInfo[12]);
@@ -897,13 +878,11 @@
             imagePayload = base64Receipt;
         }
 
-        // تحديد السعر من اللستة لإرساله للكابتن
         const priceHintText = document.getElementById('priceHint').innerText;
         let areaWithHint = finalArea;
         if (myCustomPriceList[finalArea]) {
             areaWithHint = `${finalArea} (توصيل: ${myCustomPriceList[finalArea]})`;
         } else if (finalArea !== "أخرى") {
-            // كاحتياط في حال فشل القراءة
             areaWithHint = finalArea;
         }
 
@@ -915,7 +894,7 @@
             frontendId: uniqueFrontendId,
             restaurantName: currentResName,
             area: areaWithHint,
-            price: finalPrice, // سعر التوصيل يتم تضمينه في اسم المنطقة لسهولة قراءته للكابتن
+            price: finalPrice, 
             details: finalDetails,
             image: imagePayload
         };
