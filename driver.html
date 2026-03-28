@@ -115,9 +115,9 @@
             position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
             background: rgba(15, 23, 42, 0.98); backdrop-filter: blur(15px); z-index: 10000; color: white; 
             display: flex; flex-direction: column; justify-content: space-between; 
-            padding: 50px 20px calc(30px + env(safe-area-inset-bottom)) 20px; /* حماية حواف الآيفون/الأندرويد */
+            padding: 50px 20px calc(30px + env(safe-area-inset-bottom)) 20px; 
             text-align: center; 
-            overflow-y: auto; /* السماح بالتمرير في الشاشات الصغيرة */
+            overflow-y: auto; 
         }
         .alert-pulse { width: 80px; height: 80px; background: var(--accent-orange); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px auto; box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.7); animation: pulseOrange 2s infinite; }
         @keyframes pulseOrange { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.7); } 70% { transform: scale(1); box-shadow: 0 0 0 20px rgba(249, 115, 22, 0); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(249, 115, 22, 0); } }
@@ -279,8 +279,8 @@
 <script>
     lucide.createIcons();
 
-    // تم التحديث إلى الرابط السحابي الجديد V9
-    const API_URL = "https://script.google.com/macros/s/AKfycbx10FQJTjT-MbJ9QhtQH86izt_OGpr8umJQvdew7alUP8Z_iOYq8rbg5NnZPKGbk_XU-g/exec";
+    // تم التحديث إلى الرابط السحابي النهائي V11 🚀
+    const API_URL = "https://script.google.com/macros/s/AKfycbyyWwn8q7MYWoj6DVfEJwpPVXzl1RUEK5ak4KKaO40lwXt3CZPFk688aX-WthSMGHgmCA/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
     let driverData = null;
@@ -302,14 +302,12 @@
 
     document.addEventListener('contextmenu', event => event.preventDefault());
 
-    // مراقبة سلوك الخروج أو النوم الإجباري
+    // مراقبة سلوك الخروج أو النوم الإجباري (Beacon)
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'hidden' && isOnline && driverData) {
-            // الكابتن ألقى التطبيق في الخلفية: يتم إرسال إشارة استغاثة لجعله غير نشط فوراً باستخدام fetch keepalive
             const url = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=DRIVER&id=${driverData.phone}&status=inactive&token=${API_TOKEN}`;
             fetch(url, { keepalive: true, mode: 'no-cors' }).catch(()=>{});
         } else if (document.visibilityState === 'visible' && isOnline && driverData) {
-            // الكابتن عاد للتطبيق: يرجع نشطاً ويطلب إضاءة الشاشة
             requestWakeLock();
             const url = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=DRIVER&id=${driverData.phone}&status=active&token=${API_TOKEN}`;
             fetch(url, { keepalive: true, mode: 'no-cors' }).catch(()=>{});
@@ -466,7 +464,6 @@
         if(activeOrders.length > 0) return alert("⚠️ لا يمكنك الخروج ولديك طلبات نشطة. قم بإنهاء الطلبات أولاً.");
         if(confirm("تأكيد تسجيل الخروج؟ سيتم تطهير كافة البيانات المؤقتة.")) {
             releaseWakeLock();
-            // تبليغ السيرفر بالخروج
             updateDriverStatusApi('inactive');
             localStorage.clear();
             sessionStorage.clear();
@@ -663,7 +660,6 @@
         clearInterval(countdownInterval);
         
         countdownInterval = setInterval(() => {
-            // حساب الثواني المتبقية فعلياً من ساعة الهاتف
             let remaining = Math.ceil((currentOrderData.expireTime - Date.now()) / 1000);
             if (remaining < 0) remaining = 0;
             
