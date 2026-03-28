@@ -80,7 +80,6 @@
         .btn-call-mini.call-success { color: #059669; border-color: #a7f3d0; background: #ecfdf5;}
         
         .btn-track { background: #eff6ff; color: #3b82f6; border: 1px solid #bfdbfe; border-radius: 10px; padding: 6px 10px; font-size: 0.8rem; font-weight: 800; cursor: pointer; transition: 0.2s; display: flex; align-items: center; gap: 4px; }
-        .btn-delete-order { background: #fef2f2; border: 1px solid #fca5a5; color: #ef4444; border-radius: 10px; padding: 6px 10px; font-size: 0.8rem; font-weight: 800; cursor: pointer; transition: 0.2s; display: flex; align-items: center; gap: 4px; }
         .manual-assign-select { border: 1px solid #cbd5e1; border-radius: 8px; padding: 6px; font-size: 0.8rem; font-weight: 700; max-width: 130px; background: white; outline: none; }
 
         .archive-toolbar { background: white; border-radius: 16px; padding: 15px; border: 1px solid #e2e8f0; margin-bottom: 15px; }
@@ -116,7 +115,7 @@
             .smart-order-card { padding: 15px; border-radius: 16px; border-right-width: 4px; }
             .smart-order-card h5 { font-size: 1.1rem; }
             .delay-badge { font-size: 0.7rem; padding: 3px 10px; top: -10px; right: 10px; }
-            .btn-track, .btn-delete-order { font-size: 0.75rem; padding: 5px 8px; }
+            .btn-track { font-size: 0.75rem; padding: 5px 8px; }
             .archive-toolbar { padding: 10px; }
             .archive-toolbar .col-md-2, .archive-toolbar .col-md-3, .archive-toolbar .col-md-1 { margin-bottom: 8px; }
             .analytics-bar { padding: 12px 15px; flex-direction: column; align-items: flex-start; gap: 10px; }
@@ -250,8 +249,8 @@
 <script>
     lucide.createIcons();
     
-    // تم التحديث إلى الرابط المدرع الجديد V3
-    const API_URL = "https://script.google.com/macros/s/AKfycbxYwOaivMtYWv7WzWmqKrmv5TbFGkMyN1FW2U0KZp9cYdRemSv-QvkeZLdt6rYzORnyLQ/exec";
+    // تم التحديث إلى رابط V7 الجديد
+    const API_URL = "https://script.google.com/macros/s/AKfycbxUVwEwNd64uGYl8YuKWbH5lDzRjAmHqKQqcebUJCKYt2HBeuNj7q7qxo1tzVOgHt9yYA/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
     let map, heatLayer, driverMarkers = [];
@@ -479,7 +478,8 @@
                             </div>
                             <div class="d-flex gap-2 align-items-center">
                                 <span class="badge ${sInfo.badge}" style="font-size:0.7rem;">${sInfo.desc}</span>
-                                <button class="btn btn-sm btn-outline-danger border-0 p-0" onclick="adminAction('DELETE', 'ORDER', '${orderId}')" title="حذف"><i data-lucide="trash-2" size="16"></i></button>
+                                <button class="btn btn-sm text-success border-0 p-0" onclick="adminAction('COMPLETE', 'ORDER', '${orderId}')" title="إتمام قسري"><i data-lucide="check-circle" size="18"></i></button>
+                                <button class="btn btn-sm text-danger border-0 p-0" onclick="adminAction('DELETE', 'ORDER', '${orderId}')" title="حذف"><i data-lucide="trash-2" size="18"></i></button>
                             </div>
                         </div>
                         <div class="d-flex justify-content-between small fw-bold mb-2">
@@ -550,7 +550,8 @@
                         <span class="badge ${!hasDriver ? 'bg-danger' : 'bg-success'}">${statusDesc}</span>
                         <div class="d-flex gap-1 align-items-center mt-1">
                             ${hasDriver ? `<button class="btn-track" onclick="trackDriver('${driverPhone}')"><i data-lucide="map-pin" size="14"></i> تتبع</button>` : ''}
-                            <button class="btn btn-sm btn-outline-danger border-0 p-1" onclick="adminAction('DELETE', 'ORDER', '${orderId}')" title="حذف وإلغاء الطلب"><i data-lucide="trash-2" size="16"></i></button>
+                            <button class="btn btn-sm text-success border-0 p-1" onclick="adminAction('COMPLETE', 'ORDER', '${orderId}')" title="إتمام قسري"><i data-lucide="check-circle" size="18"></i></button>
+                            <button class="btn btn-sm text-danger border-0 p-1" onclick="adminAction('DELETE', 'ORDER', '${orderId}')" title="حذف وإلغاء الطلب"><i data-lucide="trash-2" size="18"></i></button>
                         </div>
                     </div>
                 </div>
@@ -609,8 +610,13 @@
     }
 
     function adminAction(cmd, type, id) {
-        const statusMap = { 'ACCEPT': 'active', 'PAUSE': 'inactive', 'DELETE': 'deleted' };
-        if(confirm("تأكيد الإجراء؟")) {
+        const statusMap = { 'ACCEPT': 'active', 'PAUSE': 'inactive', 'DELETE': 'deleted', 'COMPLETE': 'completed' };
+        
+        let msg = "تأكيد الإجراء؟";
+        if (cmd === 'COMPLETE') msg = "هل أنت متأكد من الإتمام القسري؟ سيتم تسجيل الطلب كمكتمل واحتساب العمولات.";
+        else if (cmd === 'DELETE') msg = "تأكيد حذف وإلغاء هذا الطلب نهائياً؟";
+
+        if(confirm(msg)) {
             const script = document.createElement('script'); script.src = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${id}&status=${statusMap[cmd]}&token=${API_TOKEN}&pass=${masterPassword}&callback=afterAdminAction&ts=${Date.now()}`; document.body.appendChild(script);
         }
     }
