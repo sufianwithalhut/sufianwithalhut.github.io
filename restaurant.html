@@ -1,1 +1,929 @@
-. 
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    
+    <title>مطاعم سفيان | نظام الحوت</title>
+
+    <meta name="theme-color" content="#1e3a8a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="مطاعم سفيان">
+    <meta name="mobile-web-app-capable" content="yes">
+
+    <link rel="manifest" href="manifest_restaurant.json">
+    
+    <link rel="apple-touch-icon" href="rest-logo.png">
+
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="مطاعم سفيان - منصة الحوت">
+    <meta property="og:description" content="إدارة طلبات التوصيل الذكية في كركوك - مكتب سفيان">
+    <meta property="og:image" content="rest-logo.png">
+    <meta property="og:url" content="https://sufianwithalhut.github.io/sufianwithalhut/">
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        :root {
+            --primary: #0f172a;
+            --accent: #f97316;
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --success: #10b981;
+            --primary-blue: #1e3a8a;
+        }
+
+        body { 
+            background: var(--bg); 
+            font-family: 'Cairo', sans-serif; 
+            color: var(--primary); 
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            -webkit-user-select: none;
+            overscroll-behavior-y: contain;
+            /* حماية الأزرار السفلية في الهواتف الحديثة */
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+
+        .hidden-section { display: none !important; }
+
+        #loadingOverlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(10px);
+            z-index: 9999; display: none; align-items: center; justify-content: center;
+            flex-direction: column; color: white;
+        }
+
+        .app-header {
+            background: var(--primary-blue); color: white;
+            padding: 40px 20px 80px 20px; border-bottom-left-radius: 40px; border-bottom-right-radius: 40px;
+            text-align: center; box-shadow: 0 10px 30px rgba(30, 58, 138, 0.2);
+        }
+
+        .glass-card {
+            background: var(--card-bg); border-radius: 30px; padding: 30px;
+            border: 1px solid rgba(0,0,0,0.05); box-shadow: 0 15px 35px rgba(0,0,0,0.05); margin-top: -30px; margin-bottom: 20px;
+        }
+        
+        .login-card { background: var(--card-bg); border-radius: 30px; padding: 40px; border: 1px solid rgba(0,0,0,0.05); box-shadow: 0 20px 40px rgba(0,0,0,0.08); }
+        .form-label { font-weight: 700; color: #64748b; font-size: 0.9rem; margin-bottom: 10px; display: block; text-align: right; }
+        
+        .custom-input {
+            background: #f1f5f9; border: 2px solid transparent; border-radius: 18px;
+            padding: 16px; font-weight: 700; transition: 0.3s; width: 100%; font-size: 1rem; color: var(--primary-blue);
+        }
+        .custom-input.phone-format { letter-spacing: 2px; font-size: 1.4rem; text-align: center; }
+        .custom-input:focus { background: white; border-color: var(--accent); outline: none; box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.1); }
+
+        .btn-action {
+            background: var(--primary-blue); color: white; border: none; border-radius: 18px;
+            padding: 20px; font-weight: 900; width: 100%; font-size: 1.1rem;
+            display: flex; align-items: center; justify-content: center; gap: 12px;
+            transition: 0.3s; box-shadow: 0 10px 20px rgba(30, 58, 138, 0.2);
+            /* ضمان مساحة كافية للضغط في الأسفل */
+            margin-bottom: 20px;
+        }
+        .btn-action:active { transform: scale(0.96); }
+
+        .stat-box { background: #f8fafc; border-radius: 20px; padding: 15px; text-align: center; border: 1px solid #e2e8f0; }
+        .stat-box h3 { margin: 0; font-weight: 900; color: var(--primary-blue); }
+        .stat-box p { margin: 0; font-size: 0.75rem; font-weight: 700; color: #64748b; margin-top: 5px; }
+
+        .order-type-toggle { display: flex; background: #f1f5f9; border-radius: 20px; padding: 6px; margin-bottom: 25px; }
+        .toggle-btn {
+            flex: 1; text-align: center; padding: 12px; font-weight: 800; color: #64748b;
+            border-radius: 16px; cursor: pointer; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 0.95rem;
+        }
+        .toggle-btn.active { background: white; color: var(--primary-blue); box-shadow: 0 4px 15px rgba(0,0,0,0.06); }
+
+        .camera-btn { background: rgba(59, 130, 246, 0.1); border: 2px dashed #3b82f6; border-radius: 20px; padding: 30px; text-align: center; color: #3b82f6; font-weight: 800; cursor: pointer; transition: 0.3s; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+        .camera-btn:hover, .camera-btn:active { background: rgba(59, 130, 246, 0.2); transform: scale(0.98); }
+        .preview-img { width: 100%; max-height: 200px; object-fit: contain; border-radius: 15px; border: 2px solid #e2e8f0; margin-top: 15px; }
+
+        .live-order-card { background: white; border-radius: 20px; padding: 20px; margin-bottom: 15px; border: 1px solid #e2e8f0; border-right: 5px solid var(--primary-blue); display: flex; flex-direction: column; gap: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.02); }
+        .btn-call-mini { background: rgba(16, 185, 129, 0.1); border: 1px solid #10b981; border-radius: 50%; width: 35px; height: 35px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #10b981; }
+        
+        .btn-cancel-grace { background: #fef2f2; color: #ef4444; border: 1px solid #fca5a5; padding: 4px 10px; border-radius: 8px; font-size: 0.75rem; font-weight: 800; cursor: pointer; transition: 0.2s; }
+        .btn-cancel-grace:active { transform: scale(0.95); }
+
+        .progress-tracker { display: flex; align-items: center; justify-content: space-between; margin-top: 15px; position: relative; padding: 0 10px; }
+        .progress-line { position: absolute; top: 12px; left: 20px; right: 20px; height: 3px; background: #e2e8f0; z-index: 1; }
+        .progress-line-fill { position: absolute; top: 12px; right: 20px; height: 3px; background: var(--success); z-index: 2; transition: 0.4s width; }
+        .progress-step { position: relative; z-index: 3; display: flex; flex-direction: column; align-items: center; gap: 5px; width: 25%; }
+        .progress-dot { width: 26px; height: 26px; border-radius: 50%; background: #e2e8f0; border: 3px solid white; display: flex; align-items: center; justify-content: center; transition: 0.3s; box-shadow: 0 0 0 1px #e2e8f0; }
+        .progress-step.active .progress-dot { background: var(--success); box-shadow: 0 0 0 2px var(--success); }
+        .progress-step.current .progress-dot { background: var(--accent); box-shadow: 0 0 0 2px var(--accent); animation: pulseDot 1.5s infinite; }
+        .progress-label { font-size: 0.65rem; font-weight: 800; color: #64748b; text-align: center; }
+        
+        @keyframes pulseDot { 0% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.4); } 70% { box-shadow: 0 0 0 6px rgba(249, 115, 22, 0); } 100% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0); } }
+
+        .archive-item { display: flex; justify-content: space-between; align-items: center; background: #f8fafc; padding: 12px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 8px; }
+        .success-toast { background: var(--success); color: white; border-radius: 20px; padding: 20px; margin-top: 20px; display: flex; align-items: center; gap: 15px; animation: slideUp 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+
+<div id="loadingOverlay">
+    <div class="spinner-grow text-warning" role="status"></div>
+    <span class="mt-3 fw-bold" id="loadingText">جاري المزامنة مع النظام...</span>
+</div>
+
+<div id="loginSection" class="container py-5">
+    <div class="text-center mb-5">
+        <div class="d-inline-block p-4 bg-white rounded-circle shadow-sm mb-4">
+            <i data-lucide="store" size="50" color="#1e3a8a"></i>
+        </div>
+        <h2 class="fw-black" style="color: var(--primary-blue);">مكتب سفيان للشركاء</h2>
+        <p class="text-muted fw-bold">المنصة المدعومة بنظام الحوت</p>
+    </div>
+
+    <div class="row justify-content-center">
+        <div class="col-lg-5">
+            <div class="login-card" id="authBox">
+                <div class="mb-4 text-center">
+                    <label class="form-label text-center">رقم هاتف الإدارة المسجل</label>
+                    <input type="tel" id="checkPhone" class="custom-input phone-format" placeholder="07XXXXXXXXX" dir="ltr" autocomplete="off" readonly onfocus="this.removeAttribute('readonly');">
+                </div>
+
+                <div id="registerFields" class="hidden-section text-start" style="animation: fadeIn 0.5s;">
+                    <hr class="my-4 opacity-10">
+                    <div class="d-flex align-items-center justify-content-center gap-2 mb-4 text-success">
+                        <i data-lucide="sparkles"></i>
+                        <h5 class="fw-black m-0">تسجيل مطعم جديد</h5>
+                    </div>
+                    
+                    <div class="mb-3"><input type="text" id="regName" class="custom-input" placeholder="الاسم التجاري للمطعم" autocomplete="off"></div>
+                    <div class="mb-3"><input type="text" id="regArea" class="custom-input" placeholder="منطقة المطعم الأساسية" autocomplete="off"></div>
+                    <div class="mb-3"><input type="url" id="regMap" class="custom-input" placeholder="رابط موقع المطعم (Google Maps)" dir="ltr" autocomplete="off"></div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-6"><input type="number" id="regComm" class="custom-input" placeholder="العمولة (د.ع)" autocomplete="off"></div>
+                        <div class="col-6">
+                            <select id="regPay" class="custom-input px-2">
+                                <option value="المطعم يدفع" selected>المطعم يدفع</option>
+                                <option value="مناصفة">مناصفة مع السائق</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="form-label" style="text-align: right; color: var(--primary-blue);">
+                            <i data-lucide="clipboard-list" size="16"></i> الصق لستة مناطق وأسعار التوصيل هنا:
+                        </label>
+                        <textarea id="regPriceList" class="custom-input" rows="5" placeholder="انسخ الرسالة من الواتساب والصقها هنا..." style="font-size: 0.9rem; text-align: right; resize: none;"></textarea>
+                        <small class="text-muted fw-bold" style="font-size: 0.75rem;">ملاحظة: سيقوم النظام بتنظيف النصوص واستخراج المناطق والأسعار تلقائياً.</small>
+                    </div>
+
+                </div>
+
+                <button class="btn-action" id="mainAuthBtn" onclick="authAction()">
+                    دخول المنصة <i data-lucide="arrow-left"></i>
+                </button>
+            </div>
+
+            <div class="login-card hidden-section text-center" id="waitingBox">
+                <div class="d-inline-block p-4 rounded-circle mb-3" style="background: rgba(245, 158, 11, 0.1);">
+                    <i data-lucide="clock" size="60" color="#d97706"></i>
+                </div>
+                <h3 class="fw-black mb-3 text-dark">الطلب قيد المراجعة</h3>
+                <p class="text-muted fw-bold mb-0">تم إرسال بيانات المطعم للإدارة المركزية.<br>يرجى الانتظار حتى يتم تفعيل الشراكة.</p>
+                <button class="btn btn-outline-secondary rounded-pill mt-4 fw-bold px-4" onclick="location.reload()">تحديث الحالة</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="orderSection" class="hidden-section">
+    <div class="app-header">
+        <div class="d-flex justify-content-between align-items-center container">
+            <div class="text-end">
+                <h3 class="fw-black m-0" id="resTitle">جاري التحميل...</h3>
+                <small class="opacity-75 fw-bold" id="resPhoneDisplay"></small>
+            </div>
+            <button class="btn btn-sm btn-outline-light rounded-pill px-3 fw-bold" onclick="logout()"><i data-lucide="power" size="14" class="me-1"></i> خروج</button>
+        </div>
+    </div>
+
+    <div class="container pb-5">
+        <div class="row justify-content-center">
+            <div class="col-lg-6">
+                
+                <div class="glass-card" style="margin-top: -35px; padding: 20px;">
+                    <div class="row g-2">
+                        <div class="col-4">
+                            <div class="stat-box">
+                                <h3 id="statMonthOrders">0</h3>
+                                <p>طلبات الشهر</p>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="stat-box">
+                                <h3 id="statUnpaid" class="text-danger">0</h3>
+                                <p>العمولة (د.ع)</p>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="stat-box">
+                                <h3 id="statPayType" class="text-success fs-6 mt-2 mb-1" style="line-height: 1.2;">---</h3>
+                                <p>نظام الدفع</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-card">
+                    <h4 class="fw-black mb-4"><i data-lucide="send" class="me-2 text-accent"></i> إرسال طلب توصيل</h4>
+                    
+                    <div class="order-type-toggle">
+                        <div class="toggle-btn active" id="tabManual" onclick="switchTab('manual')">
+                            <i data-lucide="keyboard"></i> إدخال يدوي
+                        </div>
+                        <div class="toggle-btn" id="tabPhoto" onclick="switchTab('photo')">
+                            <i data-lucide="camera"></i> تصوير سريع
+                        </div>
+                    </div>
+                    
+                    <form id="orderForm">
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-12" id="areaContainer">
+                                <label class="form-label">اختر منطقة الزبون</label>
+                                <select id="customerArea" class="custom-input form-select" style="font-size: 0.95rem;" onchange="saveDraft(); showSelectedPrice();">
+                                    <option value="" disabled selected>-- جاري جلب مناطق المطعم --</option>
+                                </select>
+                                <div id="priceHint" class="text-success small fw-bold mt-2 hidden-section px-1"></div>
+                            </div>
+                        </div>
+
+                        <div id="manualSection">
+                            <div class="mb-4">
+                                <label class="form-label">رقم هاتف الزبون</label>
+                                <input type="tel" id="customerPhone" class="custom-input phone-format" placeholder="07XXXXXXXXX" dir="ltr" autocomplete="off" oninput="saveDraft()">
+                            </div>
+                            <div class="mb-4">
+                                <label class="form-label">تفاصيل إضافية (اختياري)</label>
+                                <input type="text" id="customerDetails" class="custom-input" placeholder="مثال: قرب صيدلية السلام" autocomplete="off" oninput="saveDraft()">
+                            </div>
+                        </div>
+
+                        <div id="photoSection" class="hidden-section">
+                            <div class="mb-4">
+                                <label class="form-label">صورة الوصل (تحتوي العنوان والهاتف)</label>
+                                <input type="file" id="receiptPhoto" accept="image/*" capture="environment" class="d-none" onchange="processImage(this)">
+                                <label for="receiptPhoto" class="camera-btn" id="cameraBtn">
+                                    <i data-lucide="scan-line" size="40"></i>
+                                    <span>اضغط هنا لفتح الكاميرا والتقاط الوصل</span>
+                                </label>
+                                <div id="photoPreviewContainer" class="hidden-section text-center">
+                                    <img id="photoPreview" class="preview-img" src="" alt="معاينة الوصل">
+                                    <button type="button" class="btn btn-sm btn-outline-danger mt-2 fw-bold" onclick="removePhoto()">إلغاء وإعادة التصوير</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn-action" style="background: var(--accent);">
+                            إرسال للكباتن <i data-lucide="zap"></i>
+                        </button>
+                    </form>
+
+                    <div id="orderStatusBox" class="hidden-section">
+                        <div class="success-toast">
+                            <i data-lucide="check-circle" size="30"></i>
+                            <div>
+                                <div class="fw-black" id="statusMsg">تم الإطلاق بنجاح!</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-4" style="padding-bottom: 20px;">
+                    <div class="order-type-toggle mb-3" style="background: #e2e8f0;">
+                        <div class="toggle-btn active py-2" id="tabLiveOrders" onclick="switchListTab('live')">
+                            <i data-lucide="activity" size="18"></i> قيد التوصيل
+                        </div>
+                        <div class="toggle-btn py-2" id="tabTodayArchive" onclick="switchListTab('archive')">
+                            <i data-lucide="check-circle-2" size="18"></i> مكتملة اليوم
+                        </div>
+                    </div>
+
+                    <div id="activeOrdersList">
+                        <div class="text-center text-muted fw-bold py-3 small">لا توجد طلبات نشطة حالياً.</div>
+                    </div>
+
+                    <div id="todayArchiveList" class="hidden-section">
+                        <div class="d-flex justify-content-between align-items-center mb-3 px-2">
+                            <span class="fw-bold text-muted small">إجمالي مبيعات التوصيل اليوم:</span>
+                            <span class="fw-black text-success fs-5" id="todayTotalSales">0 <small class="fs-6">د.ع</small></span>
+                        </div>
+                        <div id="todayArchiveItems">
+                            <div class="text-center text-muted fw-bold py-3 small">لم تكتمل أي طلبات اليوم بعد.</div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    lucide.createIcons();
+
+    // تم التحديث إلى الرابط السحابي النهائي والأخير (V11)
+    const API_URL = "https://script.google.com/macros/s/AKfycbyyWwn8q7MYWoj6DVfEJwpPVXzl1RUEK5ak4KKaO40lwXt3CZPFk688aX-WthSMGHgmCA/exec";
+    const API_TOKEN = "HUT_SECURE_99";
+    
+    let currentResName = "";
+    let isRegistering = false;
+    let currentOrderMode = 'manual';
+    let base64Receipt = null;
+    let dataRefreshInterval;
+    
+    let myCustomPriceList = {};
+
+    function saveDraft() {
+        const draft = {
+            mode: currentOrderMode,
+            area: document.getElementById('customerArea').value,
+            phone: document.getElementById('customerPhone').value,
+            details: document.getElementById('customerDetails').value,
+            image: base64Receipt
+        };
+        sessionStorage.setItem('hut_order_draft', JSON.stringify(draft));
+    }
+
+    function restoreDraft() {
+        const draftStr = sessionStorage.getItem('hut_order_draft');
+        if(draftStr) {
+            try {
+                const draft = JSON.parse(draftStr);
+                if(draft.mode) switchTab(draft.mode, false);
+                if(draft.area) { document.getElementById('customerArea').value = draft.area; }
+                if(draft.phone) document.getElementById('customerPhone').value = draft.phone;
+                if(draft.details) document.getElementById('customerDetails').value = draft.details;
+                if(draft.image) {
+                    base64Receipt = draft.image;
+                    document.getElementById('photoPreview').src = base64Receipt;
+                    document.getElementById('cameraBtn').classList.add('hidden-section');
+                    document.getElementById('photoPreviewContainer').classList.remove('hidden-section');
+                }
+            } catch(e) {}
+        }
+    }
+
+    function clearDraft() {
+        sessionStorage.removeItem('hut_order_draft');
+    }
+
+    function buildCustomAreaDropdown() {
+        const select = document.getElementById('customerArea');
+        select.innerHTML = '<option value="" disabled selected>-- اختر منطقة الزبون --</option>';
+        
+        if (Object.keys(myCustomPriceList).length === 0) {
+            select.innerHTML += '<option value="أخرى">أخرى (غير مدرجة في لستة المطعم)</option>';
+            return;
+        }
+
+        const sortedAreas = Object.keys(myCustomPriceList).sort();
+        
+        sortedAreas.forEach(area => {
+            select.innerHTML += `<option value="${area}">${area}</option>`;
+        });
+        
+        select.innerHTML += '<option value="أخرى">أخرى (غير مدرجة في اللستة)</option>';
+        
+        const draftStr = sessionStorage.getItem('hut_order_draft');
+        if(draftStr) {
+            try {
+                const draft = JSON.parse(draftStr);
+                if(draft.area && document.querySelector(`#customerArea option[value="${draft.area}"]`)) {
+                    select.value = draft.area;
+                    showSelectedPrice();
+                }
+            } catch(e) {}
+        }
+    }
+
+    function showSelectedPrice() {
+        const areaName = document.getElementById('customerArea').value;
+        const priceHint = document.getElementById('priceHint');
+
+        if (!areaName || areaName === "أخرى") {
+            priceHint.classList.add('hidden-section');
+            return;
+        }
+
+        priceHint.classList.remove('hidden-section');
+        const price = myCustomPriceList[areaName];
+        
+        if (price) {
+            priceHint.innerHTML = `<i data-lucide="banknote" size="14" class="me-1"></i> <b>سعر توصيل الكابتن:</b> ${price} د.ع`;
+            priceHint.className = "text-success small fw-bold mt-2 px-1";
+            lucide.createIcons();
+        }
+    }
+
+    function parseCustomPriceList(rawText) {
+        if (!rawText || rawText.trim() === "") return "{}";
+        
+        let resultObj = {};
+        let cleanText = rawText.replace(/[\u1000-\uFFFF]/g, ''); 
+        let lines = cleanText.split('\n');
+        
+        lines.forEach(line => {
+            if(line.trim() === "" || line.includes("تسعيرة")) return;
+            let subLines = line.split('+');
+            
+            subLines.forEach(sub => {
+                let match = sub.match(/([^\d]+)(\d+)/);
+                if (match && match.length >= 3) {
+                    let area = match[1].trim();
+                    let price = match[2].trim();
+                    
+                    area = area.replace(/^[-.]+|[-.]+$/g, '').trim();
+                    
+                    if(area !== "" && price !== "") {
+                        resultObj[area] = parseInt(price);
+                    }
+                }
+            });
+        });
+        
+        return JSON.stringify(resultObj);
+    }
+
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('sw.js')
+                .then(reg => console.log('✅ نظام سفيان العصبي يعمل بنجاح!'))
+                .catch(err => console.error('❌ فشل في تشغيل المحرك:', err));
+        });
+    }
+
+    document.addEventListener('contextmenu', event => event.preventDefault());
+
+    function checkSavedSession() {
+        const sessionStr = localStorage.getItem('hut_res_session');
+        if (sessionStr) {
+            try {
+                const session = JSON.parse(sessionStr);
+                const diffHours = (Date.now() - session.timestamp) / (1000 * 60 * 60);
+                if (diffHours < 24) {
+                    document.getElementById('checkPhone').value = session.phone.startsWith('0') ? session.phone : '0' + session.phone;
+                    currentResName = session.name;
+                    enterDashboard();
+                    return true;
+                }
+            } catch(e) {}
+        }
+        return false;
+    }
+
+    window.onload = function() {
+        if (!checkSavedSession()) {
+            const savedPhone = localStorage.getItem('hut_res_phone');
+            if(savedPhone) {
+                document.getElementById('checkPhone').value = savedPhone.startsWith('0') ? savedPhone : '0' + savedPhone;
+                authAction();
+            }
+        }
+    };
+
+    function logout() {
+        if(confirm("هل تريد تسجيل الخروج؟ سيتم مسح الذاكرة المؤقتة.")) {
+            localStorage.clear();
+            sessionStorage.clear();
+            location.reload();
+        }
+    }
+
+    function showLoading(s, text = "جاري المعالجة...") { 
+        document.getElementById('loadingText').innerText = text;
+        document.getElementById('loadingOverlay').style.display = s ? 'flex' : 'none';
+    }
+
+    function switchTab(mode, triggerSave = true) {
+        currentOrderMode = mode;
+        document.getElementById('tabManual').classList.remove('active');
+        document.getElementById('tabPhoto').classList.remove('active');
+        
+        if (mode === 'manual') {
+            document.getElementById('tabManual').classList.add('active');
+            document.getElementById('manualSection').classList.remove('hidden-section');
+            document.getElementById('photoSection').classList.add('hidden-section');
+            document.getElementById('customerPhone').required = true;
+        } else {
+            document.getElementById('tabManual').classList.remove('active');
+            document.getElementById('tabPhoto').classList.add('active');
+            document.getElementById('photoSection').classList.remove('hidden-section');
+            document.getElementById('manualSection').classList.add('hidden-section');
+            document.getElementById('customerPhone').required = false;
+        }
+        
+        if (triggerSave) saveDraft();
+    }
+
+    function switchListTab(tab) {
+        document.getElementById('tabLiveOrders').classList.remove('active');
+        document.getElementById('tabTodayArchive').classList.remove('active');
+        
+        if (tab === 'live') {
+            document.getElementById('tabLiveOrders').classList.add('active');
+            document.getElementById('activeOrdersList').classList.remove('hidden-section');
+            document.getElementById('todayArchiveList').classList.add('hidden-section');
+        } else {
+            document.getElementById('tabTodayArchive').classList.add('active');
+            document.getElementById('todayArchiveList').classList.remove('hidden-section');
+            document.getElementById('activeOrdersList').classList.add('hidden-section');
+        }
+    }
+
+    function processImage(input) {
+        if (input.files && input.files[0]) {
+            showLoading(true, "جاري تحسين الوصل...");
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 600; 
+                    const scaleSize = MAX_WIDTH / img.width;
+                    canvas.width = MAX_WIDTH; canvas.height = img.height * scaleSize;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    base64Receipt = canvas.toDataURL('image/jpeg', 0.7);
+                    
+                    document.getElementById('photoPreview').src = base64Receipt;
+                    document.getElementById('cameraBtn').classList.add('hidden-section');
+                    document.getElementById('photoPreviewContainer').classList.remove('hidden-section');
+                    
+                    saveDraft();
+                    showLoading(false);
+                }
+                img.src = e.target.result;
+            }
+            reader.readAsDataURL(input.files[0]);
+        }
+    }
+
+    function removePhoto() {
+        base64Receipt = null; document.getElementById('receiptPhoto').value = "";
+        document.getElementById('cameraBtn').classList.remove('hidden-section');
+        document.getElementById('photoPreviewContainer').classList.add('hidden-section');
+        saveDraft(); 
+    }
+
+    function authAction() {
+        let rawPhone = document.getElementById('checkPhone').value.trim();
+        if(!rawPhone) return alert("يرجى إدخال رقم الهاتف");
+
+        let phone = rawPhone.startsWith('0') ? rawPhone.substring(1) : rawPhone;
+
+        if (isRegistering) {
+            const name = document.getElementById('regName').value.trim();
+            const area = document.getElementById('regArea').value.trim();
+            const mapLink = document.getElementById('regMap').value.trim();
+            const comm = document.getElementById('regComm').value.trim();
+            const pay = document.getElementById('regPay').value;
+            const rawPriceListText = document.getElementById('regPriceList').value;
+
+            if(!name || !area || !mapLink || !comm) return alert("يرجى ملئ جميع التفاصيل.");
+            
+            const packedPriceList = parseCustomPriceList(rawPriceListText);
+            
+            showLoading(true, "جاري إرسال طلب الشراكة وحفظ اللستة...");
+            const fullArea = `${area} | ${mapLink}`;
+
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    pos => sendRegistration(name, phone, fullArea, comm, pay, pos.coords.latitude, pos.coords.longitude, packedPriceList),
+                    err => sendRegistration(name, phone, fullArea, comm, pay, 0, 0, packedPriceList),
+                    { timeout: 5000 }
+                );
+            } else { sendRegistration(name, phone, fullArea, comm, pay, 0, 0, packedPriceList); }
+            return;
+        }
+
+        showLoading(true, "جاري فحص حالة المطعم...");
+        const script = document.createElement('script');
+        script.src = `${API_URL}?action=checkRes&phone=${phone}&token=${API_TOKEN}&callback=handleLogin&ts=${Date.now()}`;
+        document.body.appendChild(script);
+    }
+
+    function sendRegistration(name, phone, area, comm, pay, lat, lng, priceListStr) {
+        const payload = { 
+            action: 'RESTAURANT_REG', 
+            token: API_TOKEN, 
+            name: name, 
+            phone: phone, 
+            area: area, 
+            comm: comm, 
+            pay: pay, 
+            lat: lat, 
+            lng: lng,
+            priceList: priceListStr 
+        };
+        
+        fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) })
+        .then(() => {
+            showLoading(false);
+            localStorage.setItem('hut_res_phone', phone);
+            document.getElementById('authBox').classList.add('hidden-section');
+            document.getElementById('waitingBox').classList.remove('hidden-section');
+        }).catch(() => { showLoading(false); alert("حدث خطأ أثناء الإرسال."); });
+    }
+
+    window.handleLogin = function(data) {
+        showLoading(false);
+        let rawPhone = document.getElementById('checkPhone').value.trim();
+        let phone = rawPhone.startsWith('0') ? rawPhone.substring(1) : rawPhone;
+
+        if(data.status === "active") {
+            currentResName = data.name;
+            localStorage.setItem('hut_res_phone', phone);
+            
+            try {
+                if (data.priceList && data.priceList.trim() !== "") {
+                    myCustomPriceList = JSON.parse(data.priceList);
+                }
+            } catch(e) { console.error("Error parsing price list", e); }
+            
+            const sessionData = { phone: phone, name: data.name, timestamp: Date.now() };
+            localStorage.setItem('hut_res_session', JSON.stringify(sessionData));
+            
+            enterDashboard();
+        } else if(data.status === "pending" || data.status === "waiting") {
+            localStorage.setItem('hut_res_phone', phone);
+            document.getElementById('authBox').classList.add('hidden-section');
+            document.getElementById('waitingBox').classList.remove('hidden-section');
+        } else {
+            isRegistering = true;
+            document.getElementById('registerFields').classList.remove('hidden-section');
+            document.getElementById('checkPhone').disabled = true;
+            const btn = document.getElementById('mainAuthBtn');
+            btn.innerHTML = `إرسال طلب الانضمام <i data-lucide="send"></i>`;
+            btn.style.background = 'var(--accent)';
+            lucide.createIcons();
+        }
+    };
+
+    function enterDashboard() {
+        document.getElementById('loginSection').classList.add('hidden-section');
+        document.getElementById('orderSection').classList.remove('hidden-section');
+        document.getElementById('resTitle').innerText = currentResName;
+        document.getElementById('resPhoneDisplay').innerText = "شريك معتمد - الحوت";
+        lucide.createIcons();
+        
+        buildCustomAreaDropdown(); 
+        restoreDraft();
+        
+        fetchResDashboardData();
+        dataRefreshInterval = setInterval(fetchResDashboardData, 15000);
+    }
+
+    function cancelOrderGrace(orderId) {
+        if(confirm("هل أنت متأكد من إلغاء وحذف هذا الطلب؟")) {
+            showLoading(true, "جاري إلغاء الطلب...");
+            const script = document.createElement('script');
+            script.src = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${orderId}&status=deleted&token=${API_TOKEN}&callback=onCancelSuccess&ts=${Date.now()}`;
+            document.body.appendChild(script);
+        }
+    }
+    
+    window.onCancelSuccess = function(response) {
+        showLoading(false);
+        if(response.success) {
+            fetchResDashboardData(); 
+        } else {
+            alert("حدث خطأ. قد يكون الكابتن قد استلم الطلب للتو.");
+        }
+    };
+
+    function fetchResDashboardData() {
+        const script = document.createElement('script');
+        script.src = `${API_URL}?action=getGlobalData&token=${API_TOKEN}&callback=renderResDashboard&ts=${Date.now()}`;
+        document.body.appendChild(script);
+    }
+
+    window.renderResDashboard = function(data) {
+        if(!data || !data.restaurants || !data.orders) return;
+
+        const resInfo = data.restaurants.find(r => r[1] === currentResName);
+        if(!resInfo) return;
+
+        if (Object.keys(myCustomPriceList).length === 0 && resInfo[12] && resInfo[12].trim() !== "") {
+            try {
+                myCustomPriceList = JSON.parse(resInfo[12]);
+                buildCustomAreaDropdown();
+            } catch(e) {}
+        }
+
+        const commRate = parseFloat(resInfo[5]) || 0;
+        const paySystem = resInfo[8] || 'المطعم يدفع';
+        document.getElementById('statPayType').innerText = paySystem.includes("مناصفة") ? "مناصفة" : "المطعم";
+
+        const today = new Date();
+        const todayISO = today.toISOString().split('T')[0];
+        const currentMonth = today.getMonth();
+        const currentYear = today.getFullYear();
+        
+        let monthlyCount = 0;
+        let totalUnpaid = 0;
+        
+        let activeOrdersHtml = '';
+        let todayArchiveHtml = '';
+        let todaySalesTotal = 0;
+
+        data.orders.slice(1).forEach(o => {
+            if(o[1] === currentResName) {
+                const status = o[5];
+                const orderId = o[0];
+                const orderArea = o[2]; 
+                const driverPhone = o[6];
+                
+                const orderDateStr = o[7];
+                const orderDateObj = new Date(orderDateStr);
+                const orderISO = orderDateObj.toISOString().split('T')[0];
+                const orderTimeStrFormat = orderDateObj.toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'});
+                const isThisMonth = orderDateObj.getMonth() === currentMonth && orderDateObj.getFullYear() === currentYear;
+
+                if (status === 'completed' || status === 'مكتمل' || status === 'settled') {
+                    if(isThisMonth) monthlyCount++;
+                    if(status !== 'settled') {
+                        if(paySystem.includes('مناصفة')) totalUnpaid += (commRate / 2);
+                        else totalUnpaid += commRate;
+                    }
+                    
+                    if(orderISO === todayISO) {
+                        const priceVal = parseFloat(o[4]) || 0; 
+                        todaySalesTotal += priceVal;
+                        
+                        let driverName = "مكتمل";
+                        const dInfo = data.drivers.find(d => String(d[2]) === String(driverPhone));
+                        if(dInfo) driverName = dInfo[1];
+
+                        todayArchiveHtml += `
+                        <div class="archive-item">
+                            <div>
+                                <span class="fw-black text-dark">#${orderId}</span>
+                                <div class="small text-muted fw-bold">الكابتن: ${driverName}</div>
+                            </div>
+                            <div class="text-end">
+                                <span class="fw-black text-success">${o[4]} <small class="fs-6">د.ع</small></span>
+                                <div class="small text-muted">${orderTimeStrFormat}</div>
+                            </div>
+                        </div>`;
+                    }
+                } 
+                else if (status !== 'deleted') {
+                    let driverName = 'جاري البحث...';
+                    
+                    let step = 1; 
+                    let fillWidth = "0%";
+                    let isCancelable = true;
+
+                    if (driverPhone && driverPhone !== "pending_driver") {
+                        isCancelable = false; 
+                        const dInfo = data.drivers.find(d => String(d[2]) === String(driverPhone));
+                        if(dInfo) driverName = dInfo[1];
+                        
+                        if (status === 'picked_up' || status === 'في الطريق') {
+                            step = 4; fillWidth = "100%";
+                        } else if (status === 'arrived_at_res') {
+                            step = 3; fillWidth = "66%";
+                        } else { 
+                            step = 2; fillWidth = "33%";
+                        }
+                    }
+
+                    activeOrdersHtml += `
+                    <div class="live-order-card">
+                        <div class="d-flex justify-content-between align-items-start pb-2 border-bottom">
+                            <div>
+                                <span class="fw-black text-dark fs-5">طلب #${orderId}</span>
+                                <div class="mt-1 small fw-bold text-muted"><i data-lucide="clock" size="12"></i> أُرسل: ${orderTimeStrFormat}</div>
+                            </div>
+                            ${isCancelable ? 
+                                `<button class="btn-cancel-grace mt-1" onclick="cancelOrderGrace('${orderId}')"><i data-lucide="x" size="14"></i> إلغاء الطلب</button>` : 
+                                `<button class="btn-call-mini mt-1" onclick="window.open('tel:${driverPhone}')"><i data-lucide="phone" size="16"></i></button>`
+                            }
+                        </div>
+                        
+                        <div class="py-2 d-flex flex-column gap-1">
+                            <div class="small fw-bold text-dark"><i data-lucide="map-pin" size="14" class="text-accent"></i> المنطقة: ${orderArea || 'غير محددة'}</div>
+                            <div class="small fw-bold text-success"><i data-lucide="bike" size="14"></i> الكابتن: ${driverName}</div>
+                        </div>
+                        
+                        <div class="progress-tracker mt-2">
+                            <div class="progress-line"></div>
+                            <div class="progress-line-fill" style="width: ${fillWidth};"></div>
+                            
+                            <div class="progress-step ${step >= 1 ? (step === 1 ? 'current' : 'active') : ''}">
+                                <div class="progress-dot"><i data-lucide="radar" size="14"></i></div>
+                                <span class="progress-label">بانتظار</span>
+                            </div>
+                            <div class="progress-step ${step >= 2 ? (step === 2 ? 'current' : 'active') : ''}">
+                                <div class="progress-dot"><i data-lucide="truck" size="14"></i></div>
+                                <span class="progress-label">متوجه</span>
+                            </div>
+                            <div class="progress-step ${step >= 3 ? (step === 3 ? 'current' : 'active') : ''}">
+                                <div class="progress-dot"><i data-lucide="store" size="14"></i></div>
+                                <span class="progress-label">بالمطعم</span>
+                            </div>
+                            <div class="progress-step ${step >= 4 ? (step === 4 ? 'current' : 'active') : ''}">
+                                <div class="progress-dot"><i data-lucide="user" size="14"></i></div>
+                                <span class="progress-label">بالطريق</span>
+                            </div>
+                        </div>
+                    </div>`;
+                }
+            }
+        });
+
+        document.getElementById('statMonthOrders').innerText = monthlyCount;
+        document.getElementById('statUnpaid').innerText = totalUnpaid;
+        document.getElementById('todayTotalSales').innerHTML = `${todaySalesTotal} <small class="fs-6">د.ع</small>`;
+
+        document.getElementById('activeOrdersList').innerHTML = activeOrdersHtml || `<div class="text-center text-muted fw-bold py-4 small">لا توجد طلبات نشطة حالياً.</div>`;
+        document.getElementById('todayArchiveItems').innerHTML = todayArchiveHtml || `<div class="text-center text-muted fw-bold py-4 small">لم تكتمل أي طلبات اليوم بعد.</div>`;
+        
+        lucide.createIcons();
+    };
+
+    document.getElementById('orderForm').onsubmit = function(e) {
+        e.preventDefault();
+
+        let finalArea = document.getElementById('customerArea').value;
+        if (!finalArea && currentOrderMode === 'manual') {
+            return alert("يرجى اختيار منطقة الزبون من القائمة لتحديد التسعيرة.");
+        }
+
+        let finalDetails = "";
+        let imagePayload = "";
+        let finalPrice = 0; 
+
+        if (currentOrderMode === 'manual') {
+            const custPhone = document.getElementById('customerPhone').value.trim();
+            const extra = document.getElementById('customerDetails').value.trim();
+            if (!custPhone) return alert("يرجى كتابة رقم الزبون.");
+            finalDetails = `الهاتف: ${custPhone} | ${extra}`;
+        } else {
+            if (!base64Receipt) return alert("يرجى التقاط صورة للوصل أولاً.");
+            finalDetails = "طلب مصور سريع (انظر الوصل)";
+            imagePayload = base64Receipt;
+        }
+
+        const priceHintText = document.getElementById('priceHint').innerText;
+        let areaWithHint = finalArea;
+        if (myCustomPriceList[finalArea]) {
+            areaWithHint = `${finalArea} (توصيل: ${myCustomPriceList[finalArea]})`;
+        } else if (finalArea !== "أخرى") {
+            areaWithHint = finalArea;
+        }
+
+        const uniqueFrontendId = "HUT-" + Math.floor(Date.now() / 1000) + "-" + Math.floor(Math.random() * 1000);
+
+        const payload = {
+            action: 'NEW_ORDER',
+            token: API_TOKEN,
+            frontendId: uniqueFrontendId,
+            restaurantName: currentResName,
+            area: areaWithHint,
+            price: finalPrice, 
+            details: finalDetails,
+            image: imagePayload
+        };
+
+        document.getElementById('orderStatusBox').classList.remove('hidden-section');
+        document.getElementById('statusMsg').innerHTML = `<span class="fw-bold">تم الإطلاق بنجاح!</span><br><span class="text-warning small fw-bold">الطلب الآن يسبح في الرادار بانتظار كابتن 📡</span>`;
+        
+        document.getElementById('customerPhone').value = "";
+        document.getElementById('customerDetails').value = "";
+        document.getElementById('priceHint').classList.add('hidden-section');
+        document.getElementById('customerArea').selectedIndex = 0; 
+        removePhoto();
+        clearDraft();
+
+        setTimeout(() => { document.getElementById('orderStatusBox').classList.add('hidden-section'); }, 6000);
+
+        fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) })
+        .then(r => r.json())
+        .then(res => {
+            if(res.success) {
+                fetchResDashboardData();
+            } else {
+                alert("تنبيه من السيرفر: " + (res.msg || res.error || "خطأ غير معروف"));
+            }
+        })
+        .catch(err => { 
+            alert("تنبيه: الإنترنت ضعيف، لكن لا تقلق! النظام سيمنع تكرار الطلب عند استعادة الإشارة."); 
+        });
+    };
+</script>
+</body>
+</html>
