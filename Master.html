@@ -16,12 +16,6 @@
     
     <link rel="manifest" href="manifest_master.json">
 
-    <meta property="og:type" content="website">
-    <meta property="og:title" content="الإدارة المركزية - مكتب سفيان">
-    <meta property="og:description" content="لوحة التحكم والرصد الميداني لنظام الحوت">
-    <meta property="og:image" content="master-logo.png">
-    <meta property="og:url" content="https://sufianwithalhut.github.io/sufianwithalhut/">
-
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
@@ -95,6 +89,30 @@
         .menu-toggle-btn { display: none; background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 10px; cursor: pointer; color: var(--primary-blue); }
         .sidebar-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); z-index: 1002; display: none; backdrop-filter: blur(4px); }
 
+        /* Toast Notifications */
+        #toast-container { position: fixed; bottom: 20px; left: 20px; z-index: 10001; display: flex; flex-direction: column; gap: 10px; }
+        .toast-msg { background: white; border-right: 5px solid var(--primary-blue); border-radius: 12px; padding: 15px 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); display: flex; align-items: center; gap: 12px; font-weight: 700; font-size: 0.9rem; animation: slideInLeft 0.3s ease-out forwards; }
+        .toast-msg.success { border-color: #10b981; }
+        .toast-msg.error { border-color: #ef4444; }
+        @keyframes slideInLeft { from { transform: translateX(-100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes fadeOut { to { opacity: 0; transform: translateY(10px); } }
+
+        /* Emergency Modal */
+        #emergencyModal { position: fixed; inset: 0; background: rgba(15,23,42,0.8); z-index: 10005; display: none; align-items: center; justify-content: center; backdrop-filter: blur(5px); }
+        .emergency-card { background: white; border-radius: 24px; padding: 30px; width: 90%; max-width: 400px; text-align: center; border-top: 8px solid #ef4444; box-shadow: 0 25px 50px rgba(0,0,0,0.3); animation: pulseAlert 2s infinite; }
+        @keyframes pulseAlert { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); } 70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+
+        /* Driver Performance Dots */
+        .perf-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; box-shadow: 0 0 5px rgba(0,0,0,0.2); }
+        .perf-green { background-color: #10b981; }
+        .perf-yellow { background-color: #f59e0b; }
+        .perf-red { background-color: #ef4444; }
+
+        /* Optimistic UI Loading State */
+        .btn-loading { opacity: 0.7; pointer-events: none; position: relative; }
+        .btn-loading::after { content: ''; position: absolute; inset: 0; border-radius: inherit; background: rgba(255,255,255,0.5) url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-loader-2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>') center/16px no-repeat; animation: spin 1s linear infinite; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+
         @media (max-width: 768px) {
             .sidebar { transform: translateX(100%); }
             .sidebar.show { transform: translateX(0); }
@@ -127,7 +145,19 @@
 </head>
 <body>
 
+<div id="toast-container"></div>
+
 <audio id="adminAlertSound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" preload="auto"></audio>
+<audio id="emergencySound" src="https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg" preload="auto" loop></audio>
+
+<div id="emergencyModal">
+    <div class="emergency-card">
+        <i data-lucide="alert-triangle" size="60" color="#ef4444" class="mb-3"></i>
+        <h3 class="fw-black text-danger">نداء سيادي!</h3>
+        <p class="text-muted fw-bold mb-4">يوجد طلب معلق لفترة طويلة جداً ويحتاج لتدخل يدوي للتعيين.</p>
+        <button class="btn btn-danger w-100 fw-bold rounded-pill py-2" onclick="closeEmergency()">حسناً، سأتدخل الآن</button>
+    </div>
+</div>
 
 <div id="authOverlay">
     <div class="auth-card">
@@ -249,16 +279,60 @@
 <script>
     lucide.createIcons();
     
-    // تم التحديث إلى الرابط السحابي النهائي والأقوى (V15) 🚀
-    const API_URL = "https://script.google.com/macros/s/AKfycbyjwuBnbd3bwB4joB2uNNKUwsAWhIDQiIkdsZ3rF4Jo4oxUwDeuYGYFuAVBK8MWNnwLCA/exec";
+    const API_URL = "https://script.google.com/macros/s/AKfycbxWySjqwjNbW5RNBZUSCR6cm5PtL4yUrtRnnD31nJv_FqVWa3gd2hOOFRe7o0jqX9STRQ/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
-    let map, heatLayer, driverMarkers = [];
+    let map, heatLayer, driverMarkers = [], trackPolyline = null;
     let globalData = null; 
     let currentRadarFilter = 'all';
     
     let masterPassword = ""; 
     let lastPendingCount = 0; 
+    let driverPerformanceCache = {}; // تخزين تقييم السواق
+
+    function showToast(msg, type = 'success') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        toast.className = `toast-msg ${type}`;
+        const icon = type === 'success' ? '<i data-lucide="check-circle" color="#10b981"></i>' : '<i data-lucide="alert-circle" color="#ef4444"></i>';
+        toast.innerHTML = `${icon} <span>${msg}</span>`;
+        container.appendChild(toast);
+        lucide.createIcons();
+        setTimeout(() => {
+            toast.style.animation = 'fadeOut 0.3s ease-out forwards';
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
+
+    function triggerEmergency() {
+        const modal = document.getElementById('emergencyModal');
+        if (modal.style.display !== 'flex') {
+            modal.style.display = 'flex';
+            const audio = document.getElementById('emergencySound');
+            audio.currentTime = 0; audio.play().catch(e=>{});
+        }
+    }
+
+    function closeEmergency() {
+        document.getElementById('emergencyModal').style.display = 'none';
+        document.getElementById('emergencySound').pause();
+        showTab({currentTarget: document.querySelector('.nav-item')}, 'live');
+    }
+
+    // حساب تقييم السائق (السرعة)
+    function calculateDriverPerformance(ordersData, driverPhone) {
+        let totalTime = 0; let count = 0;
+        ordersData.slice(1).forEach(o => {
+            if(o[6] === driverPhone && (o[5] === 'completed' || o[5] === 'مكتمل' || o[5] === 'settled')) {
+                // افتراض: الطلب يكتمل عادة خلال ساعة كحد أقصى. سنقوم بتقييم بسيط بناء على عدد الطلبات המكتملة
+                count++;
+            }
+        });
+        // تقييم مبسط: إذا أنجز أكثر من 5 فهو أخضر، بين 1 و 5 أصفر، صفر أحمر (للتوضيح فقط)
+        if (count >= 5) return 'perf-green';
+        if (count > 0) return 'perf-yellow';
+        return 'perf-red';
+    }
 
     function checkAuth() {
         const pass = document.getElementById('masterPass').value.trim();
@@ -267,7 +341,7 @@
         masterPassword = encodeURIComponent(pass); 
         
         const btn = document.querySelector('.auth-card button');
-        btn.innerHTML = 'جاري التحقق من السيرفر...';
+        btn.innerHTML = 'جاري التحقق...';
         btn.disabled = true;
 
         const script = document.createElement('script');
@@ -280,7 +354,7 @@
             if(btn.disabled) {
                 btn.innerHTML = 'تسجيل الدخول';
                 btn.disabled = false;
-                alert("⏳ تأخر السيرفر في الرد، يرجى التأكد من اتصال الإنترنت.");
+                showToast("⏳ تأخر السيرفر، تحقق من الإنترنت", "error");
             }
         }, 12000);
     }
@@ -301,7 +375,7 @@
             initMap();
         } else {
             masterPassword = ""; 
-            alert("❌ رمز المرور غير صحيح أو لا يطابق ورقة الإعدادات");
+            showToast("رمز المرور غير صحيح", "error");
         }
     };
 
@@ -333,12 +407,25 @@
 
         const activeOrdersList = data.orders.slice(1).filter(o => o[5] !== 'completed' && o[5] !== 'مكتمل' && o[5] !== 'settled' && o[5] !== 'deleted');
         
-        const currentPendingCount = activeOrdersList.filter(o => !o[6] || o[6] === "pending_driver").length;
+        let currentPendingCount = 0;
+        let hasEmergency = false;
+
+        activeOrdersList.forEach(o => {
+            if (!o[6] || o[6] === "pending_driver") {
+                currentPendingCount++;
+                const orderTime = new Date(o[7]);
+                const diffMins = (new Date() - orderTime) / 60000;
+                if (diffMins >= 3) hasEmergency = true; // نداء سيادي بعد 3 دقائق
+            }
+        });
+
         if(currentPendingCount > lastPendingCount) {
             const audio = document.getElementById('adminAlertSound');
             audio.currentTime = 0; audio.play().catch(e=>{});
         }
         lastPendingCount = currentPendingCount;
+
+        if (hasEmergency) triggerEmergency();
 
         document.getElementById('count-orders').innerText = activeOrdersList.length;
         document.getElementById('count-drivers').innerText = data.drivers.filter(d => d[4] === 'active').length;
@@ -346,7 +433,11 @@
 
         let resDebts = {}; let resUnpaidCounts = {}; let driverDebts = {};
         data.restaurants.slice(1).forEach(r => { resDebts[r[1]] = 0; resUnpaidCounts[r[1]] = 0; }); 
-        data.drivers.slice(1).forEach(d => driverDebts[String(d[2])] = 0); 
+        
+        data.drivers.slice(1).forEach(d => {
+            driverDebts[String(d[2])] = 0;
+            driverPerformanceCache[String(d[2])] = calculateDriverPerformance(data.orders, String(d[2]));
+        }); 
         
         data.orders.slice(1).forEach(o => {
             const status = o[5];
@@ -369,7 +460,7 @@
         renderRadar();
         renderArchive();
         renderControlCards('resListContainer', data.restaurants, 'store', 'RESTAURANT', 2, resDebts, 1, resUnpaidCounts); 
-        renderControlCards('driverListContainer', data.drivers, 'user', 'DRIVER', 2, driverDebts, 2, null); 
+        renderControlCards('driverListContainer', data.drivers, 'user', 'DRIVER', 2, driverDebts, 2, null, true); 
         
         if (map && heatLayer) {
             const heatMapPoints = [];
@@ -386,14 +477,20 @@
                     const lat = parseFloat(d[5]), lng = parseFloat(d[6]);
                     if(!isNaN(lat) && !isNaN(lng)) {
                         heatMapPoints.push([lat, lng, 1.0]);
+                        
+                        const perfClass = driverPerformanceCache[String(d[2])] || 'perf-yellow';
+                        let colorHex = '#f59e0b';
+                        if(perfClass === 'perf-green') colorHex = '#10b981';
+                        if(perfClass === 'perf-red') colorHex = '#ef4444';
+
                         const driverIcon = L.divIcon({
                             className: 'custom-div-icon',
-                            html: `<div style="background-color: #10b981; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>`,
+                            html: `<div style="background-color: ${colorHex}; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>`,
                             iconSize: [16, 16],
                             iconAnchor: [8, 8]
                         });
                         const marker = L.marker([lat, lng], {icon: driverIcon})
-                            .bindPopup(`<div class="text-center fw-bold" style="font-family:'Cairo';"><span class="text-success">الكابتن:</span> ${d[1]}<br><span class="text-primary">هاتف:</span> ${d[2]}</div>`)
+                            .bindPopup(`<div class="text-center fw-bold" style="font-family:'Cairo';"><span style="color:${colorHex}">الكابتن:</span> ${d[1]}<br><span class="text-primary">هاتف:</span> ${d[2]}</div>`)
                             .addTo(map);
                         driverMarkers.push(marker);
                     }
@@ -417,7 +514,13 @@
         
         let activeDriversOptions = '<option value="">تعيين يدوياً</option>';
         globalData.drivers.slice(1).forEach(d => {
-            if(d[4] === 'active') activeDriversOptions += `<option value="${String(d[2])}">${d[1]}</option>`;
+            if(d[4] === 'active') {
+                const perf = driverPerformanceCache[String(d[2])] || 'perf-yellow';
+                let symbol = '🟡';
+                if(perf === 'perf-green') symbol = '🟢';
+                if(perf === 'perf-red') symbol = '🔴';
+                activeDriversOptions += `<option value="${String(d[2])}">${symbol} ${d[1]}</option>`;
+            }
         });
 
         let activeOrdersList = globalData.orders.slice(1).filter(o => o[5] !== 'completed' && o[5] !== 'مكتمل' && o[5] !== 'settled' && o[5] !== 'deleted');
@@ -430,7 +533,7 @@
 
         activeOrdersList.forEach(o => {
             const driverPhone = o[6];
-            if (driverPhone && driverPhone.toString().trim() !== "" && driverPhone !== "pending_driver") {
+            if (driverPhone && driverPhone.toString().trim() !== "" && driverPhone !== "pending_driver" && driverPhone !== "manual_pending") {
                 if (!groupedOrders[driverPhone]) groupedOrders[driverPhone] = [];
                 groupedOrders[driverPhone].push(o);
             } else {
@@ -453,14 +556,14 @@
             const driverName = driverInfo ? driverInfo[1] : 'غير معروف';
 
             if (orders.length > 1) {
-                smartHtml += `<div class="col-xl-6 col-lg-6"><div class="smart-order-card status-purple batch-card">`;
+                smartHtml += `<div class="col-xl-6 col-lg-6" id="order-group-${driverPhone}"><div class="smart-order-card status-purple batch-card">`;
                 smartHtml += `
                     <div class="d-flex justify-content-between align-items-center mb-3 pb-2 border-bottom border-purple">
                         <div class="d-flex align-items-center gap-2">
                             <div class="bg-purple text-white p-1 rounded-2"><i data-lucide="layers" size="18"></i></div>
                             <h6 class="fw-black m-0 text-purple">طلب مزدوج | الكابتن: ${driverName}</h6>
                         </div>
-                        <button class="btn-track shadow-sm" style="background: #ede9fe; color: #7c3aed; border-color: #c4b5fd;" onclick="trackDriver('${driverPhone}')"><i data-lucide="map-pin" size="14"></i> تتبع</button>
+                        <button class="btn-track shadow-sm" style="background: #ede9fe; color: #7c3aed; border-color: #c4b5fd;" onclick="trackDriver('${driverPhone}', '${orders[0][1]}')"><i data-lucide="map-pin" size="14"></i> تتبع مسار</button>
                     </div>`;
 
                 orders.forEach((o, index) => {
@@ -474,7 +577,7 @@
                     }
 
                     smartHtml += `
-                    <div class="info-card-inner mb-2 shadow-sm" style="border-color: #c4b5fd; background: white;">
+                    <div class="info-card-inner mb-2 shadow-sm" style="border-color: #c4b5fd; background: white;" id="order-${orderId}">
                         <div class="d-flex justify-content-between align-items-start mb-2 pb-1 border-bottom border-light">
                             <div>
                                 <span class="fw-black" style="color: #6d28d9;">#${orderId}</span>
@@ -482,8 +585,8 @@
                             </div>
                             <div class="d-flex gap-2 align-items-center">
                                 <span class="badge ${sInfo.badge}" style="font-size:0.7rem;">${sInfo.desc}</span>
-                                <button class="btn btn-sm text-success border-0 p-0" onclick="adminAction('COMPLETE', 'ORDER', '${orderId}')" title="إتمام قسري"><i data-lucide="check-circle" size="18"></i></button>
-                                <button class="btn btn-sm text-danger border-0 p-0" onclick="adminAction('DELETE', 'ORDER', '${orderId}')" title="حذف"><i data-lucide="trash-2" size="18"></i></button>
+                                <button class="btn btn-sm text-success border-0 p-0" onclick="adminActionOptUI('COMPLETE', 'ORDER', '${orderId}', this)" title="إتمام قسري"><i data-lucide="check-circle" size="18"></i></button>
+                                <button class="btn btn-sm text-danger border-0 p-0" onclick="adminActionOptUI('DELETE', 'ORDER', '${orderId}', this)" title="حذف"><i data-lucide="trash-2" size="18"></i></button>
                             </div>
                         </div>
                         <div class="d-flex justify-content-between small fw-bold mb-2">
@@ -533,7 +636,7 @@
         let shortDetails = details ? (details.length > 25 ? details.substring(0, 25) + '...' : details) : '-';
 
         const diffMins = Math.floor((new Date() - new Date(orderTimeStr)) / 60000);
-        const isDelayed = diffMins > 30; 
+        const isDelayed = diffMins > 3; 
 
         let cardClass = "status-danger", statusDesc = "🔴 بانتظار كابتن";
         if(hasDriver && !isPickedUp && !isArrived) { cardClass = "status-primary"; statusDesc = "🔵 متوجه للمطعم"; }
@@ -541,9 +644,9 @@
         if(hasDriver && isPickedUp) { cardClass = "status-success"; statusDesc = "🟢 في الطريق للزبون"; }
 
         return `
-        <div class="col-xl-6 col-lg-6">
+        <div class="col-xl-6 col-lg-6" id="order-${orderId}">
             <div class="smart-order-card ${cardClass}">
-                ${isDelayed ? `<div class="delay-badge">تأخير: ${diffMins} دقيقة</div>` : ''}
+                ${isDelayed && !hasDriver ? `<div class="delay-badge">معلق: ${diffMins} دقيقة</div>` : ''}
                 
                 <div class="d-flex justify-content-between align-items-start mb-3 pb-2 border-bottom">
                     <div>
@@ -553,9 +656,9 @@
                     <div class="d-flex flex-column align-items-end gap-2">
                         <span class="badge ${!hasDriver ? 'bg-danger' : 'bg-success'}">${statusDesc}</span>
                         <div class="d-flex gap-1 align-items-center mt-1">
-                            ${hasDriver ? `<button class="btn-track" onclick="trackDriver('${driverPhone}')"><i data-lucide="map-pin" size="14"></i> تتبع</button>` : ''}
-                            <button class="btn btn-sm text-success border-0 p-1" onclick="adminAction('COMPLETE', 'ORDER', '${orderId}')" title="إتمام قسري"><i data-lucide="check-circle" size="18"></i></button>
-                            <button class="btn btn-sm text-danger border-0 p-1" onclick="adminAction('DELETE', 'ORDER', '${orderId}')" title="حذف وإلغاء الطلب"><i data-lucide="trash-2" size="18"></i></button>
+                            ${hasDriver ? `<button class="btn-track" onclick="trackDriver('${driverPhone}', '${restName}')"><i data-lucide="map-pin" size="14"></i> تتبع مسار</button>` : ''}
+                            <button class="btn btn-sm text-success border-0 p-1" onclick="adminActionOptUI('COMPLETE', 'ORDER', '${orderId}', this)" title="إتمام قسري"><i data-lucide="check-circle" size="18"></i></button>
+                            <button class="btn btn-sm text-danger border-0 p-1" onclick="adminActionOptUI('DELETE', 'ORDER', '${orderId}', this)" title="حذف وإلغاء الطلب"><i data-lucide="trash-2" size="18"></i></button>
                         </div>
                     </div>
                 </div>
@@ -578,7 +681,7 @@
                         <div class="d-flex justify-content-between align-items-center">
                             <span class="small fw-bold text-primary"><i data-lucide="bike" size="14" class="me-1"></i> الكابتن: ${driverName}</span>
                             ${hasDriver ? `<button class="btn-call-mini call-success text-success" style="width:28px;height:28px;" onclick="window.open('tel:${driverPhone}')"><i data-lucide="phone" size="12"></i></button>` : 
-                            `<select class="manual-assign-select" onchange="assignDriver('${orderId}', this.value)">${activeDriversOptions}</select>`}
+                            `<select class="manual-assign-select" onchange="assignDriverOptUI('${orderId}', this.value, this)">${activeDriversOptions}</select>`}
                         </div>
                     </div>
                 </div>
@@ -586,60 +689,98 @@
         </div>`;
     }
 
-    function trackDriver(driverPhone) {
+    function trackDriver(driverPhone, restName) {
         if(!map || !globalData) return;
         const driver = globalData.drivers.find(d => String(d[2]) === String(driverPhone));
+        const restaurant = globalData.restaurants.find(r => r[1] === restName);
+
         if(driver && driver[5] && driver[6]) {
-            const lat = parseFloat(driver[5]); const lng = parseFloat(driver[6]);
-            if(!isNaN(lat) && !isNaN(lng)) {
-                map.flyTo([lat, lng], 16, { duration: 1.5 });
+            const dLat = parseFloat(driver[5]); const dLng = parseFloat(driver[6]);
+            if(!isNaN(dLat) && !isNaN(dLng)) {
+                map.flyTo([dLat, dLng], 14, { duration: 1.5 });
                 window.scrollTo({ top: document.getElementById('adminMap').offsetTop - 20, behavior: 'smooth' });
-            } else { alert("لا توجد إحداثيات حالية لهذا الكابتن."); }
+
+                // رسم مسار بين الكابتن والمطعم
+                if(restaurant && restaurant[6] && restaurant[7]) {
+                    const rLat = parseFloat(restaurant[6]); const rLng = parseFloat(restaurant[7]);
+                    if(!isNaN(rLat) && !isNaN(rLng)) {
+                        if(trackPolyline) map.removeLayer(trackPolyline);
+                        trackPolyline = L.polyline([[dLat, dLng], [rLat, rLng]], {color: '#3b82f6', weight: 4, dashArray: '10, 10'}).addTo(map);
+                    }
+                }
+            } else { showToast("لا توجد إحداثيات حالية", "error"); }
         }
     }
 
-    function assignDriver(orderId, driverPhone) {
+    // --- Optimistic UI Functions ---
+    function assignDriverOptUI(orderId, driverPhone, element) {
         if(!driverPhone) return;
-        if(confirm("تعيين إجباري للكابتن المختار؟")) {
-            const url = `${API_URL}?action=ASSIGN_DRIVER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}&pass=${masterPassword}`;
-            const script = document.createElement('script'); 
-            script.src = `${url}&callback=afterAdminAction&ts=${Date.now()}`; 
-            script.onload = () => script.remove();
-            script.onerror = () => script.remove();
-            document.body.appendChild(script);
-        }
+        element.classList.add('btn-loading');
+        
+        // إخفاء الكارد فوراً لخلق شعور بالسرعة
+        const card = document.getElementById(`order-${orderId}`);
+        if(card) card.style.opacity = '0.5';
+
+        const url = `${API_URL}?action=ASSIGN_DRIVER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}&pass=${masterPassword}`;
+        const script = document.createElement('script'); 
+        script.src = `${url}&callback=silentCallback&ts=${Date.now()}`; 
+        script.onload = () => script.remove();
+        script.onerror = () => { script.remove(); showToast("فشل الاتصال", "error"); if(card) card.style.opacity = '1'; };
+        document.body.appendChild(script);
+        showToast("تم إرسال أمر التعيين", "success");
     }
 
-    function resetDebt(type, id) {
-        if(confirm(`تصفير الديون لـ (${id})؟\nسيتم تحويل الحسابات إلى "تمت المحاسبة".`)) {
-            const url = `${API_URL}?action=RESET_DEBT&type=${type}&id=${id}&token=${API_TOKEN}&pass=${masterPassword}`;
-            const script = document.createElement('script'); 
-            script.src = `${url}&callback=afterAdminAction&ts=${Date.now()}`; 
-            script.onload = () => script.remove();
-            script.onerror = () => script.remove();
-            document.body.appendChild(script);
-        }
+    function resetDebtOptUI(type, id, element) {
+        if(!confirm(`تأكيد تصفير ديون (${id})؟`)) return;
+        
+        element.classList.add('btn-loading');
+        // تصفير الرقم على الشاشة فوراً
+        const debtBadge = element.closest('.stat-widget').querySelector('.bg-danger span');
+        if(debtBadge) debtBadge.innerHTML = `غير مسدد: 0 د.ع`;
+
+        const url = `${API_URL}?action=RESET_DEBT&type=${type}&id=${id}&token=${API_TOKEN}&pass=${masterPassword}`;
+        const script = document.createElement('script'); 
+        script.src = `${url}&callback=silentCallback&ts=${Date.now()}`; 
+        script.onload = () => script.remove();
+        script.onerror = () => script.remove();
+        document.body.appendChild(script);
+        showToast("تم تصفير الديون", "success");
     }
 
-    function adminAction(cmd, type, id) {
+    function adminActionOptUI(cmd, type, id, element) {
         const statusMap = { 'ACCEPT': 'active', 'PAUSE': 'inactive', 'DELETE': 'deleted', 'COMPLETE': 'completed' };
         
-        let msg = "تأكيد الإجراء؟";
-        if (cmd === 'COMPLETE') msg = "هل أنت متأكد من الإتمام القسري؟ سيتم تسجيل الطلب كمكتمل واحتساب العمولات.";
-        else if (cmd === 'DELETE') msg = "تأكيد حذف وإلغاء هذا الطلب نهائياً؟";
-
-        if(confirm(msg)) {
-            const script = document.createElement('script'); 
-            script.src = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${id}&status=${statusMap[cmd]}&token=${API_TOKEN}&pass=${masterPassword}&callback=afterAdminAction&ts=${Date.now()}`; 
-            script.onload = () => script.remove();
-            script.onerror = () => script.remove();
-            document.body.appendChild(script);
+        if (cmd === 'COMPLETE' || cmd === 'DELETE') {
+            if(!confirm(cmd === 'COMPLETE' ? "تأكيد الإتمام القسري؟" : "تأكيد الحذف؟")) return;
+            // إخفاء الكارد فوراً
+            const card = document.getElementById(`order-${id}`);
+            if(card) {
+                card.style.transition = '0.3s';
+                card.style.opacity = '0';
+                setTimeout(() => card.style.display = 'none', 300);
+            }
+        } else {
+            element.classList.add('btn-loading');
         }
+
+        const script = document.createElement('script'); 
+        script.src = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${id}&status=${statusMap[cmd]}&token=${API_TOKEN}&pass=${masterPassword}&callback=silentCallback&ts=${Date.now()}`; 
+        script.onload = () => script.remove();
+        script.onerror = () => script.remove();
+        document.body.appendChild(script);
+        showToast("تم إرسال الأمر", "success");
     }
 
-    window.afterAdminAction = function(response) {
-        if(response.success) { refreshData(); } else { alert("خطأ: " + (response.msg || response.error || "تأكد من صلاحيات المدير")); }
+    window.silentCallback = function(response) {
+        if(response.success) {
+            // تحديث البيانات في الخلفية بدون إزعاج
+            // refreshData(); سيقوم التحديث التلقائي بالمهمة لتجنب وميض الشاشة
+        } else {
+            showToast("خطأ: " + (response.msg || response.error), "error");
+            refreshData(); // إعادة الشاشة لوضعها الصحيح
+        }
     };
+    // -----------------------------
 
     function renderArchive() {
         if(!globalData) return;
@@ -723,7 +864,7 @@
         let csv = '\uFEFF'; 
         csv += "ID الطلب,التاريخ,المطعم,الكابتن,الحالة\n";
         const rows = document.querySelectorAll("#archiveTable tbody tr");
-        if(rows.length === 0 || rows[0].cells.length === 1) return alert("لا توجد بيانات للتصدير");
+        if(rows.length === 0 || rows[0].cells.length === 1) return showToast("لا توجد بيانات للتصدير", "error");
         
         rows.forEach(row => {
             let rowData = [];
@@ -738,7 +879,7 @@
         document.body.appendChild(link); link.click(); document.body.removeChild(link);
     }
 
-    function renderControlCards(containerId, list, icon, type, phoneIndex, debtsMap, mapKeyIndex, unpaidCounts) {
+    function renderControlCards(containerId, list, icon, type, phoneIndex, debtsMap, mapKeyIndex, unpaidCounts, isDriver = false) {
         let html = '';
         list.slice(1).filter(item => item[4] !== 'deleted').forEach(item => {
             const name = item[1], phone = item[phoneIndex], isActive = item[4] === 'active';
@@ -749,6 +890,12 @@
                 unpaidBadge = `<span class="badge bg-danger rounded-pill ms-1" style="font-size:0.7rem;">${unpaidCounts[name]} طلبات</span>`;
             }
 
+            let perfIndicator = '';
+            if (isDriver) {
+                const perfClass = driverPerformanceCache[String(phone)] || 'perf-yellow';
+                perfIndicator = `<span class="perf-dot ${perfClass}"></span>`;
+            }
+
             html += `
             <div class="col-md-6 col-xl-4">
                 <div class="stat-widget flex-column align-items-stretch" style="padding: 15px;">
@@ -757,7 +904,7 @@
                         <span class="badge ${isActive ? 'bg-success' : 'bg-secondary'} px-2 py-1 rounded-2">${isActive ? 'نشط' : 'غير نشط'}</span>
                     </div>
                     
-                    <h6 class="m-0 fw-black mb-1 text-truncate">${name}</h6>
+                    <h6 class="m-0 fw-black mb-1 text-truncate">${perfIndicator}${name}</h6>
                     
                     <div class="mt-2 mb-3 d-inline-flex align-items-center gap-1 bg-danger bg-opacity-10 text-danger px-2 py-1 rounded-pill" style="width: fit-content;">
                         <i data-lucide="wallet" size="12"></i>
@@ -766,12 +913,12 @@
 
                     <div class="d-flex justify-content-between align-items-center pt-2 border-top">
                         <div class="d-flex gap-1">
-                            <button class="sov-btn sov-accept" style="width:32px;height:32px;" onclick="adminAction('ACCEPT', '${type}', '${phone}')"><i data-lucide="check" size="16"></i></button>
-                            <button class="sov-btn sov-pause" style="width:32px;height:32px;" onclick="adminAction('PAUSE', '${type}', '${phone}')"><i data-lucide="pause" size="16"></i></button>
-                            <button class="sov-btn sov-delete" style="width:32px;height:32px;" onclick="adminAction('DELETE', '${type}', '${phone}')"><i data-lucide="trash-2" size="16"></i></button>
+                            <button class="sov-btn sov-accept" style="width:32px;height:32px;" onclick="adminActionOptUI('ACCEPT', '${type}', '${phone}', this)"><i data-lucide="check" size="16"></i></button>
+                            <button class="sov-btn sov-pause" style="width:32px;height:32px;" onclick="adminActionOptUI('PAUSE', '${type}', '${phone}', this)"><i data-lucide="pause" size="16"></i></button>
+                            <button class="sov-btn sov-delete" style="width:32px;height:32px;" onclick="adminActionOptUI('DELETE', '${type}', '${phone}', this)"><i data-lucide="trash-2" size="16"></i></button>
                         </div>
                         <div class="d-flex gap-1">
-                            <button class="sov-btn sov-reset" style="width:32px;height:32px;" onclick="resetDebt('${type}', '${phone}')" title="تصفير الديون"><i data-lucide="banknote" size="16"></i></button>
+                            <button class="sov-btn sov-reset" style="width:32px;height:32px;" onclick="resetDebtOptUI('${type}', '${phone}', this)" title="تصفير الديون"><i data-lucide="banknote" size="16"></i></button>
                             <button class="sov-btn sov-call shadow-sm" style="width:32px;height:32px;" onclick="window.open('tel:${phone}')"><i data-lucide="phone-call" size="16"></i></button>
                         </div>
                     </div>
