@@ -17,6 +17,15 @@
         :root { --primary-blue: #1e3a8a; --accent-blue: #3b82f6; --accent-orange: #f97316; --success-green: #10b981; --danger-red: #ef4444; --bg-light: #f8fafc; --card-bg: #ffffff; --text-main: #0f172a; --text-muted: #64748b; }
         body { background: var(--bg-light); font-family: 'Cairo', sans-serif; overflow-x: hidden; color: var(--text-main); -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; overscroll-behavior-y: contain; }
         .hidden { display: none !important; }
+        
+        /* شاشة التحميل الجغرافية النشطة */
+        #loadingOverlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(10px);
+            z-index: 20000; display: none; align-items: center; justify-content: center;
+            flex-direction: column; color: white; text-align: center;
+        }
+
         .login-wrapper { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%); padding: 20px; padding-bottom: env(safe-area-inset-bottom); }
         .login-card { background: var(--card-bg); border-radius: 30px; padding: 40px; width: 100%; max-width: 400px; box-shadow: 0 20px 40px rgba(0,0,0,0.08); text-align: center; }
         .phone-input { background: #f1f5f9; border: 2px solid transparent; border-radius: 20px; padding: 18px; font-weight: 900; font-size: 1.5rem; text-align: center; color: var(--primary-blue); letter-spacing: 2px; transition: 0.3s; width: 100%; margin-bottom: 15px;}
@@ -71,6 +80,11 @@
     </style>
 </head>
 <body>
+
+<div id="loadingOverlay">
+    <div class="spinner-grow text-primary mb-3" role="status" style="width: 3rem; height: 3rem;"></div>
+    <h5 class="fw-bold" id="loadingText" style="color: white; text-shadow: 0 2px 5px rgba(0,0,0,0.5);">جاري التحقق من موقعك...</h5>
+</div>
 
 <audio id="alertSound" loop src="https://actions.google.com/sounds/v1/alarms/beep_loop.ogg"></audio>
 <audio id="doubleOrderSound" loop src="https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg"></audio>
@@ -209,8 +223,8 @@
 <script>
     lucide.createIcons();
 
-    // الرابط السحابي للنسخة V13 🚀
-    const API_URL = "https://script.google.com/macros/s/AKfycbxwwULf_b8MY5q27MYTTzSbldg3IfK0-VHcvjbxPW5_4IGUIG2fZ-KOh3hLxgIVhflgRg/exec";
+    // الرابط السحابي للنسخة V14
+    const API_URL = "https://script.google.com/macros/s/AKfycby1g3lTh0sF6oEuFGACxF9n846oQT2Q7wceziSKyVt1jYcMawVQ00KxFIH_PmN82ePUwg/exec"; 
     const API_TOKEN = "HUT_SECURE_99";
     
     let driverData = null;
@@ -221,6 +235,16 @@
     let checkOrdersTimer = null; 
     let currentPollingRate = 20000; 
     let wakeLock = null; 
+
+    // دالة إظهار وإخفاء شاشة التحميل الجغرافية
+    function showLoading(show, text="جاري التحقق...") {
+        const overlay = document.getElementById('loadingOverlay');
+        const txt = document.getElementById('loadingText');
+        if(overlay && txt) {
+            txt.innerText = text;
+            overlay.style.display = show ? 'flex' : 'none';
+        }
+    }
 
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
@@ -245,9 +269,7 @@
 
     async function requestWakeLock() {
         if ('wakeLock' in navigator) {
-            try {
-                wakeLock = await navigator.wakeLock.request('screen');
-            } catch (err) {}
+            try { wakeLock = await navigator.wakeLock.request('screen'); } catch (err) {}
         }
     }
 
@@ -262,9 +284,7 @@
             audio.volume = 0;
             let playPromise = audio.play();
             if (playPromise !== undefined) {
-                playPromise.then(() => {
-                    audio.pause(); audio.currentTime = 0; audio.volume = 1; 
-                }).catch(error => { });
+                playPromise.then(() => { audio.pause(); audio.currentTime = 0; audio.volume = 1; }).catch(error => { });
             }
         });
         if ("Notification" in window) Notification.requestPermission();
@@ -379,7 +399,7 @@
         if(activeOrders.length > 0) return alert("⚠️ لا يمكنك الخروج ولديك طلبات نشطة. قم بإنهاء الطلبات أولاً.");
         if(confirm("تأكيد تسجيل الخروج؟ سيتم تطهير كافة البيانات المؤقتة.")) {
             releaseWakeLock();
-            updateDriverStatusApi('inactive');
+            updateStatusOnServer('inactive', 'DRIVER', driverData.phone);
             localStorage.clear();
             sessionStorage.clear();
             location.reload();
@@ -401,7 +421,7 @@
             radarTitle.innerText = "الرادار يعمل";
             radarDesc.innerText = "جاري البحث عن طلبات قريبة منك...";
             radarIcon.setAttribute('color', '#3b82f6');
-            updateDriverStatusApi('active'); 
+            updateStatusOnServer('active', 'DRIVER', driverData.phone); 
             adjustPollingRate(); 
             requestWakeLock(); 
         } else {
@@ -411,16 +431,17 @@
             radarTitle.innerText = "الرادار متوقف";
             radarDesc.innerText = "أنت الآن في فترة استراحة، استمتع بوقتك.";
             radarIcon.setAttribute('color', '#64748b');
-            updateDriverStatusApi('inactive'); 
+            updateStatusOnServer('inactive', 'DRIVER', driverData.phone); 
             adjustPollingRate(); 
             releaseWakeLock(); 
         }
         lucide.createIcons();
     }
 
-    function updateDriverStatusApi(status) {
-        const url = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=DRIVER&id=${driverData.phone}&status=${status}&token=${API_TOKEN}`;
-        const script = document.createElement('script'); script.src = `${url}&callback=dummy&ts=${Date.now()}`; document.body.appendChild(script);
+    // دالة اتصال صامتة قوية 
+    function updateStatusOnServer(status, type="ORDER", explicitId=null) {
+        const url = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${explicitId}&status=${status}&token=${API_TOKEN}`;
+        fetch(url, { method: 'GET', mode: 'no-cors', cache: 'no-store' }).catch(()=>{});
     }
 
     function updateStats() {
@@ -584,13 +605,12 @@
                 }
                 
                 if(remaining <= 0) declineOrder();
-            } catch(e) { console.error("Timer error:", e); }
+            } catch(e) {}
         }, 1000);
     }
 
     function acceptOrder() {
         closeAlert(); 
-        
         try {
             const newOrder = {
                 id: currentOrderData.id,
@@ -610,11 +630,7 @@
             displayActiveOrders();
             updateStatusOnServer('accepted', "ORDER", newOrder.id); 
             
-        } catch(e) {
-            console.error("Crash prevented during Accept Order:", e);
-        } finally {
-            updateStats(); 
-        }
+        } catch(e) {} finally { updateStats(); }
     }
 
     function updateOrderStateLocally(id, newState, serverState) {
@@ -627,33 +643,81 @@
         }
     }
 
+    // ==========================================
+    // جدار الحماية الجغرافي النشط (Uber Style)
+    // ==========================================
     function arriveAtRestaurant(id) { 
         const order = activeOrders.find(o => String(o.id) === String(id));
-        if (order && order.resLat && order.resLng && driverData.currentLat && driverData.currentLng) {
-            const dist = calculateDistance(driverData.currentLat, driverData.currentLng, order.resLat, order.resLng);
-            if (dist > 0.4) { 
-                alert(`⚠️ عذراً كابتن! الرادار يوضح أنك بعيد عن المطعم بمسافة (${(dist).toFixed(2)} كم). يرجى الوصول للمطعم أولاً لتفعيل هذا الزر.`);
-                return; 
-            }
+        
+        // إذا كان المطعم غير مسجل بخريطة، نعبره مباشرة
+        if (!order || !order.resLat || !order.resLng || order.resLat === 0) {
+            updateOrderStateLocally(id, 'arrived', 'arrived_at_res'); 
+            return;
         }
-        updateOrderStateLocally(id, 'arrived', 'arrived_at_res'); 
+
+        showLoading(true, "جاري التحقق من موقعك...");
+        
+        // إجبار الهاتف على إعطاء إحداثيات جديدة (maximumAge: 0)
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                showLoading(false);
+                const dLat = pos.coords.latitude;
+                const dLng = pos.coords.longitude;
+                if(driverData) { driverData.currentLat = dLat; driverData.currentLng = dLng; }
+
+                const distKm = calculateDistance(dLat, dLng, order.resLat, order.resLng);
+                if (distKm > 0.4) {
+                    alert(`⚠️ عذراً كابتن! أنت تبعد عن المطعم بمسافة ${Math.round(distKm * 1000)} متر. يرجى الاقتراب (400 متر أو أقل) لتفعيل هذا الزر.`);
+                    return;
+                }
+                updateOrderStateLocally(id, 'arrived', 'arrived_at_res'); 
+            },
+            (err) => {
+                showLoading(false);
+                alert("❌ فشل في تحديد موقعك! يرجى التأكد من تشغيل الـ GPS للموافقة على الوصول.");
+            },
+            { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+        );
     }
 
     function pickUpOrder(id) { 
         const order = activeOrders.find(o => String(o.id) === String(id));
-        order.pickupTime = Date.now();
+        if(order) order.pickupTime = Date.now();
         updateOrderStateLocally(id, 'picked_up', 'picked_up'); 
     }
 
     function finishOrder(id) {
         const order = activeOrders.find(o => String(o.id) === String(id));
-        if (order && order.resLat && order.resLng && driverData.currentLat && driverData.currentLng) {
-            const dist = calculateDistance(driverData.currentLat, driverData.currentLng, order.resLat, order.resLng);
-            if (dist < 0.2) { 
-                alert("⚠️ إنذار احتيال: الرادار يوضح أنك لا تزال بجوار المطعم! تحرك نحو موقع الزبون أولاً.");
-                return; 
-            }
+        if (!order) return;
+
+        // إذا كان المطعم مسجلاً بخريطة، نتحقق لضمان عدم وقوف الكابتن في المطعم وإنهاء الطلب
+        if (order.resLat && order.resLng && order.resLat !== 0) {
+            showLoading(true, "جاري التحقق من موقع التسليم...");
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    showLoading(false);
+                    const dLat = pos.coords.latitude;
+                    const dLng = pos.coords.longitude;
+
+                    const distKm = calculateDistance(dLat, dLng, order.resLat, order.resLng);
+                    if (distKm < 0.2) {
+                        alert("⚠️ إنذار احتيال: الرادار يوضح أنك لا تزال بجوار المطعم! تحرك نحو موقع الزبون أولاً.");
+                        return;
+                    }
+                    proceedToFinish(id);
+                },
+                (err) => {
+                    showLoading(false);
+                    alert("❌ لا يمكن تأكيد التسليم بدون GPS. يرجى تشغيل الموقع.");
+                },
+                { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+            );
+        } else {
+            proceedToFinish(id);
         }
+    }
+
+    function proceedToFinish(id) {
         if(confirm("تأكيد إتمام التوصيل للزبون واستلام المبلغ؟")) {
             updateStatusOnServer('completed', "ORDER", id);
             activeOrders = activeOrders.filter(o => String(o.id) !== String(id)); 
@@ -662,6 +726,7 @@
             updateStats(); 
         }
     }
+    // ==========================================
 
     function closeAlert() {
         document.getElementById('orderAlertOverlay').classList.add('hidden');
@@ -678,6 +743,12 @@
             fetch(url, { keepalive: true, mode: 'no-cors' }).catch(()=>{});
         }
         closeAlert();
+    }
+
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371; const dLat = (lat2 - lat1) * Math.PI / 180; const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
 
     function displayActiveOrders() {
