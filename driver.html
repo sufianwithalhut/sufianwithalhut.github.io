@@ -223,8 +223,8 @@
 <script>
     lucide.createIcons();
 
-    // الرابط السحابي للنسخة V14
-    const API_URL = "https://script.google.com/macros/s/AKfycby1g3lTh0sF6oEuFGACxF9n846oQT2Q7wceziSKyVt1jYcMawVQ00KxFIH_PmN82ePUwg/exec"; 
+    // الرابط السحابي النهائي (V15) 🚀
+    const API_URL = "https://script.google.com/macros/s/AKfycbyjwuBnbd3bwB4joB2uNNKUwsAWhIDQiIkdsZ3rF4Jo4oxUwDeuYGYFuAVBK8MWNnwLCA/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
     let driverData = null;
@@ -236,7 +236,6 @@
     let currentPollingRate = 20000; 
     let wakeLock = null; 
 
-    // دالة إظهار وإخفاء شاشة التحميل الجغرافية
     function showLoading(show, text="جاري التحقق...") {
         const overlay = document.getElementById('loadingOverlay');
         const txt = document.getElementById('loadingText');
@@ -258,12 +257,10 @@
 
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'hidden' && isOnline && driverData) {
-            const url = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=DRIVER&id=${driverData.phone}&status=inactive&token=${API_TOKEN}`;
-            fetch(url, { keepalive: true, mode: 'no-cors' }).catch(()=>{});
+            updateStatusOnServer('inactive', 'DRIVER', driverData.phone);
         } else if (document.visibilityState === 'visible' && isOnline && driverData) {
             requestWakeLock();
-            const url = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=DRIVER&id=${driverData.phone}&status=active&token=${API_TOKEN}`;
-            fetch(url, { keepalive: true, mode: 'no-cors' }).catch(()=>{});
+            updateStatusOnServer('active', 'DRIVER', driverData.phone);
         }
     });
 
@@ -438,10 +435,12 @@
         lucide.createIcons();
     }
 
-    // دالة اتصال صامتة قوية 
+    // دالة إرسال التحديثات بصيغة JSONP لاختراق حظر متصفح الهاتف
     function updateStatusOnServer(status, type="ORDER", explicitId=null) {
         const url = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${explicitId}&status=${status}&token=${API_TOKEN}`;
-        fetch(url, { method: 'GET', mode: 'no-cors', cache: 'no-store' }).catch(()=>{});
+        const script = document.createElement('script'); 
+        script.src = `${url}&callback=dummy&ts=${Date.now()}`; 
+        document.body.appendChild(script);
     }
 
     function updateStats() {
@@ -503,7 +502,7 @@
                 }
                 if (status === 'deleted' || status === 'completed' || status === 'settled' || status === 'مكتمل') {
                     forceRemoveActiveOrder("تم إنهاء أو إلغاء هذا الطلب من قبل الإدارة.", order.id);
-                } else if (assignedDriver !== String(driverData.phone) && assignedDriver !== "pending_driver") {
+                } else if (assignedDriver !== String(driverData.phone) && assignedDriver !== "pending_driver" && assignedDriver !== "manual_pending") {
                     forceRemoveActiveOrder("تم سحب الطلب وتعيينه لكابتن آخر.", order.id);
                 }
             }
@@ -628,6 +627,7 @@
             }
             
             displayActiveOrders();
+            // إرسال رد القبول فورا بصيغة JSONP القوية
             updateStatusOnServer('accepted', "ORDER", newOrder.id); 
             
         } catch(e) {} finally { updateStats(); }
@@ -643,13 +643,9 @@
         }
     }
 
-    // ==========================================
-    // جدار الحماية الجغرافي النشط (Uber Style)
-    // ==========================================
     function arriveAtRestaurant(id) { 
         const order = activeOrders.find(o => String(o.id) === String(id));
         
-        // إذا كان المطعم غير مسجل بخريطة، نعبره مباشرة
         if (!order || !order.resLat || !order.resLng || order.resLat === 0) {
             updateOrderStateLocally(id, 'arrived', 'arrived_at_res'); 
             return;
@@ -657,7 +653,6 @@
 
         showLoading(true, "جاري التحقق من موقعك...");
         
-        // إجبار الهاتف على إعطاء إحداثيات جديدة (maximumAge: 0)
         navigator.geolocation.getCurrentPosition(
             (pos) => {
                 showLoading(false);
@@ -690,7 +685,6 @@
         const order = activeOrders.find(o => String(o.id) === String(id));
         if (!order) return;
 
-        // إذا كان المطعم مسجلاً بخريطة، نتحقق لضمان عدم وقوف الكابتن في المطعم وإنهاء الطلب
         if (order.resLat && order.resLng && order.resLat !== 0) {
             showLoading(true, "جاري التحقق من موقع التسليم...");
             navigator.geolocation.getCurrentPosition(
@@ -726,7 +720,6 @@
             updateStats(); 
         }
     }
-    // ==========================================
 
     function closeAlert() {
         document.getElementById('orderAlertOverlay').classList.add('hidden');
@@ -740,7 +733,9 @@
     function declineOrder() {
         if(currentOrderData && currentOrderData.id) {
             const url = `${API_URL}?action=DECLINE_ORDER&orderId=${currentOrderData.id}&driverPhone=${driverData.phone}&token=${API_TOKEN}`;
-            fetch(url, { keepalive: true, mode: 'no-cors' }).catch(()=>{});
+            const script = document.createElement('script');
+            script.src = `${url}&callback=dummy&ts=${Date.now()}`;
+            document.body.appendChild(script);
         }
         closeAlert();
     }
@@ -777,7 +772,7 @@
             let resBtns = '';
             if(order.resPhone) resBtns += `<button class="btn-call-mini" style="background: #fffbeb; color: #f59e0b; border-color: #f59e0b;" onclick="window.open('tel:${order.resPhone}')"><i data-lucide="phone" size="16"></i></button>`;
             if(order.resLat && order.resLng && order.resLat !== 0) {
-                resBtns += `<button class="btn-call-mini" style="background: #eff6ff; color: #3b82f6; border-color: #3b82f6;" onclick="window.open('http://maps.google.com/?q=${order.resLat},${order.resLng}', '_blank')"><i data-lucide="navigation" size="16"></i></button>`;
+                resBtns += `<button class="btn-call-mini" style="background: #eff6ff; color: #3b82f6; border-color: #3b82f6;" onclick="window.open('http://googleusercontent.com/maps.google.com/maps?q=${order.resLat},${order.resLng}', '_blank')"><i data-lucide="navigation" size="16"></i></button>`;
             }
             const cardBorder = activeOrders.length > 1 ? 'border-color: #c4b5fd; border-top-color: #8b5cf6;' : '';
             const badgeColor = activeOrders.length > 1 ? 'bg-purple' : 'bg-primary';
