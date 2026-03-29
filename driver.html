@@ -357,6 +357,8 @@
         setLoadingBtn(true);
         const script = document.createElement('script');
         script.src = `${API_URL}?action=checkDriver&phone=${phone}&token=${API_TOKEN}&callback=handleLoginCheck&ts=${Date.now()}`;
+        script.onload = () => script.remove();
+        script.onerror = () => script.remove();
         document.body.appendChild(script);
     }
 
@@ -440,6 +442,8 @@
         const url = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${explicitId}&status=${status}&token=${API_TOKEN}`;
         const script = document.createElement('script'); 
         script.src = `${url}&callback=dummy&ts=${Date.now()}`; 
+        script.onload = () => script.remove();
+        script.onerror = () => script.remove();
         document.body.appendChild(script);
     }
 
@@ -447,6 +451,8 @@
         if (!driverData) return;
         const script = document.createElement('script');
         script.src = `${API_URL}?action=getGlobalData&token=${API_TOKEN}&callback=renderDriverData&ts=${Date.now()}`;
+        script.onload = () => script.remove();
+        script.onerror = () => script.remove();
         document.body.appendChild(script);
     }
 
@@ -485,7 +491,20 @@
     }
 
     window.renderDriverData = function(data) {
-        if(!data || !data.orders) return;
+        if(!data || !data.orders || !data.drivers) return;
+
+        // --- نظام الطرد المركزي (Force Logout) ---
+        const myPhone = String(driverData.phone);
+        const myInfo = data.drivers.find(d => String(d[2]) === myPhone);
+        if (!myInfo || (myInfo[4] !== 'active' && myInfo[4] !== 'pending')) {
+            alert("⚠️ تم إيقاف أو حذف حسابك من قبل الإدارة.");
+            releaseWakeLock();
+            localStorage.clear();
+            sessionStorage.clear();
+            location.reload();
+            return;
+        }
+        // ------------------------------------------
         
         for (let i = activeOrders.length - 1; i >= 0; i--) {
             const order = activeOrders[i];
@@ -519,7 +538,6 @@
         displayActiveOrders(); 
 
         let myCompletedCount = 0, myDebt = 0, todayTotalCash = 0;
-        const myPhone = String(driverData.phone);
         const todayISO = new Date().toISOString().split('T')[0];
         let ledgerHtml = '';
 
@@ -558,6 +576,8 @@
         if(!isOnline || activeOrders.length >= 2 || !document.getElementById('orderAlertOverlay').classList.contains('hidden')) return;
         const script = document.createElement('script');
         script.src = `${API_URL}?action=checkMyOrders&phone=${driverData.phone}&token=${API_TOKEN}&callback=onNewOrder&ts=${Date.now()}`;
+        script.onload = () => script.remove();
+        script.onerror = () => script.remove();
         document.body.appendChild(script);
     }
 
@@ -735,6 +755,8 @@
             const url = `${API_URL}?action=DECLINE_ORDER&orderId=${currentOrderData.id}&driverPhone=${driverData.phone}&token=${API_TOKEN}`;
             const script = document.createElement('script');
             script.src = `${url}&callback=dummy&ts=${Date.now()}`;
+            script.onload = () => script.remove();
+            script.onerror = () => script.remove();
             document.body.appendChild(script);
         }
         closeAlert();
