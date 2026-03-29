@@ -13,14 +13,10 @@
     <meta name="mobile-web-app-capable" content="yes">
 
     <link rel="manifest" href="manifest_restaurant.json">
-    
     <link rel="apple-touch-icon" href="rest-logo.png">
 
-    <meta property="og:type" content="website">
-    <meta property="og:title" content="مطاعم سفيان - منصة الحوت">
-    <meta property="og:description" content="إدارة طلبات التوصيل الذكية في كركوك - مكتب سفيان">
-    <meta property="og:image" content="rest-logo.png">
-    <meta property="og:url" content="https://sufianwithalhut.github.io/sufianwithalhut/">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
@@ -44,7 +40,6 @@
             user-select: none;
             -webkit-user-select: none;
             overscroll-behavior-y: contain;
-            /* حماية الأزرار السفلية في الهواتف الحديثة */
             padding-bottom: env(safe-area-inset-bottom);
         }
 
@@ -83,7 +78,6 @@
             padding: 20px; font-weight: 900; width: 100%; font-size: 1.1rem;
             display: flex; align-items: center; justify-content: center; gap: 12px;
             transition: 0.3s; box-shadow: 0 10px 20px rgba(30, 58, 138, 0.2);
-            /* ضمان مساحة كافية للضغط في الأسفل */
             margin-bottom: 20px;
         }
         .btn-action:active { transform: scale(0.96); }
@@ -126,6 +120,10 @@
         
         @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* تنسيق خريطة التحديد */
+        #pickerMap { height: 250px; border-radius: 18px; border: 2px solid #cbd5e1; z-index: 1; position: relative; }
+        .map-crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -100%); z-index: 1000; pointer-events: none; width: 40px; height: 40px; }
     </style>
 </head>
 <body>
@@ -162,14 +160,18 @@
                     <div class="mb-3"><input type="text" id="regName" class="custom-input" placeholder="الاسم التجاري للمطعم" autocomplete="off"></div>
                     <div class="mb-3"><input type="text" id="regArea" class="custom-input" placeholder="منطقة المطعم الأساسية" autocomplete="off"></div>
                     
-                    <div class="mb-3">
-                        <label class="form-label" style="text-align: right; color: var(--primary-blue); font-size: 0.8rem;">
-                            <i data-lucide="map" size="14"></i> رابط خرائط جوجل للمطعم:
+                    <div class="mb-3 position-relative">
+                        <label class="form-label" style="text-align: right; color: var(--primary-blue); font-size: 0.85rem;">
+                            <i data-lucide="map-pin" size="16"></i> حدد موقع المطعم بدقة على الخريطة:
                         </label>
-                        <input type="url" id="regMap" class="custom-input" placeholder="مثال: https://maps.app.goo.gl/..." dir="ltr" autocomplete="off">
+                        <div id="pickerMap"></div>
+                        <img src="https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png" class="map-crosshair" alt="Pin">
+                        <small class="text-muted fw-bold mt-2 d-block text-center bg-light p-2 rounded-3" style="font-size: 0.75rem; border: 1px dashed #cbd5e1;">
+                            اسحب الخريطة لتضع الدبوس فوق مطعمك تماماً 🎯
+                        </small>
                     </div>
 
-                    <div class="row g-2 mb-3">
+                    <div class="row g-2 mb-3 mt-2">
                         <div class="col-6"><input type="number" id="regComm" class="custom-input" placeholder="العمولة (د.ع)" autocomplete="off"></div>
                         <div class="col-6">
                             <select id="regPay" class="custom-input px-2">
@@ -267,6 +269,11 @@
                             </div>
                         </div>
 
+                        <div class="mb-4">
+                            <label class="form-label">إجمالي الحساب (للكابتن)</label>
+                            <input type="number" id="orderPrice" class="custom-input" placeholder="مثال: 15000 (دينار)" autocomplete="off" required oninput="saveDraft()">
+                        </div>
+
                         <div id="manualSection">
                             <div class="mb-4">
                                 <label class="form-label">رقم هاتف الزبون</label>
@@ -341,7 +348,7 @@
 <script>
     lucide.createIcons();
 
-    // الرابط السحابي النهائي (V15) 🚀
+    // الرابط السحابي (النسخة V15) 🚀
     const API_URL = "https://script.google.com/macros/s/AKfycbyjwuBnbd3bwB4joB2uNNKUwsAWhIDQiIkdsZ3rF4Jo4oxUwDeuYGYFuAVBK8MWNnwLCA/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
@@ -350,8 +357,36 @@
     let currentOrderMode = 'manual';
     let base64Receipt = null;
     let dataRefreshInterval;
-    
     let myCustomPriceList = {};
+    
+    // متغيرات خريطة التسجيل
+    let pickerMap;
+    let regLat = 35.468; // مركز كركوك الافتراضي
+    let regLng = 44.392;
+
+    function initPickerMap() {
+        if(pickerMap) return;
+        pickerMap = L.map('pickerMap', { zoomControl: false }).setView([regLat, regLng], 14);
+        L.control.zoom({ position: 'bottomleft' }).addTo(pickerMap);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(pickerMap);
+        
+        // التقاط الإحداثيات عندما يحرك المستخدم الخريطة
+        pickerMap.on('move', function () {
+            regLat = pickerMap.getCenter().lat;
+            regLng = pickerMap.getCenter().lng;
+        });
+
+        // محاولة تحديد موقع المطعم التلقائي لتسهيل المهمة
+        if(navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(pos => {
+                regLat = pos.coords.latitude;
+                regLng = pos.coords.longitude;
+                pickerMap.setView([regLat, regLng], 16);
+            }, null, { timeout: 5000 });
+        }
+        
+        setTimeout(() => { pickerMap.invalidateSize(); }, 500);
+    }
 
     function saveDraft() {
         const draft = {
@@ -359,6 +394,7 @@
             area: document.getElementById('customerArea').value,
             phone: document.getElementById('customerPhone').value,
             details: document.getElementById('customerDetails').value,
+            price: document.getElementById('orderPrice').value,
             image: base64Receipt
         };
         sessionStorage.setItem('hut_order_draft', JSON.stringify(draft));
@@ -373,6 +409,7 @@
                 if(draft.area) { document.getElementById('customerArea').value = draft.area; }
                 if(draft.phone) document.getElementById('customerPhone').value = draft.phone;
                 if(draft.details) document.getElementById('customerDetails').value = draft.details;
+                if(draft.price) document.getElementById('orderPrice').value = draft.price;
                 if(draft.image) {
                     base64Receipt = draft.image;
                     document.getElementById('photoPreview').src = base64Receipt;
@@ -397,11 +434,7 @@
         }
 
         const sortedAreas = Object.keys(myCustomPriceList).sort();
-        
-        sortedAreas.forEach(area => {
-            select.innerHTML += `<option value="${area}">${area}</option>`;
-        });
-        
+        sortedAreas.forEach(area => { select.innerHTML += `<option value="${area}">${area}</option>`; });
         select.innerHTML += '<option value="أخرى">أخرى (غير مدرجة في اللستة)</option>';
         
         const draftStr = sessionStorage.getItem('hut_order_draft');
@@ -437,7 +470,6 @@
 
     function parseCustomPriceList(rawText) {
         if (!rawText || rawText.trim() === "") return "{}";
-        
         let resultObj = {};
         let cleanText = rawText.replace(/[\u1000-\uFFFF]/g, ''); 
         let lines = cleanText.split('\n');
@@ -445,13 +477,11 @@
         lines.forEach(line => {
             if(line.trim() === "" || line.includes("تسعيرة")) return;
             let subLines = line.split('+');
-            
             subLines.forEach(sub => {
                 let match = sub.match(/([^\d]+)(\d+)/);
                 if (match && match.length >= 3) {
-                    let area = match[1].trim();
+                    let area = match[1].trim().replace(/^[-.]+|[-.]+$/g, '').trim();
                     let price = match[2].trim();
-                    area = area.replace(/^[-.]+|[-.]+$/g, '').trim();
                     if(area !== "" && price !== "") resultObj[area] = parseInt(price);
                 }
             });
@@ -459,22 +489,9 @@
         return JSON.stringify(resultObj);
     }
 
-    // ==========================================
-    // دالة استخراج الإحداثيات من رابط الخريطة
-    // ==========================================
-    function extractLatLngFromUrl(url) {
-        const regex = /(-?\d+\.\d+)[,\/](-?\d+\.\d+)/;
-        const match = url.match(regex);
-        if (match && match.length >= 3) {
-            return { lat: parseFloat(match[1]), lng: parseFloat(match[2]) };
-        }
-        return { lat: 0, lng: 0 };
-    }
-
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-            navigator.serviceWorker.register('sw.js')
-                .catch(err => console.error('❌ فشل في تشغيل المحرك:', err));
+            navigator.serviceWorker.register('sw.js').catch(err => console.error('❌', err));
         });
     }
 
@@ -599,26 +616,17 @@
         if (isRegistering) {
             const name = document.getElementById('regName').value.trim();
             const area = document.getElementById('regArea').value.trim();
-            const mapLink = document.getElementById('regMap').value.trim();
             const comm = document.getElementById('regComm').value.trim();
             const pay = document.getElementById('regPay').value;
             const rawPriceListText = document.getElementById('regPriceList').value;
 
-            if(!name || !area || !mapLink || !comm) return alert("يرجى ملء جميع التفاصيل، بما فيها رابط الخريطة.");
+            if(!name || !area || !comm) return alert("يرجى ملء جميع التفاصيل، وتحديد موقعك على الخريطة.");
             
             const packedPriceList = parseCustomPriceList(rawPriceListText);
-            const fullArea = `${area} | ${mapLink}`;
-
-            const coords = extractLatLngFromUrl(mapLink);
-            
-            if (coords.lat === 0 && coords.lng === 0) {
-                if(!confirm("⚠️ تنبيه: لم يتمكن النظام من سحب الإحداثيات من هذا الرابط. هل تريد الاستمرار بدونه؟ (الرادار سيعتمد على التوزيع العشوائي بدلاً من المسافة الدقيقة).")) {
-                    return;
-                }
-            }
+            const fullArea = `${area}`; // استغنينا عن الرابط
 
             showLoading(true, "جاري إرسال طلب الشراكة وحفظ اللستة...");
-            sendRegistration(name, phone, fullArea, comm, pay, coords.lat, coords.lng, packedPriceList);
+            sendRegistration(name, phone, fullArea, comm, pay, regLat, regLng, packedPriceList);
             return;
         }
 
@@ -682,6 +690,9 @@
             btn.innerHTML = `إرسال طلب الانضمام <i data-lucide="send"></i>`;
             btn.style.background = 'var(--accent)';
             lucide.createIcons();
+            
+            // تشغيل الخريطة عند ظهور قسم التسجيل
+            setTimeout(initPickerMap, 300);
         }
     };
 
@@ -878,7 +889,9 @@
 
         let finalDetails = "";
         let imagePayload = "";
-        let finalPrice = 0; 
+        
+        // استخراج سعر الطلب من الحقل الجديد الذي أضفناه
+        let finalPrice = parseFloat(document.getElementById('orderPrice').value) || 0; 
 
         if (currentOrderMode === 'manual') {
             const custPhone = document.getElementById('customerPhone').value.trim();
@@ -917,6 +930,7 @@
         
         document.getElementById('customerPhone').value = "";
         document.getElementById('customerDetails').value = "";
+        document.getElementById('orderPrice').value = "";
         document.getElementById('priceHint').classList.add('hidden-section');
         document.getElementById('customerArea').selectedIndex = 0; 
         removePhoto();
