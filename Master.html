@@ -47,10 +47,18 @@
         .stat-compact h3 { margin: 0; font-weight: 900; font-size: 1.5rem; }
         .stat-compact p { margin: 0; font-weight: 700; font-size: 0.8rem; color: #64748b; }
 
-        .stat-widget { background: var(--card-bg); border-radius: 24px; padding: 25px; box-shadow: 0 4px 20px rgba(0,0,0,0.03); border: 1px solid #e2e8f0; height: 100%; transition: 0.3s; }
+        .stat-widget { background: var(--card-bg); border-radius: 24px; padding: 25px; box-shadow: 0 4px 20px rgba(0,0,0,0.03); border: 1px solid #e2e8f0; height: 100%; transition: 0.3s; position: relative;}
         
         #adminMap { height: 400px; width: 100%; border-radius: 24px; border: 6px solid white; box-shadow: 0 10px 30px rgba(0,0,0,0.06); background: #e2e8f0; z-index: 1; }
         .leaflet-popup-content-wrapper { font-family: 'Cairo', sans-serif; text-align: center; border-radius: 12px; }
+
+        .filter-btn-group { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 10px; margin-bottom: 20px; }
+        .filter-btn-group::-webkit-scrollbar { height: 4px; }
+        .filter-btn-group::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .filter-btn { background: white; border: 1px solid #e2e8f0; padding: 8px 16px; border-radius: 12px; font-weight: 700; color: #64748b; cursor: pointer; transition: 0.2s; font-size: 0.9rem; white-space: nowrap;}
+        .filter-btn.active { background: var(--primary-blue); color: white; border-color: var(--primary-blue); }
+        .filter-btn .badge-count { background: #e2e8f0; color: var(--primary-blue); padding: 2px 6px; border-radius: 8px; margin-right: 5px; font-size: 0.75rem; }
+        .filter-btn.active .badge-count { background: rgba(255,255,255,0.2); color: white; }
 
         .radar-filter-btn { background: white; border: 1px solid #e2e8f0; padding: 8px 16px; border-radius: 12px; font-weight: 700; color: #64748b; cursor: pointer; transition: 0.2s; font-size: 0.9rem;}
         .radar-filter-btn.active { background: var(--primary-blue); color: white; border-color: var(--primary-blue); }
@@ -106,10 +114,14 @@
         @keyframes pulseAlert { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); } 70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
 
         /* Driver Performance Dots */
-        .perf-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; box-shadow: 0 0 5px rgba(0,0,0,0.2); }
-        .perf-green { background-color: #10b981; }
-        .perf-yellow { background-color: #f59e0b; }
-        .perf-red { background-color: #ef4444; }
+        .perf-dot { position: absolute; top: 15px; left: 15px; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; box-shadow: 0 2px 8px rgba(0,0,0,0.15); color: white; font-weight: 900; font-size: 0.75rem;}
+        .perf-green { background-color: #10b981; } 
+        .perf-yellow { background-color: #f59e0b; } 
+        .perf-red { background-color: #ef4444; } 
+
+        /* 🔴 3. أنيميشن لخط التتبع لجعله ينبض (Snake Animation) */
+        .leaflet-interactive.path-animated { animation: dash 20s linear infinite; }
+        @keyframes dash { to { stroke-dashoffset: -1000; } }
 
         /* Map Marker Pulse */
         .marker-pulse { border-radius: 50%; border: 3px solid white; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); animation: pulseMarker 2s infinite; }
@@ -258,8 +270,27 @@
             </div>
         </div>
         
-        <div id="tab-restaurants" class="admin-tab d-none"><div class="row g-3" id="resListContainer"></div></div>
-        <div id="tab-drivers" class="admin-tab d-none"><div class="row g-3" id="driverListContainer"></div></div>
+        <div id="tab-restaurants" class="admin-tab d-none">
+            <div class="filter-btn-group" id="resFiltersGroup">
+                <button class="filter-btn active" onclick="applySectionFilter('RESTAURANT', 'all', this)">الكل <span class="badge-count" id="badge-res-all">0</span></button>
+                <button class="filter-btn" onclick="applySectionFilter('RESTAURANT', 'pending', this)">طلبات انضمام <span class="badge-count" id="badge-res-pending">0</span></button>
+                <button class="filter-btn" onclick="applySectionFilter('RESTAURANT', 'active', this)">مفعل <span class="badge-count" id="badge-res-active">0</span></button>
+                <button class="filter-btn" onclick="applySectionFilter('RESTAURANT', 'inactive', this)">غير نشط <span class="badge-count" id="badge-res-inactive">0</span></button>
+                <button class="filter-btn" onclick="applySectionFilter('RESTAURANT', 'banned', this)">موقوف <span class="badge-count" id="badge-res-banned">0</span></button>
+            </div>
+            <div class="row g-3" id="resListContainer"></div>
+        </div>
+
+        <div id="tab-drivers" class="admin-tab d-none">
+            <div class="filter-btn-group" id="driverFiltersGroup">
+                <button class="filter-btn active" onclick="applySectionFilter('DRIVER', 'all', this)">الكل <span class="badge-count" id="badge-driver-all">0</span></button>
+                <button class="filter-btn" onclick="applySectionFilter('DRIVER', 'pending', this)">طلبات انضمام <span class="badge-count" id="badge-driver-pending">0</span></button>
+                <button class="filter-btn" onclick="applySectionFilter('DRIVER', 'active', this)">نشط بالميدان <span class="badge-count" id="badge-driver-active">0</span></button>
+                <button class="filter-btn" onclick="applySectionFilter('DRIVER', 'inactive', this)">في استراحة <span class="badge-count" id="badge-driver-inactive">0</span></button>
+                <button class="filter-btn" onclick="applySectionFilter('DRIVER', 'banned', this)">موقوف <span class="badge-count" id="badge-driver-banned">0</span></button>
+            </div>
+            <div class="row g-3" id="driverListContainer"></div>
+        </div>
     </main>
 </div>
 
@@ -286,13 +317,18 @@
 <script>
     lucide.createIcons();
     
-    // --- تم التحديث إلى السيرفر الجديد ---
     const API_URL = "https://script.google.com/macros/s/AKfycbxWySjqwjNbW5RNBZUSCR6cm5PtL4yUrtRnnD31nJv_FqVWa3gd2hOOFRe7o0jqX9STRQ/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
+    // متغيرات الخريطة
     let map, heatLayer, driverClusterGroup, trackPolyline = null;
+    let restaurantMarkersLayer = null; // 🔴 2. طبقة خاصة للمطاعم
+    
     let globalData = null; 
     let currentRadarFilter = 'all';
+    
+    let currentResSectionFilter = 'all';
+    let currentDriverSectionFilter = 'all';
     
     let masterPassword = ""; 
     let lastPendingCount = 0; 
@@ -327,24 +363,36 @@
         showTab({currentTarget: document.querySelector('.nav-item')}, 'live');
     }
 
-    function calculateDriverPerformance(ordersData, driverPhone) {
-        let totalTime = 0; let count = 0;
-        ordersData.slice(1).forEach(o => {
-            if(o[6] === driverPhone && (o[5] === 'completed' || o[5] === 'مكتمل' || o[5] === 'settled')) {
-                count++;
+    function calculateDriverPerformanceBySpeed(ordersData, driverPhone) {
+        const today = new Date();
+        const currentMonth = today.getMonth();
+        const currentYear = today.getFullYear();
+        let deliveryTimes = []; 
+        
+        for (let i = ordersData.length - 1; i >= 1; i--) {
+            const o = ordersData[i];
+            const orderDateStr = o[7];
+            if (!orderDateStr) continue;
+            const orderDate = new Date(orderDateStr);
+            if (orderDate.getMonth() === currentMonth && 
+                orderDate.getFullYear() === currentYear && 
+                o[6] === driverPhone && 
+                (o[5] === 'completed' || o[5] === 'مكتمل' || o[5] === 'settled')) {
+                deliveryTimes.push(1); 
+                if(deliveryTimes.length >= 10) break; 
             }
-        });
-        if (count >= 5) return 'perf-green';
-        if (count > 0) return 'perf-yellow';
-        return 'perf-red';
+        }
+        
+        const count = deliveryTimes.length;
+        if (count >= 10) return { class: 'perf-green', label: 'ممتاز' };
+        if (count > 0) return { class: 'perf-yellow', label: 'نشط' };
+        return { class: 'perf-red', label: 'جديد/متأخر' };
     }
 
     function checkAuth() {
         const pass = document.getElementById('masterPass').value.trim();
         if(!pass) return alert("الرجاء إدخال رمز المرور");
-        
         masterPassword = encodeURIComponent(pass); 
-        
         const btn = document.querySelector('.auth-card button');
         btn.innerHTML = 'جاري التحقق...';
         btn.disabled = true;
@@ -411,7 +459,6 @@
         }
 
         const activeOrdersList = data.orders.slice(1).filter(o => o[5] !== 'completed' && o[5] !== 'مكتمل' && o[5] !== 'settled' && o[5] !== 'deleted');
-        
         let currentPendingCount = 0;
         let hasEmergency = false;
 
@@ -441,7 +488,7 @@
         
         data.drivers.slice(1).forEach(d => {
             driverDebts[String(d[2])] = 0;
-            driverPerformanceCache[String(d[2])] = calculateDriverPerformance(data.orders, String(d[2]));
+            driverPerformanceCache[String(d[2])] = calculateDriverPerformanceBySpeed(data.orders, String(d[2]));
         }); 
         
         data.orders.slice(1).forEach(o => {
@@ -464,17 +511,31 @@
 
         renderRadar();
         renderArchive();
-        renderControlCards('resListContainer', data.restaurants, 'store', 'RESTAURANT', 2, resDebts, 1, resUnpaidCounts); 
-        renderControlCards('driverListContainer', data.drivers, 'user', 'DRIVER', 2, driverDebts, 2, null, true); 
         
-        if (map && heatLayer && driverClusterGroup) {
-            const heatMapPoints = [];
-            driverClusterGroup.clearLayers(); // تنظيف الطبقة المجمعة
+        updateSectionBadges('RESTAURANT', data.restaurants);
+        updateSectionBadges('DRIVER', data.drivers);
+        renderFilteredSection('RESTAURANT', data.restaurants, resDebts, resUnpaidCounts);
+        renderFilteredSection('DRIVER', data.drivers, driverDebts, null);
+        
+        // 🔴 تحديثات الخريطة المتقدمة 🔴
+        if (map && driverClusterGroup && restaurantMarkersLayer) {
+            driverClusterGroup.clearLayers(); 
+            restaurantMarkersLayer.clearLayers(); 
             
+            // 🔴 2. رسم المطاعم النشطة كأيقونات ثابتة ومميزة
             data.restaurants.slice(1).forEach(r => {
                 if(r[4] === 'active' && r[6] && r[7]) { 
                     const lat = parseFloat(r[6]), lng = parseFloat(r[7]);
-                    if(!isNaN(lat) && !isNaN(lng)) heatMapPoints.push([lat, lng, 0.5]);
+                    if(!isNaN(lat) && !isNaN(lng)) {
+                        const resIcon = L.divIcon({
+                            className: 'custom-res-icon',
+                            html: `<div style="background-color: #f97316; width: 14px; height: 14px; border-radius: 4px; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.4); transform: rotate(45deg);"></div>`,
+                            iconSize: [14, 14], iconAnchor: [7, 7]
+                        });
+                        const marker = L.marker([lat, lng], {icon: resIcon, zIndexOffset: -100})
+                            .bindPopup(`<div class="text-center fw-bold" style="font-family:'Cairo';"><span class="text-warning">المطعم:</span> ${r[1]}</div>`);
+                        restaurantMarkersLayer.addLayer(marker);
+                    }
                 }
             });
 
@@ -482,31 +543,159 @@
                 if(d[4] === 'active' && d[5] && d[6]) { 
                     const lat = parseFloat(d[5]), lng = parseFloat(d[6]);
                     if(!isNaN(lat) && !isNaN(lng)) {
-                        heatMapPoints.push([lat, lng, 1.0]);
-                        
-                        const perfClass = driverPerformanceCache[String(d[2])] || 'perf-yellow';
+                        const perf = driverPerformanceCache[String(d[2])] || { class: 'perf-yellow' };
                         let colorHex = '#f59e0b';
                         let pulseClass = '';
-                        if(perfClass === 'perf-green') { colorHex = '#10b981'; pulseClass = 'marker-pulse'; }
-                        if(perfClass === 'perf-red') colorHex = '#ef4444';
+                        if(perf.class === 'perf-green') { colorHex = '#10b981'; pulseClass = 'marker-pulse'; }
+                        if(perf.class === 'perf-red') colorHex = '#ef4444';
 
                         const driverIcon = L.divIcon({
                             className: 'custom-div-icon',
                             html: `<div class="${pulseClass}" style="background-color: ${colorHex}; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>`,
-                            iconSize: [16, 16],
-                            iconAnchor: [8, 8]
+                            iconSize: [16, 16], iconAnchor: [8, 8]
                         });
-                        const marker = L.marker([lat, lng], {icon: driverIcon})
+                        const marker = L.marker([lat, lng], {icon: driverIcon, zIndexOffset: 100})
                             .bindPopup(`<div class="text-center fw-bold" style="font-family:'Cairo';"><span style="color:${colorHex}">الكابتن:</span> ${d[1]}<br><span class="text-primary">هاتف:</span> ${d[2]}</div>`);
                         
-                        driverClusterGroup.addLayer(marker); // إضافة الكابتن لمجموعة التجميع الذكي
+                        driverClusterGroup.addLayer(marker); 
                     }
                 }
             });
-            heatLayer.setLatLngs(heatMapPoints); 
         }
         lucide.createIcons();
     };
+
+    function updateSectionBadges(type, list) {
+        const prefix = type === 'RESTAURANT' ? 'res' : 'driver';
+        const counts = { all: 0, pending: 0, active: 0, inactive: 0, banned: 0 };
+        
+        list.slice(1).forEach(item => {
+            const status = item[4];
+            if (status !== 'deleted') counts.all++;
+            if (status === 'pending' || status === 'waiting') counts.pending++;
+            if (status === 'active') counts.active++;
+            if (status === 'inactive') counts.inactive++;
+            if (status === 'banned') counts.banned++;
+        });
+
+        document.getElementById(`badge-${prefix}-all`).innerText = counts.all;
+        document.getElementById(`badge-${prefix}-pending`).innerText = counts.pending;
+        document.getElementById(`badge-${prefix}-active`).innerText = counts.active;
+        document.getElementById(`badge-${prefix}-inactive`).innerText = counts.inactive;
+        document.getElementById(`badge-${prefix}-banned`).innerText = counts.banned;
+    }
+
+    function applySectionFilter(type, filter, btnElement) {
+        if(type === 'RESTAURANT') currentResSectionFilter = filter;
+        else currentDriverSectionFilter = filter;
+
+        const group = btnElement.closest('.filter-btn-group');
+        group.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btnElement.classList.add('active');
+
+        if (globalData) {
+            let resDebts = {}; let resUnpaidCounts = {}; let driverDebts = {};
+            globalData.restaurants.slice(1).forEach(r => { resDebts[r[1]] = 0; resUnpaidCounts[r[1]] = 0; }); 
+            globalData.drivers.slice(1).forEach(d => { driverDebts[String(d[2])] = 0; }); 
+            globalData.orders.slice(1).forEach(o => {
+                if (o[5] === 'completed' || o[5] === 'مكتمل') {
+                    const rData = globalData.restaurants.find(r => r[1] === o[1]);
+                    if (rData) {
+                        const comm = parseFloat(rData[5]) || 0; 
+                        if (resUnpaidCounts[o[1]] !== undefined) resUnpaidCounts[o[1]]++; 
+                        if (String(rData[8]).includes('مناصفة')) {
+                            if (resDebts[o[1]] !== undefined) resDebts[o[1]] += (comm / 2);
+                            if (driverDebts[String(o[6])] !== undefined) driverDebts[String(o[6])] += (comm / 2);
+                        } else {
+                            if (resDebts[o[1]] !== undefined) resDebts[o[1]] += comm;
+                        }
+                    }
+                }
+            });
+
+            if(type === 'RESTAURANT') renderFilteredSection('RESTAURANT', globalData.restaurants, resDebts, resUnpaidCounts);
+            else renderFilteredSection('DRIVER', globalData.drivers, driverDebts, null);
+        }
+    }
+
+    function renderFilteredSection(type, fullList, debtsMap, unpaidCounts) {
+        let filteredList = [];
+        const filter = type === 'RESTAURANT' ? currentResSectionFilter : currentDriverSectionFilter;
+        
+        fullList.slice(1).forEach(item => {
+            const status = item[4];
+            if (status === 'deleted') return;
+            if (filter === 'all') filteredList.push(item);
+            else if (filter === 'pending' && (status === 'pending' || status === 'waiting')) filteredList.push(item);
+            else if (filter === status) filteredList.push(item);
+        });
+
+        const containerId = type === 'RESTAURANT' ? 'resListContainer' : 'driverListContainer';
+        const icon = type === 'RESTAURANT' ? 'store' : 'user';
+        const phoneIndex = 2; 
+        const mapKeyIndex = type === 'RESTAURANT' ? 1 : 2; 
+        const isDriver = type === 'DRIVER';
+
+        let html = '';
+        if (filteredList.length === 0) {
+            html = `<div class="col-12 text-center py-5 text-muted fw-bold">لا توجد حسابات تطابق هذا الفلتر.</div>`;
+        } else {
+            filteredList.forEach(item => {
+                const name = item[1], phone = item[phoneIndex], status = item[4];
+                const debtAmount = debtsMap[item[mapKeyIndex]] || 0; 
+                
+                let statusBadge = '';
+                if(status === 'active') statusBadge = '<span class="badge bg-success px-2 py-1 rounded-2">نشط</span>';
+                else if(status === 'inactive') statusBadge = '<span class="badge bg-warning px-2 py-1 rounded-2 text-dark">في استراحة</span>';
+                else if(status === 'pending' || status === 'waiting') statusBadge = '<span class="badge bg-primary px-2 py-1 rounded-2">جديد (بانتظار الموافقة)</span>';
+                else if(status === 'banned') statusBadge = '<span class="badge bg-danger px-2 py-1 rounded-2">موقوف</span>';
+
+                let unpaidBadge = '';
+                if (type === 'RESTAURANT' && unpaidCounts && unpaidCounts[name] > 0) {
+                    unpaidBadge = `<span class="badge bg-danger rounded-pill ms-1" style="font-size:0.7rem;">${unpaidCounts[name]} طلبات</span>`;
+                }
+
+                let perfIndicator = '';
+                if (isDriver) {
+                    const perf = driverPerformanceCache[String(phone)] || { class: 'perf-yellow', label: 'مستجد' };
+                    perfIndicator = `<span class="perf-dot ${perf.class}" title="معدل السرعة: ${perf.label}"><i data-lucide="zap" size="14"></i></span>`;
+                }
+
+                html += `
+                <div class="col-md-6 col-xl-4">
+                    <div class="stat-widget flex-column align-items-stretch" style="padding: 15px;">
+                        ${perfIndicator}
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <div class="bg-light p-2 rounded-3 ms-4"><i data-lucide="${icon}" size="20" style="color: var(--primary-blue);"></i></div>
+                            ${statusBadge}
+                        </div>
+                        
+                        <h6 class="m-0 fw-black mb-1 text-truncate" style="padding-left: 20px;">${name}</h6>
+                        <small class="text-muted fw-bold" style="font-size:0.8rem;" dir="ltr">${phone}</small>
+                        
+                        <div class="mt-2 mb-3 d-inline-flex align-items-center gap-1 bg-danger bg-opacity-10 text-danger px-2 py-1 rounded-pill" style="width: fit-content;">
+                            <i data-lucide="wallet" size="12"></i>
+                            <span class="small fw-bold" style="font-size: 0.75rem;">غير مسدد: ${debtAmount} د.ع ${unpaidBadge}</span>
+                        </div>
+
+                        <div class="d-flex justify-content-between align-items-center pt-2 border-top">
+                            <div class="d-flex gap-1">
+                                <button class="sov-btn sov-accept" style="width:32px;height:32px;" onclick="adminActionOptUI('ACCEPT', '${type}', '${phone}', this)" title="تفعيل"><i data-lucide="check" size="16"></i></button>
+                                <button class="sov-btn sov-pause" style="width:32px;height:32px;" onclick="adminActionOptUI('PAUSE', '${type}', '${phone}', this)" title="تجميد"><i data-lucide="pause" size="16"></i></button>
+                                <button class="sov-btn sov-delete" style="width:32px;height:32px;" onclick="adminActionOptUI('DELETE', '${type}', '${phone}', this)" title="حظر"><i data-lucide="ban" size="16"></i></button>
+                            </div>
+                            <div class="d-flex gap-1">
+                                <button class="sov-btn sov-reset" style="width:32px;height:32px;" onclick="resetDebtOptUI('${type}', '${phone}', this)" title="تصفير الديون"><i data-lucide="banknote" size="16"></i></button>
+                                <button class="sov-btn sov-call shadow-sm" style="width:32px;height:32px;" onclick="window.open('tel:${phone}')" title="اتصال"><i data-lucide="phone-call" size="16"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+            });
+        }
+        document.getElementById(containerId).innerHTML = html;
+        lucide.createIcons();
+    }
 
     function filterRadar(type, btnElement) {
         currentRadarFilter = type;
@@ -522,10 +711,10 @@
         let activeDriversOptions = '<option value="">تعيين يدوياً</option>';
         globalData.drivers.slice(1).forEach(d => {
             if(d[4] === 'active') {
-                const perf = driverPerformanceCache[String(d[2])] || 'perf-yellow';
+                const perf = driverPerformanceCache[String(d[2])] || { class: 'perf-yellow' };
                 let symbol = '🟡';
-                if(perf === 'perf-green') symbol = '🟢';
-                if(perf === 'perf-red') symbol = '🔴';
+                if(perf.class === 'perf-green') symbol = '🟢';
+                if(perf.class === 'perf-red') symbol = '🔴';
                 activeDriversOptions += `<option value="${String(d[2])}">${symbol} ${d[1]}</option>`;
             }
         });
@@ -570,7 +759,7 @@
                             <div class="bg-purple text-white p-1 rounded-2"><i data-lucide="layers" size="18"></i></div>
                             <h6 class="fw-black m-0 text-purple">طلب مزدوج | الكابتن: ${driverName}</h6>
                         </div>
-                        <button class="btn-track shadow-sm" style="background: #ede9fe; color: #7c3aed; border-color: #c4b5fd;" onclick="trackDriver('${driverPhone}', '${orders[0][1]}')"><i data-lucide="map-pin" size="14"></i> تتبع مسار</button>
+                        <button class="btn-track shadow-sm" style="background: #ede9fe; color: #7c3aed; border-color: #c4b5fd;" onclick="trackDriver('${driverPhone}', '${orders[0][1]}')"><i data-lucide="map-pin" size="14"></i> تتبع ذكي</button>
                     </div>`;
 
                 orders.forEach((o, index) => {
@@ -663,7 +852,7 @@
                     <div class="d-flex flex-column align-items-end gap-2">
                         <span class="badge ${!hasDriver ? 'bg-danger' : 'bg-success'}">${statusDesc}</span>
                         <div class="d-flex gap-1 align-items-center mt-1">
-                            ${hasDriver ? `<button class="btn-track" onclick="trackDriver('${driverPhone}', '${restName}')"><i data-lucide="map-pin" size="14"></i> تتبع مسار</button>` : ''}
+                            ${hasDriver ? `<button class="btn-track" onclick="trackDriver('${driverPhone}', '${restName}')"><i data-lucide="map-pin" size="14"></i> تتبع ذكي</button>` : ''}
                             <button class="btn btn-sm text-success border-0 p-1" onclick="adminActionOptUI('COMPLETE', 'ORDER', '${orderId}', this)" title="إتمام قسري"><i data-lucide="check-circle" size="18"></i></button>
                             <button class="btn btn-sm text-danger border-0 p-1" onclick="adminActionOptUI('DELETE', 'ORDER', '${orderId}', this)" title="حذف وإلغاء الطلب"><i data-lucide="trash-2" size="18"></i></button>
                         </div>
@@ -696,6 +885,7 @@
         </div>`;
     }
 
+    // 🔴 1. دالة التتبع الذكي المطورة (Auto Fit Bounds + Animated Polyline)
     function trackDriver(driverPhone, restName) {
         if(!map || !globalData) return;
         const driver = globalData.drivers.find(d => String(d[2]) === String(driverPhone));
@@ -703,22 +893,39 @@
 
         if(driver && driver[5] && driver[6]) {
             const dLat = parseFloat(driver[5]); const dLng = parseFloat(driver[6]);
-            if(!isNaN(dLat) && !isNaN(dLng)) {
-                map.flyTo([dLat, dLng], 14, { duration: 1.5 });
-                window.scrollTo({ top: document.getElementById('adminMap').offsetTop - 20, behavior: 'smooth' });
+            if(isNaN(dLat) || isNaN(dLng)) { showToast("لا توجد إحداثيات حالية", "error"); return; }
+            
+            let bounds = [[dLat, dLng]]; // النقطة الأولى هي الكابتن
 
-                if(restaurant && restaurant[6] && restaurant[7]) {
-                    const rLat = parseFloat(restaurant[6]); const rLng = parseFloat(restaurant[7]);
-                    if(!isNaN(rLat) && !isNaN(rLng)) {
-                        if(trackPolyline) map.removeLayer(trackPolyline);
-                        trackPolyline = L.polyline([[dLat, dLng], [rLat, rLng]], {color: '#3b82f6', weight: 4, dashArray: '10, 10'}).addTo(map);
-                    }
+            if(trackPolyline) map.removeLayer(trackPolyline);
+
+            if(restaurant && restaurant[6] && restaurant[7]) {
+                const rLat = parseFloat(restaurant[6]); const rLng = parseFloat(restaurant[7]);
+                if(!isNaN(rLat) && !isNaN(rLng)) {
+                    bounds.push([rLat, rLng]); // النقطة الثانية هي المطعم
+                    
+                    // رسم الخط النابض المطور
+                    trackPolyline = L.polyline([[dLat, dLng], [rLat, rLng]], {
+                        color: '#3b82f6', 
+                        weight: 5, 
+                        dashArray: '15, 15', 
+                        className: 'path-animated' // الكلاس الخاص بالأنيميشن
+                    }).addTo(map);
+                    
+                    // عمل زوم ذكي لاحتواء الكابتن والمطعم معاً
+                    map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16, animate: true, duration: 1.5 });
+                } else {
+                    map.flyTo([dLat, dLng], 15, { duration: 1.5 });
                 }
-            } else { showToast("لا توجد إحداثيات حالية", "error"); }
+            } else {
+                map.flyTo([dLat, dLng], 15, { duration: 1.5 });
+            }
+
+            // تمرير الشاشة صعوداً للخريطة بسلاسة
+            window.scrollTo({ top: document.getElementById('adminMap').offsetTop - 20, behavior: 'smooth' });
         }
     }
 
-    // --- Optimistic UI Functions ---
     function assignDriverOptUI(orderId, driverPhone, element) {
         if(!driverPhone) return;
         element.classList.add('btn-loading');
@@ -752,12 +959,12 @@
     }
 
     function adminActionOptUI(cmd, type, id, element) {
-        const statusMap = { 'ACCEPT': 'active', 'PAUSE': 'inactive', 'DELETE': 'deleted', 'COMPLETE': 'completed' };
+        const statusMap = { 'ACCEPT': 'active', 'PAUSE': 'inactive', 'DELETE': 'banned', 'COMPLETE': 'completed' };
         
         if (cmd === 'COMPLETE' || cmd === 'DELETE') {
-            if(!confirm(cmd === 'COMPLETE' ? "تأكيد الإتمام القسري؟" : "تأكيد الحذف؟")) return;
-            const card = document.getElementById(`order-${id}`);
-            if(card) {
+            if(!confirm(cmd === 'COMPLETE' ? "تأكيد الإتمام القسري؟" : "تأكيد الحظر من النظام؟")) return;
+            const card = element.closest('.col-md-6');
+            if(card && cmd === 'DELETE') {
                 card.style.transition = '0.3s';
                 card.style.opacity = '0';
                 setTimeout(() => card.style.display = 'none', 300);
@@ -776,13 +983,11 @@
 
     window.silentCallback = function(response) {
         if(response.success) {
-            // refreshData(); سيقوم التحديث التلقائي بالمهمة لتجنب وميض الشاشة
         } else {
             showToast("خطأ: " + (response.msg || response.error), "error");
             refreshData(); 
         }
     };
-    // -----------------------------
 
     function renderArchive() {
         if(!globalData) return;
@@ -881,56 +1086,6 @@
         document.body.appendChild(link); link.click(); document.body.removeChild(link);
     }
 
-    function renderControlCards(containerId, list, icon, type, phoneIndex, debtsMap, mapKeyIndex, unpaidCounts, isDriver = false) {
-        let html = '';
-        list.slice(1).filter(item => item[4] !== 'deleted').forEach(item => {
-            const name = item[1], phone = item[phoneIndex], isActive = item[4] === 'active';
-            const debtAmount = debtsMap[item[mapKeyIndex]] || 0; 
-            
-            let unpaidBadge = '';
-            if (type === 'RESTAURANT' && unpaidCounts && unpaidCounts[name] > 0) {
-                unpaidBadge = `<span class="badge bg-danger rounded-pill ms-1" style="font-size:0.7rem;">${unpaidCounts[name]} طلبات</span>`;
-            }
-
-            let perfIndicator = '';
-            if (isDriver) {
-                const perfClass = driverPerformanceCache[String(phone)] || 'perf-yellow';
-                perfIndicator = `<span class="perf-dot ${perfClass}"></span>`;
-            }
-
-            html += `
-            <div class="col-md-6 col-xl-4">
-                <div class="stat-widget flex-column align-items-stretch" style="padding: 15px;">
-                    <div class="d-flex justify-content-between align-items-start mb-2">
-                        <div class="bg-light p-2 rounded-3"><i data-lucide="${icon}" size="20" style="color: var(--primary-blue);"></i></div>
-                        <span class="badge ${isActive ? 'bg-success' : 'bg-secondary'} px-2 py-1 rounded-2">${isActive ? 'نشط' : 'غير نشط'}</span>
-                    </div>
-                    
-                    <h6 class="m-0 fw-black mb-1 text-truncate">${perfIndicator}${name}</h6>
-                    
-                    <div class="mt-2 mb-3 d-inline-flex align-items-center gap-1 bg-danger bg-opacity-10 text-danger px-2 py-1 rounded-pill" style="width: fit-content;">
-                        <i data-lucide="wallet" size="12"></i>
-                        <span class="small fw-bold" style="font-size: 0.75rem;">غير مسدد: ${debtAmount} د.ع ${unpaidBadge}</span>
-                    </div>
-
-                    <div class="d-flex justify-content-between align-items-center pt-2 border-top">
-                        <div class="d-flex gap-1">
-                            <button class="sov-btn sov-accept" style="width:32px;height:32px;" onclick="adminActionOptUI('ACCEPT', '${type}', '${phone}', this)"><i data-lucide="check" size="16"></i></button>
-                            <button class="sov-btn sov-pause" style="width:32px;height:32px;" onclick="adminActionOptUI('PAUSE', '${type}', '${phone}', this)"><i data-lucide="pause" size="16"></i></button>
-                            <button class="sov-btn sov-delete" style="width:32px;height:32px;" onclick="adminActionOptUI('DELETE', '${type}', '${phone}', this)"><i data-lucide="trash-2" size="16"></i></button>
-                        </div>
-                        <div class="d-flex gap-1">
-                            <button class="sov-btn sov-reset" style="width:32px;height:32px;" onclick="resetDebtOptUI('${type}', '${phone}', this)" title="تصفير الديون"><i data-lucide="banknote" size="16"></i></button>
-                            <button class="sov-btn sov-call shadow-sm" style="width:32px;height:32px;" onclick="window.open('tel:${phone}')"><i data-lucide="phone-call" size="16"></i></button>
-                        </div>
-                    </div>
-                </div>
-            </div>`;
-        });
-        document.getElementById(containerId).innerHTML = html;
-        lucide.createIcons();
-    }
-
     function showTab(e, name) {
         document.querySelectorAll('.admin-tab').forEach(t => t.classList.add('d-none'));
         document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -938,7 +1093,6 @@
         e.currentTarget.classList.add('active');
         lucide.createIcons();
         
-        // إصلاح العمى البصري للخريطة عند فتح تبويب الرصد الميداني
         if(name === 'live' && map) {
             setTimeout(() => { map.invalidateSize(); }, 300);
         }
@@ -955,7 +1109,6 @@
 
         L.control.zoom({ position: 'bottomleft' }).addTo(map);
 
-        // V17: ستايل الخريطة الفاخر (Positron Light Style)
         L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
             attribution: '&copy; OpenStreetMap & CartoDB',
             maxZoom: 19
@@ -968,7 +1121,9 @@
             gradient: {0.4: 'blue', 0.6: 'cyan', 0.7: 'lime', 0.8: 'yellow', 1.0: 'red'}
         }).addTo(map);
 
-        // V17: تهيئة نظام التجميع الذكي للكباتن
+        // 🔴 تهيئة طبقة المطاعم المستقلة
+        restaurantMarkersLayer = L.layerGroup().addTo(map);
+
         driverClusterGroup = L.markerClusterGroup({
             iconCreateFunction: function(cluster) {
                 return L.divIcon({ 
@@ -977,11 +1132,10 @@
                     iconSize: L.point(35, 35)
                 });
             },
-            maxClusterRadius: 40 // المسافة التي يبدأ عندها التجميع
+            maxClusterRadius: 40 
         });
         map.addLayer(driverClusterGroup);
         
-        // إصلاح أولي لحجم الخريطة
         setTimeout(() => { map.invalidateSize(); }, 1000);
     }
 </script>
