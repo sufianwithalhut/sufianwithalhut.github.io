@@ -95,7 +95,9 @@
 <audio id="alertSound" loop src="https://actions.google.com/sounds/v1/alarms/beep_loop.ogg"></audio>
 <audio id="doubleOrderSound" loop src="https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg"></audio>
 <audio id="cancelSound" src="https://actions.google.com/sounds/v1/alarms/bugle_tune.ogg"></audio>
-<audio id="welcomeSound" src="https://actions.google.com/sounds/v1/water/water_drop.ogg"></audio> <div id="loginPage" class="login-wrapper">
+<audio id="welcomeSound" src="https://actions.google.com/sounds/v1/water/water_drop.ogg"></audio> 
+
+<div id="loginPage" class="login-wrapper">
     <div class="login-card" id="authBox">
         <div class="d-inline-block p-4 bg-light rounded-circle shadow-sm mb-4">
             <i data-lucide="shield-check" size="50" color="#1e3a8a"></i>
@@ -523,6 +525,8 @@
     }
 
     function updateStatusOnServer(status, type="ORDER", explicitId=null) {
+        // [التصحيح الميداني]: ترتيب المعاملات يجب أن يكون (status, type, id) 
+        // وليس (type, id, status) لكي تتطابق مع دالة السيرفر
         const url = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${explicitId}&status=${status}&token=${API_TOKEN}`;
         const script = document.createElement('script'); 
         script.src = `${url}&callback=dummy&ts=${Date.now()}`; 
@@ -730,6 +734,7 @@
             }
             
             displayActiveOrders();
+            // تصحيح الترتيب (status, type, id)
             updateStatusOnServer('accepted', "ORDER", newOrder.id); 
             
         } catch(e) {} finally { updateStats(); }
@@ -741,6 +746,7 @@
             order.state = newState;
             localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
             displayActiveOrders();
+            // تصحيح الترتيب (status, type, id)
             updateStatusOnServer(serverState, "ORDER", id);
         }
     }
@@ -815,10 +821,15 @@
 
     function proceedToFinish(id) {
         if(confirm("تأكيد إتمام التوصيل للزبون واستلام المبلغ؟")) {
+            // [التصحيح الميداني]: وضع المعاملات بالترتيب الصحيح لدالة updateStatusOnServer
             updateStatusOnServer('completed', "ORDER", id);
+            
+            // تحديث الواجهة المحلية فوراً
             activeOrders = activeOrders.filter(o => String(o.id) !== String(id)); 
             localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
             displayActiveOrders();
+            
+            // تحديث السجل والبيانات مع السيرفر
             updateStats(); 
         }
     }
