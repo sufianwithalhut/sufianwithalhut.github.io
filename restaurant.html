@@ -1,6 +1,31 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
+    <script>
+        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 1.3) ---
+        const CURRENT_APP_VERSION = "1.3"; 
+        if (localStorage.getItem('hut_res_app_version') !== CURRENT_APP_VERSION) {
+            console.log("نسخة قديمة مكتشفة... جاري التحديث الإجباري والتطهير!");
+            
+            localStorage.setItem('hut_res_app_version', CURRENT_APP_VERSION);
+            
+            if ('caches' in window) {
+                caches.keys().then(function(names) {
+                    for (let name of names) caches.delete(name);
+                });
+            }
+            
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                    for(let registration of registrations) {
+                        registration.update();
+                    }
+                });
+            }
+            
+            window.location.reload(true);
+        }
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     
@@ -372,7 +397,6 @@
 <script>
     lucide.createIcons();
 
-    // --- الرابط السحابي الجديد ---
     const API_URL = "https://script.google.com/macros/s/AKfycbxWySjqwjNbW5RNBZUSCR6cm5PtL4yUrtRnnD31nJv_FqVWa3gd2hOOFRe7o0jqX9STRQ/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
@@ -382,11 +406,10 @@
     let base64Receipt = null;
     let dataRefreshInterval;
     let myCustomPriceList = {};
-    let waitingPollingTimer = null; // تايمر غرفة الانتظار
+    let waitingPollingTimer = null; 
     
-    // متغيرات خريطة التسجيل
     let pickerMap;
-    let regLat = 35.468; // مركز كركوك الافتراضي
+    let regLat = 35.468; 
     let regLng = 44.392;
 
     function initPickerMap() {
@@ -569,7 +592,6 @@
 
     document.addEventListener('contextmenu', event => event.preventDefault());
 
-    // --- نظام الذاكرة اللاصقة ---
     function checkSavedSession() {
         const sessionStr = localStorage.getItem('hut_res_session');
         const pendingStr = localStorage.getItem('hut_res_pending');
@@ -744,7 +766,6 @@
         }).catch(() => { showLoading(false); alert("حدث خطأ أثناء الإرسال."); });
     }
 
-    // --- غرفة الانتظار للمطعم ---
     function showWaitingRoom() {
         document.getElementById('authBox').classList.add('hidden-section');
         document.getElementById('waitingBox').classList.remove('hidden-section');
@@ -774,7 +795,8 @@
         const txt = document.getElementById('waitingStatusText');
         txt.innerText = "جاري الاستعلام التلقائي...";
 
-        if(data.status === "active") {
+        // 🔴 تم تفعيل الدخول لحالة inactive لتجنب الطرد من النظام
+        if(data.status === "active" || data.status === "inactive") {
             clearInterval(waitingPollingTimer);
             localStorage.removeItem('hut_res_pending');
             
@@ -809,7 +831,8 @@
         let rawPhone = document.getElementById('checkPhone').value.trim();
         let phone = rawPhone.startsWith('0') ? rawPhone.substring(1) : rawPhone;
 
-        if(data.status === "active") {
+        // 🔴 تم تفعيل الدخول لحالة inactive لتجنب الطرد من النظام
+        if(data.status === "active" || data.status === "inactive") {
             currentResName = data.name;
             localStorage.setItem('hut_res_phone', phone);
             localStorage.removeItem('hut_res_pending');
@@ -892,7 +915,7 @@
 
         const resInfo = data.restaurants.find(r => r[1] === currentResName);
         
-        if(!resInfo || resInfo[4] !== 'active') {
+        if(!resInfo || (resInfo[4] !== 'active' && resInfo[4] !== 'inactive')) {
             alert("⚠️ تم إيقاف أو حذف حساب المطعم من قبل الإدارة.");
             localStorage.clear();
             sessionStorage.clear();
@@ -969,10 +992,14 @@
                     
                     let step = 1; 
                     let fillWidth = "0%";
+                    
+                    // 🔴 تعديل ذكي لشرط السماح بالإلغاء: مسموح دائماً إلا إذا استلم الكابتن الطلب
                     let isCancelable = true;
+                    if (status === 'picked_up' || status === 'في الطريق' || status === 'completed') {
+                        isCancelable = false; 
+                    }
 
                     if (driverPhone && driverPhone !== "pending_driver" && driverPhone !== "manual_pending") {
-                        isCancelable = false; 
                         const dInfo = data.drivers.find(d => String(d[2]) === String(driverPhone));
                         if(dInfo) driverName = dInfo[1];
                         
@@ -992,10 +1019,14 @@
                                 <span class="fw-black text-dark fs-5">طلب #${orderId}</span>
                                 <div class="mt-1 small fw-bold text-muted"><i data-lucide="clock" size="12"></i> أُرسل: ${orderTimeStrFormat}</div>
                             </div>
-                            ${isCancelable ? 
-                                `<button class="btn-cancel-grace mt-1" onclick="cancelOrderGrace('${orderId}')"><i data-lucide="x" size="14"></i> إلغاء الطلب</button>` : 
-                                `<button class="btn-call-mini mt-1" onclick="window.open('tel:${driverPhone}')"><i data-lucide="phone" size="16"></i></button>`
-                            }
+                            <div class="d-flex flex-column gap-2 align-items-end">
+                                ${driverPhone && driverPhone !== "pending_driver" && driverPhone !== "manual_pending" ? 
+                                    `<button class="btn-call-mini" onclick="window.open('tel:${driverPhone}')"><i data-lucide="phone" size="16"></i></button>` : ''
+                                }
+                                ${isCancelable ? 
+                                    `<button class="btn-cancel-grace mt-1" onclick="cancelOrderGrace('${orderId}')"><i data-lucide="x" size="14"></i> إلغاء</button>` : ''
+                                }
+                            </div>
                         </div>
                         
                         <div class="py-2 d-flex flex-column gap-1">
