@@ -1,6 +1,31 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
+    <script>
+        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 1.3) ---
+        const CURRENT_APP_VERSION = "1.3"; 
+        if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
+            console.log("نسخة قديمة مكتشفة... جاري التحديث الإجباري والتطهير!");
+            
+            localStorage.setItem('hut_app_version', CURRENT_APP_VERSION);
+            
+            if ('caches' in window) {
+                caches.keys().then(function(names) {
+                    for (let name of names) caches.delete(name);
+                });
+            }
+            
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                    for(let registration of registrations) {
+                        registration.update();
+                    }
+                });
+            }
+            
+            window.location.reload(true);
+        }
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>كباتن سفيان | نظام الحوت</title>
@@ -109,9 +134,9 @@
     <h5 class="fw-bold" id="loadingText" style="color: white; text-shadow: 0 2px 5px rgba(0,0,0,0.5);">جاري التحقق من موقعك...</h5>
 </div>
 
-<audio id="alertSound" loop src="https://actions.google.com/sounds/v1/alarms/beep_loop.ogg"></audio>
-<audio id="doubleOrderSound" loop src="https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg"></audio>
-<audio id="cancelSound" src="https://actions.google.com/sounds/v1/alarms/bugle_tune.ogg"></audio>
+<audio id="alertSound" loop src="https://actions.google.com/sounds/v1/alarms/submarine_dive_horn.ogg"></audio>
+<audio id="doubleOrderSound" loop src="https://actions.google.com/sounds/v1/alarms/bugle_tune.ogg"></audio>
+<audio id="cancelSound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg"></audio>
 <audio id="welcomeSound" src="https://actions.google.com/sounds/v1/water/water_drop.ogg"></audio> 
 
 <div id="loginPage" class="login-wrapper">
@@ -325,6 +350,15 @@
                 Notification.requestPermission();
             }
         }
+
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                function(pos) { console.log("تم منح إذن الموقع بنجاح"); },
+                function(err) { console.log("تم رفض الموقع"); },
+                { enableHighAccuracy: true, maximumAge: 0 }
+            );
+        }
+
         authAction();
     }
 
@@ -435,7 +469,7 @@
         const txt = document.getElementById('waitingStatusText');
         txt.innerText = "جاري الاستعلام التلقائي...";
 
-        if(data.status === "active") {
+        if(data.status === "active" || data.status === "inactive") {
             clearInterval(waitingPollingTimer);
             localStorage.removeItem('hut_driver_pending');
             let rawPhone = document.getElementById('driverPhone').value.trim() || localStorage.getItem('hut_driver_pending');
@@ -461,7 +495,7 @@
         let rawPhone = document.getElementById('driverPhone').value.trim();
         let phone = rawPhone.startsWith('0') ? rawPhone.substring(1) : rawPhone;
         
-        if(data.status === "active") {
+        if(data.status === "active" || data.status === "inactive") {
             driverData = { phone: phone, name: data.name, timestamp: Date.now() }; 
             localStorage.setItem('hut_driver', JSON.stringify(driverData));
             localStorage.setItem('hut_driver_session', JSON.stringify(driverData)); 
@@ -542,7 +576,6 @@
         lucide.createIcons();
     }
 
-    // 🔴 1. دالة التحديث الصارمة مع الكول باك (Strict Sync)
     function updateStatusOnServer(status, type="ORDER", explicitId=null, callback=null) {
         const callbackName = 'cb_' + Date.now() + Math.floor(Math.random() * 1000);
         
@@ -862,7 +895,6 @@
         }
     }
 
-    // 🔴 2. دالة التسليم المحدثة لتأكيد الوصول (Strict Sync)
     function proceedToFinish(id) {
         if(confirm("تأكيد إتمام التوصيل للزبون واستلام المبلغ؟")) {
             showLoading(true, "جاري إرسال التأكيد للإدارة..."); 
@@ -936,9 +968,8 @@
             let resBtns = '';
             if(order.resPhone) resBtns += `<button class="btn-call-mini" style="background: #fffbeb; color: #f59e0b; border-color: #f59e0b;" onclick="window.open('tel:${order.resPhone}')"><i data-lucide="phone" size="16"></i></button>`;
             
-            // 🔴 3. الرابط الرسمي المباشر لخرائط جوجل
             if(order.resLat && order.resLng && order.resLat !== 0) {
-                resBtns += `<button class="btn-call-mini" style="background: #eff6ff; color: #3b82f6; border-color: #3b82f6;" onclick="window.open('https://maps.google.com/?q=${order.resLat},${order.resLng}', '_blank')"><i data-lucide="navigation" size="16"></i></button>`;
+                resBtns += `<button class="btn-call-mini" style="background: #eff6ff; color: #3b82f6; border-color: #3b82f6;" onclick="window.open('https://www.google.com/maps/dir/?api=1&destination=......{order.resLat},${order.resLng}', '_blank')"><i data-lucide="navigation" size="16"></i></button>`;
             }
             
             const cardBorder = activeOrders.length > 1 ? 'border-color: #c4b5fd; border-top-color: #8b5cf6;' : '';
