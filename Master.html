@@ -23,6 +23,9 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
+    <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
 
     <style>
         :root { --sidebar-width: 280px; --primary-blue: #1e3a8a; --accent-blue: #3b82f6; --bg-light: #f8fafc; --card-bg: #ffffff; --text-main: #0f172a; }
@@ -107,6 +110,10 @@
         .perf-green { background-color: #10b981; }
         .perf-yellow { background-color: #f59e0b; }
         .perf-red { background-color: #ef4444; }
+
+        /* Map Marker Pulse */
+        .marker-pulse { border-radius: 50%; border: 3px solid white; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); animation: pulseMarker 2s infinite; }
+        @keyframes pulseMarker { 0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); } 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }
 
         /* Optimistic UI Loading State */
         .btn-loading { opacity: 0.7; pointer-events: none; position: relative; }
@@ -283,13 +290,13 @@
     const API_URL = "https://script.google.com/macros/s/AKfycbxWySjqwjNbW5RNBZUSCR6cm5PtL4yUrtRnnD31nJv_FqVWa3gd2hOOFRe7o0jqX9STRQ/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
-    let map, heatLayer, driverMarkers = [], trackPolyline = null;
+    let map, heatLayer, driverClusterGroup, trackPolyline = null;
     let globalData = null; 
     let currentRadarFilter = 'all';
     
     let masterPassword = ""; 
     let lastPendingCount = 0; 
-    let driverPerformanceCache = {}; // تخزين تقييم السواق
+    let driverPerformanceCache = {};
 
     function showToast(msg, type = 'success') {
         const container = document.getElementById('toast-container');
@@ -320,16 +327,13 @@
         showTab({currentTarget: document.querySelector('.nav-item')}, 'live');
     }
 
-    // حساب تقييم السائق (السرعة)
     function calculateDriverPerformance(ordersData, driverPhone) {
         let totalTime = 0; let count = 0;
         ordersData.slice(1).forEach(o => {
             if(o[6] === driverPhone && (o[5] === 'completed' || o[5] === 'مكتمل' || o[5] === 'settled')) {
-                // افتراض: الطلب يكتمل عادة خلال ساعة كحد أقصى. سنقوم بتقييم بسيط بناء على عدد الطلبات המكتملة
                 count++;
             }
         });
-        // تقييم مبسط: إذا أنجز أكثر من 5 فهو أخضر، بين 1 و 5 أصفر، صفر أحمر (للتوضيح فقط)
         if (count >= 5) return 'perf-green';
         if (count > 0) return 'perf-yellow';
         return 'perf-red';
@@ -416,7 +420,7 @@
                 currentPendingCount++;
                 const orderTime = new Date(o[7]);
                 const diffMins = (new Date() - orderTime) / 60000;
-                if (diffMins >= 3) hasEmergency = true; // نداء سيادي بعد 3 دقائق
+                if (diffMins >= 3) hasEmergency = true; 
             }
         });
 
@@ -463,16 +467,17 @@
         renderControlCards('resListContainer', data.restaurants, 'store', 'RESTAURANT', 2, resDebts, 1, resUnpaidCounts); 
         renderControlCards('driverListContainer', data.drivers, 'user', 'DRIVER', 2, driverDebts, 2, null, true); 
         
-        if (map && heatLayer) {
+        if (map && heatLayer && driverClusterGroup) {
             const heatMapPoints = [];
+            driverClusterGroup.clearLayers(); // تنظيف الطبقة المجمعة
+            
             data.restaurants.slice(1).forEach(r => {
                 if(r[4] === 'active' && r[6] && r[7]) { 
                     const lat = parseFloat(r[6]), lng = parseFloat(r[7]);
                     if(!isNaN(lat) && !isNaN(lng)) heatMapPoints.push([lat, lng, 0.5]);
                 }
             });
-            driverMarkers.forEach(m => map.removeLayer(m));
-            driverMarkers = [];
+
             data.drivers.slice(1).forEach(d => {
                 if(d[4] === 'active' && d[5] && d[6]) { 
                     const lat = parseFloat(d[5]), lng = parseFloat(d[6]);
@@ -481,19 +486,20 @@
                         
                         const perfClass = driverPerformanceCache[String(d[2])] || 'perf-yellow';
                         let colorHex = '#f59e0b';
-                        if(perfClass === 'perf-green') colorHex = '#10b981';
+                        let pulseClass = '';
+                        if(perfClass === 'perf-green') { colorHex = '#10b981'; pulseClass = 'marker-pulse'; }
                         if(perfClass === 'perf-red') colorHex = '#ef4444';
 
                         const driverIcon = L.divIcon({
                             className: 'custom-div-icon',
-                            html: `<div style="background-color: ${colorHex}; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>`,
+                            html: `<div class="${pulseClass}" style="background-color: ${colorHex}; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>`,
                             iconSize: [16, 16],
                             iconAnchor: [8, 8]
                         });
                         const marker = L.marker([lat, lng], {icon: driverIcon})
-                            .bindPopup(`<div class="text-center fw-bold" style="font-family:'Cairo';"><span style="color:${colorHex}">الكابتن:</span> ${d[1]}<br><span class="text-primary">هاتف:</span> ${d[2]}</div>`)
-                            .addTo(map);
-                        driverMarkers.push(marker);
+                            .bindPopup(`<div class="text-center fw-bold" style="font-family:'Cairo';"><span style="color:${colorHex}">الكابتن:</span> ${d[1]}<br><span class="text-primary">هاتف:</span> ${d[2]}</div>`);
+                        
+                        driverClusterGroup.addLayer(marker); // إضافة الكابتن لمجموعة التجميع الذكي
                     }
                 }
             });
@@ -701,7 +707,6 @@
                 map.flyTo([dLat, dLng], 14, { duration: 1.5 });
                 window.scrollTo({ top: document.getElementById('adminMap').offsetTop - 20, behavior: 'smooth' });
 
-                // رسم مسار بين الكابتن والمطعم
                 if(restaurant && restaurant[6] && restaurant[7]) {
                     const rLat = parseFloat(restaurant[6]); const rLng = parseFloat(restaurant[7]);
                     if(!isNaN(rLat) && !isNaN(rLng)) {
@@ -718,7 +723,6 @@
         if(!driverPhone) return;
         element.classList.add('btn-loading');
         
-        // إخفاء الكارد فوراً لخلق شعور بالسرعة
         const card = document.getElementById(`order-${orderId}`);
         if(card) card.style.opacity = '0.5';
 
@@ -735,7 +739,6 @@
         if(!confirm(`تأكيد تصفير ديون (${id})؟`)) return;
         
         element.classList.add('btn-loading');
-        // تصفير الرقم على الشاشة فوراً
         const debtBadge = element.closest('.stat-widget').querySelector('.bg-danger span');
         if(debtBadge) debtBadge.innerHTML = `غير مسدد: 0 د.ع`;
 
@@ -753,7 +756,6 @@
         
         if (cmd === 'COMPLETE' || cmd === 'DELETE') {
             if(!confirm(cmd === 'COMPLETE' ? "تأكيد الإتمام القسري؟" : "تأكيد الحذف؟")) return;
-            // إخفاء الكارد فوراً
             const card = document.getElementById(`order-${id}`);
             if(card) {
                 card.style.transition = '0.3s';
@@ -774,11 +776,10 @@
 
     window.silentCallback = function(response) {
         if(response.success) {
-            // تحديث البيانات في الخلفية بدون إزعاج
             // refreshData(); سيقوم التحديث التلقائي بالمهمة لتجنب وميض الشاشة
         } else {
             showToast("خطأ: " + (response.msg || response.error), "error");
-            refreshData(); // إعادة الشاشة لوضعها الصحيح
+            refreshData(); 
         }
     };
     // -----------------------------
@@ -936,6 +937,12 @@
         document.getElementById('tab-' + name).classList.remove('d-none');
         e.currentTarget.classList.add('active');
         lucide.createIcons();
+        
+        // إصلاح العمى البصري للخريطة عند فتح تبويب الرصد الميداني
+        if(name === 'live' && map) {
+            setTimeout(() => { map.invalidateSize(); }, 300);
+        }
+        
         if(window.innerWidth <= 1100) toggleSidebar();
     }
 
@@ -948,8 +955,9 @@
 
         L.control.zoom({ position: 'bottomleft' }).addTo(map);
 
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; OpenStreetMap',
+        // V17: ستايل الخريطة الفاخر (Positron Light Style)
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; OpenStreetMap & CartoDB',
             maxZoom: 19
         }).addTo(map);
 
@@ -959,6 +967,22 @@
             maxZoom: 14,
             gradient: {0.4: 'blue', 0.6: 'cyan', 0.7: 'lime', 0.8: 'yellow', 1.0: 'red'}
         }).addTo(map);
+
+        // V17: تهيئة نظام التجميع الذكي للكباتن
+        driverClusterGroup = L.markerClusterGroup({
+            iconCreateFunction: function(cluster) {
+                return L.divIcon({ 
+                    html: '<div style="background-color: var(--primary-blue); color: white; width: 35px; height: 35px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900; border: 3px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">' + cluster.getChildCount() + '</div>',
+                    className: 'custom-cluster-icon',
+                    iconSize: L.point(35, 35)
+                });
+            },
+            maxClusterRadius: 40 // المسافة التي يبدأ عندها التجميع
+        });
+        map.addLayer(driverClusterGroup);
+        
+        // إصلاح أولي لحجم الخريطة
+        setTimeout(() => { map.invalidateSize(); }, 1000);
     }
 </script>
 
