@@ -63,7 +63,7 @@
             border: 1px solid rgba(0,0,0,0.05); box-shadow: 0 15px 35px rgba(0,0,0,0.05); margin-top: -30px; margin-bottom: 20px;
         }
         
-        .login-card { background: var(--card-bg); border-radius: 30px; padding: 40px; border: 1px solid rgba(0,0,0,0.05); box-shadow: 0 20px 40px rgba(0,0,0,0.08); }
+        .login-card { background: var(--card-bg); border-radius: 30px; padding: 40px; border: 1px solid rgba(0,0,0,0.05); box-shadow: 0 20px 40px rgba(0,0,0,0.08); position: relative;}
         .form-label { font-weight: 700; color: #64748b; font-size: 0.9rem; margin-bottom: 10px; display: block; text-align: right; }
         
         .custom-input {
@@ -124,6 +124,12 @@
         /* تنسيق خريطة التحديد */
         #pickerMap { height: 250px; border-radius: 18px; border: 2px solid #cbd5e1; z-index: 1; position: relative; }
         .map-crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -100%); z-index: 1000; pointer-events: none; width: 40px; height: 40px; }
+
+        /* Waiting Room Pulse */
+        .waiting-pulse { animation: softPulse 2s infinite; display: inline-block;}
+        @keyframes softPulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.7; transform: scale(0.95); } 100% { opacity: 1; transform: scale(1); } }
+        .btn-refresh-waiting { background: #f1f5f9; color: var(--text-muted); border: 1px solid #e2e8f0; font-weight: 700; border-radius: 20px; padding: 10px 20px; transition: 0.2s; }
+        .btn-refresh-waiting:active { background: #e2e8f0; }
     </style>
 </head>
 <body>
@@ -132,6 +138,8 @@
     <div class="spinner-grow text-warning" role="status"></div>
     <span class="mt-3 fw-bold" id="loadingText">جاري المزامنة مع النظام...</span>
 </div>
+
+<audio id="welcomeSound" src="https://actions.google.com/sounds/v1/water/water_drop.ogg"></audio>
 
 <div id="loginSection" class="container py-5">
     <div class="text-center mb-5">
@@ -200,12 +208,18 @@
             </div>
 
             <div class="login-card hidden-section text-center" id="waitingBox">
-                <div class="d-inline-block p-4 rounded-circle mb-3" style="background: rgba(245, 158, 11, 0.1);">
-                    <i data-lucide="clock" size="60" color="#d97706"></i>
+                <div class="waiting-pulse mb-3 bg-warning bg-opacity-10 p-4 rounded-circle">
+                    <i data-lucide="hourglass" size="60" class="text-warning"></i>
                 </div>
-                <h3 class="fw-black mb-3 text-dark">الطلب قيد المراجعة</h3>
-                <p class="text-muted fw-bold mb-0">تم إرسال بيانات المطعم للإدارة المركزية.<br>يرجى الانتظار حتى يتم تفعيل الشراكة.</p>
-                <button class="btn btn-outline-secondary rounded-pill mt-4 fw-bold px-4" onclick="location.reload()">تحديث الحالة</button>
+                <h3 class="fw-black mb-2 text-dark">أنت في غرفة الانتظار</h3>
+                <p class="text-muted fw-bold mb-4" style="font-size: 0.9rem;">الطلب مسجل وقيد المراجعة.<br>النظام يفحص حالتك تلقائياً الآن، ستدخل فور موافقة الإدارة.</p>
+                
+                <div class="d-flex align-items-center justify-content-center gap-2 mb-4">
+                    <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                    <span class="text-primary fw-bold small" id="waitingStatusText">جاري الاستعلام التلقائي...</span>
+                </div>
+
+                <button class="btn-refresh-waiting mt-2 w-100" onclick="checkWaitingStatus(true)">تحديث يدوي <i data-lucide="refresh-cw" size="16" class="ms-1"></i></button>
             </div>
         </div>
     </div>
@@ -358,8 +372,8 @@
 <script>
     lucide.createIcons();
 
-    // الرابط السحابي (النسخة V15) 🚀
-    const API_URL = "https://script.google.com/macros/s/AKfycbyjwuBnbd3bwB4joB2uNNKUwsAWhIDQiIkdsZ3rF4Jo4oxUwDeuYGYFuAVBK8MWNnwLCA/exec";
+    // --- الرابط السحابي الجديد ---
+    const API_URL = "https://script.google.com/macros/s/AKfycbxWySjqwjNbW5RNBZUSCR6cm5PtL4yUrtRnnD31nJv_FqVWa3gd2hOOFRe7o0jqX9STRQ/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
     let currentResName = "";
@@ -368,6 +382,7 @@
     let base64Receipt = null;
     let dataRefreshInterval;
     let myCustomPriceList = {};
+    let waitingPollingTimer = null; // تايمر غرفة الانتظار
     
     // متغيرات خريطة التسجيل
     let pickerMap;
@@ -388,7 +403,6 @@
             regLng = pickerMap.getCenter().lng;
         });
 
-        // محاولة جلب الموقع تلقائيا عند التشغيل
         if(navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(pos => {
                 regLat = pos.coords.latitude;
@@ -397,7 +411,6 @@
             }, null, { timeout: 5000 });
         }
         
-        // حل مشكلة المساحة الرمادية في Leaflet
         let mapResizeInterval = setInterval(() => {
             if(document.getElementById('registerFields').style.display !== 'none') {
                 pickerMap.invalidateSize();
@@ -406,7 +419,6 @@
         setTimeout(() => clearInterval(mapResizeInterval), 3000);
     }
 
-    // دالة زر تحديد الموقع اليدوي
     function forceLocateMe() {
         if(navigator.geolocation) {
             showLoading(true, "جاري تحديد موقعك...");
@@ -521,19 +533,16 @@
         }
     }
 
-    // دالة تحويل الأرقام العربية إلى إنجليزية
     function convertArabicNumerals(str) {
         const arabicNumbers = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
         return str.replace(/[٠-٩]/g, w => arabicNumbers.indexOf(w));
     }
 
-    // الخوارزمية الذكية والجديدة لقراءة اللستة
     function parseCustomPriceList(rawText) {
         if (!rawText || rawText.trim() === "") return "{}";
         let resultObj = {};
         
         let textWithEngNums = convertArabicNumerals(rawText);
-        // فلترة الإيموجيات بطريقة لا تدمر الكلمات الملتصقة
         let cleanText = textWithEngNums.replace(/[\u{1F300}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, ' ');
         let lines = cleanText.split('\n');
         
@@ -541,7 +550,6 @@
             if(line.trim() === "" || line.includes("تسعيرة") || line.includes("الادارة")) return;
             let subLines = line.split('+'); 
             subLines.forEach(sub => {
-                // البحث العكسي: جلب السعر من نهاية الجملة واعتبار ما قبله اسم المنطقة
                 let match = sub.trim().match(/(.+?)\s*(\d+)\s*$/);
                 if (match && match.length >= 3) {
                     let area = match[1].replace(/[-._!@#$%^&*()=]+$/g, '').trim(); 
@@ -561,8 +569,11 @@
 
     document.addEventListener('contextmenu', event => event.preventDefault());
 
+    // --- نظام الذاكرة اللاصقة ---
     function checkSavedSession() {
         const sessionStr = localStorage.getItem('hut_res_session');
+        const pendingStr = localStorage.getItem('hut_res_pending');
+        
         if (sessionStr) {
             try {
                 const session = JSON.parse(sessionStr);
@@ -574,6 +585,10 @@
                     return true;
                 }
             } catch(e) {}
+        } else if (pendingStr) {
+            document.getElementById('checkPhone').value = pendingStr;
+            showWaitingRoom();
+            return true;
         }
         return false;
     }
@@ -686,7 +701,6 @@
 
             if(!name || !area || !comm) return alert("يرجى ملء جميع التفاصيل، وتحديد موقعك على الخريطة.");
             
-            // حماية تسجيل الموقع الخاطئ
             if(Math.abs(regLat - 35.468) < 0.001 && Math.abs(regLng - 44.392) < 0.001) {
                 return alert("الرجاء سحب الخريطة وتحديد موقع مطعمك الفعلي بدلاً من المركز الافتراضي، أو اضغط زر 'حدد موقعي'.");
             }
@@ -725,10 +739,70 @@
         .then(() => {
             showLoading(false);
             localStorage.setItem('hut_res_phone', phone);
-            document.getElementById('authBox').classList.add('hidden-section');
-            document.getElementById('waitingBox').classList.remove('hidden-section');
+            localStorage.setItem('hut_res_pending', phone);
+            showWaitingRoom();
         }).catch(() => { showLoading(false); alert("حدث خطأ أثناء الإرسال."); });
     }
+
+    // --- غرفة الانتظار للمطعم ---
+    function showWaitingRoom() {
+        document.getElementById('authBox').classList.add('hidden-section');
+        document.getElementById('waitingBox').classList.remove('hidden-section');
+        
+        if(waitingPollingTimer) clearInterval(waitingPollingTimer);
+        waitingPollingTimer = setInterval(() => checkWaitingStatus(false), 15000); 
+    }
+
+    function checkWaitingStatus(isManual = false) {
+        let rawPhone = document.getElementById('checkPhone').value.trim() || localStorage.getItem('hut_res_pending');
+        if(!rawPhone) return;
+        let phone = rawPhone.startsWith('0') ? rawPhone.substring(1) : rawPhone;
+
+        if(isManual) {
+            const txt = document.getElementById('waitingStatusText');
+            txt.innerText = "جاري التحقق اليدوي...";
+        }
+
+        const script = document.createElement('script');
+        script.src = `${API_URL}?action=checkRes&phone=${phone}&token=${API_TOKEN}&callback=handleWaitingCheck&ts=${Date.now()}`;
+        script.onload = () => script.remove();
+        script.onerror = () => script.remove();
+        document.body.appendChild(script);
+    }
+
+    window.handleWaitingCheck = function(data) {
+        const txt = document.getElementById('waitingStatusText');
+        txt.innerText = "جاري الاستعلام التلقائي...";
+
+        if(data.status === "active") {
+            clearInterval(waitingPollingTimer);
+            localStorage.removeItem('hut_res_pending');
+            
+            let rawPhone = document.getElementById('checkPhone').value.trim() || localStorage.getItem('hut_res_pending');
+            let phone = rawPhone.startsWith('0') ? rawPhone.substring(1) : rawPhone;
+            
+            currentResName = data.name;
+            try {
+                if (data.priceList && data.priceList.trim() !== "") {
+                    myCustomPriceList = JSON.parse(data.priceList);
+                }
+            } catch(e) {}
+            
+            const sessionData = { phone: phone, name: data.name, timestamp: Date.now() };
+            localStorage.setItem('hut_res_session', JSON.stringify(sessionData));
+            
+            const welcomeAudio = document.getElementById('welcomeSound');
+            if(welcomeAudio) { welcomeAudio.currentTime = 0; welcomeAudio.play().catch(e=>{}); }
+
+            document.getElementById('waitingBox').classList.add('hidden-section');
+            enterDashboard();
+        } else if (data.status === "banned") {
+            clearInterval(waitingPollingTimer);
+            localStorage.removeItem('hut_res_pending');
+            alert("⚠️ عذراً، حسابك محظور من قبل الإدارة.");
+            location.reload();
+        }
+    };
 
     window.handleLogin = function(data) {
         showLoading(false);
@@ -738,6 +812,7 @@
         if(data.status === "active") {
             currentResName = data.name;
             localStorage.setItem('hut_res_phone', phone);
+            localStorage.removeItem('hut_res_pending');
             
             try {
                 if (data.priceList && data.priceList.trim() !== "") {
@@ -751,8 +826,8 @@
             enterDashboard();
         } else if(data.status === "pending" || data.status === "waiting") {
             localStorage.setItem('hut_res_phone', phone);
-            document.getElementById('authBox').classList.add('hidden-section');
-            document.getElementById('waitingBox').classList.remove('hidden-section');
+            localStorage.setItem('hut_res_pending', phone);
+            showWaitingRoom();
         } else if(data.status === "banned") {
             alert("⚠️ عذراً، الحساب الخاص بك محظور من قبل الإدارة.");
             localStorage.clear();
@@ -817,7 +892,6 @@
 
         const resInfo = data.restaurants.find(r => r[1] === currentResName);
         
-        // --- نظام الطرد المركزي (Force Logout) ---
         if(!resInfo || resInfo[4] !== 'active') {
             alert("⚠️ تم إيقاف أو حذف حساب المطعم من قبل الإدارة.");
             localStorage.clear();
@@ -825,7 +899,6 @@
             location.reload();
             return;
         }
-        // ------------------------------------------
 
         if (Object.keys(myCustomPriceList).length === 0 && resInfo[12] && resInfo[12].trim() !== "") {
             try {
@@ -898,7 +971,7 @@
                     let fillWidth = "0%";
                     let isCancelable = true;
 
-                    if (driverPhone && driverPhone !== "pending_driver") {
+                    if (driverPhone && driverPhone !== "pending_driver" && driverPhone !== "manual_pending") {
                         isCancelable = false; 
                         const dInfo = data.drivers.find(d => String(d[2]) === String(driverPhone));
                         if(dInfo) driverName = dInfo[1];
@@ -972,7 +1045,6 @@
         let finalArea = document.getElementById('customerArea').value;
         let areaWithHint = finalArea;
 
-        // دمج الإدخال اليدوي للمناطق الجديدة
         if (finalArea === "أخرى") {
             let cName = document.getElementById('customAreaName').value.trim();
             let cPrice = document.getElementById('customAreaPrice').value.trim();
@@ -1015,7 +1087,6 @@
         document.getElementById('orderStatusBox').classList.remove('hidden-section');
         document.getElementById('statusMsg').innerHTML = `<span class="fw-bold">تم الإطلاق بنجاح!</span><br><span class="text-warning small fw-bold">الطلب الآن يسبح في الرادار بانتظار كابتن 📡</span>`;
         
-        // تفريغ الحقول بعد الإرسال
         document.getElementById('customerPhone').value = "";
         document.getElementById('customerDetails').value = "";
         document.getElementById('orderPrice').value = "";
