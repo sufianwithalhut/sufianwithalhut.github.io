@@ -26,6 +26,15 @@
             flex-direction: column; color: white; text-align: center;
         }
 
+        /* جدار الصلاحيات الإجباري */
+        #permissionOverlay {
+            position: fixed; inset: 0; background: rgba(15, 23, 42, 0.98); backdrop-filter: blur(10px);
+            z-index: 30000; display: flex; align-items: center; justify-content: center; flex-direction: column;
+            color: white; text-align: center; padding: 25px;
+        }
+        .permission-icon { animation: shakeAlert 0.5s ease-in-out infinite alternate; }
+        @keyframes shakeAlert { 0% { transform: translateX(-5px); } 100% { transform: translateX(5px); } }
+
         .login-wrapper { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%); padding: 20px; padding-bottom: env(safe-area-inset-bottom); }
         .login-card { background: var(--card-bg); border-radius: 30px; padding: 40px; width: 100%; max-width: 400px; box-shadow: 0 20px 40px rgba(0,0,0,0.08); text-align: center; position: relative; }
         .phone-input { background: #f1f5f9; border: 2px solid transparent; border-radius: 20px; padding: 18px; font-weight: 900; font-size: 1.5rem; text-align: center; color: var(--primary-blue); letter-spacing: 2px; transition: 0.3s; width: 100%; margin-bottom: 15px;}
@@ -86,6 +95,14 @@
     </style>
 </head>
 <body>
+
+<div id="permissionOverlay" class="hidden">
+    <i data-lucide="map-pin-off" size="70" class="text-danger mb-4 permission-icon"></i>
+    <h2 class="fw-black text-danger mb-3">عذراً كابتن!</h2>
+    <p class="fw-bold mb-4 fs-5">الرادار مغلق لأنك لم تسمح بـ "الموقع الدقيق".</p>
+    <p class="text-white-50 mb-4 small px-3">نظام الحوت يعتمد على التوزيع العادل ولن يعمل بدون GPS.<br>يرجى الذهاب لإعدادات المتصفح/الهاتف وإعطاء صلاحية الموقع (Location) للبدء بالعمل.</p>
+    <button class="btn btn-light rounded-pill px-5 py-3 fw-bold fs-5 text-primary shadow-lg" onclick="location.reload()">تحديث بعد تفعيل الموقع</button>
+</div>
 
 <div id="loadingOverlay">
     <div class="spinner-grow text-primary mb-3" role="status" style="width: 3rem; height: 3rem;"></div>
@@ -239,7 +256,6 @@
 <script>
     lucide.createIcons();
 
-    // --- الرابط السحابي الجديد ---
     const API_URL = "https://script.google.com/macros/s/AKfycbxWySjqwjNbW5RNBZUSCR6cm5PtL4yUrtRnnD31nJv_FqVWa3gd2hOOFRe7o0jqX9STRQ/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
@@ -251,7 +267,7 @@
     let checkOrdersTimer = null; 
     let currentPollingRate = 20000; 
     let wakeLock = null; 
-    let waitingPollingTimer = null; // تايمر غرفة الانتظار
+    let waitingPollingTimer = null;
 
     function showLoading(show, text="جاري التحقق...") {
         const overlay = document.getElementById('loadingOverlay');
@@ -303,14 +319,18 @@
                 }
             }
         });
-        if ("Notification" in window) Notification.requestPermission();
+        
+        if ("Notification" in window) {
+            if (Notification.permission !== "granted" && Notification.permission !== "denied") {
+                Notification.requestPermission();
+            }
+        }
         authAction();
     }
 
-    // --- نظام الذاكرة اللاصقة (Sticky Session) ---
     function checkSavedSession() {
         const sessionStr = localStorage.getItem('hut_driver_session');
-        const pendingStr = localStorage.getItem('hut_driver_pending'); // التحقق إذا كان في غرفة الانتظار
+        const pendingStr = localStorage.getItem('hut_driver_pending');
         
         if (sessionStr) {
             try {
@@ -327,7 +347,6 @@
                 }
             } catch(e) {}
         } else if (pendingStr) {
-            // الكابتن كان في غرفة الانتظار وأغلق التطبيق، إعادته للغرفة مباشرة
             document.getElementById('driverPhone').value = pendingStr;
             showWaitingRoom();
             return true;
@@ -372,7 +391,7 @@
             const payload = { action: 'DRIVER_REG', token: API_TOKEN, name: name, phone: phone };
             fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) })
             .then(() => {
-                localStorage.setItem('hut_driver_pending', phone); // حفظ حالة الانتظار
+                localStorage.setItem('hut_driver_pending', phone);
                 showWaitingRoom();
             }).catch(() => {
                 alert("ضعف في الاتصال بالشبكة.");
@@ -388,12 +407,9 @@
         document.body.appendChild(script);
     }
 
-    // --- غرفة الانتظار الحية ---
     function showWaitingRoom() {
         document.getElementById('authBox').classList.add('hidden');
         document.getElementById('waitingBox').classList.remove('hidden');
-        
-        // بدء النبض للاستعلام التلقائي
         if(waitingPollingTimer) clearInterval(waitingPollingTimer);
         waitingPollingTimer = setInterval(() => checkWaitingStatus(false), 15000); 
     }
@@ -420,18 +436,14 @@
         txt.innerText = "جاري الاستعلام التلقائي...";
 
         if(data.status === "active") {
-            // تم القبول! 
             clearInterval(waitingPollingTimer);
-            localStorage.removeItem('hut_driver_pending'); // مسح حالة الانتظار
-            
+            localStorage.removeItem('hut_driver_pending');
             let rawPhone = document.getElementById('driverPhone').value.trim() || localStorage.getItem('hut_driver_pending');
             let phone = rawPhone.startsWith('0') ? rawPhone.substring(1) : rawPhone;
-            
             driverData = { phone: phone, name: data.name, timestamp: Date.now() }; 
             localStorage.setItem('hut_driver', JSON.stringify(driverData));
             localStorage.setItem('hut_driver_session', JSON.stringify(driverData)); 
             
-            // صوت ترحيبي
             const welcomeAudio = document.getElementById('welcomeSound');
             if(welcomeAudio) { welcomeAudio.currentTime = 0; welcomeAudio.play().catch(e=>{}); }
 
@@ -443,7 +455,6 @@
             alert("⚠️ عذراً، حسابك محظور من قبل الإدارة.");
             location.reload();
         }
-        // إذا كان لا يزال pending، لا نفعل شيئاً ونتركه في الغرفة
     };
 
     window.handleLoginCheck = function(data) {
@@ -510,6 +521,13 @@
             updateStatusOnServer('active', 'DRIVER', driverData.phone); 
             adjustPollingRate(); 
             requestWakeLock(); 
+            
+            if(navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(()=>{
+                    document.getElementById('permissionOverlay').classList.add('hidden');
+                }, ()=>{}, {enableHighAccuracy: true});
+            }
+
         } else {
             badge.className = "status-badge offline";
             badge.innerHTML = `<i data-lucide="coffee" size="14"></i> <span id="onlineStatusText">في استراحة</span>`;
@@ -524,14 +542,26 @@
         lucide.createIcons();
     }
 
-    function updateStatusOnServer(status, type="ORDER", explicitId=null) {
-        // [التصحيح الميداني]: ترتيب المعاملات يجب أن يكون (status, type, id) 
-        // وليس (type, id, status) لكي تتطابق مع دالة السيرفر
-        const url = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${explicitId}&status=${status}&token=${API_TOKEN}`;
+    // 🔴 1. دالة التحديث الصارمة مع الكول باك (Strict Sync)
+    function updateStatusOnServer(status, type="ORDER", explicitId=null, callback=null) {
+        const callbackName = 'cb_' + Date.now() + Math.floor(Math.random() * 1000);
+        
+        window[callbackName] = function(data) {
+            if(callback) callback(data);
+            delete window[callbackName]; 
+        };
+
+        const url = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${explicitId}&status=${status}&token=${API_TOKEN}&callback=${callbackName}&ts=${Date.now()}`;
         const script = document.createElement('script'); 
-        script.src = `${url}&callback=dummy&ts=${Date.now()}`; 
+        script.src = url; 
+        
         script.onload = () => script.remove();
-        script.onerror = () => script.remove();
+        script.onerror = () => { 
+            script.remove();
+            if(callback) callback({ success: false, error: 'network' });
+            delete window[callbackName];
+        };
+        
         document.body.appendChild(script);
     }
 
@@ -558,13 +588,28 @@
         setInterval(updateStats, 20000); 
         
         if(navigator.geolocation) {
-            navigator.geolocation.watchPosition(pos => {
-                if(!isOnline && activeOrders.length === 0) return; 
-                driverData.currentLat = pos.coords.latitude;
-                driverData.currentLng = pos.coords.longitude;
-                const url = `${API_URL}?action=DRIVER_UPDATE&phone=${driverData.phone}&lat=${pos.coords.latitude}&lng=${pos.coords.longitude}&token=${API_TOKEN}`;
-                fetch(url, { mode: 'no-cors' }).catch(()=>{});
-            }, null, { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 });
+            navigator.geolocation.watchPosition(
+                pos => {
+                    document.getElementById('permissionOverlay').classList.add('hidden');
+                    if(!isOnline && activeOrders.length === 0) return; 
+                    driverData.currentLat = pos.coords.latitude;
+                    driverData.currentLng = pos.coords.longitude;
+                    const url = `${API_URL}?action=DRIVER_UPDATE&phone=${driverData.phone}&lat=${pos.coords.latitude}&lng=${pos.coords.longitude}&token=${API_TOKEN}`;
+                    fetch(url, { mode: 'no-cors' }).catch(()=>{});
+                }, 
+                err => {
+                    if(err.code === 1 || err.code === 2) {
+                        document.getElementById('permissionOverlay').classList.remove('hidden');
+                        if(isOnline) {
+                            document.getElementById('onlineToggle').checked = false;
+                            toggleOnlineStatus(); 
+                        }
+                    }
+                }, 
+                { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+            );
+        } else {
+            document.getElementById('permissionOverlay').classList.remove('hidden');
         }
     }
 
@@ -734,7 +779,6 @@
             }
             
             displayActiveOrders();
-            // تصحيح الترتيب (status, type, id)
             updateStatusOnServer('accepted', "ORDER", newOrder.id); 
             
         } catch(e) {} finally { updateStats(); }
@@ -746,7 +790,6 @@
             order.state = newState;
             localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
             displayActiveOrders();
-            // تصحيح الترتيب (status, type, id)
             updateStatusOnServer(serverState, "ORDER", id);
         }
     }
@@ -819,18 +862,24 @@
         }
     }
 
+    // 🔴 2. دالة التسليم المحدثة لتأكيد الوصول (Strict Sync)
     function proceedToFinish(id) {
         if(confirm("تأكيد إتمام التوصيل للزبون واستلام المبلغ؟")) {
-            // [التصحيح الميداني]: وضع المعاملات بالترتيب الصحيح لدالة updateStatusOnServer
-            updateStatusOnServer('completed', "ORDER", id);
+            showLoading(true, "جاري إرسال التأكيد للإدارة..."); 
             
-            // تحديث الواجهة المحلية فوراً
-            activeOrders = activeOrders.filter(o => String(o.id) !== String(id)); 
-            localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
-            displayActiveOrders();
-            
-            // تحديث السجل والبيانات مع السيرفر
-            updateStats(); 
+            updateStatusOnServer('completed', "ORDER", id, function(response) {
+                showLoading(false); 
+                
+                if (response && response.error === 'network') {
+                    alert("❌ ضعف في شبكة الإنترنت! لم يصل التأكيد للإدارة، يرجى التأكد من الشبكة والمحاولة مرة أخرى.");
+                } else {
+                    activeOrders = activeOrders.filter(o => String(o.id) !== String(id)); 
+                    localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
+                    displayActiveOrders();
+                    
+                    updateStats(); 
+                }
+            });
         }
     }
 
@@ -887,9 +936,9 @@
             let resBtns = '';
             if(order.resPhone) resBtns += `<button class="btn-call-mini" style="background: #fffbeb; color: #f59e0b; border-color: #f59e0b;" onclick="window.open('tel:${order.resPhone}')"><i data-lucide="phone" size="16"></i></button>`;
             
-            // 🟢 التعديل الصحيح لرابط خرائط جوجل هنا 🟢
+            // 🔴 3. الرابط الرسمي المباشر لخرائط جوجل
             if(order.resLat && order.resLng && order.resLat !== 0) {
-                resBtns += `<button class="btn-call-mini" style="background: #eff6ff; color: #3b82f6; border-color: #3b82f6;" onclick="window.open('https://www.google.com/maps/dir/?api=1&destination=${order.resLat},${order.resLng}', '_blank')"><i data-lucide="navigation" size="16"></i></button>`;
+                resBtns += `<button class="btn-call-mini" style="background: #eff6ff; color: #3b82f6; border-color: #3b82f6;" onclick="window.open('https://maps.google.com/?q=${order.resLat},${order.resLng}', '_blank')"><i data-lucide="navigation" size="16"></i></button>`;
             }
             
             const cardBorder = activeOrders.length > 1 ? 'border-color: #c4b5fd; border-top-color: #8b5cf6;' : '';
