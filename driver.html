@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 1.7 - WebView Native) ---
-        const CURRENT_APP_VERSION = "1.7"; 
+        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 1.8 - الجسر السيادي للأندرويد) ---
+        const CURRENT_APP_VERSION = "1.8"; 
         
         if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة أندرويد جديدة... جاري تطهير الكاش القديم!");
@@ -763,15 +763,6 @@
 
     document.addEventListener('contextmenu', event => event.preventDefault());
 
-    document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden' && isOnline && driverData) {
-            updateStatusOnServerBackground('inactive', 'DRIVER', driverData.phone);
-        } else if (document.visibilityState === 'visible' && isOnline && driverData) {
-            requestWakeLock();
-            updateStatusOnServerBackground('active', 'DRIVER', driverData.phone);
-        }
-    });
-
     async function requestWakeLock() { 
         if ('wakeLock' in navigator) { 
             try { 
@@ -1056,7 +1047,6 @@
         }
     }
 
-    // 🟢 إرسال بصمت في الخلفية لتسريع الواجهة المتفائلة
     function updateStatusOnServerBackground(status, type="ORDER", explicitId=null) {
         const url = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${explicitId}&status=${status}&token=${API_TOKEN}&ts=${Date.now()}`;
         fetch(url, { mode: 'no-cors' }).catch(err => console.log('Offline - sync pending'));
@@ -1108,7 +1098,6 @@
                     const timeSinceLastUpdate = now - lastLocUpdateTs;
                     const distMoved = calculateDistance(lastSentLat, lastSentLng, currentLat, currentLng) * 1000; 
 
-                    // 🟢 الخنق الذكي (GPS Throttling) لتقليل استهلاك البطارية
                     if (timeSinceLastUpdate > 15000 || distMoved > 50) {
                         lastLocUpdateTs = now;
                         lastSentLat = currentLat;
@@ -1257,16 +1246,20 @@
             currentOrderData = data; 
             currentOrderData.expireTime = Date.now() + 60000; 
             
-            let audioId = activeOrders.length > 0 ? 'doubleOrderSound' : 'alertSound';
-            let audio = document.getElementById(audioId);
-            
             document.getElementById('alertTitleText').innerText = activeOrders.length > 0 ? "طلب مزدوج إضافي!" : "طلب جديد!";
             document.getElementById('alertResName').innerText = data.resName || 'غير متوفر';
             document.getElementById('alertArea').innerText = data.area || 'منطقة غير محددة';
             document.getElementById('orderAlertOverlay').classList.remove('hidden');
             
-            audio.currentTime = 0; 
-            audio.play().catch(e => {});
+            // 🚀 الجسر السيادي للأندرويد
+            if (window.AndroidRadar) {
+                window.AndroidRadar.triggerOrderAlarm();
+            } else {
+                let audioId = activeOrders.length > 0 ? 'doubleOrderSound' : 'alertSound';
+                let audio = document.getElementById(audioId);
+                audio.currentTime = 0; 
+                audio.play().catch(e => {});
+            }
             
             if ("Notification" in window && Notification.permission === "granted") {
                 new Notification("طلب توصيل جديد 🐋", { 
@@ -1344,9 +1337,6 @@
         closeAlert();
     }
 
-    // ==========================================
-    // 🟢 التطوير الجديد: الترتيب الشبكي ونظام السحب (Grid & Swipe)
-    // ==========================================
     function displayActiveOrders() {
         if (activeOrders.length === 0) {
             document.getElementById('searchingStatus').classList.remove('hidden');
@@ -1392,7 +1382,6 @@
             
             let custPhone = custPhoneMatch ? custPhoneMatch[0] : null;
             
-            // 🟢 رابط خرائط جوجل الدقيق للـ Turn-by-Turn Navigation
             let mapBtn = '';
             if (order.resLat && order.resLng && order.resLat !== 0) {
                 mapBtn = `<button class="btn-call-mini" style="background: rgba(59, 130, 246, 0.1); color: var(--accent-blue); border-color: rgba(59, 130, 246, 0.3);" onclick="window.open('https://www.google.com/maps/dir/?api=1&destination=${order.resLat},${order.resLng}', '_blank')"><i data-lucide="navigation" size="18"></i></button>`;
@@ -1449,7 +1438,6 @@
             </div>`;
         });
 
-        // الرسم الذكي: تحديث الشاشة فقط إذا كان هناك تغيير حقيقي
         if (lastActiveHtml !== html) {
             document.getElementById('activeOrderBox').innerHTML = html;
             lastActiveHtml = html;
@@ -1459,9 +1447,6 @@
         }
     }
 
-    // ==========================================
-    // 🟢 منطق السحب والواجهة المتفائلة (Swipe & Optimistic UI)
-    // ==========================================
     window.handleSwipeInput = function(slider) {
         if (slider.value >= 90) {
             slider.value = 100; 
