@@ -381,7 +381,7 @@
         const icon = type === 'success' ? '<i data-lucide="check-circle" color="#10b981"></i>' : '<i data-lucide="alert-circle" color="#ef4444"></i>';
         toast.innerHTML = `${icon} <span style="flex:1;">${msg}</span>`;
         container.appendChild(toast);
-        if (typeof lucide !== 'undefined') lucide.createIcons();
+        if (typeof lucide !== 'undefined') lucide.createIcons({root: toast});
         setTimeout(() => {
             toast.style.opacity = '0';
             setTimeout(() => toast.remove(), 300);
@@ -433,6 +433,7 @@
         btn.disabled = true;
 
         const script = document.createElement('script');
+        script.id = 'auth-script';
         script.src = `${API_URL}?action=VERIFY_MASTER_PASS&pass=${masterPassword}&token=${API_TOKEN}&callback=authResult&ts=${Date.now()}`;
         document.body.appendChild(script);
         
@@ -446,6 +447,9 @@
     }
 
     window.authResult = function(response) {
+        const oldScript = document.getElementById('auth-script');
+        if (oldScript) oldScript.remove();
+        
         const btn = document.querySelector('.auth-card button');
         btn.innerHTML = 'تسجيل الدخول';
         btn.disabled = false;
@@ -472,13 +476,21 @@
         document.getElementById('liveTimeMob').innerText = timeStr; 
     }, 1000); }
 
+    // 🟢 1. إصلاح مشكلة تسرب الذاكرة (Memory Leak)
     function refreshData() {
+        const oldScript = document.getElementById('data-fetch-script');
+        if (oldScript) oldScript.remove(); // مسح السكربت القديم من الذاكرة
+        
         const script = document.createElement('script');
+        script.id = 'data-fetch-script';
         script.src = `${API_URL}?action=getGlobalData&token=${API_TOKEN}&callback=renderData&ts=${Date.now()}`;
         document.body.appendChild(script);
     }
 
     window.renderData = function(data) {
+        const oldScript = document.getElementById('data-fetch-script');
+        if (oldScript) oldScript.remove(); // تنظيف فوري عند وصول البيانات
+
         globalData = data; 
         
         if(document.getElementById('arcRes').options.length === 1) {
@@ -593,7 +605,7 @@
             });
             lastMapStateHash = newMapStateHash;
         }
-        if (typeof lucide !== 'undefined') lucide.createIcons();
+        // تمت إزالة lucide.createIcons() من هنا لأنها كانت تدمر المعالج كل 15 ثانية!
     };
 
     function updateSectionBadges(type, list) {
@@ -725,12 +737,22 @@
             });
         }
         
-        // 🟢 تحديث الـ DOM فقط إذا اختلف الكود المولد
+        // 🟢 2. تحديث الـ DOM وتوليد الأيقونات فقط عند وجود تغيير (قنبلة الأيقونات)
         const currentHtml = html || `<div class="col-12 text-center py-5 text-muted fw-bold">لا توجد حسابات...</div>`;
         if (type === 'RESTAURANT') {
-            if (lastResHtml !== currentHtml) { document.getElementById(containerId).innerHTML = currentHtml; lastResHtml = currentHtml; }
+            if (lastResHtml !== currentHtml) { 
+                const container = document.getElementById(containerId);
+                container.innerHTML = currentHtml; 
+                lastResHtml = currentHtml; 
+                if (typeof lucide !== 'undefined') lucide.createIcons({root: container});
+            }
         } else {
-            if (lastDriverHtml !== currentHtml) { document.getElementById(containerId).innerHTML = currentHtml; lastDriverHtml = currentHtml; }
+            if (lastDriverHtml !== currentHtml) { 
+                const container = document.getElementById(containerId);
+                container.innerHTML = currentHtml; 
+                lastDriverHtml = currentHtml; 
+                if (typeof lucide !== 'undefined') lucide.createIcons({root: container});
+            }
         }
     }
 
@@ -816,8 +838,10 @@
         // 🟢 تحديث الـ DOM فقط إذا تغير الرادار
         const currentRadarHtml = smartHtml || '<div class="col-12 text-center p-4 fw-bold text-success small">الرادار نظيف، لا توجد طلبات.</div>';
         if (lastRadarHtml !== currentRadarHtml) {
-            document.getElementById('smartOrdersContainer').innerHTML = currentRadarHtml;
+            const container = document.getElementById('smartOrdersContainer');
+            container.innerHTML = currentRadarHtml;
             lastRadarHtml = currentRadarHtml;
+            if (typeof lucide !== 'undefined') lucide.createIcons({root: container});
         }
     }
 
@@ -928,7 +952,7 @@
         document.body.appendChild(script); showToast("تم تصفير الديون", "success");
     }
 
-    // 🟢 استجابة فورية للأزرار (Optimistic UI)
+    // 🟢 3. استجابة فورية للأزرار (Optimistic UI) لإنهاء الشعور بالثقل
     function adminActionOptUI(cmd, type, id, element) {
         const statusMap = { 'ACCEPT': 'active', 'PAUSE': 'inactive', 'DELETE': 'banned', 'COMPLETE': 'completed' };
         if (cmd === 'COMPLETE' || cmd === 'DELETE') {
