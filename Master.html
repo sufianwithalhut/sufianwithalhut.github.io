@@ -38,7 +38,6 @@
         
         .bottom-nav { display: none; }
         
-        /* 🟢 إخفاء كل التبويبات بشكل افتراضي وإظهار النشط فقط */
         .admin-tab { display: none; animation: fadeIn 0.3s; }
         .admin-tab.active-tab { display: block; }
         
@@ -52,9 +51,8 @@
             .b-nav-item.active { color: var(--primary-blue); }
             .b-nav-item.active i { color: var(--accent-blue); transform: translateY(-3px); }
             
-            /* تعديل خصائص التبويبات في الموبايل */
             .admin-tab { position: absolute; inset: 0; bottom: var(--bottom-nav-height); overflow-y: auto; background: var(--bg-light); z-index: 5; }
-            #tab-live.active-tab { overflow: hidden; } /* منع التمرير في شاشة الخريطة فقط */
+            #tab-live.active-tab { overflow: hidden; } 
             
             .map-wrapper { position: absolute; top: 0; left: 0; width: 100%; height: 55%; z-index: 1; }
             #adminMap { width: 100%; height: 100%; border: none; border-radius: 0; border-bottom: 2px solid #e2e8f0; }
@@ -127,7 +125,8 @@
         .archive-toolbar { background: white; border-radius: 16px; padding: 15px; border: 1px solid #e2e8f0; margin-bottom: 15px; }
         .analytics-bar { background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); color: white; border-radius: 15px; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
         
-        .sov-btn { border: none; border-radius: 10px; width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+        .sov-btn { border: none; border-radius: 10px; width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s;}
+        .sov-btn:active { transform: scale(0.9); }
         .sov-accept { background: #eff6ff; color: var(--accent-blue); } .sov-pause { background: #fffbeb; color: #d97706; } .sov-delete { background: #fef2f2; color: #ef4444; } .sov-reset { background: #ecfdf5; color: #10b981; } .sov-call { background: var(--primary-blue); color: white; }
 
         /* Toast Notifications */
@@ -151,9 +150,9 @@
         .marker-pulse { border-radius: 50%; border: 3px solid white; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); animation: pulseMarker 2s infinite; }
         @keyframes pulseMarker { 0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); } 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }
 
-        .btn-loading { opacity: 0.7; pointer-events: none; position: relative; }
-        .btn-loading::after { content: ''; position: absolute; inset: 0; border-radius: inherit; background: rgba(255,255,255,0.5) url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-loader-2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>') center/16px no-repeat; animation: spin 1s linear infinite; }
-        @keyframes spin { 100% { transform: rotate(360deg); } }
+        .btn-loading { opacity: 0.7 !important; pointer-events: none !important; position: relative; color: transparent !important; }
+        .btn-loading::after { content: ''; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 16px; height: 16px; border: 2px solid rgba(0,0,0,0.2); border-top-color: #000; border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { 100% { transform: translate(-50%, -50%) rotate(360deg); } }
         
         #invoiceModal { position: fixed; inset: 0; background: rgba(15,23,42,0.6); z-index: 20000; display: none; align-items: center; justify-content: center; backdrop-filter: blur(4px); padding: 15px; }
         .invoice-card { background: white; border-radius: 24px; padding: 25px; width: 100%; max-width: 400px; position: relative; }
@@ -368,6 +367,13 @@
     let lastPendingCount = 0; 
     let driverPerformanceCache = {};
 
+    // 🟢 متغيرات ذاكرة الـ DOM لتقليل إعادة الرسم والحد من التهنيج
+    let lastRadarHtml = "";
+    let lastResHtml = "";
+    let lastDriverHtml = "";
+    let lastArchiveHtml = "";
+    let lastMapStateHash = "";
+
     function showToast(msg, type = 'success') {
         const container = document.getElementById('toast-container');
         const toast = document.createElement('div');
@@ -498,8 +504,6 @@
         }
         lastPendingCount = currentPendingCount;
 
-        if (hasEmergency) triggerEmergency();
-
         const countOrders = activeOrdersList.length;
         const countDrivers = data.drivers.filter(d => d[4] === 'active').length;
         const countRes = data.restaurants.filter(r => r[4] === 'active').length;
@@ -542,7 +546,12 @@
         renderFilteredSection('RESTAURANT', data.restaurants, resDebts, resUnpaidCounts);
         renderFilteredSection('DRIVER', data.drivers, driverDebts, null);
         
-        if (map && driverClusterGroup && restaurantMarkersLayer) {
+        // 🟢 تحديث ذكي ومخفف لحمل الخريطة
+        let newMapStateHash = "";
+        data.restaurants.slice(1).forEach(r => { if(r[4] === 'active') newMapStateHash += r[1]+r[6]+r[7]; });
+        data.drivers.slice(1).forEach(d => { if(d[4] === 'active') newMapStateHash += d[2]+d[5]+d[6]; });
+
+        if (map && driverClusterGroup && restaurantMarkersLayer && newMapStateHash !== lastMapStateHash) {
             driverClusterGroup.clearLayers(); 
             restaurantMarkersLayer.clearLayers(); 
             
@@ -582,6 +591,7 @@
                     }
                 }
             });
+            lastMapStateHash = newMapStateHash;
         }
         if (typeof lucide !== 'undefined') lucide.createIcons();
     };
@@ -714,8 +724,14 @@
                 </div>`;
             });
         }
-        document.getElementById(containerId).innerHTML = html;
-        if (typeof lucide !== 'undefined') lucide.createIcons();
+        
+        // 🟢 تحديث الـ DOM فقط إذا اختلف الكود المولد
+        const currentHtml = html || `<div class="col-12 text-center py-5 text-muted fw-bold">لا توجد حسابات...</div>`;
+        if (type === 'RESTAURANT') {
+            if (lastResHtml !== currentHtml) { document.getElementById(containerId).innerHTML = currentHtml; lastResHtml = currentHtml; }
+        } else {
+            if (lastDriverHtml !== currentHtml) { document.getElementById(containerId).innerHTML = currentHtml; lastDriverHtml = currentHtml; }
+        }
     }
 
     function filterRadar(type, btnElement) {
@@ -796,8 +812,13 @@
         });
 
         pendingOrders.forEach(o => { smartHtml += generateSingleCardHTML(o, false, 'جاري البحث...', null, activeDriversOptions); });
-        document.getElementById('smartOrdersContainer').innerHTML = smartHtml || '<div class="col-12 text-center p-4 fw-bold text-success small">الرادار نظيف، لا توجد طلبات.</div>';
-        if (typeof lucide !== 'undefined') lucide.createIcons();
+        
+        // 🟢 تحديث الـ DOM فقط إذا تغير الرادار
+        const currentRadarHtml = smartHtml || '<div class="col-12 text-center p-4 fw-bold text-success small">الرادار نظيف، لا توجد طلبات.</div>';
+        if (lastRadarHtml !== currentRadarHtml) {
+            document.getElementById('smartOrdersContainer').innerHTML = currentRadarHtml;
+            lastRadarHtml = currentRadarHtml;
+        }
     }
 
     function generateSingleCardHTML(o, hasDriver, driverName, driverPhone, activeDriversOptions) {
@@ -907,13 +928,16 @@
         document.body.appendChild(script); showToast("تم تصفير الديون", "success");
     }
 
+    // 🟢 استجابة فورية للأزرار (Optimistic UI)
     function adminActionOptUI(cmd, type, id, element) {
         const statusMap = { 'ACCEPT': 'active', 'PAUSE': 'inactive', 'DELETE': 'banned', 'COMPLETE': 'completed' };
         if (cmd === 'COMPLETE' || cmd === 'DELETE') {
             if(!confirm(cmd === 'COMPLETE' ? "تأكيد الإتمام القسري؟" : "تأكيد الحظر؟")) return;
             const card = element.closest('.col-md-6') || element.closest('.col-12');
             if(card && cmd === 'DELETE') { card.style.transition = '0.3s'; card.style.opacity = '0'; setTimeout(() => card.style.display = 'none', 300); }
-        } else { element.classList.add('btn-loading'); }
+            if(card && cmd === 'COMPLETE' && type === 'ORDER') { card.style.transition = '0.3s'; card.style.opacity = '0'; setTimeout(() => card.style.display = 'none', 300); }
+        } 
+        element.classList.add('btn-loading'); 
 
         const script = document.createElement('script'); 
         script.src = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${id}&status=${statusMap[cmd]}&token=${API_TOKEN}&pass=${masterPassword}&callback=silentCallback&ts=${Date.now()}`; 
@@ -971,7 +995,13 @@
         });
         document.getElementById('arcTotalCount').innerText = totalOrders;
         document.getElementById('arcTotalComm').innerHTML = `${totalComm} <span class="fs-6">د.ع</span>`;
-        document.getElementById('ordersTableBody').innerHTML = archiveHtml || `<tr><td colspan="5" class="text-center text-muted py-5 fw-bold">لا توجد طلبات.</td></tr>`;
+        
+        // 🟢 تحديث الـ DOM للأرشيف فقط إذا تغير الكود
+        const currentArchiveHtml = archiveHtml || `<tr><td colspan="5" class="text-center text-muted py-5 fw-bold">لا توجد طلبات.</td></tr>`;
+        if (lastArchiveHtml !== currentArchiveHtml) {
+            document.getElementById('ordersTableBody').innerHTML = currentArchiveHtml;
+            lastArchiveHtml = currentArchiveHtml;
+        }
     }
 
     function openInvoice(dataStr) {
