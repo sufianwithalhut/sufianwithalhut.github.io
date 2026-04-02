@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 4.3 (أزرار التواصل الكبيرة والواضحة + أزرار الحالة الذكية) ---
-        const CURRENT_APP_VERSION = "4.3"; 
+        // --- إصدار 4.4 (جراحة نوع البيانات + إصلاح الطلبات المزدوجة وأزرار المطعم) ---
+        const CURRENT_APP_VERSION = "4.4"; 
         
         if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة... جاري تطهير الكاش!");
@@ -70,7 +70,7 @@
         .btn-big:active { transform: scale(0.96); }
         .btn-login { background: var(--primary-blue); color: white; }
         .btn-accept { background: var(--success-green); color: white; box-shadow: 0 10px 20px rgba(16, 185, 129, 0.3); font-size: 1.4rem; padding: 25px; border-radius: 25px;}
-        .btn-mute { background: rgba(255, 255, 255, 0.2); border: 2px solid white; color: white; border-radius: 20px; padding: 15px; font-size: 1.1rem; margin-bottom: 15px; font-weight: 900; }
+        .btn-mute { background: rgba(255, 255, 255, 0.2); border: 2px solid white; color: white; border-radius: 20px; padding: 15px; font-size: 1.1rem; margin-bottom: 15px; font-weight: 900; border: none; }
         
         .dash-header { background: var(--primary-blue); color: white; padding: max(30px, env(safe-area-inset-top)) 20px 60px 20px; border-bottom-left-radius: 35px; border-bottom-right-radius: 35px; box-shadow: 0 10px 30px rgba(30, 58, 138, 0.15); position: relative; z-index: 10; }
         .status-badge { padding: 6px 14px; border-radius: 20px; font-weight: 800; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 6px; transition: 0.3s; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); }
@@ -110,9 +110,9 @@
         .point-title { font-size: 0.8rem; font-weight: 800; color: var(--text-muted); margin-bottom: 2px; }
         .point-name { font-size: 1.1rem; font-weight: 900; color: var(--text-main); line-height: 1.3; }
         
-        /* 🚀 أزرار التواصل الكبيرة والواضحة */
+        /* 🚀 أزرار التواصل الكبيرة */
         .point-actions-grid { display: flex; gap: 8px; width: 100%; flex-wrap: wrap; margin-top: 5px; }
-        .btn-action-pill { flex: 1; min-width: 100px; padding: 10px; border-radius: 14px; display: flex; align-items: center; justify-content: center; gap: 6px; font-weight: 800; font-size: 0.85rem; border: none; cursor: pointer; transition: 0.2s; }
+        .btn-action-pill { flex: 1; min-width: 90px; padding: 10px; border-radius: 14px; display: flex; align-items: center; justify-content: center; gap: 6px; font-weight: 800; font-size: 0.85rem; border: none; cursor: pointer; transition: 0.2s; }
         .btn-action-pill:active { transform: scale(0.95); }
         .btn-action-pill.call { background: rgba(59, 130, 246, 0.1); color: var(--accent-blue); border: 1px solid rgba(59, 130, 246, 0.3); }
         .btn-action-pill.whatsapp { background: rgba(16, 185, 129, 0.1); color: var(--success-green); border: 1px solid rgba(16, 185, 129, 0.3); }
@@ -127,6 +127,7 @@
         .btn-status.heading { background: var(--accent-blue); }
         .btn-status.arrived { background: var(--accent-orange); }
         .btn-status.picked { background: var(--success-green); }
+        .btn-status:disabled { opacity: 0.7; cursor: not-allowed; }
 
         .switch { position: relative; display: inline-block; width: 50px; height: 26px; }
         .switch input { opacity: 0; width: 0; height: 0; }
@@ -149,7 +150,10 @@
         .timer-svg { transform: rotate(-90deg); width: 160px; height: 160px; }
         .timer-circle { fill: none; stroke: var(--success-green); stroke-width: 10; stroke-dasharray: 471; stroke-dashoffset: 0; transition: 1s linear; stroke-linecap: round; }
         .alert-details-card { background: rgba(255, 255, 255, 1); color: var(--text-main); border-radius: 25px; padding: 25px; margin-bottom: 20px; text-align: right; box-shadow: 0 15px 30px rgba(0,0,0,0.2);}
-        .btn-mute { background: rgba(255, 255, 255, 0.2); border: 2px solid white; color: white; border-radius: 20px; padding: 15px; font-size: 1.1rem; margin-bottom: 15px; font-weight: 900; border: none; }
+
+        .waiting-pulse { animation: softPulse 2s infinite; display: inline-block;}
+        @keyframes softPulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.7; transform: scale(0.95); } 100% { opacity: 1; transform: scale(1); } }
+        .btn-refresh-waiting { background: #f1f5f9; color: var(--text-muted); border: 1px solid var(--border-color); font-weight: 700; border-radius: 20px; padding: 10px 20px; transition: 0.2s; }
         
         /* 🔵 أيقونات SVG الخام */
         .svg-icon { width: 22px; height: 22px; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; fill: none; }
@@ -311,7 +315,6 @@
     let checkOrdersTimer = null, currentPollingRate = 20000, wakeLock = null, waitingPollingTimer = null;
     let lastLocUpdateTs = 0, lastSentLat = 0, lastSentLng = 0, lastActiveHtml = "";
 
-    // 🚀 أيقونات SVG الخام (بدون استدعاء خارجي)
     const svgPhone = `<svg class="svg-icon svg-icon-small" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>`;
     const svgMap = `<svg class="svg-icon svg-icon-small" viewBox="0 0 24 24"><polygon points="3 11 22 2 13 21 11 13 3 11"></polygon></svg>`;
     const svgWa = `<svg class="svg-icon svg-icon-small" viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>`;
@@ -428,7 +431,14 @@
 
     window.renderDriverData = function(data) {
         if (!data || !data.orders) return;
-        activeOrders.forEach(order => { const resInfo = data.restaurants.find(r => r[1] === order.resName); if (resInfo) { order.resPhone = resInfo[2]; order.resLat = parseFloat(resInfo[6]); order.resLng = parseFloat(resInfo[7]); }});
+        activeOrders.forEach(order => { 
+            const resInfo = data.restaurants.find(r => r[1] === order.resName); 
+            if (resInfo) { 
+                order.resPhone = resInfo[2]; 
+                order.resLat = parseFloat(resInfo[6]); 
+                order.resLng = parseFloat(resInfo[7]); 
+            }
+        });
         displayActiveOrders(); 
     };
 
@@ -445,7 +455,24 @@
             document.getElementById('alertResName').innerText = data.resName; document.getElementById('alertArea').innerText = data.area;
             document.getElementById('orderAlertOverlay').classList.remove('hidden');
             if (window.AndroidRadar) { window.AndroidRadar.triggerOrderAlarm(); } else { let audio = document.getElementById(activeOrders.length > 0 ? 'doubleOrderSound' : 'alertSound'); audio.currentTime = 0; audio.play().catch(e => {}); }
+            
+            // 🚀 جلب إحداثيات المطعم فوراً لكي تكون جاهزة عند القبول
+            const script = document.createElement('script'); 
+            script.src = `${API_URL}?action=getGlobalData&token=${API_TOKEN}&callback=cacheResDataForNewOrder&ts=${Date.now()}`; 
+            document.body.appendChild(script);
+            
             startCountdown();
+        }
+    };
+    
+    // حفظ بيانات المطعم للطلب الجديد قبل القبول
+    window.cacheResDataForNewOrder = function(data) {
+        if (!data || !data.restaurants || !currentOrderData) return;
+        const resInfo = data.restaurants.find(r => r[1] === currentOrderData.resName);
+        if (resInfo) {
+            currentOrderData.resPhone = resInfo[2];
+            currentOrderData.resLat = parseFloat(resInfo[6]);
+            currentOrderData.resLng = parseFloat(resInfo[7]);
         }
     };
 
@@ -459,9 +486,15 @@
 
     function acceptOrder() {
         closeAlert(); 
-        const newOrder = { id: currentOrderData.id, resName: currentOrderData.resName, details: String(currentOrderData.details), price: currentOrderData.price, area: currentOrderData.area, state: 'heading', photoUrl: currentOrderData.photoUrl };
+        const newOrder = { 
+            id: currentOrderData.id, resName: currentOrderData.resName, details: String(currentOrderData.details), 
+            price: currentOrderData.price, area: currentOrderData.area, state: 'heading', 
+            photoUrl: currentOrderData.photoUrl,
+            resPhone: currentOrderData.resPhone, resLat: currentOrderData.resLat, resLng: currentOrderData.resLng
+        };
         activeOrders.push(newOrder); localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
         displayActiveOrders(); fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${newOrder.id}&status=accepted&token=${API_TOKEN}`, { mode: 'no-cors' }); 
+        updateStats();
     }
 
     function closeAlert() { document.getElementById('orderAlertOverlay').classList.add('hidden'); clearInterval(countdownInterval); muteAlarmOnly(); }
@@ -483,23 +516,24 @@
         activeOrders.forEach((order, index) => {
             let stateTitle = order.state === 'heading' ? "متوجه للمطعم" : order.state === 'arrived' ? "في المطعم" : "في الطريق للزبون";
             
-            // 🚀 برمجة أزرار الحالة الذكية بدلاً من السحب
             let btnAction = order.state === 'heading' ? "arrive" : order.state === 'arrived' ? "pickup" : "finish";
             let btnText = order.state === 'heading' ? "تأكيد الوصول للمطعم" : order.state === 'arrived' ? "تأكيد استلام الطلب" : "تأكيد تسليم الطلب";
             let btnClass = order.state === 'heading' ? "heading" : order.state === 'arrived' ? "arrived" : "picked";
             let btnIcon = order.state === 'heading' ? svgMap : order.state === 'arrived' ? svgImg : `<svg class="svg-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
             
-            let mapUrl = `maps.google.com?q=${order.resLat},${order.resLng}`;
+            // 🚀 تصحيح رابط الخرائط وإجبار النوع النصي للأرقام لمنع الانهيار
+            let mapUrl = order.resLat ? `maps.google.com?q=${order.resLat},${order.resLng}` : '';
             
-            let resPhoneNum = order.resPhone ? (order.resPhone.startsWith('0') ? order.resPhone : '0' + order.resPhone) : null;
-            let waRes = order.resPhone ? (order.resPhone.startsWith('0') ? '964' + order.resPhone.substring(1) : order.resPhone) : null;
+            let resPhoneStr = order.resPhone ? String(order.resPhone) : "";
+            let resPhoneNum = resPhoneStr ? (resPhoneStr.startsWith('0') ? resPhoneStr : '0' + resPhoneStr) : null;
+            let waRes = resPhoneStr ? (resPhoneStr.startsWith('0') ? '964' + resPhoneStr.substring(1) : resPhoneStr) : null;
             
-            let custMatch = String(order.details).match(/(07[0-9]{8,9})/);
-            let custPhoneNum = custMatch ? custMatch[0] : null;
-            let waCust = custMatch ? (custMatch[0].startsWith('0') ? '964' + custMatch[0].substring(1) : custMatch[0]) : null;
+            let safeDetails = String(order.details || "");
+            let custMatch = safeDetails.match(/(07[0-9]{8,9})/);
+            let custPhoneNum = custMatch ? String(custMatch[0]) : null;
+            let waCust = custPhoneNum ? (custPhoneNum.startsWith('0') ? '964' + custPhoneNum.substring(1) : custPhoneNum) : null;
 
             let badgeHtml = isDouble ? `<div class="order-badge double">طلب مزدوج (${index + 1} من ${activeOrders.length})</div>` : `<div class="order-badge">طلب حصري</div>`;
-            
             let photoBtnHtml = (order.photoUrl && String(order.photoUrl).startsWith("http")) ? `<button class="btn-photo-view" onclick="openSafeLink('${order.photoUrl}')">${svgImg} عرض صورة الوصل من درايف</button>` : '';
 
             html += `
@@ -519,7 +553,7 @@
                             <div class="point-actions-grid">
                                 ${resPhoneNum ? `<button class="btn-action-pill call" onclick="openSafeLink('tel:${resPhoneNum}')">${svgPhone} اتصال</button>` : ''}
                                 ${waRes ? `<button class="btn-action-pill whatsapp" onclick="openSafeLink('https://wa.me/${waRes}')">${svgWa} واتساب</button>` : ''}
-                                ${order.resLat ? `<button class="btn-action-pill map" onclick="openSafeLink('${mapUrl}')">${svgMap} الخريطة</button>` : ''}
+                                ${mapUrl ? `<button class="btn-action-pill map" onclick="openSafeLink('${mapUrl}')">${svgMap} الخريطة</button>` : ''}
                             </div>
                         </div>
                     </div>
@@ -527,7 +561,7 @@
                     <div class="route-point dropoff">
                         <div class="point-content">
                             <div class="point-title">التسليم إلى (${order.area})</div>
-                            <div class="point-name">${order.details}</div>
+                            <div class="point-name">${safeDetails}</div>
                             <div class="point-actions-grid">
                                 ${custPhoneNum ? `<button class="btn-action-pill call" onclick="openSafeLink('tel:${custPhoneNum}')">${svgPhone} اتصال</button>` : ''}
                                 ${waCust ? `<button class="btn-action-pill whatsapp" onclick="openSafeLink('https://wa.me/${waCust}')">${svgWa} واتساب</button>` : ''}
@@ -548,12 +582,10 @@
         adjustPollingRate();
     }
 
-    // 🚀 دالة تحديث الحالة عبر الزر
     window.updateOrderStatus = function(id, action, btnElement) {
         const order = activeOrders.find(o => String(o.id) === String(id));
         if (!order) return;
 
-        // منع الضغط المتكرر
         btnElement.innerHTML = `<div class="spinner-border spinner-border-sm"></div> جاري التحديث...`;
         btnElement.disabled = true;
 
@@ -563,16 +595,14 @@
             localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
             setTimeout(displayActiveOrders, 300);
         } else if (action === 'pickup') {
-            order.state = 'picked_up';
-            order.pickupTime = Date.now();
+            order.state = 'picked_up'; order.pickupTime = Date.now();
             fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${id}&status=picked_up&token=${API_TOKEN}`, { mode: 'no-cors' });
             localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
             setTimeout(displayActiveOrders, 300);
         } else if (action === 'finish') {
-            // 🟢 مضاد الاحتيال
             if (Date.now() - order.pickupTime < 120000) { 
                 alert(`⚠️ يرجى الانتظار دقيقتين على الأقل لتأكيد التسليم الفعلي للزبون.`); 
-                displayActiveOrders(); // لإعادة الزر لشكله الطبيعي
+                displayActiveOrders(); 
                 return; 
             }
             const card = document.getElementById(`order-${id}`);
@@ -581,17 +611,14 @@
                 activeOrders = activeOrders.filter(o => String(o.id) !== String(id));
                 localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
                 fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${id}&status=completed&token=${API_TOKEN}`, { mode: 'no-cors' });
-                displayActiveOrders();
-                updateStats();
+                displayActiveOrders(); updateStats();
             }, 300);
         }
     };
 
     function updateStats() {
         if (!driverData) return;
-        const script = document.createElement('script');
-        script.src = `${API_URL}?action=getGlobalData&token=${API_TOKEN}&callback=renderDriverData&ts=${Date.now()}`;
-        document.body.appendChild(script);
+        const script = document.createElement('script'); script.src = `${API_URL}?action=getGlobalData&token=${API_TOKEN}&callback=renderDriverData&ts=${Date.now()}`; document.body.appendChild(script);
     }
     function openLedger() { document.getElementById('ledgerModal').classList.remove('hidden'); }
     function closeLedger() { document.getElementById('ledgerModal').classList.add('hidden'); }
