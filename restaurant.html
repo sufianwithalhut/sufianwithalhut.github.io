@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 1.5 - الصاروخي) ---
-        const CURRENT_APP_VERSION = "1.5"; 
+        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 1.6 - محرك بحث الخرائط) ---
+        const CURRENT_APP_VERSION = "1.6"; 
         if (localStorage.getItem('hut_res_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة مكتشفة... جاري التحديث الإجباري لتسريع النظام!");
             localStorage.setItem('hut_res_app_version', CURRENT_APP_VERSION);
@@ -190,6 +190,12 @@
                         <label class="form-label" style="text-align: right; color: var(--primary-blue); font-size: 0.85rem;">
                             <i data-lucide="map-pin" size="16"></i> حدد موقع المطعم بدقة على الخريطة:
                         </label>
+                        
+                        <div class="d-flex gap-2 mb-2">
+                            <input type="text" id="mapSearchInput" class="custom-input py-2 mb-0" placeholder="اسم المطعم، المنطقة، أو رابط جوجل ماب..." style="font-size: 0.85rem;">
+                            <button type="button" class="btn btn-primary fw-bold rounded-4 px-3" onclick="searchLocation()" style="background: var(--primary-blue); border: none;">بحث</button>
+                        </div>
+                        
                         <div id="pickerMap"></div>
                         <img src="https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png" class="map-crosshair" alt="Pin">
                         <button type="button" class="btn btn-sm btn-light text-primary position-absolute shadow-sm border fw-bold d-flex align-items-center gap-1" style="bottom: 10px; right: 10px; z-index: 1000; border-radius: 12px;" onclick="forceLocateMe()">
@@ -410,7 +416,6 @@
     let lastArchiveHtml = "";
 
     function initPickerMap() {
-        // حماية لمنع الخطأ إذا لم تكن الخريطة موجودة
         if (!document.getElementById('pickerMap')) return;
         
         if(pickerMap) { setTimeout(() => { pickerMap.invalidateSize(); }, 500); return; }
@@ -431,6 +436,50 @@
             if(document.getElementById('registerFields').style.display !== 'none') pickerMap.invalidateSize();
         }, 300);
         setTimeout(() => clearInterval(mapResizeInterval), 3000);
+    }
+
+    // 🟢 دالة البحث واستخراج الإحداثيات الجديدة
+    function searchLocation() {
+        const query = document.getElementById('mapSearchInput').value.trim();
+        if (!query) return;
+
+        // 1. محاولة استخراج الإحداثيات إذا كان رابط جوجل أو إحداثيات مباشرة (@35.4,44.3)
+        const coordMatch = query.match(/@([0-9.-]+),([0-9.-]+)/);
+        if (coordMatch && coordMatch.length >= 3) {
+            const lat = parseFloat(coordMatch[1]);
+            const lng = parseFloat(coordMatch[2]);
+            if(pickerMap) pickerMap.flyTo([lat, lng], 16);
+            return;
+        }
+        
+        // فحص الإحداثيات النصية المجردة (35.4, 44.3)
+        const plainCoordMatch = query.match(/^([0-9.-]+)[,\s]+([0-9.-]+)$/);
+        if (plainCoordMatch && plainCoordMatch.length >= 3) {
+            const lat = parseFloat(plainCoordMatch[1]);
+            const lng = parseFloat(plainCoordMatch[2]);
+            if(pickerMap) pickerMap.flyTo([lat, lng], 16);
+            return;
+        }
+
+        // 2. البحث النصي باستخدام Nominatim API
+        showLoading(true, "جاري البحث عن الموقع...");
+        const searchQuery = encodeURIComponent(query + ", كركوك, العراق"); 
+        fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${searchQuery}&limit=1`)
+            .then(response => response.json())
+            .then(data => {
+                showLoading(false);
+                if (data && data.length > 0) {
+                    const lat = parseFloat(data[0].lat);
+                    const lng = parseFloat(data[0].lon);
+                    if(pickerMap) pickerMap.flyTo([lat, lng], 16);
+                } else {
+                    alert("لم يتم العثور على المكان. حاول إدخال اسم أقرب معلم مشهور أو الصق رابط جوجل ماب المباشر.");
+                }
+            })
+            .catch(err => {
+                showLoading(false);
+                alert("حدث خطأ أثناء البحث، تحقق من الاتصال بالإنترنت.");
+            });
     }
 
     function forceLocateMe() {
