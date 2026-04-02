@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 4.7 (إصلاح تسجيل الدخول للسائقين الجدد + محرك 3.2) ---
-        const CURRENT_APP_VERSION = "4.7"; 
+        // --- إصدار 4.8 (دعم كامل لرد السيرفر not_found للسائقين الجدد) ---
+        const CURRENT_APP_VERSION = "4.8"; 
         
         if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة... جاري تطهير الكاش!");
@@ -118,7 +118,7 @@
         .btn-action-pill.map { background: rgba(249, 115, 22, 0.1); color: var(--accent-orange); border: 1px solid rgba(249, 115, 22, 0.3); }
         .btn-photo-view { background: var(--stat-bg); color: var(--primary-blue); border: 1px solid var(--border-color); border-radius: 16px; padding: 12px; font-size: 0.95rem; font-weight: 800; cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; margin-bottom: 20px; }
         
-        /* 🔵 أزرار الحالة (البديل الحديث للسحب) */
+        /* 🔵 زر الحالة (بديل السحب) */
         .btn-status { width: 100%; border-radius: 20px; padding: 18px; font-weight: 900; font-size: 1.2rem; color: white; border: none; cursor: pointer; transition: 0.2s; display: flex; justify-content: center; align-items: center; gap: 10px; box-shadow: 0 8px 15px rgba(0,0,0,0.1); position: relative; overflow: hidden; }
         .btn-status:active { transform: scale(0.96); box-shadow: none; }
         .btn-status.heading { background: var(--accent-blue); }
@@ -143,7 +143,7 @@
         .alert-pulse { width: 90px; height: 90px; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px auto; animation: pulseWhite 2s infinite; }
         @keyframes pulseWhite { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255,255,255, 0.7); } 70% { transform: scale(1); box-shadow: 0 0 0 25px rgba(255,255,255, 0); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255,255,255, 0); } }
         
-        /* 🚀 نافذة الإلغاء الجديدة التي لا تجمّد الخلفية */
+        /* 🚀 نافذة الإلغاء */
         #cancelAlertOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--danger-red); z-index: 45000; color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; text-align: center; animation: fadeIn 0.3s; }
         .cancel-pulse { width: 90px; height: 90px; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 20px; box-shadow: 0 0 0 15px rgba(255,255,255,0.2); }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -330,7 +330,6 @@
 </div>
 
 <script>
-    // 🔴 الرابط السحابي
     const API_URL = "https://script.google.com/macros/s/AKfycbwLSFljKVZCEFTae3RvE4CF-Qp3U6zEoYsh2TZe0nk149K4Fw-F1U9rYwReLKyxXq-I1Q/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
@@ -396,7 +395,7 @@
         const script = document.createElement('script'); script.src = `${API_URL}?action=checkDriver&phone=${phone}&token=${API_TOKEN}&callback=handleLoginCheck&ts=${Date.now()}`; document.body.appendChild(script);
     }
 
-    // 🚀 دالة تسجيل الدخول المطورة للسائق الجديد (الإصدار 4.7)
+    // 🚀 دالة تسجيل الدخول المطورة (الإصدار 4.8) مع التقاط حالة not_found بشكل صريح
     window.handleLoginCheck = function(data) {
         let rawPhone = document.getElementById('driverPhone').value.trim(); let phone = rawPhone.startsWith('0') ? rawPhone.substring(1) : rawPhone;
         
@@ -407,17 +406,24 @@
         } else if (data.status === "banned") { 
             alert("حساب محظور."); location.reload(); 
         } else if (data.status === "pending" || data.status === "waiting") {
-            // السائق مسجل لكن الإدارة لم تفعل حسابه بعد
             localStorage.setItem('hut_driver_pending', phone);
             showWaitingRoom();
-        } else {
+        } else if (data.status === "not_found") {
             // السائق غير موجود نهائياً (جديد) -> إظهار حقول التسجيل
             isRegistering = true;
             document.getElementById('registerFields').classList.remove('hidden');
             document.getElementById('driverPhone').disabled = true;
             
             const btn = document.getElementById('mainAuthBtn');
-            btn.innerHTML = `إرسال طلب الانضمام <svg class="svg-icon" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>`;
+            btn.innerHTML = `إرسال طلب الانضمام <svg class="svg-icon" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>`;
+            btn.disabled = false;
+        } else {
+            // Fallback لأي حالة غير متوقعة
+            isRegistering = true;
+            document.getElementById('registerFields').classList.remove('hidden');
+            document.getElementById('driverPhone').disabled = true;
+            const btn = document.getElementById('mainAuthBtn');
+            btn.innerHTML = `إرسال طلب الانضمام <svg class="svg-icon" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>`;
             btn.disabled = false;
         }
     };
@@ -472,7 +478,6 @@
         }
     }
 
-    // 🚀 دالة الإلغاء بدون Alert
     function closeCancelAlert() {
         document.getElementById('cancelAlertOverlay').classList.add('hidden');
         try { document.getElementById('cancelSound').pause(); } catch(e) {}
@@ -536,7 +541,6 @@
             document.getElementById('orderAlertOverlay').classList.remove('hidden');
             if (window.AndroidRadar) { window.AndroidRadar.triggerOrderAlarm(); } else { let audio = document.getElementById(activeOrders.length > 0 ? 'doubleOrderSound' : 'alertSound'); audio.currentTime = 0; audio.play().catch(e => {}); }
             
-            // جلب البيانات فوراً لتهيئة الأزرار
             const script = document.createElement('script'); 
             script.src = `${API_URL}?action=getGlobalData&token=${API_TOKEN}&callback=cacheResDataForNewOrder&ts=${Date.now()}`; 
             document.body.appendChild(script);
@@ -592,7 +596,6 @@
         activeOrders.forEach((order, index) => {
             let stateTitle = order.state === 'heading' ? "متوجه للمطعم" : order.state === 'arrived' ? "في المطعم" : "في الطريق للزبون";
             
-            // 🚀 برمجة أزرار الحالة الذكية بدلاً من السحب
             let btnAction = order.state === 'heading' ? "arrive" : order.state === 'arrived' ? "pickup" : "finish";
             let btnText = order.state === 'heading' ? "تأكيد الوصول للمطعم" : order.state === 'arrived' ? "تأكيد استلام الطلب" : "تأكيد تسليم الطلب";
             let btnClass = order.state === 'heading' ? "heading" : order.state === 'arrived' ? "arrived" : "picked";
@@ -659,7 +662,6 @@
         adjustPollingRate();
     }
 
-    // 🚀 دالة تحديث الحالة عبر الزر
     window.updateOrderStatus = function(id, action, btnElement) {
         const order = activeOrders.find(o => String(o.id) === String(id));
         if (!order) return;
@@ -679,10 +681,9 @@
             localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
             setTimeout(displayActiveOrders, 300);
         } else if (action === 'finish') {
-            // 🟢 مضاد الاحتيال
             if (Date.now() - order.pickupTime < 120000) { 
                 alert(`⚠️ يرجى الانتظار دقيقتين على الأقل لتأكيد التسليم الفعلي للزبون.`); 
-                displayActiveOrders(); // لإعادة الزر لشكله الطبيعي
+                displayActiveOrders(); 
                 return; 
             }
             const card = document.getElementById(`order-${id}`);
