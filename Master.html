@@ -367,12 +367,16 @@
     let lastPendingCount = 0; 
     let driverPerformanceCache = {};
 
-    // 🟢 متغيرات ذاكرة الـ DOM لتقليل إعادة الرسم والحد من التهنيج
+    // 🟢 1. متغيرات ذاكرة الـ DOM لتقليل إعادة الرسم والحد من التهنيج
     let lastRadarHtml = "";
     let lastResHtml = "";
     let lastDriverHtml = "";
     let lastArchiveHtml = "";
     let lastMapStateHash = "";
+
+    // 🟢 2. القائمة السوداء للأفعال المؤقتة (لمنع إعادة ظهور العناصر المحذوفة)
+    let actionBlacklist = { orders: [], drivers: [], restaurants: [] };
+    let fetchPauseTimeout = null;
 
     function showToast(msg, type = 'success') {
         const container = document.getElementById('toast-container');
@@ -476,10 +480,12 @@
         document.getElementById('liveTimeMob').innerText = timeStr; 
     }, 1000); }
 
-    // 🟢 1. إصلاح مشكلة تسرب الذاكرة (Memory Leak)
     function refreshData() {
+        // 🟢 3. إيقاف التحديث إذا كان هناك تغيير يدوي قيد التنفيذ (Debounce)
+        if (fetchPauseTimeout !== null) return;
+
         const oldScript = document.getElementById('data-fetch-script');
-        if (oldScript) oldScript.remove(); // مسح السكربت القديم من الذاكرة
+        if (oldScript) oldScript.remove(); 
         
         const script = document.createElement('script');
         script.id = 'data-fetch-script';
@@ -489,7 +495,7 @@
 
     window.renderData = function(data) {
         const oldScript = document.getElementById('data-fetch-script');
-        if (oldScript) oldScript.remove(); // تنظيف فوري عند وصول البيانات
+        if (oldScript) oldScript.remove(); 
 
         globalData = data; 
         
@@ -498,7 +504,12 @@
             data.drivers.slice(1).forEach(d => document.getElementById('arcDriver').innerHTML += `<option value="${String(d[2])}">${d[1]}</option>`);
         }
 
-        const activeOrdersList = data.orders.slice(1).filter(o => o[5] !== 'completed' && o[5] !== 'مكتمل' && o[5] !== 'settled' && o[5] !== 'deleted');
+        // 🟢 4. فلترة الطلبات وتطبيق الذاكرة المانعة (Blacklist)
+        const activeOrdersList = data.orders.slice(1).filter(o => 
+            o[5] !== 'completed' && o[5] !== 'مكتمل' && o[5] !== 'settled' && o[5] !== 'deleted' && 
+            !actionBlacklist.orders.includes(String(o[0]))
+        );
+
         let currentPendingCount = 0;
         let hasEmergency = false;
 
@@ -550,7 +561,7 @@
             }
         });
 
-        renderRadar();
+        renderRadar(activeOrdersList); // تمرير الطلبات המُفلترة
         renderArchive();
         
         updateSectionBadges('RESTAURANT', data.restaurants);
@@ -558,7 +569,6 @@
         renderFilteredSection('RESTAURANT', data.restaurants, resDebts, resUnpaidCounts);
         renderFilteredSection('DRIVER', data.drivers, driverDebts, null);
         
-        // 🟢 تحديث ذكي ومخفف لحمل الخريطة
         let newMapStateHash = "";
         data.restaurants.slice(1).forEach(r => { if(r[4] === 'active') newMapStateHash += r[1]+r[6]+r[7]; });
         data.drivers.slice(1).forEach(d => { if(d[4] === 'active') newMapStateHash += d[2]+d[5]+d[6]; });
@@ -605,7 +615,6 @@
             });
             lastMapStateHash = newMapStateHash;
         }
-        // تمت إزالة lucide.createIcons() من هنا لأنها كانت تدمر المعالج كل 15 ثانية!
     };
 
     function updateSectionBadges(type, list) {
@@ -673,7 +682,8 @@
             const name = String(item[1]).toLowerCase();
             const phone = String(item[2]).toLowerCase();
 
-            if (status === 'deleted') return;
+            // 🟢 إخفاء العناصر المحذوفة حديثاً من الذاكرة (Blacklist)
+            if (status === 'deleted' || (type === 'RESTAURANT' && actionBlacklist.restaurants.includes(phone)) || (type === 'DRIVER' && actionBlacklist.drivers.includes(phone))) return;
 
             if (searchQuery && !name.includes(searchQuery) && !phone.includes(searchQuery)) return;
 
@@ -737,7 +747,6 @@
             });
         }
         
-        // 🟢 2. تحديث الـ DOM وتوليد الأيقونات فقط عند وجود تغيير (قنبلة الأيقونات)
         const currentHtml = html || `<div class="col-12 text-center py-5 text-muted fw-bold">لا توجد حسابات...</div>`;
         if (type === 'RESTAURANT') {
             if (lastResHtml !== currentHtml) { 
@@ -756,17 +765,18 @@
         }
     }
 
-    function filterRadar(type, btnElement) {
-        currentRadarFilter = type;
-        document.querySelectorAll('.radar-filter-btn').forEach(b => b.classList.remove('active', 'border-danger', 'border-success'));
-        btnElement.classList.add('active');
-        renderRadar();
-    }
-
-    function renderRadar() {
+    function renderRadar(activeOrdersList = null) {
         if(!globalData) return;
-        let smartHtml = '';
         
+        // إذا لم يتم تمرير قائمة (مثل عند الضغط على أزرار الفلتر)، نقوم بتوليدها من globalData بعد فلترة الـ Blacklist
+        if (!activeOrdersList) {
+            activeOrdersList = globalData.orders.slice(1).filter(o => 
+                o[5] !== 'completed' && o[5] !== 'مكتمل' && o[5] !== 'settled' && o[5] !== 'deleted' && 
+                !actionBlacklist.orders.includes(String(o[0]))
+            );
+        }
+
+        let smartHtml = '';
         let activeDriversOptions = '<option value="">تعيين يدوياً</option>';
         globalData.drivers.slice(1).forEach(d => {
             if(d[4] === 'active') {
@@ -776,7 +786,6 @@
             }
         });
 
-        let activeOrdersList = globalData.orders.slice(1).filter(o => o[5] !== 'completed' && o[5] !== 'مكتمل' && o[5] !== 'settled' && o[5] !== 'deleted');
         if(currentRadarFilter === 'pending') activeOrdersList = activeOrdersList.filter(o => !o[6] || o[6] === "pending_driver");
         if(currentRadarFilter === 'active') activeOrdersList = activeOrdersList.filter(o => o[6] && o[6] !== "pending_driver");
 
@@ -808,8 +817,6 @@
                     </div>`;
                 orders.forEach((o, index) => {
                     const sInfo = getStatusInfo(o[5], true);
-                    const orderTimeStrFormat = new Date(o[7]).toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'});
-                    
                     smartHtml += `
                     <div class="info-card-inner mb-1 bg-white" id="order-${o[0]}">
                         <div class="d-flex justify-content-between align-items-center mb-1">
@@ -835,7 +842,6 @@
 
         pendingOrders.forEach(o => { smartHtml += generateSingleCardHTML(o, false, 'جاري البحث...', null, activeDriversOptions); });
         
-        // 🟢 تحديث الـ DOM فقط إذا تغير الرادار
         const currentRadarHtml = smartHtml || '<div class="col-12 text-center p-4 fw-bold text-success small">الرادار نظيف، لا توجد طلبات.</div>';
         if (lastRadarHtml !== currentRadarHtml) {
             const container = document.getElementById('smartOrdersContainer');
@@ -851,11 +857,6 @@
         const isArrived = (status === 'arrived_at_res');
         const orderTimeStrFormat = new Date(orderTimeStr).toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'});
         
-        const custPhoneMatch = details ? details.match(/(07[0-9]{8,9})/) : null;
-        const custPhone = custPhoneMatch ? custPhoneMatch[0] : '';
-        
-        const shortDetails = details ? details : '-';
-
         const diffMins = Math.floor((new Date() - new Date(orderTimeStr)) / 60000);
         const isDelayed = diffMins > 3; 
 
@@ -932,11 +933,23 @@
         }
     }
 
+    // 🟢 5. وظيفة الإيقاف المؤقت للتحديث (Debounce)
+    function pauseAutoFetch() {
+        if (fetchPauseTimeout) clearTimeout(fetchPauseTimeout);
+        fetchPauseTimeout = setTimeout(() => { fetchPauseTimeout = null; }, 3000);
+    }
+
     function assignDriverOptUI(orderId, driverPhone, element) {
         if(!driverPhone) return;
+        pauseAutoFetch();
         element.classList.add('btn-loading');
         const card = document.getElementById(`order-${orderId}`);
         if(card) card.style.opacity = '0.5';
+        
+        // إضافة للذاكرة المانعة
+        actionBlacklist.orders.push(String(orderId));
+        setTimeout(() => { actionBlacklist.orders = actionBlacklist.orders.filter(id => id !== String(orderId)); }, 5000);
+
         const url = `${API_URL}?action=ASSIGN_DRIVER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}&pass=${masterPassword}`;
         const script = document.createElement('script'); script.src = `${url}&callback=silentCallback&ts=${Date.now()}`; 
         script.onload = () => script.remove(); script.onerror = () => { script.remove(); showToast("فشل الاتصال", "error"); if(card) card.style.opacity = '1'; };
@@ -945,6 +958,7 @@
 
     function resetDebtOptUI(type, id, element) {
         if(!confirm(`تأكيد تصفير ديون (${id})؟`)) return;
+        pauseAutoFetch();
         element.classList.add('btn-loading');
         const url = `${API_URL}?action=RESET_DEBT&type=${type}&id=${id}&token=${API_TOKEN}&pass=${masterPassword}`;
         const script = document.createElement('script'); script.src = `${url}&callback=silentCallback&ts=${Date.now()}`; 
@@ -952,15 +966,34 @@
         document.body.appendChild(script); showToast("تم تصفير الديون", "success");
     }
 
-    // 🟢 3. استجابة فورية للأزرار (Optimistic UI) لإنهاء الشعور بالثقل
     function adminActionOptUI(cmd, type, id, element) {
         const statusMap = { 'ACCEPT': 'active', 'PAUSE': 'inactive', 'DELETE': 'banned', 'COMPLETE': 'completed' };
+        
         if (cmd === 'COMPLETE' || cmd === 'DELETE') {
             if(!confirm(cmd === 'COMPLETE' ? "تأكيد الإتمام القسري؟" : "تأكيد الحظر؟")) return;
             const card = element.closest('.col-md-6') || element.closest('.col-12');
-            if(card && cmd === 'DELETE') { card.style.transition = '0.3s'; card.style.opacity = '0'; setTimeout(() => card.style.display = 'none', 300); }
-            if(card && cmd === 'COMPLETE' && type === 'ORDER') { card.style.transition = '0.3s'; card.style.opacity = '0'; setTimeout(() => card.style.display = 'none', 300); }
+            
+            if (card && (cmd === 'DELETE' || (cmd === 'COMPLETE' && type === 'ORDER'))) { 
+                card.style.transition = '0.3s'; 
+                card.style.opacity = '0'; 
+                card.style.transform = 'scale(0.95)';
+                setTimeout(() => card.style.display = 'none', 300); 
+                
+                // 🟢 إضافة العنصر المحذوف للذاكرة المانعة (Blacklist) لضمان عدم عودته
+                if (type === 'ORDER') actionBlacklist.orders.push(String(id));
+                if (type === 'RESTAURANT') actionBlacklist.restaurants.push(String(id));
+                if (type === 'DRIVER') actionBlacklist.drivers.push(String(id));
+                
+                // إزالة من القائمة السوداء بعد 5 ثوانٍ (يكون السيرفر قد تحدّث بالفعل)
+                setTimeout(() => {
+                    actionBlacklist.orders = actionBlacklist.orders.filter(item => item !== String(id));
+                    actionBlacklist.restaurants = actionBlacklist.restaurants.filter(item => item !== String(id));
+                    actionBlacklist.drivers = actionBlacklist.drivers.filter(item => item !== String(id));
+                }, 5000);
+            }
         } 
+        
+        pauseAutoFetch();
         element.classList.add('btn-loading'); 
 
         const script = document.createElement('script'); 
@@ -1020,7 +1053,6 @@
         document.getElementById('arcTotalCount').innerText = totalOrders;
         document.getElementById('arcTotalComm').innerHTML = `${totalComm} <span class="fs-6">د.ع</span>`;
         
-        // 🟢 تحديث الـ DOM للأرشيف فقط إذا تغير الكود
         const currentArchiveHtml = archiveHtml || `<tr><td colspan="5" class="text-center text-muted py-5 fw-bold">لا توجد طلبات.</td></tr>`;
         if (lastArchiveHtml !== currentArchiveHtml) {
             document.getElementById('ordersTableBody').innerHTML = currentArchiveHtml;
