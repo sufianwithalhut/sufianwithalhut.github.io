@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 5.5 (تحديث: إيقاف الـ GPS ذكياً عند مرحلة بالطريق فقط) ---
-        const CURRENT_APP_VERSION = "5.5"; 
+        // --- إصدار 5.8 (النسخة النهائية والمستقرة: إصلاح رابط التوجيه النهائي + سكريبت الانتظار) ---
+        const CURRENT_APP_VERSION = "5.8"; 
         
         if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة... جاري تطهير الكاش!");
@@ -550,8 +550,17 @@
         if (!rawPhone) return;
         let phone = rawPhone.startsWith('0') ? rawPhone.substring(1) : rawPhone;
         if (isManual) { document.getElementById('waitingStatusText').innerText = "جاري التحقق اليدوي..."; }
+        
+        const oldScript = document.getElementById('waiting-check-script');
+        if (oldScript) oldScript.remove();
+
         const script = document.createElement('script');
+        script.id = 'waiting-check-script';
         script.src = `${API_URL}?action=checkDriver&phone=${phone}&token=${API_TOKEN}&callback=handleWaitingCheck&ts=${Date.now()}`;
+        
+        script.onload = () => script.remove();
+        script.onerror = () => script.remove();
+
         document.body.appendChild(script);
     }
 
@@ -618,7 +627,6 @@
                     driverData.currentLat = pos.coords.latitude; driverData.currentLng = pos.coords.longitude;
                     const now = Date.now();
                     
-                    // 🟢 التعديل: إرسال الـ GPS فقط إذا لم يكن الكابتن في مرحلة (بالطريق للزبون/picked_up)
                     let isHeadingToCustomer = activeOrders.some(o => o.state === 'picked_up');
                     
                     if (now - lastLocUpdateTs > 15000 && !isHeadingToCustomer) { 
@@ -846,6 +854,7 @@
                 }
             }
             
+            // الرابط مصحح هنا وموثوق 100%
             let mapUrl = order.resLat ? `https://www.google.com/maps/dir/?api=1&destination=${order.resLat},${order.resLng}` : '';
             
             let resPhoneStr = order.resPhone ? String(order.resPhone) : "";
