@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 1.6 - محرك بحث الخرائط) ---
-        const CURRENT_APP_VERSION = "1.6"; 
+        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 1.8 - إصلاحات الواجهة ومعالجة الأرقام) ---
+        const CURRENT_APP_VERSION = "1.8"; 
         if (localStorage.getItem('hut_res_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة مكتشفة... جاري التحديث الإجباري لتسريع النظام!");
             localStorage.setItem('hut_res_app_version', CURRENT_APP_VERSION);
@@ -186,21 +186,24 @@
                     <div class="mb-3"><input type="text" id="regName" class="custom-input" placeholder="الاسم التجاري للمطعم" autocomplete="off"></div>
                     <div class="mb-3"><input type="text" id="regArea" class="custom-input" placeholder="منطقة المطعم الأساسية" autocomplete="off"></div>
                     
-                    <div class="mb-3 position-relative">
+                    <div class="mb-3">
                         <label class="form-label" style="text-align: right; color: var(--primary-blue); font-size: 0.85rem;">
                             <i data-lucide="map-pin" size="16"></i> حدد موقع المطعم بدقة على الخريطة:
                         </label>
                         
-                        <div class="d-flex gap-2 mb-2">
-                            <input type="text" id="mapSearchInput" class="custom-input py-2 mb-0" placeholder="اسم المطعم، المنطقة، أو رابط جوجل ماب..." style="font-size: 0.85rem;">
+                        <div class="d-flex gap-2 mb-3">
+                            <input type="text" id="mapSearchInput" class="custom-input py-2 mb-0" placeholder="اسم المطعم، المنطقة، أو رابط جوجل ماب..." style="font-size: 0.85rem; flex: 1;">
                             <button type="button" class="btn btn-primary fw-bold rounded-4 px-3" onclick="searchLocation()" style="background: var(--primary-blue); border: none;">بحث</button>
                         </div>
                         
-                        <div id="pickerMap"></div>
-                        <img src="https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png" class="map-crosshair" alt="Pin">
-                        <button type="button" class="btn btn-sm btn-light text-primary position-absolute shadow-sm border fw-bold d-flex align-items-center gap-1" style="bottom: 10px; right: 10px; z-index: 1000; border-radius: 12px;" onclick="forceLocateMe()">
-                            <i data-lucide="crosshair" size="16"></i> حدد موقعي
-                        </button>
+                        <div class="position-relative">
+                            <div id="pickerMap"></div>
+                            <img src="https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png" class="map-crosshair" alt="Pin">
+                            <button type="button" class="btn btn-sm btn-light text-primary position-absolute shadow-sm border fw-bold d-flex align-items-center gap-1" style="bottom: 10px; right: 10px; z-index: 1000; border-radius: 12px;" onclick="forceLocateMe()">
+                                <i data-lucide="crosshair" size="16"></i> حدد موقعي
+                            </button>
+                        </div>
+                        
                         <small class="text-muted fw-bold mt-2 d-block text-center bg-light p-2 rounded-3" style="font-size: 0.75rem; border: 1px dashed #cbd5e1;">
                             اسحب الخريطة لتضع الدبوس فوق مطعمك تماماً 🎯
                         </small>
@@ -393,7 +396,6 @@
 </div>
 
 <script>
-    // 🔴 التهيئة الصاروخية والأيقونات
     if (typeof lucide !== 'undefined') lucide.createIcons();
 
     const API_URL = "https://script.google.com/macros/s/AKfycbwLSFljKVZCEFTae3RvE4CF-Qp3U6zEoYsh2TZe0nk149K4Fw-F1U9rYwReLKyxXq-I1Q/exec";
@@ -411,9 +413,11 @@
     let regLat = 35.468; 
     let regLng = 44.392;
 
-    // 🟢 1. متغيرات الكاش (لمنع إعادة رسم الشاشة المزعجة)
     let lastActiveHtml = "";
     let lastArchiveHtml = "";
+
+    // 🟢 2. مصفوفة الذاكرة المانعة (Local Overrides) للمطعم
+    let actionBlacklist = []; 
 
     function initPickerMap() {
         if (!document.getElementById('pickerMap')) return;
@@ -423,7 +427,10 @@
         L.control.zoom({ position: 'bottomleft' }).addTo(pickerMap);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(pickerMap);
         
-        pickerMap.on('move', function () { regLat = pickerMap.getCenter().lat; regLng = pickerMap.getCenter().lng; });
+        pickerMap.on('move', function () { 
+            regLat = pickerMap.getCenter().lat; 
+            regLng = pickerMap.getCenter().lng; 
+        });
 
         if(navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(pos => {
@@ -438,30 +445,32 @@
         setTimeout(() => clearInterval(mapResizeInterval), 3000);
     }
 
-    // 🟢 دالة البحث واستخراج الإحداثيات الجديدة
     function searchLocation() {
         const query = document.getElementById('mapSearchInput').value.trim();
         if (!query) return;
 
-        // 1. محاولة استخراج الإحداثيات إذا كان رابط جوجل أو إحداثيات مباشرة (@35.4,44.3)
         const coordMatch = query.match(/@([0-9.-]+),([0-9.-]+)/);
         if (coordMatch && coordMatch.length >= 3) {
             const lat = parseFloat(coordMatch[1]);
             const lng = parseFloat(coordMatch[2]);
-            if(pickerMap) pickerMap.flyTo([lat, lng], 16);
+            if(pickerMap) {
+                pickerMap.flyTo([lat, lng], 16);
+                regLat = lat; regLng = lng;
+            }
             return;
         }
         
-        // فحص الإحداثيات النصية المجردة (35.4, 44.3)
         const plainCoordMatch = query.match(/^([0-9.-]+)[,\s]+([0-9.-]+)$/);
         if (plainCoordMatch && plainCoordMatch.length >= 3) {
             const lat = parseFloat(plainCoordMatch[1]);
             const lng = parseFloat(plainCoordMatch[2]);
-            if(pickerMap) pickerMap.flyTo([lat, lng], 16);
+            if(pickerMap) {
+                pickerMap.flyTo([lat, lng], 16);
+                regLat = lat; regLng = lng;
+            }
             return;
         }
 
-        // 2. البحث النصي باستخدام Nominatim API
         showLoading(true, "جاري البحث عن الموقع...");
         const searchQuery = encodeURIComponent(query + ", كركوك, العراق"); 
         fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${searchQuery}&limit=1`)
@@ -471,7 +480,10 @@
                 if (data && data.length > 0) {
                     const lat = parseFloat(data[0].lat);
                     const lng = parseFloat(data[0].lon);
-                    if(pickerMap) pickerMap.flyTo([lat, lng], 16);
+                    if(pickerMap) {
+                        pickerMap.flyTo([lat, lng], 16);
+                        regLat = lat; regLng = lng;
+                    }
                 } else {
                     alert("لم يتم العثور على المكان. حاول إدخال اسم أقرب معلم مشهور أو الصق رابط جوجل ماب المباشر.");
                 }
@@ -574,9 +586,14 @@
         }
     }
 
+    // 🟢 1. إصلاح دالة تحويل الأرقام (تمت إضافة النطاق ۰-۹)
     function convertArabicNumerals(str) {
         const arabicNumbers = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
-        return str.replace(/[٠-٩]/g, w => arabicNumbers.indexOf(w));
+        const persianNumbers = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+        
+        let convertedStr = str.replace(/[٠-٩]/g, w => arabicNumbers.indexOf(w));
+        convertedStr = convertedStr.replace(/[۰-۹]/g, w => persianNumbers.indexOf(w));
+        return convertedStr;
     }
 
     function parseCustomPriceList(rawText) {
@@ -669,7 +686,6 @@
         }
     }
 
-    // 🟢 2. الضغط الصاروخي للصور
     function processImage(input) {
         if (input.files && input.files[0]) {
             showLoading(true, "جاري تحسين وتصغير حجم الوصل...");
@@ -802,17 +818,20 @@
         dataRefreshInterval = setInterval(fetchResDashboardData, 15000);
     }
 
-    // 🟢 3. الإلغاء بالواجهة المتفائلة (Optimistic Cancel UI)
     function cancelOrderGrace(orderId) {
         if(confirm("هل أنت متأكد من إلغاء هذا الطلب؟ سيختفي الآن من شاشتك.")) {
-            // إخفاء الطلب بصرياً فوراً (إحساس بالسرعة الفائقة)
             const card = document.getElementById(`order-${orderId}`);
             if(card) {
                 card.style.transition = '0.3s ease-out'; card.style.opacity = '0'; card.style.transform = 'scale(0.95)';
                 setTimeout(() => card.style.display = 'none', 300);
             }
             
-            // إرسال الإلغاء بالخلفية
+            // 🟢 2. إضافة الطلب للذاكرة المانعة لمنع عودته
+            actionBlacklist.push(String(orderId));
+            setTimeout(() => {
+                actionBlacklist = actionBlacklist.filter(id => id !== String(orderId));
+            }, 5000);
+
             const script = document.createElement('script');
             script.src = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${orderId}&status=deleted&token=${API_TOKEN}&callback=onCancelSuccess&ts=${Date.now()}`;
             document.body.appendChild(script);
@@ -848,11 +867,16 @@
         const currentMonth = today.getMonth(); const currentYear = today.getFullYear();
         
         let monthlyCount = 0, totalUnpaid = 0, todaySalesTotal = 0;
-        let activeOrdersHtml = '', todayArchiveHtml = '';
+        let activeOrdersHtml = '';
+        let todayArchiveHtml = '';
 
         data.orders.slice(1).forEach(o => {
             if(o[1] === currentResName) {
                 const status = o[5], orderId = o[0], orderArea = o[2], driverPhone = o[6], orderDateStr = o[7];
+                
+                // 🟢 تجاهل الطلب إذا كان في الذاكرة المانعة (محذوف للتو)
+                if (actionBlacklist.includes(String(orderId))) return;
+
                 const orderDateObj = new Date(orderDateStr);
                 const orderISO = orderDateObj.toISOString().split('T')[0];
                 const orderTimeStrFormat = orderDateObj.toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'});
@@ -913,7 +937,6 @@
         document.getElementById('statUnpaid').innerText = totalUnpaid;
         document.getElementById('todayTotalSales').innerHTML = `${todaySalesTotal} <small class="fs-6">د.ع</small>`;
 
-        // 🟢 1. تحديثات DOM ذكية (لا نعيد رسم الشاشة إلا إذا تغير شيء)
         if (lastActiveHtml !== activeOrdersHtml) {
             document.getElementById('activeOrdersList').innerHTML = activeOrdersHtml || `<div class="text-center text-muted fw-bold py-4 small">لا توجد طلبات نشطة حالياً.</div>`;
             lastActiveHtml = activeOrdersHtml;
