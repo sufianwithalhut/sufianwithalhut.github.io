@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 1.8 - إصلاحات الواجهة ومعالجة الأرقام) ---
-        const CURRENT_APP_VERSION = "1.8"; 
+        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 1.9 - إصلاحات الذاكرة والـ CORS) ---
+        const CURRENT_APP_VERSION = "1.9"; 
         if (localStorage.getItem('hut_res_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة مكتشفة... جاري التحديث الإجباري لتسريع النظام!");
             localStorage.setItem('hut_res_app_version', CURRENT_APP_VERSION);
@@ -749,7 +749,9 @@
 
     function sendRegistration(name, phone, area, comm, pay, lat, lng, priceListStr) {
         const payload = { action: 'RESTAURANT_REG', token: API_TOKEN, name: name, phone: phone, area: area, comm: comm, pay: pay, lat: lat, lng: lng, priceList: priceListStr };
-        fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) })
+        
+        // تم إزالة no-cors لضمان نجاح العملية
+        fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) })
         .then(() => {
             showLoading(false); localStorage.setItem('hut_res_phone', phone); localStorage.setItem('hut_res_pending', phone); showWaitingRoom();
         }).catch(() => { showLoading(false); alert("حدث خطأ أثناء الإرسال."); });
@@ -844,8 +846,20 @@
     };
 
     function fetchResDashboardData() {
+        // إيقاف التحديث إذا كانت الشاشة مغلقة أو التبويب غير نشط لتوفير الموارد
+        if (document.hidden) return;
+
+        // تنظيف السكريبت القديم لمنع تسريب الذاكرة
+        const oldScript = document.getElementById('res-fetch-script');
+        if (oldScript) oldScript.remove();
+
         const script = document.createElement('script');
+        script.id = 'res-fetch-script';
         script.src = `${API_URL}?action=getGlobalData&token=${API_TOKEN}&callback=renderResDashboard&ts=${Date.now()}`;
+        
+        script.onload = () => script.remove();
+        script.onerror = () => script.remove();
+
         document.body.appendChild(script);
     }
 
