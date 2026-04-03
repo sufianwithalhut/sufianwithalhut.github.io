@@ -367,15 +367,15 @@
     let lastPendingCount = 0; 
     let driverPerformanceCache = {};
 
-    // 🟢 1. متغيرات ذاكرة الـ DOM لتقليل إعادة الرسم والحد من التهنيج
+    // 🟢 متغيرات ذاكرة الـ DOM لتقليل إعادة الرسم والحد من التهنيج
     let lastRadarHtml = "";
     let lastResHtml = "";
     let lastDriverHtml = "";
     let lastArchiveHtml = "";
     let lastMapStateHash = "";
 
-    // 🟢 2. القائمة السوداء للأفعال المؤقتة (لمنع إعادة ظهور العناصر المحذوفة)
-    let actionBlacklist = { orders: [], drivers: [], restaurants: [] };
+    // 🟢 1. إنشاء "الذاكرة المانعة" (Local Overrides) لمنع عودة الطلبات المحذوفة
+    let localOverrides = { orders: {}, drivers: {}, restaurants: {} };
     let fetchPauseTimeout = null;
 
     function showToast(msg, type = 'success') {
@@ -481,7 +481,7 @@
     }, 1000); }
 
     function refreshData() {
-        // 🟢 3. إيقاف التحديث إذا كان هناك تغيير يدوي قيد التنفيذ (Debounce)
+        // إيقاف التحديث إذا كان هناك تعديل يدوي قيد التنفيذ للتو
         if (fetchPauseTimeout !== null) return;
 
         const oldScript = document.getElementById('data-fetch-script');
@@ -497,6 +497,36 @@
         const oldScript = document.getElementById('data-fetch-script');
         if (oldScript) oldScript.remove(); 
 
+        const now = Date.now();
+
+        // 🟢 2. حقن الذاكرة המُانعة قبل عرض البيانات
+        // فلترة الطلبات وتغيير حالتها لو كان المدير قد غيّرها للتو
+        data.orders.forEach(o => {
+            let override = localOverrides.orders[o[0]];
+            if (override) {
+                if (now - override.ts < 120000) { // الذاكرة تدوم لدقيقتين كحد أقصى
+                    o[5] = override.status || o[5];
+                    if (override.driverPhone) o[6] = override.driverPhone;
+                } else {
+                    delete localOverrides.orders[o[0]];
+                }
+            }
+        });
+
+        // فلترة الكباتن
+        data.drivers.forEach(d => {
+            let override = localOverrides.drivers[d[2]];
+            if (override && (now - override.ts < 120000)) d[4] = override.status;
+            else if (override) delete localOverrides.drivers[d[2]];
+        });
+
+        // فلترة المطاعم
+        data.restaurants.forEach(r => {
+            let override = localOverrides.restaurants[r[2]]; 
+            if (override && (now - override.ts < 120000)) r[4] = override.status;
+            else if (override) delete localOverrides.restaurants[r[2]];
+        });
+
         globalData = data; 
         
         if(document.getElementById('arcRes').options.length === 1) {
@@ -504,10 +534,8 @@
             data.drivers.slice(1).forEach(d => document.getElementById('arcDriver').innerHTML += `<option value="${String(d[2])}">${d[1]}</option>`);
         }
 
-        // 🟢 4. فلترة الطلبات وتطبيق الذاكرة المانعة (Blacklist)
         const activeOrdersList = data.orders.slice(1).filter(o => 
-            o[5] !== 'completed' && o[5] !== 'مكتمل' && o[5] !== 'settled' && o[5] !== 'deleted' && 
-            !actionBlacklist.orders.includes(String(o[0]))
+            o[5] !== 'completed' && o[5] !== 'مكتمل' && o[5] !== 'settled' && o[5] !== 'deleted'
         );
 
         let currentPendingCount = 0;
@@ -561,7 +589,7 @@
             }
         });
 
-        renderRadar(activeOrdersList); // تمرير الطلبات המُفلترة
+        renderRadar(activeOrdersList); 
         renderArchive();
         
         updateSectionBadges('RESTAURANT', data.restaurants);
@@ -682,8 +710,7 @@
             const name = String(item[1]).toLowerCase();
             const phone = String(item[2]).toLowerCase();
 
-            // 🟢 إخفاء العناصر المحذوفة حديثاً من الذاكرة (Blacklist)
-            if (status === 'deleted' || (type === 'RESTAURANT' && actionBlacklist.restaurants.includes(phone)) || (type === 'DRIVER' && actionBlacklist.drivers.includes(phone))) return;
+            if (status === 'deleted') return;
 
             if (searchQuery && !name.includes(searchQuery) && !phone.includes(searchQuery)) return;
 
@@ -765,14 +792,19 @@
         }
     }
 
+    function filterRadar(type, btnElement) {
+        currentRadarFilter = type;
+        document.querySelectorAll('.radar-filter-btn').forEach(b => b.classList.remove('active', 'border-danger', 'border-success'));
+        btnElement.classList.add('active');
+        renderRadar();
+    }
+
     function renderRadar(activeOrdersList = null) {
         if(!globalData) return;
         
-        // إذا لم يتم تمرير قائمة (مثل عند الضغط على أزرار الفلتر)، نقوم بتوليدها من globalData بعد فلترة الـ Blacklist
         if (!activeOrdersList) {
             activeOrdersList = globalData.orders.slice(1).filter(o => 
-                o[5] !== 'completed' && o[5] !== 'مكتمل' && o[5] !== 'settled' && o[5] !== 'deleted' && 
-                !actionBlacklist.orders.includes(String(o[0]))
+                o[5] !== 'completed' && o[5] !== 'مكتمل' && o[5] !== 'settled' && o[5] !== 'deleted'
             );
         }
 
@@ -933,7 +965,7 @@
         }
     }
 
-    // 🟢 5. وظيفة الإيقاف المؤقت للتحديث (Debounce)
+    // 🟢 3. وظيفة الإيقاف المؤقت للتحديث (Debounce) لمنع التضارب أثناء الحذف
     function pauseAutoFetch() {
         if (fetchPauseTimeout) clearTimeout(fetchPauseTimeout);
         fetchPauseTimeout = setTimeout(() => { fetchPauseTimeout = null; }, 3000);
@@ -946,9 +978,8 @@
         const card = document.getElementById(`order-${orderId}`);
         if(card) card.style.opacity = '0.5';
         
-        // إضافة للذاكرة المانعة
-        actionBlacklist.orders.push(String(orderId));
-        setTimeout(() => { actionBlacklist.orders = actionBlacklist.orders.filter(id => id !== String(orderId)); }, 5000);
+        // 🟢 إبلاغ الذاكرة المحلية
+        localOverrides.orders[String(orderId)] = { status: 'manual_pending', driverPhone: driverPhone, ts: Date.now() };
 
         const url = `${API_URL}?action=ASSIGN_DRIVER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}&pass=${masterPassword}`;
         const script = document.createElement('script'); script.src = `${url}&callback=silentCallback&ts=${Date.now()}`; 
@@ -966,9 +997,12 @@
         document.body.appendChild(script); showToast("تم تصفير الديون", "success");
     }
 
+    // 🟢 4. استجابة سريعة جداً وإخفاء نهائي للأشياء المحذوفة
     function adminActionOptUI(cmd, type, id, element) {
-        const statusMap = { 'ACCEPT': 'active', 'PAUSE': 'inactive', 'DELETE': 'banned', 'COMPLETE': 'completed' };
-        
+        const statusMap = { 'ACCEPT': 'active', 'PAUSE': 'inactive', 'DELETE': 'deleted', 'COMPLETE': 'completed' };
+        let newStatus = statusMap[cmd];
+        if (cmd === 'DELETE' && type !== 'ORDER') newStatus = 'banned'; 
+
         if (cmd === 'COMPLETE' || cmd === 'DELETE') {
             if(!confirm(cmd === 'COMPLETE' ? "تأكيد الإتمام القسري؟" : "تأكيد الحظر؟")) return;
             const card = element.closest('.col-md-6') || element.closest('.col-12');
@@ -979,25 +1013,23 @@
                 card.style.transform = 'scale(0.95)';
                 setTimeout(() => card.style.display = 'none', 300); 
                 
-                // 🟢 إضافة العنصر المحذوف للذاكرة المانعة (Blacklist) لضمان عدم عودته
-                if (type === 'ORDER') actionBlacklist.orders.push(String(id));
-                if (type === 'RESTAURANT') actionBlacklist.restaurants.push(String(id));
-                if (type === 'DRIVER') actionBlacklist.drivers.push(String(id));
-                
-                // إزالة من القائمة السوداء بعد 5 ثوانٍ (يكون السيرفر قد تحدّث بالفعل)
-                setTimeout(() => {
-                    actionBlacklist.orders = actionBlacklist.orders.filter(item => item !== String(id));
-                    actionBlacklist.restaurants = actionBlacklist.restaurants.filter(item => item !== String(id));
-                    actionBlacklist.drivers = actionBlacklist.drivers.filter(item => item !== String(id));
-                }, 5000);
+                // 🟢 تسجيل الإجراء في الذاكرة المانعة
+                if (type === 'ORDER') localOverrides.orders[String(id)] = { status: newStatus, ts: Date.now() };
+                if (type === 'RESTAURANT') localOverrides.restaurants[String(id)] = { status: newStatus, ts: Date.now() };
+                if (type === 'DRIVER') localOverrides.drivers[String(id)] = { status: newStatus, ts: Date.now() };
             }
-        } 
+        } else {
+             // للإيقاف المؤقت والقبول
+             if (type === 'ORDER') localOverrides.orders[String(id)] = { status: newStatus, ts: Date.now() };
+             if (type === 'RESTAURANT') localOverrides.restaurants[String(id)] = { status: newStatus, ts: Date.now() };
+             if (type === 'DRIVER') localOverrides.drivers[String(id)] = { status: newStatus, ts: Date.now() };
+        }
         
         pauseAutoFetch();
         element.classList.add('btn-loading'); 
 
         const script = document.createElement('script'); 
-        script.src = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${id}&status=${statusMap[cmd]}&token=${API_TOKEN}&pass=${masterPassword}&callback=silentCallback&ts=${Date.now()}`; 
+        script.src = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${id}&status=${newStatus}&token=${API_TOKEN}&pass=${masterPassword}&callback=silentCallback&ts=${Date.now()}`; 
         script.onload = () => script.remove(); script.onerror = () => script.remove();
         document.body.appendChild(script); showToast("تم إرسال الأمر", "success");
     }
