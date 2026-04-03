@@ -481,6 +481,9 @@
     }, 1000); }
 
     function refreshData() {
+        // إيقاف التحديث إذا كانت الشاشة مغلقة أو التبويب غير نشط
+        if (document.hidden) return; 
+
         // إيقاف التحديث إذا كان هناك تعديل يدوي قيد التنفيذ للتو
         if (fetchPauseTimeout !== null) return;
 
@@ -499,7 +502,7 @@
 
         const now = Date.now();
 
-        // 🟢 2. حقن الذاكرة המُانعة قبل عرض البيانات
+        // 🟢 2. حقن الذاكرة المانعة قبل عرض البيانات
         // فلترة الطلبات وتغيير حالتها لو كان المدير قد غيّرها للتو
         data.orders.forEach(o => {
             let override = localOverrides.orders[o[0]];
@@ -983,7 +986,11 @@
 
         const url = `${API_URL}?action=ASSIGN_DRIVER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}&pass=${masterPassword}`;
         const script = document.createElement('script'); script.src = `${url}&callback=silentCallback&ts=${Date.now()}`; 
-        script.onload = () => script.remove(); script.onerror = () => { script.remove(); showToast("فشل الاتصال", "error"); if(card) card.style.opacity = '1'; };
+        
+        script.onload = () => script.remove(); 
+        script.onerror = () => { script.remove(); showToast("فشل الاتصال", "error"); if(card) card.style.opacity = '1'; };
+        setTimeout(() => { if(script.parentNode) script.remove(); }, 15000);
+        
         document.body.appendChild(script); showToast("تم إرسال التعيين", "success");
     }
 
@@ -993,7 +1000,11 @@
         element.classList.add('btn-loading');
         const url = `${API_URL}?action=RESET_DEBT&type=${type}&id=${id}&token=${API_TOKEN}&pass=${masterPassword}`;
         const script = document.createElement('script'); script.src = `${url}&callback=silentCallback&ts=${Date.now()}`; 
-        script.onload = () => script.remove(); script.onerror = () => script.remove();
+        
+        script.onload = () => script.remove(); 
+        script.onerror = () => script.remove();
+        setTimeout(() => { if(script.parentNode) script.remove(); }, 15000);
+        
         document.body.appendChild(script); showToast("تم تصفير الديون", "success");
     }
 
@@ -1030,7 +1041,11 @@
 
         const script = document.createElement('script'); 
         script.src = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${id}&status=${newStatus}&token=${API_TOKEN}&pass=${masterPassword}&callback=silentCallback&ts=${Date.now()}`; 
-        script.onload = () => script.remove(); script.onerror = () => script.remove();
+        
+        script.onload = () => script.remove(); 
+        script.onerror = () => script.remove();
+        setTimeout(() => { if(script.parentNode) script.remove(); }, 15000);
+        
         document.body.appendChild(script); showToast("تم إرسال الأمر", "success");
     }
 
@@ -1045,9 +1060,13 @@
         const driverFilter = document.getElementById('arcDriver').value;
         const dateFrom = document.getElementById('arcDateFrom').value;
         const dateTo = document.getElementById('arcDateTo').value;
+        
         let archiveHtml = ''; let totalOrders = 0; let totalComm = 0;
+        let displayedCount = 0;
+        let displayLimit = 150; // حماية الذاكرة - عرض آخر 150 طلب فقط كحد أقصى
 
-        const completedOrders = globalData.orders.slice(1).filter(o => o[5] === 'completed' || o[5] === 'مكتمل' || o[5] === 'settled');
+        const completedOrders = globalData.orders.slice(1).filter(o => o[5] === 'completed' || o[5] === 'مكتمل' || o[5] === 'settled').reverse();
+        
         completedOrders.forEach(o => {
             const orderId = o[0], restName = o[1], price = o[4], details = o[3], status = o[5], driverPhone = o[6];
             let orderDateISO = "", orderDateFormatted = "---";
@@ -1069,19 +1088,28 @@
                 const rData = globalData.restaurants.find(r => r[1] === restName);
                 if(rData) { comm = parseFloat(rData[5]) || 0; payType = String(rData[8]); }
                 totalComm += comm;
-                const dData = globalData.drivers.find(d => String(d[2]) === String(driverPhone));
-                let driverName = dData ? dData[1] : driverPhone;
-                const orderDataObj = { id: orderId, date: orderDateFormatted, res: restName, driver: driverName, details: details, price: price, comm: comm, payType: payType, isSettled: isSettled };
-                const orderDataStr = encodeURIComponent(JSON.stringify(orderDataObj));
-                archiveHtml += `<tr onclick="openInvoice('${orderDataStr}')" style="cursor:pointer;">
-                    <td class="fw-bold text-nowrap text-primary" style="font-size:0.8rem;">${orderId || '-'}</td>
-                    <td class="small fw-bold text-muted text-nowrap">${orderDateISO || '-'}</td>
-                    <td class="fw-bold text-dark" style="white-space: normal;">${restName || '-'}</td>
-                    <td class="text-muted fw-bold" style="white-space: normal;">${driverName}</td>
-                    <td><span class="badge ${isSettled ? 'bg-secondary' : 'bg-success'} px-2 py-1 rounded-pill" style="font-size:0.65rem;">${isSettled ? 'مسدد' : 'مكتمل'}</span></td>
-                </tr>`;
+                
+                if (displayedCount < displayLimit) {
+                    displayedCount++;
+                    const dData = globalData.drivers.find(d => String(d[2]) === String(driverPhone));
+                    let driverName = dData ? dData[1] : driverPhone;
+                    const orderDataObj = { id: orderId, date: orderDateFormatted, res: restName, driver: driverName, details: details, price: price, comm: comm, payType: payType, isSettled: isSettled };
+                    const orderDataStr = encodeURIComponent(JSON.stringify(orderDataObj));
+                    archiveHtml += `<tr onclick="openInvoice('${orderDataStr}')" style="cursor:pointer;">
+                        <td class="fw-bold text-nowrap text-primary" style="font-size:0.8rem;">${orderId || '-'}</td>
+                        <td class="small fw-bold text-muted text-nowrap">${orderDateISO || '-'}</td>
+                        <td class="fw-bold text-dark" style="white-space: normal;">${restName || '-'}</td>
+                        <td class="text-muted fw-bold" style="white-space: normal;">${driverName}</td>
+                        <td><span class="badge ${isSettled ? 'bg-secondary' : 'bg-success'} px-2 py-1 rounded-pill" style="font-size:0.65rem;">${isSettled ? 'مسدد' : 'مكتمل'}</span></td>
+                    </tr>`;
+                }
             }
         });
+        
+        if (totalOrders > displayLimit) {
+            archiveHtml += `<tr><td colspan="5" class="text-center text-muted py-3 fw-bold small">تم إخفاء ${totalOrders - displayLimit} طلب قديم لتسريع الشاشة. استخدم البحث والتاريخ للوصول إليها.</td></tr>`;
+        }
+
         document.getElementById('arcTotalCount').innerText = totalOrders;
         document.getElementById('arcTotalComm').innerHTML = `${totalComm} <span class="fs-6">د.ع</span>`;
         
