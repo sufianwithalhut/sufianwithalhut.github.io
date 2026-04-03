@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 5.4 (تصليح الذاكرة + رابط الخرائط + الأوفلاين) ---
-        const CURRENT_APP_VERSION = "5.4"; 
+        // --- إصدار 5.5 (تحديث: إيقاف الـ GPS ذكياً عند مرحلة بالطريق فقط) ---
+        const CURRENT_APP_VERSION = "5.5"; 
         
         if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة... جاري تطهير الكاش!");
@@ -92,6 +92,7 @@
         .order-price small { font-size: 0.8rem; color: var(--text-muted); margin-right: 2px; }
         .status-banner { text-align: center; padding: 8px; border-radius: 12px; font-weight: 800; font-size: 0.95rem; margin-bottom: 20px; background: var(--stat-bg); color: var(--primary-blue); }
         
+        /* 🟢 تنسيقات زر الدعم والعداد */
         .btn-support-mini { background: rgba(59, 130, 246, 0.05); color: var(--accent-blue); border: 1px solid rgba(59, 130, 246, 0.3); padding: 4px 10px; border-radius: 10px; font-size: 0.8rem; font-weight: 800; cursor: pointer; transition: 0.2s; display: inline-flex; align-items: center; gap: 5px; text-decoration: none; }
         .btn-support-mini:active { transform: scale(0.95); background: rgba(59, 130, 246, 0.1); }
         .timer-badge { font-weight: 900; padding: 4px 12px; border-radius: 12px; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 5px; border: 1px solid transparent; transition: 0.3s; }
@@ -503,7 +504,6 @@
             showLoading(true, "جاري إنشاء الحساب...");
             const payload = { action: 'DRIVER_REG', token: API_TOKEN, name: name, phone: phone };
             
-            // إزالة no-cors هنا أيضاً لتجنب المشاكل المشابهة
             fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) })
             .then(() => {
                 showLoading(false);
@@ -617,11 +617,14 @@
                     document.getElementById('permissionOverlay').classList.add('hidden-section');
                     driverData.currentLat = pos.coords.latitude; driverData.currentLng = pos.coords.longitude;
                     const now = Date.now();
-                    if (now - lastLocUpdateTs > 15000) { 
+                    
+                    // 🟢 التعديل: إرسال الـ GPS فقط إذا لم يكن الكابتن في مرحلة (بالطريق للزبون/picked_up)
+                    let isHeadingToCustomer = activeOrders.some(o => o.state === 'picked_up');
+                    
+                    if (now - lastLocUpdateTs > 15000 && !isHeadingToCustomer) { 
                         lastLocUpdateTs = now; 
-                        // تم التعديل هنا: إرسال الموقع مباشرة بدون الـ Offline Queue
                         const url = `${API_URL}?action=DRIVER_UPDATE&phone=${driverData.phone}&lat=${pos.coords.latitude}&lng=${pos.coords.longitude}&token=${API_TOKEN}`;
-                        fetch(url, { cache: 'no-store' }).catch(e => console.log('Location update failed (offline)'));
+                        fetch(url, { cache: 'no-store' }).catch(e => console.log('Location update failed'));
                     }
                 }, 
                 err => { document.getElementById('permissionOverlay').classList.remove('hidden-section'); }, 
@@ -730,7 +733,6 @@
     function checkForOrders() {
         if (!isOnline || activeOrders.length >= 2 || !document.getElementById('orderAlertOverlay').classList.contains('hidden-section')) return;
         
-        // تنظيف السكريبت القديم
         const oldScript = document.getElementById('check-orders-script');
         if (oldScript) oldScript.remove();
 
@@ -844,7 +846,6 @@
                 }
             }
             
-            // تم تصحيح رابط التوجيه لخرائط جوجل هنا
             let mapUrl = order.resLat ? `https://www.google.com/maps/dir/?api=1&destination=${order.resLat},${order.resLng}` : '';
             
             let resPhoneStr = order.resPhone ? String(order.resPhone) : "";
@@ -981,7 +982,6 @@
     function updateStats() {
         if (!driverData) return;
         
-        // تنظيف السكريبت القديم
         const oldScript = document.getElementById('update-stats-script');
         if (oldScript) oldScript.remove();
 
