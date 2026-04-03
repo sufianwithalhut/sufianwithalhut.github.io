@@ -1,10 +1,10 @@
 // =========================================================
 // AlHut-Rocket-V12: محرك الكاش الصاروخي (Enterprise Edition)
-// تحديث: التعامل مع الإشعارات + توفير البيانات + سرعة الفتح 🚀
+// تحديث: إصلاح التحديث بالخلفية + دعم الـ Opaque + التوجيه الذكي للإشعارات 🚀
 // =========================================================
 
-const CACHE_NAME = 'AlHut-Core-V12';
-const CDN_CACHE_NAME = 'AlHut-CDNs-V1';
+const CACHE_NAME = 'AlHut-Core-V12.1'; 
+const CDN_CACHE_NAME = 'AlHut-CDNs-V1.1';
 
 // قائمة الملفات الأساسية للنظام
 const ASSETS_TO_CACHE = [
@@ -20,7 +20,7 @@ const ASSETS_TO_CACHE = [
   './driver-logo.png'
 ];
 
-// 1. التثبيت (Install): شحن الملفات لتعمل بدون إنترنت
+// 1. التثبيت (Install)
 self.addEventListener('install', event => {
   self.skipWaiting(); 
   event.waitUntil(
@@ -33,7 +33,7 @@ self.addEventListener('install', event => {
   );
 });
 
-// 2. التفعيل (Activate): تنظيف النفايات والنسخ القديمة
+// 2. التفعيل (Activate)
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(cacheNames => {
@@ -50,29 +50,31 @@ self.addEventListener('activate', event => {
   self.clients.claim();
 });
 
-// 3. جلب البيانات (Fetch): استراتيجية التوجيه الذكي (Smart Routing)
+// 3. جلب البيانات (Fetch)
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
-  // 🔴 أ. طلبات قاعدة البيانات (جوجل سكريبت) -> اذهب للإنترنت دائماً وبصورة مباشرة
+  // 🔴 أ. طلبات قاعدة البيانات (جوجل سكريبت) -> إنترنت فقط
   if (url.hostname.includes('script.google.com')) {
     event.respondWith(fetch(event.request));
     return;
   }
 
-  // 🔵 ب. ملفات البرمجة الخارجية (CDNs) -> الذاكرة أولاً (لتوفير باقة النت وسرعة الفتح)
+  // 🔵 ب. ملفات الـ CDNs والأصوات والخرائط -> Cache First
   if (url.hostname.includes('unpkg.com') || 
       url.hostname.includes('cdn.jsdelivr.net') || 
       url.hostname.includes('fonts.googleapis.com') || 
       url.hostname.includes('fonts.gstatic.com') ||
-      url.hostname.includes('basemaps.cartocdn.com')) {
+      url.hostname.includes('basemaps.cartocdn.com') ||
+      url.hostname.includes('actions.google.com')) { // 🟢 تم إضافة الأصوات للكاش
     
     event.respondWith(
       caches.match(event.request).then(cachedResponse => {
         if (cachedResponse) return cachedResponse; 
         
         return fetch(event.request).then(networkResponse => {
-          if (networkResponse.status === 200) {
+          // 🚨 السماح للردود التي ليس بها CORS (Opaque) بالدخول للكاش
+          if (networkResponse && (networkResponse.status === 200 || networkResponse.type === 'opaque')) {
             const responseClone = networkResponse.clone();
             caches.open(CDN_CACHE_NAME).then(cache => cache.put(event.request, responseClone));
           }
@@ -83,40 +85,49 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // 🟢 ج. ملفات النظام الأساسية -> استراتيجية (Stale-While-Revalidate)
-  // تفتح التطبيق بلمح البصر من الهاتف، وتحدث المحتوى من النت بصمت في الخلفية
+  // 🟢 ج. ملفات النظام الأساسية -> Stale-While-Revalidate
   event.respondWith(
     caches.match(event.request).then(cachedResponse => {
       const fetchPromise = fetch(event.request).then(networkResponse => {
-        if (networkResponse.status === 200) {
+        if (networkResponse && networkResponse.status === 200) {
           caches.open(CACHE_NAME).then(cache => cache.put(event.request, networkResponse.clone()));
         }
         return networkResponse;
       }).catch(() => {
-        // في حال انقطاع النت تماماً، سيعمل التطبيق من الذاكرة
+        console.log('📶 وضع الأوفلاين مفعل للمسار:', url.pathname);
       });
 
-      return cachedResponse || fetchPromise;
+      if (cachedResponse) {
+         // 🚨 إجبار المتصفح على عدم إغلاق الـ Service Worker حتى يكتمل التحديث
+         event.waitUntil(fetchPromise); 
+         return cachedResponse;
+      }
+      
+      return fetchPromise;
     })
   );
 });
 
 // 4. التعامل مع الإشعارات (Notification Click)
-// عند ضغط الكابتن على الإشعار، يفتح التطبيق فوراً في وجهه
 self.addEventListener('notificationclick', event => {
   event.notification.close(); 
 
+  // 🚨 قراءة الرابط من بيانات الإشعار، أو التوجيه للجذر ليقوم السيرفر بتوجيهه
+  const targetUrl = (event.notification.data && event.notification.data.url) ? event.notification.data.url : '/';
+
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
-      // إذا كان التطبيق مفتوحاً في الخلفية، قم بعمل Focus له
+      // البحث عن أي نافذة تابعة للنظام وفتحها
       for (let client of windowClients) {
-        if ('focus' in client) {
-          return client.focus();
+        if (client.url.includes('Driver.html') || client.url.includes('Restaurant.html') || client.url.includes('Master.html')) {
+          if ('focus' in client) {
+            return client.focus();
+          }
         }
       }
-      // إذا كان التطبيق مغلقاً تماماً، قم بفتحه على صفحة الكابتن
+      // إذا كان مغلقاً تماماً، نفتح الرابط المستهدف
       if (clients.openWindow) {
-        return clients.openWindow('./Driver.html'); 
+        return clients.openWindow(targetUrl); 
       }
     })
   );
