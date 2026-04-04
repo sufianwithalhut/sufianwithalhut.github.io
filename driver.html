@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 5.8 (النسخة النهائية والمستقرة: إصلاح رابط التوجيه النهائي + سكريبت الانتظار) ---
-        const CURRENT_APP_VERSION = "5.8"; 
+        // --- إصدار 6.0 (النسخة الذهبية: التوجيه الذكي للمسار + توقيت السجل + كسر حماية الصوت) ---
+        const CURRENT_APP_VERSION = "6.0"; 
         
         if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة... جاري تطهير الكاش!");
@@ -229,7 +229,7 @@
             </div>
         </div>
 
-        <button class="btn-action" id="mainAuthBtn" onclick="authAction()">
+        <button class="btn-action" id="mainAuthBtn" onclick="initAudioAndAuth()">
             فحص الإشارة <svg class="svg-icon" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
         </button>
     </div>
@@ -371,6 +371,19 @@
     let offlineActionQueue = JSON.parse(localStorage.getItem('hut_offline_queue') || '[]');
     let isProcessingQueue = false;
 
+    // دالة حساب المسافة بالأمتار (Haversine formula)
+    function calculateDistanceMeters(lat1, lon1, lat2, lon2) {
+        if (!lat1 || !lon1) return 9999;
+        const R = 6371e3;
+        const p1 = lat1 * Math.PI/180;
+        const p2 = lat2 * Math.PI/180;
+        const dp = (lat2-lat1) * Math.PI/180;
+        const dl = (lon2-lon1) * Math.PI/180;
+        const a = Math.sin(dp/2) * Math.sin(dp/2) + Math.cos(p1) * Math.cos(p2) * Math.sin(dl/2) * Math.sin(dl/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        return R * c;
+    }
+
     function saveToOfflineQueue(url) {
         offlineActionQueue.push({ url: url, timestamp: Date.now() });
         localStorage.setItem('hut_offline_queue', JSON.stringify(offlineActionQueue));
@@ -392,10 +405,7 @@
         for (let i = 0; i < offlineActionQueue.length; i++) {
             const action = offlineActionQueue[i];
             try {
-                const response = await fetch(action.url, { cache: 'no-store' });
-                if (!response.ok && response.type !== 'opaque') {
-                    throw new Error('فشل الوصول للسيرفر');
-                }
+                const response = await fetch(action.url, { method: 'GET', mode: 'no-cors', cache: 'no-store' });
             } catch (err) {
                 failedQueue.push(action);
             }
@@ -620,19 +630,33 @@
     function startSystem() {
         if (isOnline) { requestWakeLock(); let silentAudio = document.getElementById('keepAliveAudio'); if (silentAudio) silentAudio.play().catch(e=>{}); }
         adjustPollingRate(); updateStats(); setInterval(updateStats, 20000); 
+        
         if (navigator.geolocation) {
             navigator.geolocation.watchPosition(
                 pos => {
                     document.getElementById('permissionOverlay').classList.add('hidden-section');
-                    driverData.currentLat = pos.coords.latitude; driverData.currentLng = pos.coords.longitude;
+                    driverData.currentLat = pos.coords.latitude; 
+                    driverData.currentLng = pos.coords.longitude;
                     const now = Date.now();
                     
                     let isHeadingToCustomer = activeOrders.some(o => o.state === 'picked_up');
                     
-                    if (now - lastLocUpdateTs > 15000 && !isHeadingToCustomer) { 
-                        lastLocUpdateTs = now; 
-                        const url = `${API_URL}?action=DRIVER_UPDATE&phone=${driverData.phone}&lat=${pos.coords.latitude}&lng=${pos.coords.longitude}&token=${API_TOKEN}`;
-                        fetch(url, { cache: 'no-store' }).catch(e => console.log('Location update failed'));
+                    // منع تحديث الموقع إذا كان السائق متوجهاً للزبون (لتقليل استهلاك البطارية والشبكة)
+                    if (!isHeadingToCustomer) { 
+                        const dist = calculateDistanceMeters(lastSentLat, lastSentLng, pos.coords.latitude, pos.coords.longitude);
+                        const timeElapsed = now - lastLocUpdateTs;
+                        
+                        // التحديث يحدث فقط إذا: (أول مرة) أو (تحرك 50 متر على الأقل) أو (مرت 3 دقائق للحفاظ على نشاط الكابتن)
+                        if (dist >= 50 || timeElapsed > 180000) {
+                            if (timeElapsed > 15000) { // منع الإرسال العشوائي المتتالي (Throttling) بحد أدنى 15 ثانية
+                                lastLocUpdateTs = now; 
+                                lastSentLat = pos.coords.latitude;
+                                lastSentLng = pos.coords.longitude;
+                                
+                                const url = `${API_URL}?action=DRIVER_UPDATE&phone=${driverData.phone}&lat=${pos.coords.latitude}&lng=${pos.coords.longitude}&token=${API_TOKEN}`;
+                                fetch(url, { cache: 'no-store' }).catch(e => console.log('Location update failed'));
+                            }
+                        }
                     }
                 }, 
                 err => { document.getElementById('permissionOverlay').classList.remove('hidden-section'); }, 
@@ -694,7 +718,10 @@
         let totalDebtCalc = 0;
         let ledgerHtmlString = '';
         let todayCashCalc = 0;
-        const todayISO = new Date().toISOString().split('T')[0];
+        
+        // ✅ استخدام التوقيت المحلي بدلاً من UTC لضمان صحة سجل اليوم بعد منتصف الليل
+        const t = new Date();
+        const todayISO = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
 
         data.orders.slice(1).forEach(o => {
             if (String(o[6]) === String(driverData.phone)) {
@@ -714,7 +741,10 @@
                     const orderDateStr = o[7];
                     if (orderDateStr) {
                         const orderDateObj = new Date(orderDateStr);
-                        if (orderDateObj.toISOString().split('T')[0] === todayISO) {
+                        // نحول تاريخ الطلب إلى نفس الصيغة المحلية للمقارنة
+                        const orderLocalISO = orderDateObj.getFullYear() + '-' + String(orderDateObj.getMonth() + 1).padStart(2, '0') + '-' + String(orderDateObj.getDate()).padStart(2, '0');
+                        
+                        if (orderLocalISO === todayISO) {
                             const price = parseFloat(o[4]) || 0;
                             todayCashCalc += price;
                             const timeFmt = orderDateObj.toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'});
@@ -854,7 +884,7 @@
                 }
             }
             
-            // الرابط مصحح هنا وموثوق 100%
+            // ✅ تم تصحيح رابط التوجيه ليفتح تطبيق خرائط جوجل ويرسم مسار القيادة مباشرة
             let mapUrl = order.resLat ? `https://www.google.com/maps/dir/?api=1&destination=${order.resLat},${order.resLng}` : '';
             
             let resPhoneStr = order.resPhone ? String(order.resPhone) : "";
