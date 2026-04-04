@@ -96,10 +96,17 @@
         .radar-filter-btn { background: white; border: 1px solid #e2e8f0; padding: 8px 16px; border-radius: 12px; font-weight: 700; color: #64748b; cursor: pointer; transition: 0.2s; font-size: 0.85rem;}
         .radar-filter-btn.active { background: var(--primary-blue); color: white; border-color: var(--primary-blue); }
         
-        .smart-order-card { background: var(--card-bg); border-radius: 20px; padding: 15px; margin-bottom: 15px; border: 1px solid #e2e8f0; border-right: 5px solid #94a3b8; box-shadow: 0 4px 15px rgba(0,0,0,0.02); position: relative; }
+        /* 🟢 تنسيقات الرادار الجديدة (رنين وإنذار) */
+        .smart-order-card { background: var(--card-bg); border-radius: 20px; padding: 15px; margin-bottom: 15px; border: 1px solid #e2e8f0; border-right: 5px solid #94a3b8; box-shadow: 0 4px 15px rgba(0,0,0,0.02); position: relative; transition: 0.3s; }
         .status-danger { border-right-color: #ef4444; } .status-warning { border-right-color: #f59e0b; } .status-success { border-right-color: #10b981; } .status-primary { border-right-color: #3b82f6; }
         .status-purple { border-right-color: #8b5cf6 !important; } .bg-purple { background-color: #8b5cf6 !important; } .text-purple { color: #8b5cf6 !important; } .border-purple { border-color: #e9d5ff !important; } .batch-card { background-color: #faf5ff !important; }
         
+        .status-ringing { border-right-color: #f59e0b; background: linear-gradient(90deg, rgba(245, 158, 11, 0.05) 0%, transparent 100%); animation: flashOrange 2s infinite; }
+        @keyframes flashOrange { 0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(245, 158, 11, 0); } 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); } }
+
+        .status-overdue { border-right-color: #ef4444; background: linear-gradient(90deg, rgba(239, 68, 68, 0.08) 0%, transparent 100%); animation: flashRed 1s infinite; }
+        @keyframes flashRed { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6); } 70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+
         .delay-badge { position: absolute; top: -10px; right: 15px; background: #ef4444; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.7rem; font-weight: 900; animation: pulse 2s infinite; box-shadow: 0 4px 10px rgba(239, 68, 68, 0.4); }
         @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
         
@@ -377,6 +384,7 @@
     // 🟢 1. إنشاء "الذاكرة المانعة" (Local Overrides) لمنع عودة الطلبات المحذوفة
     let localOverrides = { orders: {}, drivers: {}, restaurants: {} };
     let fetchPauseTimeout = null;
+    let isEmergencyMuted = false; // المتغير الجديد لكتم الطوارئ
 
     function showToast(msg, type = 'success') {
         const container = document.getElementById('toast-container');
@@ -404,7 +412,7 @@
     function closeEmergency() {
         document.getElementById('emergencyModal').style.display = 'none';
         document.getElementById('emergencySound').pause();
-        showTab({currentTarget: document.querySelector('.mobile-nav-link')}, 'live');
+        isEmergencyMuted = true; // تفعيل الكتم بعد ضغط الموظف
     }
 
     function calculateDriverPerformanceBySpeed(ordersData, driverPhone) {
@@ -481,10 +489,7 @@
     }, 1000); }
 
     function refreshData() {
-        // إيقاف التحديث إذا كانت الشاشة مغلقة أو التبويب غير نشط
         if (document.hidden) return; 
-
-        // إيقاف التحديث إذا كان هناك تعديل يدوي قيد التنفيذ للتو
         if (fetchPauseTimeout !== null) return;
 
         const oldScript = document.getElementById('data-fetch-script');
@@ -502,12 +507,10 @@
 
         const now = Date.now();
 
-        // 🟢 2. حقن الذاكرة المانعة قبل عرض البيانات
-        // فلترة الطلبات وتغيير حالتها لو كان المدير قد غيّرها للتو
         data.orders.forEach(o => {
             let override = localOverrides.orders[o[0]];
             if (override) {
-                if (now - override.ts < 120000) { // الذاكرة تدوم لدقيقتين كحد أقصى
+                if (now - override.ts < 120000) { 
                     o[5] = override.status || o[5];
                     if (override.driverPhone) o[6] = override.driverPhone;
                 } else {
@@ -516,14 +519,12 @@
             }
         });
 
-        // فلترة الكباتن
         data.drivers.forEach(d => {
             let override = localOverrides.drivers[d[2]];
             if (override && (now - override.ts < 120000)) d[4] = override.status;
             else if (override) delete localOverrides.drivers[d[2]];
         });
 
-        // فلترة المطاعم
         data.restaurants.forEach(r => {
             let override = localOverrides.restaurants[r[2]]; 
             if (override && (now - override.ts < 120000)) r[4] = override.status;
@@ -557,6 +558,16 @@
             audio.currentTime = 0; audio.play().catch(e=>{});
         }
         lastPendingCount = currentPendingCount;
+
+        // 🟢 ✅ تشغيل إنذار الطوارئ بذكاء (مع احترام الكتم)
+        if (hasEmergency) {
+            if (!isEmergencyMuted) triggerEmergency();
+        } else {
+            // إذا تم حل المشكلة ولم يعد هناك طوارئ، نلغي الكتم ليعمل مستقبلاً
+            isEmergencyMuted = false; 
+            const eModal = document.getElementById('emergencyModal');
+            if (eModal && eModal.style.display === 'flex') closeEmergency();
+        }
 
         const countOrders = activeOrdersList.length;
         const countDrivers = data.drivers.filter(d => d[4] === 'active').length;
@@ -812,7 +823,7 @@
         }
 
         let smartHtml = '';
-        let activeDriversOptions = '<option value="">تعيين يدوياً</option>';
+        let activeDriversOptions = '<option value="" disabled selected>تعيين يدوي</option>';
         globalData.drivers.slice(1).forEach(d => {
             if(d[4] === 'active') {
                 const perf = driverPerformanceCache[String(d[2])] || { class: 'perf-yellow' };
@@ -833,11 +844,26 @@
             } else { pendingOrders.push(o); }
         });
 
-        const getStatusInfo = (status, hasDriver) => {
-            if(!hasDriver) return { class: "status-danger", desc: "🔴 بانتظار كابتن", badge: "bg-danger" };
+        // 🟢 دالة فحص حالة الطلب (تشمل الرنين والإنذار)
+        const getStatusInfo = (status, hasDriver, orderTimeStr) => {
+            const diffSecs = Math.floor((new Date() - new Date(orderTimeStr)) / 1000);
+
+            if(!hasDriver || status === 'pending_driver' || status === 'manual_pending') {
+                if (hasDriver) { 
+                    // الطلب مسند لكن السائق لم يقبل بعد
+                    if (diffSecs > 60) {
+                        return { class: "status-overdue", desc: "🚨 الكابتن لا يستجيب", badge: "bg-danger", isRinging: true, overdue: true };
+                    } else {
+                        return { class: "status-ringing", desc: "⏳ جاري الرنين...", badge: "bg-warning text-dark", isRinging: true };
+                    }
+                }
+                return { class: "status-danger", desc: "🔴 بانتظار كابتن", badge: "bg-danger" };
+            }
             if(status === 'picked_up' || status === 'في الطريق') return { class: "status-success", desc: "🟢 بالطريق للزبون", badge: "bg-success" };
-            if(status === 'arrived_at_res') return { class: "status-warning", desc: "🟠 في المطعم", badge: "bg-warning" };
-            return { class: "status-primary", desc: "🔵 متوجه للمطعم", badge: "bg-primary" };
+            if(status === 'arrived_at_res') return { class: "status-warning", desc: "🟠 في المطعم", badge: "bg-warning text-dark" };
+            if(status === 'accepted' || status === 'heading') return { class: "status-primary", desc: "🔵 متوجه للمطعم", badge: "bg-primary" };
+
+            return { class: "status-primary", desc: status, badge: "bg-primary" };
         };
 
         Object.keys(groupedOrders).forEach(driverPhone => {
@@ -851,7 +877,7 @@
                         <button class="btn-track" style="background: #ede9fe; color: #7c3aed;" onclick="trackDriver('${driverPhone}', '${orders[0][1]}')"><i data-lucide="map-pin" size="12"></i> تتبع</button>
                     </div>`;
                 orders.forEach((o, index) => {
-                    const sInfo = getStatusInfo(o[5], true);
+                    const sInfo = getStatusInfo(o[5], true, o[7]);
                     smartHtml += `
                     <div class="info-card-inner mb-1 bg-white" id="order-${o[0]}">
                         <div class="d-flex justify-content-between align-items-center mb-1">
@@ -888,29 +914,42 @@
 
     function generateSingleCardHTML(o, hasDriver, driverName, driverPhone, activeDriversOptions) {
         const orderId = o[0], restName = o[1], orderArea = o[2], details = o[3], orderPrice = o[4], status = o[5], orderTimeStr = o[7];
-        const isPickedUp = (status === 'picked_up' || status === 'في الطريق');
-        const isArrived = (status === 'arrived_at_res');
         const orderTimeStrFormat = new Date(orderTimeStr).toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'});
         
         const diffMins = Math.floor((new Date() - new Date(orderTimeStr)) / 60000);
-        const isDelayed = diffMins > 3; 
+        const sInfo = getStatusInfo(status, hasDriver, orderTimeStr);
 
-        let cardClass = "status-danger", statusDesc = "🔴 بانتظار كابتن";
-        if(hasDriver && !isPickedUp && !isArrived) { cardClass = "status-primary"; statusDesc = "🔵 متوجه للمطعم"; }
-        if(hasDriver && isArrived) { cardClass = "status-warning"; statusDesc = "🟠 في المطعم"; }
-        if(hasDriver && isPickedUp) { cardClass = "status-success"; statusDesc = "🟢 بالطريق للزبون"; }
+        // 🟢 أزرار التحكم بالسائق (التعيين اليدوي والسحب)
+        let withdrawBtn = '';
+        if (sInfo.isRinging && hasDriver) {
+            withdrawBtn = `<button class="btn btn-sm btn-outline-danger p-1 d-flex align-items-center gap-1 bg-white" style="font-size:0.7rem; border-radius:8px;" onclick="withdrawOrderOptUI('${orderId}', '${driverPhone}', this)"><i data-lucide="user-minus" size="14"></i> سحب</button>`;
+        }
+
+        let driverControls = '';
+        if (hasDriver && !sInfo.isRinging) {
+            // السائق قبل الطلب، اعرض زر الاتصال فقط
+            driverControls = `<button class="btn-call-mini call-success text-success" style="width:28px;height:28px; flex-shrink: 0;" onclick="window.open('tel:${driverPhone}')"><i data-lucide="phone" size="12"></i></button>`;
+        } else {
+            // السائق لم يقبل بعد (أو لا يوجد سائق)، اعرض قائمة التعيين + زر السحب
+            driverControls = `
+                <div class="d-flex gap-1 align-items-center">
+                    ${withdrawBtn}
+                    <select class="manual-assign-select p-1" style="font-size:0.7rem;" onchange="assignDriverOptUI('${orderId}', this.value, this)">${activeDriversOptions}</select>
+                </div>
+            `;
+        }
 
         return `
         <div class="col-md-6 col-12" id="order-${orderId}">
-            <div class="smart-order-card ${cardClass}" style="padding: 12px;">
-                ${isDelayed && !hasDriver ? `<div class="delay-badge">${diffMins} دقيقة</div>` : ''}
+            <div class="smart-order-card ${sInfo.class}" style="padding: 12px;">
+                ${diffMins > 3 && !hasDriver ? `<div class="delay-badge">${diffMins} دقيقة</div>` : ''}
                 <div class="d-flex justify-content-between align-items-start mb-2 border-bottom pb-2">
                     <div>
                         <h6 class="fw-black m-0" style="color: var(--primary-blue); font-size: 0.9rem;">#${orderId}</h6>
                         <div class="mt-1 small fw-bold text-muted" style="font-size: 0.7rem;">أُرسل: ${orderTimeStrFormat}</div>
                     </div>
                     <div class="d-flex flex-column align-items-end gap-1">
-                        <span class="badge ${!hasDriver ? 'bg-danger' : 'bg-success'}" style="font-size: 0.65rem;">${statusDesc}</span>
+                        <span class="badge ${sInfo.badge}" style="font-size: 0.65rem;">${sInfo.desc}</span>
                         <div class="d-flex gap-1 align-items-center mt-1">
                             ${hasDriver ? `<button class="btn-track" onclick="trackDriver('${driverPhone}', '${restName}')"><i data-lucide="map-pin" size="12"></i></button>` : ''}
                             <button class="btn btn-sm text-success p-0" onclick="adminActionOptUI('COMPLETE', 'ORDER', '${orderId}', this)"><i data-lucide="check-circle" size="16"></i></button>
@@ -930,13 +969,55 @@
                         </div>
                         <div class="d-flex justify-content-between align-items-center">
                             <span class="fw-bold text-primary" style="font-size: 0.75rem;"><i data-lucide="bike" size="12"></i> ${driverName}</span>
-                            ${hasDriver ? `<button class="btn-call-mini call-success text-success" style="width:24px;height:24px; flex-shrink: 0;" onclick="window.open('tel:${driverPhone}')"><i data-lucide="phone" size="10"></i></button>` : 
-                            `<select class="manual-assign-select p-1" style="font-size:0.7rem;" onchange="assignDriverOptUI('${orderId}', this.value, this)">${activeDriversOptions}</select>`}
+                            ${driverControls}
                         </div>
                     </div>
                 </div>
             </div>
         </div>`;
+    }
+
+    // 🟢 دالة سحب الطلب من السائق (تعمل من الواجهة فقط وتستدعي DECLINE_ORDER)
+    function withdrawOrderOptUI(orderId, driverPhone, element) {
+        if(!confirm("هل أنت متأكد من سحب الطلب من هذا الكابتن وإعادته للرادار للبحث عن غيره؟")) return;
+        pauseAutoFetch();
+        element.classList.add('btn-loading');
+        const card = document.getElementById(`order-${orderId}`);
+        if(card) card.style.opacity = '0.5';
+
+        // الذاكرة المانعة: إرجاع الطلب كأنه بدون سائق لحين تحديث السيرفر
+        localOverrides.orders[String(orderId)] = { status: 'pending_driver', driverPhone: 'pending_driver', ts: Date.now() };
+
+        const url = `${API_URL}?action=DECLINE_ORDER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}&pass=${masterPassword}`;
+        const script = document.createElement('script'); script.src = `${url}&callback=silentCallback&ts=${Date.now()}`; 
+        
+        script.onload = () => script.remove(); 
+        script.onerror = () => { script.remove(); showToast("فشل الاتصال", "error"); if(card) card.style.opacity = '1'; };
+        setTimeout(() => { if(script.parentNode) script.remove(); }, 15000);
+        
+        document.body.appendChild(script); showToast("تم سحب الطلب وإعادته للرادار", "success");
+    }
+
+    // 🟢 دالة التقييم للحالة (مهمة للرادار)
+    function getStatusInfo(status, hasDriver, orderTimeStr) {
+        const diffSecs = Math.floor((new Date() - new Date(orderTimeStr)) / 1000);
+
+        if(!hasDriver || status === 'pending_driver' || status === 'manual_pending') {
+            if (hasDriver) { 
+                // الطلب مسند لكن السائق لم يقبل بعد
+                if (diffSecs > 60) {
+                    return { class: "status-overdue", desc: "🚨 الكابتن لا يستجيب", badge: "bg-danger", isRinging: true, overdue: true };
+                } else {
+                    return { class: "status-ringing", desc: "⏳ جاري الرنين...", badge: "bg-warning text-dark", isRinging: true };
+                }
+            }
+            return { class: "status-danger", desc: "🔴 بانتظار كابتن", badge: "bg-danger" };
+        }
+        if(status === 'picked_up' || status === 'في الطريق') return { class: "status-success", desc: "🟢 بالطريق للزبون", badge: "bg-success" };
+        if(status === 'arrived_at_res') return { class: "status-warning", desc: "🟠 في المطعم", badge: "bg-warning text-dark" };
+        if(status === 'accepted' || status === 'heading') return { class: "status-primary", desc: "🔵 متوجه للمطعم", badge: "bg-primary" };
+
+        return { class: "status-primary", desc: status, badge: "bg-primary" };
     }
 
     function trackDriver(driverPhone, restName) {
