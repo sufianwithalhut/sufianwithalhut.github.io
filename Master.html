@@ -919,25 +919,28 @@
         const diffMins = Math.floor((new Date() - new Date(orderTimeStr)) / 60000);
         const sInfo = getStatusInfo(status, hasDriver, orderTimeStr);
 
-        // 🟢 أزرار التحكم بالسائق (التعيين اليدوي والسحب)
+        // 🟢 أزرار التحكم بالسائق (تعديل: إظهار قائمة التعيين دائماً لمعالجة الطوارئ)
         let withdrawBtn = '';
         if (sInfo.isRinging && hasDriver) {
             withdrawBtn = `<button class="btn btn-sm btn-outline-danger p-1 d-flex align-items-center gap-1 bg-white" style="font-size:0.7rem; border-radius:8px;" onclick="withdrawOrderOptUI('${orderId}', '${driverPhone}', this)"><i data-lucide="user-minus" size="14"></i> سحب</button>`;
         }
 
-        let driverControls = '';
+        let callBtn = '';
+        let currentOptions = activeDriversOptions;
+
         if (hasDriver && !sInfo.isRinging) {
-            // السائق قبل الطلب، اعرض زر الاتصال فقط
-            driverControls = `<button class="btn-call-mini call-success text-success" style="width:28px;height:28px; flex-shrink: 0;" onclick="window.open('tel:${driverPhone}')"><i data-lucide="phone" size="12"></i></button>`;
-        } else {
-            // السائق لم يقبل بعد (أو لا يوجد سائق)، اعرض قائمة التعيين + زر السحب
-            driverControls = `
-                <div class="d-flex gap-1 align-items-center">
-                    ${withdrawBtn}
-                    <select class="manual-assign-select p-1" style="font-size:0.7rem;" onchange="assignDriverOptUI('${orderId}', this.value, this)">${activeDriversOptions}</select>
-                </div>
-            `;
+            // السائق قبل الطلب: نعرض زر الاتصال، ونغير عنوان قائمة التعيين إلى "إعادة تعيين"
+            callBtn = `<button class="btn-call-mini call-success text-success" style="width:28px;height:28px; flex-shrink: 0;" onclick="window.open('tel:${driverPhone}')"><i data-lucide="phone" size="12"></i></button>`;
+            currentOptions = activeDriversOptions.replace('تعيين يدوي', 'إعادة تعيين 🔄');
         }
+
+        let driverControls = `
+            <div class="d-flex gap-1 align-items-center">
+                ${withdrawBtn}
+                ${callBtn}
+                <select class="manual-assign-select p-1" style="font-size:0.7rem;" onchange="assignDriverOptUI('${orderId}', this.value, this)">${currentOptions}</select>
+            </div>
+        `;
 
         return `
         <div class="col-md-6 col-12" id="order-${orderId}">
