@@ -147,6 +147,7 @@
         .btn-call-mini { background: white; border: 1px solid #e2e8f0; border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; box-shadow: 0 2px 5px rgba(0,0,0,0.05); flex-shrink: 0;}
         .btn-call-mini:active { transform: scale(0.9); }
         .btn-call-mini.call-primary { color: var(--primary-blue); border-color: #bfdbfe; background: #eff6ff;}
+        .btn-call-mini.call-warning { color: #d97706; border-color: #fde68a; background: #fffbeb;}
         .btn-call-mini.call-success { color: var(--success); border-color: #a7f3d0; background: #ecfdf5;}
         
         .btn-track { background: #eff6ff; color: var(--accent-blue); border: 1px solid #bfdbfe; border-radius: 12px; padding: 6px 12px; font-size: 0.8rem; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 5px; transition: 0.2s;}
@@ -586,7 +587,23 @@
         window.renderDataCallback = function(data) {
             clearTimeout(timeoutId); 
             if (script.parentNode) script.remove(); 
-            renderData(data);
+            
+            // 🛡️ حماية ضد الانهيار إذا رجع السيرفر رسالة خطأ
+            try {
+                if (!data || !data.orders || !data.restaurants || !data.drivers) {
+                    if (data && data.msg && data.msg.includes("ضغط")) {
+                        console.log("تخطي التحديث: " + data.msg);
+                    } else {
+                        showToast("حدث خطأ في تحميل البيانات", "error");
+                    }
+                    isFetchingMasterData = false;
+                    return;
+                }
+                renderData(data);
+            } catch(e) {
+                console.error("Render Data Error:", e);
+            }
+            
             isFetchingMasterData = false;
         };
         script.src = `${API_URL}?action=getGlobalData&token=${API_TOKEN}&callback=renderDataCallback&ts=${Date.now()}`;
