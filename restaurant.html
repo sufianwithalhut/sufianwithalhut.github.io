@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 2.0 - تفعيل اللصق وحرية الإدخال) ---
-        const CURRENT_APP_VERSION = "2.0"; 
+        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 5.0 - نظام الوصول الذكي والجرس) ---
+        const CURRENT_APP_VERSION = "5.0"; 
         if (localStorage.getItem('hut_res_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة مكتشفة... جاري التحديث الإجباري لتسريع النظام!");
             localStorage.setItem('hut_res_app_version', CURRENT_APP_VERSION);
@@ -41,6 +41,9 @@
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest" defer></script>
     
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    
     <style>
         :root {
             --primary: #0f172a;
@@ -62,7 +65,6 @@
             padding-bottom: env(safe-area-inset-bottom);
         }
 
-        /* 🟢 السماح بتحديد النص واللصق فقط داخل حقول الإدخال */
         input, textarea, select {
             user-select: text !important;
             -webkit-user-select: text !important;
@@ -154,6 +156,11 @@
         @keyframes softPulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.7; transform: scale(0.95); } 100% { opacity: 1; transform: scale(1); } }
         .btn-refresh-waiting { background: #f1f5f9; color: var(--text-muted); border: 1px solid #e2e8f0; font-weight: 700; border-radius: 20px; padding: 10px 20px; transition: 0.2s; }
         .btn-refresh-waiting:active { background: #e2e8f0; }
+
+        /* 🔔 شاشة وصول الكابتن */
+        #arrivalAlertOverlay { position: fixed; inset: 0; background: var(--success); z-index: 50000; color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 30px; text-align: center; animation: fadeIn 0.3s; }
+        .arrival-pulse { width: 100px; height: 100px; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 25px; box-shadow: 0 0 0 15px rgba(255,255,255,0.2); animation: pulseWhite 2s infinite;}
+        @keyframes pulseWhite { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255,255,255, 0.5); } 70% { transform: scale(1); box-shadow: 0 0 0 30px rgba(255,255,255, 0); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255,255,255, 0); } }
     </style>
 </head>
 <body>
@@ -164,6 +171,16 @@
 </div>
 
 <audio id="welcomeSound" src="https://actions.google.com/sounds/v1/water/water_drop.ogg"></audio>
+<audio id="arrivalSound" loop src="https://actions.google.com/sounds/v1/alarms/bugle_tune.ogg"></audio>
+
+<div id="arrivalAlertOverlay" class="hidden-section">
+    <div class="arrival-pulse">
+        <i data-lucide="bell-ring" size="50" color="#10b981"></i>
+    </div>
+    <h1 class="fw-black mb-3">الكابتن بالباب!</h1>
+    <h4 class="fw-bold mb-5" id="arrivalAlertText">يرجى تجهيز الطلب وتسليمه</h4>
+    <button class="btn btn-light btn-lg rounded-pill px-5 fw-bold text-success w-100 shadow-sm" onclick="closeArrivalAlert()">حسناً، تم الاستلام</button>
+</div>
 
 <div id="loginSection" class="container py-5">
     <div class="text-center mb-5">
@@ -404,9 +421,29 @@
 <script>
     if (typeof lucide !== 'undefined') lucide.createIcons();
 
-    const API_URL = "https://script.google.com/macros/s/AKfycbwLSFljKVZCEFTae3RvE4CF-Qp3U6zEoYsh2TZe0nk149K4Fw-F1U9rYwReLKyxXq-I1Q/exec";
+    const API_URL = "https://script.google.com/macros/s/AKfycbxghjr3gSN4xhtrr2wIz20WFKahMkr8uRhNXSTEL2FtIig8EPkhs7DmMLvUAxmuPiGnKw/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
+    // 🟢 تهيئة Firebase
+    const firebaseConfig = {
+      apiKey: "AIzaSyAo1rmqUzieYZU3RIwXOAN87GkpNrp-_Hc",
+      authDomain: "sufyan-delivery.firebaseapp.com",
+      databaseURL: "https://sufyan-delivery-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "sufyan-delivery",
+      storageBucket: "sufyan-delivery.firebasestorage.app",
+      messagingSenderId: "941542380637",
+      appId: "1:941542380637:web:9623fa6e627817ffeba9b4"
+    };
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    function escapeHTML(str) {
+        if (str === null || str === undefined) return '';
+        return String(str).replace(/[&<>'"]/g, function(match) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[match];
+        });
+    }
+
     let currentResName = "";
     let isRegistering = false;
     let currentOrderMode = 'manual';
@@ -414,6 +451,8 @@
     let dataRefreshInterval;
     let myCustomPriceList = {};
     let waitingPollingTimer = null; 
+    let driverNamesCache = {}; // لحفظ أسماء الكباتن للجرس
+    let notifiedArrivals = {}; // لضمان عدم رنين الجرس مرتين لنفس الطلب
     
     let pickerMap;
     let regLat = 35.468; 
@@ -422,10 +461,8 @@
     let lastActiveHtml = "";
     let lastArchiveHtml = "";
 
-    // 🟢 2. مصفوفة الذاكرة المانعة (Local Overrides) للمطعم
     let actionBlacklist = []; 
 
-    // 🟢 السماح بالقائمة المنسدلة (Right-click / Long-press) داخل حقول الإدخال فقط
     document.addEventListener('contextmenu', event => {
         const tag = event.target.tagName;
         if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
@@ -435,8 +472,8 @@
 
     function initPickerMap() {
         if (!document.getElementById('pickerMap')) return;
+        if(pickerMap) return; 
         
-        if(pickerMap) { setTimeout(() => { pickerMap.invalidateSize(); }, 500); return; }
         pickerMap = L.map('pickerMap', { zoomControl: false }).setView([regLat, regLng], 14);
         L.control.zoom({ position: 'bottomleft' }).addTo(pickerMap);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(pickerMap);
@@ -452,11 +489,6 @@
                 pickerMap.setView([regLat, regLng], 16);
             }, null, { timeout: 5000 });
         }
-        
-        let mapResizeInterval = setInterval(() => {
-            if(document.getElementById('registerFields').style.display !== 'none') pickerMap.invalidateSize();
-        }, 300);
-        setTimeout(() => clearInterval(mapResizeInterval), 3000);
     }
 
     function searchLocation() {
@@ -566,14 +598,14 @@
             select.innerHTML += '<option value="أخرى">أخرى (غير مدرجة أو كتابة يدوية)</option>'; return;
         }
         const sortedAreas = Object.keys(myCustomPriceList).sort();
-        sortedAreas.forEach(area => { select.innerHTML += `<option value="${area}">${area}</option>`; });
+        sortedAreas.forEach(area => { select.innerHTML += `<option value="${escapeHTML(area)}">${escapeHTML(area)}</option>`; });
         select.innerHTML += '<option value="أخرى">أخرى (غير مدرجة أو إدخال يدوي)</option>';
         
         const draftStr = sessionStorage.getItem('hut_order_draft');
         if(draftStr) {
             try {
                 const draft = JSON.parse(draftStr);
-                if(draft.area && document.querySelector(`#customerArea option[value="${draft.area}"]`)) { select.value = draft.area; showSelectedPrice(); }
+                if(draft.area && document.querySelector(`#customerArea option[value="${escapeHTML(draft.area)}"]`)) { select.value = draft.area; showSelectedPrice(); }
             } catch(e) {}
         }
     }
@@ -594,13 +626,12 @@
         priceHint.classList.remove('hidden-section');
         const price = myCustomPriceList[areaName];
         if (price) {
-            priceHint.innerHTML = `<i data-lucide="banknote" size="14" class="me-1"></i> <b>سعر توصيل الكابتن:</b> ${price} د.ع`;
+            priceHint.innerHTML = `<i data-lucide="banknote" size="14" class="me-1"></i> <b>سعر توصيل الكابتن:</b> ${escapeHTML(price)} د.ع`;
             priceHint.className = "text-success small fw-bold mt-2 px-1";
             if (typeof lucide !== 'undefined') lucide.createIcons();
         }
     }
 
-    // 🟢 1. إصلاح دالة تحويل الأرقام (تمت إضافة النطاق ۰-۹)
     function convertArabicNumerals(str) {
         const arabicNumbers = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
         const persianNumbers = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
@@ -763,7 +794,6 @@
     function sendRegistration(name, phone, area, comm, pay, lat, lng, priceListStr) {
         const payload = { action: 'RESTAURANT_REG', token: API_TOKEN, name: name, phone: phone, area: area, comm: comm, pay: pay, lat: lat, lng: lng, priceList: priceListStr };
         
-        // تم إزالة no-cors لضمان نجاح العملية
         fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) })
         .then(() => {
             showLoading(false); localStorage.setItem('hut_res_phone', phone); localStorage.setItem('hut_res_pending', phone); showWaitingRoom();
@@ -821,16 +851,55 @@
             isRegistering = true;
             document.getElementById('registerFields').classList.remove('hidden-section'); document.getElementById('checkPhone').disabled = true;
             const btn = document.getElementById('mainAuthBtn'); btn.innerHTML = `إرسال طلب الانضمام <i data-lucide="send"></i>`; btn.style.background = 'var(--accent)';
-            if (typeof lucide !== 'undefined') lucide.createIcons(); setTimeout(initPickerMap, 300);
+            if (typeof lucide !== 'undefined') lucide.createIcons(); 
+            
+            setTimeout(() => {
+                if(pickerMap) pickerMap.invalidateSize();
+                else initPickerMap();
+            }, 300);
         }
     };
 
+    // 🟢 1. دالة الجرس الذكي
+    function triggerArrivalAlert(orderId, driverName) {
+        if(notifiedArrivals[orderId]) return; // منع التكرار
+        notifiedArrivals[orderId] = true;
+        
+        document.getElementById('arrivalAlertText').innerHTML = `الكابتن <b>${escapeHTML(driverName)}</b> بالباب لاستلام الطلب <b>#${escapeHTML(orderId)}</b>`;
+        document.getElementById('arrivalAlertOverlay').classList.remove('hidden-section');
+        
+        const audio = document.getElementById('arrivalSound');
+        audio.currentTime = 0; audio.play().catch(e=>{});
+    }
+
+    function closeArrivalAlert() {
+        document.getElementById('arrivalAlertOverlay').classList.add('hidden-section');
+        document.getElementById('arrivalSound').pause();
+    }
+
     function enterDashboard() {
         document.getElementById('loginSection').classList.add('hidden-section'); document.getElementById('orderSection').classList.remove('hidden-section');
-        document.getElementById('resTitle').innerText = currentResName; document.getElementById('resPhoneDisplay').innerText = "شريك معتمد - الحوت";
+        document.getElementById('resTitle').innerText = escapeHTML(currentResName); document.getElementById('resPhoneDisplay').innerText = "شريك معتمد - الحوت";
         if (typeof lucide !== 'undefined') lucide.createIcons();
         buildCustomAreaDropdown(); restoreDraft(); fetchResDashboardData();
-        dataRefreshInterval = setInterval(fetchResDashboardData, 15000);
+        
+        // 🟢 2. الاستماع الفوري لفايربيس لرصد وصول الكابتن
+        db.ref('active_orders').orderByChild('restaurant').equalTo(currentResName).on('value', (snapshot) => {
+            const orders = snapshot.val();
+            if(orders) {
+                let requiresDashboardUpdate = false;
+                Object.values(orders).forEach(o => {
+                    if(o.status === 'arrived_at_res') {
+                        const driverName = driverNamesCache[String(o.driverPhone)] || "كابتن سفيان";
+                        triggerArrivalAlert(o.id, driverName);
+                        requiresDashboardUpdate = true;
+                    }
+                });
+                if(requiresDashboardUpdate) fetchResDashboardData();
+            }
+        });
+
+        dataRefreshInterval = setInterval(fetchResDashboardData, 30000); // تحديث احتياطي خفيف
     }
 
     function cancelOrderGrace(orderId) {
@@ -841,7 +910,6 @@
                 setTimeout(() => card.style.display = 'none', 300);
             }
             
-            // 🟢 2. إضافة الطلب للذاكرة المانعة لمنع عودته
             actionBlacklist.push(String(orderId));
             setTimeout(() => {
                 actionBlacklist = actionBlacklist.filter(id => id !== String(orderId));
@@ -859,25 +927,36 @@
     };
 
     function fetchResDashboardData() {
-        // إيقاف التحديث إذا كانت الشاشة مغلقة أو التبويب غير نشط لتوفير الموارد
         if (document.hidden) return;
 
-        // تنظيف السكريبت القديم لمنع تسريب الذاكرة
-        const oldScript = document.getElementById('res-fetch-script');
+        const scriptId = 'res-fetch-script';
+        const oldScript = document.getElementById(scriptId);
         if (oldScript) oldScript.remove();
 
         const script = document.createElement('script');
-        script.id = 'res-fetch-script';
-        script.src = `${API_URL}?action=getGlobalData&token=${API_TOKEN}&callback=renderResDashboard&ts=${Date.now()}`;
+        script.id = scriptId;
         
-        script.onload = () => script.remove();
-        script.onerror = () => script.remove();
+        const timeoutId = setTimeout(() => {
+            if (script.parentNode) script.remove();
+        }, 20000);
 
+        window.renderResDashboardCallback = function(data) {
+            clearTimeout(timeoutId);
+            if (script.parentNode) script.remove();
+            renderResDashboard(data);
+        };
+
+        script.src = `${API_URL}?action=getGlobalData&token=${API_TOKEN}&callback=renderResDashboardCallback&ts=${Date.now()}`;
         document.body.appendChild(script);
     }
 
     window.renderResDashboard = function(data) {
         if(!data || !data.restaurants || !data.orders) return;
+
+        // 🟢 حفظ أسماء الكباتن في الكاش لاستخدامها في الجرس
+        data.drivers.slice(1).forEach(d => {
+            driverNamesCache[String(d[2])] = d[1];
+        });
 
         const resInfo = data.restaurants.find(r => r[1] === currentResName);
         if(!resInfo || (resInfo[4] !== 'active' && resInfo[4] !== 'inactive')) { alert("⚠️ تم إيقاف الحساب."); localStorage.clear(); sessionStorage.clear(); location.reload(); return; }
@@ -899,14 +978,13 @@
 
         data.orders.slice(1).forEach(o => {
             if(o[1] === currentResName) {
-                const status = o[5], orderId = o[0], orderArea = o[2], driverPhone = o[6], orderDateStr = o[7];
+                const status = o[5], orderId = escapeHTML(o[0]), orderArea = escapeHTML(o[2]), driverPhone = o[6], orderDateStr = o[7];
                 
-                // 🟢 تجاهل الطلب إذا كان في الذاكرة المانعة (محذوف للتو)
-                if (actionBlacklist.includes(String(orderId))) return;
+                if (actionBlacklist.includes(String(o[0]))) return;
 
                 const orderDateObj = new Date(orderDateStr);
                 const orderISO = orderDateObj.toISOString().split('T')[0];
-                const orderTimeStrFormat = orderDateObj.toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'});
+                const orderTimeStrFormat = escapeHTML(orderDateObj.toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'}));
                 const isThisMonth = orderDateObj.getMonth() === currentMonth && orderDateObj.getFullYear() === currentYear;
 
                 if (status === 'completed' || status === 'مكتمل' || status === 'settled') {
@@ -915,12 +993,12 @@
                     
                     if(orderISO === todayISO) {
                         const priceVal = parseFloat(o[4]) || 0; todaySalesTotal += priceVal;
-                        let driverName = "مكتمل"; const dInfo = data.drivers.find(d => String(d[2]) === String(driverPhone)); if(dInfo) driverName = dInfo[1];
+                        let driverName = "مكتمل"; const dInfo = data.drivers.find(d => String(d[2]) === String(driverPhone)); if(dInfo) driverName = escapeHTML(dInfo[1]);
 
                         todayArchiveHtml += `
                         <div class="archive-item">
                             <div><span class="fw-black text-dark">#${orderId}</span><div class="small text-muted fw-bold">الكابتن: ${driverName}</div></div>
-                            <div class="text-end"><span class="fw-black text-success">${o[4]} <small class="fs-6">د.ع</small></span><div class="small text-muted">${orderTimeStrFormat}</div></div>
+                            <div class="text-end"><span class="fw-black text-success">${escapeHTML(o[4])} <small class="fs-6">د.ع</small></span><div class="small text-muted">${orderTimeStrFormat}</div></div>
                         </div>`;
                     }
                 } 
@@ -929,7 +1007,7 @@
                     if (status === 'picked_up' || status === 'في الطريق' || status === 'completed') isCancelable = false; 
 
                     if (driverPhone && driverPhone !== "pending_driver" && driverPhone !== "manual_pending") {
-                        const dInfo = data.drivers.find(d => String(d[2]) === String(driverPhone)); if(dInfo) driverName = dInfo[1];
+                        const dInfo = data.drivers.find(d => String(d[2]) === String(driverPhone)); if(dInfo) driverName = escapeHTML(dInfo[1]);
                         if (status === 'picked_up' || status === 'في الطريق') { step = 4; fillWidth = "100%"; } 
                         else if (status === 'arrived_at_res') { step = 3; fillWidth = "66%"; } 
                         else { step = 2; fillWidth = "33%"; }
@@ -940,7 +1018,7 @@
                         <div class="d-flex justify-content-between align-items-start pb-2 border-bottom">
                             <div><span class="fw-black text-dark fs-5">طلب #${orderId}</span><div class="mt-1 small fw-bold text-muted"><i data-lucide="clock" size="12"></i> أُرسل: ${orderTimeStrFormat}</div></div>
                             <div class="d-flex flex-column gap-2 align-items-end">
-                                ${driverPhone && driverPhone !== "pending_driver" && driverPhone !== "manual_pending" ? `<button class="btn-call-mini" onclick="window.open('tel:${driverPhone}')"><i data-lucide="phone" size="16"></i></button>` : ''}
+                                ${driverPhone && driverPhone !== "pending_driver" && driverPhone !== "manual_pending" ? `<button class="btn-call-mini" onclick="window.open('tel:${escapeHTML(driverPhone)}')"><i data-lucide="phone" size="16"></i></button>` : ''}
                                 ${isCancelable ? `<button class="btn-cancel-grace mt-1" onclick="cancelOrderGrace('${orderId}')"><i data-lucide="x" size="14"></i> إلغاء</button>` : ''}
                             </div>
                         </div>
@@ -978,39 +1056,82 @@
 
     document.getElementById('orderForm').onsubmit = function(e) {
         e.preventDefault();
+        
+        const submitBtn = document.querySelector('#orderForm button[type="submit"]');
+        const originalBtnHtml = submitBtn.innerHTML;
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `<div class="spinner-border spinner-border-sm"></div> جاري المعالجة...`;
+
+        const enableBtn = () => { submitBtn.disabled = false; submitBtn.innerHTML = originalBtnHtml; };
+
         let finalArea = document.getElementById('customerArea').value, areaWithHint = finalArea;
 
         if (finalArea === "أخرى") {
             let cName = document.getElementById('customAreaName').value.trim(), cPrice = document.getElementById('customAreaPrice').value.trim();
-            if(!cName || !cPrice) return alert("يرجى إدخال اسم المنطقة الجديدة وسعر التوصيل.");
+            if(!cName || !cPrice) { alert("يرجى إدخال اسم المنطقة الجديدة وسعر التوصيل."); return enableBtn(); }
             areaWithHint = `${cName} (توصيل: ${cPrice})`;
-        } else if (!finalArea && currentOrderMode === 'manual') { return alert("يرجى اختيار منطقة الزبون من القائمة."); } 
-        else if (myCustomPriceList[finalArea]) { areaWithHint = `${finalArea} (توصيل: ${myCustomPriceList[finalArea]})`; }
+        } else if (!finalArea && currentOrderMode === 'manual') { 
+            alert("يرجى اختيار منطقة الزبون من القائمة."); return enableBtn(); 
+        } else if (myCustomPriceList[finalArea]) { 
+            areaWithHint = `${finalArea} (توصيل: ${myCustomPriceList[finalArea]})`; 
+        }
 
-        let finalDetails = "", imagePayload = "", finalPrice = parseFloat(document.getElementById('orderPrice').value) || 0; 
+        let finalDetails = "", finalPrice = parseFloat(document.getElementById('orderPrice').value) || 0; 
+        const uniqueFrontendId = "HUT-" + Math.floor(Date.now() / 1000) + "-" + Math.floor(Math.random() * 1000);
+
+        const sendPayloadToServer = (imageUrl) => {
+            submitBtn.innerHTML = `<div class="spinner-border spinner-border-sm"></div> جاري الإرسال...`;
+            const payload = { action: 'NEW_ORDER', token: API_TOKEN, frontendId: uniqueFrontendId, restaurantName: currentResName, area: areaWithHint, price: finalPrice, details: finalDetails, image: imageUrl };
+
+            fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) })
+            .then(r => r.json()).then(res => { 
+                enableBtn();
+                if(res.success) {
+                    document.getElementById('orderStatusBox').classList.remove('hidden-section');
+                    document.getElementById('statusMsg').innerHTML = `<span class="fw-bold">تم الإطلاق بنجاح!</span><br><span class="text-warning small fw-bold">الطلب يسبح في الرادار 📡</span>`;
+                    
+                    document.getElementById('customerPhone').value = ""; document.getElementById('customerDetails').value = ""; document.getElementById('orderPrice').value = ""; document.getElementById('customAreaName').value = ""; document.getElementById('customAreaPrice').value = "";
+                    document.getElementById('priceHint').classList.add('hidden-section'); document.getElementById('customerArea').selectedIndex = 0; document.getElementById('customAreaSection').classList.add('hidden-section');
+                    removePhoto(); clearDraft();
+                    
+                    setTimeout(() => { document.getElementById('orderStatusBox').classList.add('hidden-section'); }, 6000);
+                    fetchResDashboardData(); 
+                } else { alert("تنبيه: " + (res.msg || res.error)); } 
+            })
+            .catch(err => { enableBtn(); alert("الإنترنت ضعيف، فشل الإرسال، حاول مجدداً."); });
+        };
 
         if (currentOrderMode === 'manual') {
             const custPhone = document.getElementById('customerPhone').value.trim(), extra = document.getElementById('customerDetails').value.trim();
-            if (!custPhone) return alert("يرجى كتابة رقم الزبون."); finalDetails = `الهاتف: ${custPhone} | ${extra}`;
+            if (!custPhone) { alert("يرجى كتابة رقم الزبون."); return enableBtn(); }
+            finalDetails = `الهاتف: ${custPhone} | ${extra}`;
+            sendPayloadToServer(""); 
         } else {
-            if (!base64Receipt) return alert("يرجى التقاط صورة للوصل أولاً.");
-            finalDetails = "طلب مصور سريع (انظر الوصل)"; imagePayload = base64Receipt;
+            if (!base64Receipt) { alert("يرجى التقاط صورة للوصل أولاً."); return enableBtn(); }
+            finalDetails = "طلب مصور سريع";
+            submitBtn.innerHTML = `<div class="spinner-border spinner-border-sm"></div> جاري رفع الصورة...`;
+            
+            const imgbbKey = "546047e6407dd77fc9518dd37e27cda2";
+            let base64Data = base64Receipt.split(',')[1];
+            let formData = new FormData();
+            formData.append("image", base64Data);
+
+            fetch(`https://api.imgbb.com/1/upload?key=${imgbbKey}`, {
+                method: "POST",
+                body: formData
+            })
+            .then(response => response.json())
+            .then(result => {
+                if(result.success) {
+                    sendPayloadToServer(result.data.url);
+                } else {
+                    enableBtn(); alert("حدث خطأ في سيرفر الصور، حاول مرة أخرى.");
+                }
+            })
+            .catch(error => {
+                enableBtn(); alert("فشل رفع الصورة، تأكد من جودة الإنترنت.");
+            });
         }
-
-        const uniqueFrontendId = "HUT-" + Math.floor(Date.now() / 1000) + "-" + Math.floor(Math.random() * 1000);
-        const payload = { action: 'NEW_ORDER', token: API_TOKEN, frontendId: uniqueFrontendId, restaurantName: currentResName, area: areaWithHint, price: finalPrice, details: finalDetails, image: imagePayload };
-
-        document.getElementById('orderStatusBox').classList.remove('hidden-section');
-        document.getElementById('statusMsg').innerHTML = `<span class="fw-bold">تم الإطلاق بنجاح!</span><br><span class="text-warning small fw-bold">الطلب الآن يسبح في الرادار بانتظار كابتن 📡</span>`;
-        
-        document.getElementById('customerPhone').value = ""; document.getElementById('customerDetails').value = ""; document.getElementById('orderPrice').value = ""; document.getElementById('customAreaName').value = ""; document.getElementById('customAreaPrice').value = "";
-        document.getElementById('priceHint').classList.add('hidden-section'); document.getElementById('customerArea').selectedIndex = 0; document.getElementById('customAreaSection').classList.add('hidden-section');
-        removePhoto(); clearDraft();
-        setTimeout(() => { document.getElementById('orderStatusBox').classList.add('hidden-section'); }, 6000);
-
-        fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) })
-        .then(r => r.json()).then(res => { if(res.success) fetchResDashboardData(); else alert("تنبيه: " + (res.msg || res.error)); })
-        .catch(err => { alert("الإنترنت ضعيف، الطلب قيد الإرسال."); });
     };
 </script>
 </body>
