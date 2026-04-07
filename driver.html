@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 6.0 (النسخة الذهبية: التوجيه الذكي للمسار + توقيت السجل + كسر حماية الصوت) ---
-        const CURRENT_APP_VERSION = "6.0"; 
+        // --- إصدار 9.0 (النقاء المطلق + الوضع الليلي + واتساب ذكي) ---
+        const CURRENT_APP_VERSION = "9.0"; 
         
         if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة... جاري تطهير الكاش!");
@@ -24,8 +24,13 @@
     
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest" defer></script>
     
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
     <style>
+        /* 🎨 المتغيرات اللونية الأساسية (للأوضاع الفاتح والليلي) */
         :root { 
             --primary-blue: #1e3a8a; 
             --accent-blue: #3b82f6; 
@@ -39,6 +44,22 @@
             --border-color: #e2e8f0; 
             --stat-bg: #f1f5f9;
         }
+
+        /* 🌙 المتغيرات اللونية للوضع الليلي (Dark Mode) */
+        [data-theme="dark"] {
+            --primary-blue: #1e293b; /* كحلي فاتح للهيدر */
+            --accent-blue: #3b82f6; 
+            --accent-orange: #f97316; 
+            --success-green: #10b981; 
+            --danger-red: #ef4444; 
+            --bg-light: #0f172a; /* كحلي غامق جداً للخلفية */
+            --card-bg: #1e293b; /* لون البطاقات */
+            --text-main: #f8fafc; /* نص أبيض */
+            --text-muted: #94a3b8; /* نص رمادي */
+            --border-color: #334155; 
+            --stat-bg: #0f172a;
+        }
+
         body { 
             background: var(--bg-light); 
             font-family: 'Cairo', sans-serif; 
@@ -48,34 +69,38 @@
             user-select: none; 
             -webkit-user-select: none; 
             overscroll-behavior-y: contain; 
+            transition: background-color 0.3s ease, color 0.3s ease; /* لحركة ناعمة عند تغيير الوضع */
         }
+
         .hidden-section { display: none !important; }
         
         #offlineBanner { position: fixed; top: 0; left: 0; width: 100%; background: var(--danger-red); color: white; text-align: center; z-index: 99999; padding: max(5px, env(safe-area-inset-top)) 10px 5px 10px; font-weight: 800; font-size: 0.85rem; box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4); animation: slideDown 0.3s; }
         @keyframes slideDown { from { transform: translateY(-100%); } to { transform: translateY(0); } }
         
-        #loadingOverlay, #permissionOverlay { position: fixed; inset: 0; background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); z-index: 30000; display: flex; align-items: center; justify-content: center; flex-direction: column; color: var(--primary-blue); text-align: center; padding: 25px; }
+        #loadingOverlay, #permissionOverlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(10px); z-index: 30000; display: flex; align-items: center; justify-content: center; flex-direction: column; color: white; text-align: center; padding: 25px; }
         #loadingOverlay { z-index: 20000; display: none; }
         .permission-icon { animation: shakeAlert 0.5s ease-in-out infinite alternate; }
         @keyframes shakeAlert { 0% { transform: translateX(-5px); } 100% { transform: translateX(5px); } }
 
         .login-wrapper { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--bg-light); padding: 20px; padding-bottom: env(safe-area-inset-bottom); transition: 0.3s; }
-        .login-card { background: var(--card-bg); border-radius: 30px; padding: 40px; width: 100%; max-width: 400px; border: 1px solid rgba(0,0,0,0.05); box-shadow: 0 20px 40px rgba(0,0,0,0.08); position: relative; }
-        .form-label { font-weight: 700; color: #64748b; font-size: 0.9rem; margin-bottom: 10px; display: block; text-align: right; }
+        .login-card { background: var(--card-bg); border-radius: 30px; padding: 40px; width: 100%; max-width: 400px; border: 1px solid var(--border-color); box-shadow: 0 20px 40px rgba(0,0,0,0.08); position: relative; }
+        .form-label { font-weight: 700; color: var(--text-muted); font-size: 0.9rem; margin-bottom: 10px; display: block; text-align: right; }
         
-        .custom-input { background: #f1f5f9; border: 2px solid transparent; border-radius: 18px; padding: 16px; font-weight: 700; transition: 0.3s; width: 100%; font-size: 1rem; color: var(--primary-blue); margin-bottom: 15px; }
+        .custom-input { background: var(--stat-bg); border: 2px solid transparent; border-radius: 18px; padding: 16px; font-weight: 700; transition: 0.3s; width: 100%; font-size: 1rem; color: var(--text-main); margin-bottom: 15px; }
         .custom-input.phone-format { letter-spacing: 2px; font-size: 1.4rem; text-align: center; }
-        .custom-input:focus { background: white; border-color: var(--accent-orange); outline: none; box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.1); }
+        .custom-input:focus { background: var(--card-bg); border-color: var(--accent-orange); outline: none; box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.1); }
         
-        .btn-action { background: var(--primary-blue); color: white; border: none; border-radius: 18px; padding: 20px; font-weight: 900; width: 100%; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; gap: 12px; transition: 0.3s; box-shadow: 0 10px 20px rgba(30, 58, 138, 0.2); }
+        .btn-action { background: var(--accent-blue); color: white; border: none; border-radius: 18px; padding: 20px; font-weight: 900; width: 100%; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; gap: 12px; transition: 0.3s; box-shadow: 0 10px 20px rgba(59, 130, 246, 0.2); }
         .btn-action:active { transform: scale(0.96); box-shadow: none; }
         
-        .dash-header { background: var(--primary-blue); color: white; padding: max(30px, env(safe-area-inset-top)) 20px 60px 20px; border-bottom-left-radius: 35px; border-bottom-right-radius: 35px; box-shadow: 0 10px 30px rgba(30, 58, 138, 0.15); position: relative; z-index: 10; transition: 0.3s; }
-        .status-badge { padding: 6px 14px; border-radius: 20px; font-weight: 800; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 6px; transition: 0.3s; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); }
+        .dash-header { background: var(--primary-blue); color: white; padding: max(30px, env(safe-area-inset-top)) 20px 60px 20px; border-bottom-left-radius: 35px; border-bottom-right-radius: 35px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); position: relative; z-index: 10; transition: 0.3s; }
+        .status-badge { padding: 6px 14px; border-radius: 20px; font-weight: 800; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 6px; transition: 0.3s; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); color: white; }
         .status-badge.online { background: #10b981; border-color: #059669; }
         
         .stats-wrapper { margin-top: -35px; position: relative; z-index: 15; }
         .stat-box { background: var(--card-bg); border-radius: 20px; padding: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.03); text-align: center; border: 1px solid var(--border-color); }
+        .stat-box h6 { color: var(--text-muted); }
+        .stat-box h3, .stat-box h4 { color: var(--text-main); }
         
         .radar-container { background: var(--card-bg); border-radius: 35px; padding: 40px 20px; box-shadow: 0 15px 35px rgba(0,0,0,0.04); border: 1px solid var(--border-color); text-align: center; margin: 20px 15px 0 15px; transition: 0.3s; }
         .radar-container.offline-mode { filter: grayscale(100%) opacity(0.5); }
@@ -92,16 +117,15 @@
         .order-price small { font-size: 0.8rem; color: var(--text-muted); margin-right: 2px; }
         .status-banner { text-align: center; padding: 8px; border-radius: 12px; font-weight: 800; font-size: 0.95rem; margin-bottom: 20px; background: var(--stat-bg); color: var(--primary-blue); }
         
-        /* 🟢 تنسيقات زر الدعم والعداد */
-        .btn-support-mini { background: rgba(59, 130, 246, 0.05); color: var(--accent-blue); border: 1px solid rgba(59, 130, 246, 0.3); padding: 4px 10px; border-radius: 10px; font-size: 0.8rem; font-weight: 800; cursor: pointer; transition: 0.2s; display: inline-flex; align-items: center; gap: 5px; text-decoration: none; }
-        .btn-support-mini:active { transform: scale(0.95); background: rgba(59, 130, 246, 0.1); }
+        .btn-support-mini { background: rgba(59, 130, 246, 0.1); color: var(--accent-blue); border: 1px solid rgba(59, 130, 246, 0.3); padding: 4px 10px; border-radius: 10px; font-size: 0.8rem; font-weight: 800; cursor: pointer; transition: 0.2s; display: inline-flex; align-items: center; gap: 5px; text-decoration: none; }
+        .btn-support-mini:active { transform: scale(0.95); background: rgba(59, 130, 246, 0.2); }
         .timer-badge { font-weight: 900; padding: 4px 12px; border-radius: 12px; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 5px; border: 1px solid transparent; transition: 0.3s; }
         .timer-safe { background: rgba(16, 185, 129, 0.1); color: var(--success-green); border-color: rgba(16, 185, 129, 0.2); }
         .timer-warn { background: rgba(249, 115, 22, 0.1); color: var(--accent-orange); border-color: rgba(249, 115, 22, 0.2); }
         .timer-danger { background: rgba(239, 68, 68, 0.1); color: var(--danger-red); border-color: rgba(239, 68, 68, 0.2); animation: pulseDanger 1.5s infinite; }
         @keyframes pulseDanger { 0% { box-shadow: 0 0 0 0 rgba(239,68,68,0.3); } 70% { box-shadow: 0 0 0 8px rgba(239,68,68,0); } 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); } }
 
-        .route-timeline { position: relative; padding-right: 25px; margin-bottom: 20px; border-right: 2px dashed #cbd5e1; margin-right: 10px; }
+        .route-timeline { position: relative; padding-right: 25px; margin-bottom: 20px; border-right: 2px dashed var(--border-color); margin-right: 10px; }
         .route-point { position: relative; margin-bottom: 25px; display: flex; flex-direction: column; justify-content: flex-start; align-items: flex-start; }
         .route-point:last-child { margin-bottom: 0; }
         .route-point::before { content: ''; position: absolute; right: -33px; top: 4px; width: 14px; height: 14px; border-radius: 50%; background: var(--card-bg); border: 4px solid; }
@@ -117,14 +141,14 @@
         .btn-action-pill.call { background: rgba(59, 130, 246, 0.1); color: var(--accent-blue); border: 1px solid rgba(59, 130, 246, 0.3); }
         .btn-action-pill.whatsapp { background: rgba(16, 185, 129, 0.1); color: var(--success-green); border: 1px solid rgba(16, 185, 129, 0.3); }
         .btn-action-pill.map { background: rgba(249, 115, 22, 0.1); color: var(--accent-orange); border: 1px solid rgba(249, 115, 22, 0.3); }
-        .btn-photo-view { background: var(--stat-bg); color: var(--primary-blue); border: 1px solid var(--border-color); border-radius: 16px; padding: 12px; font-size: 0.95rem; font-weight: 800; cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; margin-bottom: 20px; }
+        .btn-photo-view { background: var(--stat-bg); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 16px; padding: 12px; font-size: 0.95rem; font-weight: 800; cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; margin-bottom: 20px; }
         
         .btn-status { width: 100%; border-radius: 20px; padding: 18px; font-weight: 900; font-size: 1.2rem; color: white; border: none; cursor: pointer; transition: 0.2s; display: flex; justify-content: center; align-items: center; gap: 10px; box-shadow: 0 8px 15px rgba(0,0,0,0.1); position: relative; overflow: hidden; }
         .btn-status:active:not(:disabled) { transform: scale(0.96); box-shadow: none; }
         .btn-status.heading { background: var(--accent-blue); }
         .btn-status.arrived { background: var(--accent-orange); }
         .btn-status.picked { background: var(--success-green); }
-        .btn-status:disabled { opacity: 0.8; cursor: not-allowed; background: #94a3b8 !important; box-shadow: none; }
+        .btn-status:disabled { opacity: 0.8; cursor: not-allowed; background: var(--border-color) !important; box-shadow: none; color: var(--text-muted); }
 
         .switch { position: relative; display: inline-block; width: 50px; height: 26px; }
         .switch input { opacity: 0; width: 0; height: 0; }
@@ -138,6 +162,7 @@
         .ledger-card { background: var(--card-bg); border-radius: 25px; padding: 25px; box-shadow: 0 10px 25px rgba(0,0,0,0.03); margin-bottom: 15px; border: 1px solid var(--border-color); }
         .ledger-item { display: flex; justify-content: space-between; align-items: center; padding: 15px 0; border-bottom: 1px solid var(--border-color); }
         .ledger-item:last-child { border-bottom: none; padding-bottom: 0; }
+        .ledger-item h6 { color: var(--text-main); }
 
         #orderAlertOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--primary-blue); z-index: 40000; color: white; display: flex; flex-direction: column; justify-content: space-between; padding: max(50px, env(safe-area-inset-top)) 20px calc(30px + env(safe-area-inset-bottom)) 20px; text-align: center; overflow-y: auto; }
         .alert-pulse { width: 90px; height: 90px; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px auto; animation: pulseWhite 2s infinite; }
@@ -150,16 +175,17 @@
         .timer-container { position: relative; width: 160px; height: 160px; margin: 20px auto; display: flex; align-items: center; justify-content: center; flex-shrink: 0;}
         .timer-svg { transform: rotate(-90deg); width: 160px; height: 160px; }
         .timer-circle { fill: none; stroke: var(--success-green); stroke-width: 10; stroke-dasharray: 471; stroke-dashoffset: 0; transition: 1s linear; stroke-linecap: round; }
-        .alert-details-card { background: rgba(255, 255, 255, 1); color: var(--text-main); border-radius: 25px; padding: 25px; margin-bottom: 20px; text-align: right; box-shadow: 0 15px 30px rgba(0,0,0,0.2);}
+        .alert-details-card { background: white; color: #0f172a; border-radius: 25px; padding: 25px; margin-bottom: 20px; text-align: right; box-shadow: 0 15px 30px rgba(0,0,0,0.2);}
 
         .waiting-pulse { animation: softPulse 2s infinite; display: inline-block;}
         @keyframes softPulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.7; transform: scale(0.95); } 100% { opacity: 1; transform: scale(1); } }
-        .btn-refresh-waiting { background: #f1f5f9; color: var(--text-muted); border: 1px solid var(--border-color); font-weight: 700; border-radius: 20px; padding: 10px 20px; transition: 0.2s; border: none; }
+        .btn-refresh-waiting { background: var(--stat-bg); color: var(--text-muted); border: 1px solid var(--border-color); font-weight: 700; border-radius: 20px; padding: 10px 20px; transition: 0.2s; border: none; }
         .btn-accept-order { background: var(--success-green); color: white; border-radius: 20px; padding: 20px; font-weight: 900; font-size: 1.2rem; width: 100%; border: none; transition: 0.3s; display: flex; align-items: center; justify-content: center; gap: 15px; box-shadow: 0 10px 20px rgba(16, 185, 129, 0.3); margin-bottom: 15px; }
         
-        .svg-icon { width: 22px; height: 22px; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; fill: none; }
-        .svg-icon-small { width: 16px; height: 16px; }
-
+        /* 🌙 زر تبديل الوضع الليلي */
+        .btn-theme-toggle { background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; color: white; cursor: pointer; transition: 0.3s; }
+        .btn-theme-toggle:active { transform: scale(0.9); }
+        
         #syncStatus { position: fixed; bottom: max(10px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); background: rgba(15, 23, 42, 0.9); color: white; padding: 6px 15px; border-radius: 20px; font-size: 0.75rem; font-weight: 800; z-index: 10000; display: none; align-items: center; gap: 8px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); backdrop-filter: blur(5px); }
         .sync-spinner { width: 12px; height: 12px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -175,24 +201,24 @@
 </div>
 
 <div id="permissionOverlay" class="hidden-section">
-    <svg class="svg-icon permission-icon mb-4 text-danger" style="width: 70px; height: 70px;" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+    <i data-lucide="map-pin-off" size="70" color="#ef4444" class="permission-icon mb-4"></i>
     <h2 class="fw-black text-danger mb-3">الرادار مغلق!</h2>
-    <p class="fw-bold mb-4 fs-5" style="color: var(--text-main);">يرجى تفعيل "الموقع" لكي يستطيع النظام تحويل الطلبات إليك.</p>
+    <p class="fw-bold mb-4 fs-5">يرجى تفعيل "الموقع" لكي يستطيع النظام تحويل الطلبات إليك.</p>
     <button class="btn btn-primary rounded-pill px-5 py-3 fw-bold fs-5 shadow-lg" onclick="location.reload()">تحديث بعد التفعيل</button>
 </div>
 
 <div id="loadingOverlay">
-    <div class="spinner-grow mb-3" role="status" style="width: 3rem; height: 3rem; color: var(--primary-blue);"></div>
-    <h5 class="fw-bold" id="loadingText" style="color: var(--primary-blue);">جاري المزامنة مع النظام...</h5>
+    <div class="spinner-grow text-primary mb-3" role="status" style="width: 3rem; height: 3rem;"></div>
+    <h5 class="fw-bold text-white" id="loadingText">جاري المزامنة مع النظام...</h5>
 </div>
 
 <div id="cancelAlertOverlay" class="hidden-section">
     <div class="cancel-pulse">
-        <svg class="svg-icon" style="color: var(--danger-red); width: 40px; height: 40px;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+        <i data-lucide="x-circle" size="50" color="#ef4444"></i>
     </div>
     <h1 class="fw-black mb-3">تنبيه هام!</h1>
     <h4 class="fw-bold mb-4" id="cancelAlertText">تم إلغاء الطلب</h4>
-    <button class="btn btn-light btn-lg rounded-pill px-5 fw-bold text-danger" onclick="closeCancelAlert()">حسناً، فهمت</button>
+    <button class="btn btn-light btn-lg rounded-pill px-5 fw-bold text-danger shadow-sm" onclick="closeCancelAlert()">حسناً، فهمت</button>
 </div>
 
 <audio id="keepAliveAudio" loop src="data:audio/wav;base64,UklGRjIAAABXQVZFZm10IBIAAAABAAEAQB8AAEAfAAABAAgAAABkYXRhDAAAAAA="></audio>
@@ -204,10 +230,10 @@
 <div id="loginSection" class="login-wrapper">
     <div class="text-center mb-5 w-100">
         <div class="d-inline-block p-4 bg-white rounded-circle shadow-sm mb-4">
-            <svg class="svg-icon" style="width: 50px; height: 50px; color: var(--primary-blue);" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><polyline points="9 12 11 14 15 10"></polyline></svg>
+            <i data-lucide="bike" size="50" color="#1e3a8a"></i>
         </div>
-        <h2 class="fw-black m-0" style="color: var(--primary-blue);">مكتب سفيان للشركاء</h2>
-        <p class="text-muted fw-bold mb-0">المنصة الرسمية للكباتن</p>
+        <h2 class="fw-black m-0" style="color: var(--primary-blue);">كباتن سفيان</h2>
+        <p class="text-muted fw-bold mb-0">المنصة الرسمية للشركاء</p>
         <p class="text-muted fw-bold" style="font-size: 0.85rem;">بالتعاون مع نظام الحوت</p>
     </div>
 
@@ -220,7 +246,7 @@
         <div id="registerFields" class="hidden-section text-start" style="animation: fadeIn 0.5s;">
             <hr class="my-4 opacity-10">
             <div class="d-flex align-items-center justify-content-center gap-2 mb-4 text-success">
-                <svg class="svg-icon" viewBox="0 0 24 24"><path d="M12 2v20"></path><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                <i data-lucide="user-plus" size="20"></i>
                 <h5 class="fw-black m-0">تسجيل كابتن جديد</h5>
             </div>
             <div class="mb-4">
@@ -230,13 +256,13 @@
         </div>
 
         <button class="btn-action" id="mainAuthBtn" onclick="initAudioAndAuth()">
-            فحص الإشارة <svg class="svg-icon" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+            فحص الإشارة <i data-lucide="satellite"></i>
         </button>
     </div>
     
     <div class="login-card hidden-section text-center" id="waitingBox">
         <div class="waiting-pulse mb-3 bg-warning bg-opacity-10 p-4 rounded-circle d-inline-block">
-            <svg class="svg-icon text-warning" style="width: 60px; height: 60px;" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"></path><polyline points="21 3 21 8 16 8"></polyline><polyline points="12 8 12 12 15 15"></polyline></svg>
+            <i data-lucide="hourglass" size="60" class="text-warning"></i>
         </div>
         <h3 class="fw-black mb-2" style="color: var(--primary-blue);">أنت في غرفة الانتظار</h3>
         <p class="text-muted fw-bold mb-4" style="font-size: 0.9rem;">حسابك مسجل وقيد المراجعة.<br>النظام يفحص حالتك تلقائياً الآن، ستدخل فور موافقة الإدارة.</p>
@@ -246,7 +272,7 @@
             <span class="text-primary fw-bold small" id="waitingStatusText">جاري الاستعلام التلقائي...</span>
         </div>
         <button class="btn-refresh-waiting mt-2 w-100" onclick="checkWaitingStatus(true)">
-            تحديث يدوي <svg class="svg-icon" style="width: 16px; height:16px; margin-right:5px;" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+            تحديث يدوي <i data-lucide="refresh-cw" size="14" class="ms-1"></i>
         </button>
     </div>
 </div>
@@ -255,7 +281,8 @@
     <div class="dash-header">
         <div class="d-flex justify-content-between align-items-start">
             <div>
-                <h3 class="fw-black m-0 mb-2" id="driverNameDisplay">...</h3>
+                <h3 class="fw-black m-0 mb-1" id="driverNameDisplay">...</h3>
+                <p class="mb-2 fw-bold text-light opacity-75" style="font-size: 0.8rem;">طريقك أخضر 🚦.. سفيان سندك 🦅</p>
                 <div class="d-flex align-items-center gap-2 mt-2">
                     <label class="switch">
                         <input type="checkbox" id="onlineToggle" checked onchange="toggleOnlineStatus()">
@@ -266,9 +293,12 @@
                     </div>
                 </div>
             </div>
-            <div>
-                <button class="btn btn-light rounded-circle p-2 text-danger border-0 shadow-sm" onclick="logout()">
-                    <svg class="svg-icon" viewBox="0 0 24 24"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
+            <div class="d-flex gap-2">
+                <button class="btn-theme-toggle" onclick="toggleTheme()" id="themeBtn">
+                    <i data-lucide="moon" size="20"></i>
+                </button>
+                <button class="btn btn-light rounded-circle p-2 text-danger border-0 shadow-sm" style="width: 40px; height: 40px; display:flex; align-items:center; justify-content:center;" onclick="logout()">
+                    <i data-lucide="power" size="20"></i>
                 </button>
             </div>
         </div>
@@ -277,22 +307,21 @@
         <div class="row g-3 px-1 stats-wrapper">
             <div class="col-6">
                 <div class="stat-box">
-                    <svg class="svg-icon text-success mb-2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
-                    <h6 class="text-muted fw-bold mb-1" style="font-size: 0.8rem;">الطلبات المنجزة</h6>
-                    <h3 class="fw-black m-0" style="color: var(--primary-blue);" id="statOrdersCount">0</h3>
+                    <i data-lucide="check-circle" class="text-success mb-2" size="24"></i>
+                    <h6 class="fw-bold mb-1" style="font-size: 0.8rem;">الطلبات المنجزة</h6>
+                    <h3 class="fw-black m-0" id="statOrdersCount">0</h3>
                 </div>
             </div>
             <div class="col-6">
                 <div class="stat-box">
-                    <svg class="svg-icon text-danger mb-2" viewBox="0 0 24 24"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"></path><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"></path><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"></path></svg>
-                    <h6 class="text-muted fw-bold mb-1" style="font-size: 0.8rem;">عمولة المكتب</h6>
+                    <i data-lucide="wallet" class="text-danger mb-2" size="24"></i>
+                    <h6 class="fw-bold mb-1" style="font-size: 0.8rem;">عمولة المكتب</h6>
                     <h4 class="fw-black text-danger m-0" id="statDebt">0 <small class="fs-6">د.ع</small></h4>
                 </div>
             </div>
             <div class="col-12">
                 <button class="btn w-100 fw-bold shadow-sm d-flex align-items-center justify-content-center gap-2" style="background: var(--card-bg); border-radius: 16px; padding: 14px; border: 1px solid var(--border-color); color: var(--primary-blue);" onclick="openLedger()">
-                    <svg class="svg-icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-                    سجل رحلاتي اليوم
+                    <i data-lucide="file-text" size="20"></i> سجل رحلاتي اليوم
                 </button>
             </div>
         </div>
@@ -301,11 +330,11 @@
             <div class="radar-center">
                 <div class="radar-wave" style="animation-delay: 0s"></div><div class="radar-wave" style="animation-delay: 0.8s"></div><div class="radar-wave" style="animation-delay: 1.6s"></div>
                 <div class="rounded-circle shadow-lg d-flex align-items-center justify-content-center position-relative" style="width: 80px; height: 80px; z-index: 10; background: var(--card-bg);">
-                    <svg class="svg-icon" style="color: var(--accent-blue); width: 40px; height: 40px;" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+                    <i data-lucide="radar" size="40" class="text-primary"></i>
                 </div>
             </div>
-            <h4 class="fw-black mb-2" style="color: var(--text-main);" id="radarTitle">الرادار يعمل</h4>
-            <p class="text-muted fw-bold mb-0" id="radarDesc">جاري البحث عن طلبات قريبة...</p>
+            <h4 class="fw-black mb-2" id="radarTitle">الرادار يعمل</h4>
+            <p class="text-muted fw-bold mb-0" id="radarDesc">جاري الاستماع للطلبات القريبة...</p>
         </div>
 
         <div id="activeOrderBox" class="mt-4 hidden-section"></div>
@@ -315,8 +344,8 @@
 <div id="ledgerModal" class="hidden-section">
     <div class="ledger-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
         <h3 class="fw-black m-0" style="color: var(--primary-blue);">سجل اليوم</h3>
-        <button class="btn btn-light rounded-circle p-2 border" onclick="closeLedger()">
-            <svg class="svg-icon" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        <button class="btn btn-light rounded-circle p-2 border" style="background: var(--card-bg); color: var(--text-main);" onclick="closeLedger()">
+            <i data-lucide="x" size="20"></i>
         </button>
     </div>
     <div class="ledger-card text-center pb-4 mb-4">
@@ -329,7 +358,7 @@
 <div id="orderAlertOverlay" class="hidden-section">
     <div>
         <div class="alert-pulse">
-            <svg class="svg-icon" style="color: var(--primary-blue); width: 40px; height: 40px;" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+            <i data-lucide="bell-ring" size="40" color="#1e3a8a"></i>
         </div>
         <h1 class="fw-black mb-1" id="alertTitleText">طلب جديد!</h1>
     </div>
@@ -340,7 +369,7 @@
     <div class="alert-details-card">
         <div class="d-flex justify-content-between align-items-center mb-3 pb-3 border-bottom border-light">
             <small class="text-muted fw-bold">المطعم</small>
-            <h3 class="fw-black m-0" style="color: var(--primary-blue);" id="alertResName">---</h3>
+            <h3 class="fw-black m-0" style="color: #1e3a8a;" id="alertResName">---</h3>
         </div>
         <div class="d-flex justify-content-between align-items-center">
             <small class="text-muted fw-bold">المنطقة</small>
@@ -348,11 +377,11 @@
         </div>
     </div>
     <div class="pb-2 flex-shrink-0">
-        <button class="btn-mute w-100 d-flex align-items-center justify-content-center gap-2" onclick="muteAlarmOnly()">
-            إسكات الصوت <svg class="svg-icon" viewBox="0 0 24 24"><path d="M13.73 21a2 2 0 0 1-3.46 0"></path><path d="M18.63 13A17.89 17.89 0 0 1 18 8"></path><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"></path><path d="M18 8a6 6 0 0 0-9.33-5"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+        <button class="btn-mute w-100 d-flex align-items-center justify-content-center gap-2 mb-3 bg-white bg-opacity-25 border-0 text-white py-2 rounded-4 fw-bold" onclick="muteAlarmOnly()">
+            <i data-lucide="volume-x" size="18"></i> إسكات الصوت 
         </button>
         <button class="btn-accept-order" onclick="acceptOrder()">
-            قبول الطلب فوراً <svg class="svg-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            قبول الطلب فوراً <i data-lucide="check" size="24"></i>
         </button>
         <button class="btn btn-link text-white w-100 fw-bold text-decoration-none fs-5" onclick="declineOrder()">
             تجاهل الطلب
@@ -361,27 +390,71 @@
 </div>
 
 <script>
-    const API_URL = "https://script.google.com/macros/s/AKfycbwLSFljKVZCEFTae3RvE4CF-Qp3U6zEoYsh2TZe0nk149K4Fw-F1U9rYwReLKyxXq-I1Q/exec";
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+
+    // 🟢 1. تهيئة الوضع الليلي من الذاكرة 
+    function initTheme() {
+        const savedTheme = localStorage.getItem('hut_driver_theme') || 'light';
+        if (savedTheme === 'dark') {
+            document.documentElement.setAttribute('data-theme', 'dark');
+            const tBtn = document.getElementById('themeBtn');
+            if(tBtn) tBtn.innerHTML = '<i data-lucide="sun" size="20"></i>';
+        }
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+    initTheme(); // تشغيل فوري
+
+    function toggleTheme() {
+        const root = document.documentElement;
+        const currentTheme = root.getAttribute('data-theme');
+        const tBtn = document.getElementById('themeBtn');
+        
+        if (currentTheme === 'dark') {
+            root.removeAttribute('data-theme');
+            localStorage.setItem('hut_driver_theme', 'light');
+            if(tBtn) tBtn.innerHTML = '<i data-lucide="moon" size="20"></i>';
+        } else {
+            root.setAttribute('data-theme', 'dark');
+            localStorage.setItem('hut_driver_theme', 'dark');
+            if(tBtn) tBtn.innerHTML = '<i data-lucide="sun" size="20"></i>';
+        }
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+
+    const API_URL = "https://script.google.com/macros/s/AKfycbxghjr3gSN4xhtrr2wIz20WFKahMkr8uRhNXSTEL2FtIig8EPkhs7DmMLvUAxmuPiGnKw/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
-    let driverData = null, countdownInterval, currentOrderData = null, activeOrders = [], isRegistering = false, isOnline = true;
-    let checkOrdersTimer = null, currentPollingRate = 20000, wakeLock = null, waitingPollingTimer = null;
-    let lastLocUpdateTs = 0, lastSentLat = 0, lastSentLng = 0, lastActiveHtml = "";
+    const firebaseConfig = {
+      apiKey: "AIzaSyAo1rmqUzieYZU3RIwXOAN87GkpNrp-_Hc",
+      authDomain: "sufyan-delivery.firebaseapp.com",
+      databaseURL: "https://sufyan-delivery-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "sufyan-delivery",
+      storageBucket: "sufyan-delivery.firebasestorage.app",
+      messagingSenderId: "941542380637",
+      appId: "1:941542380637:web:9623fa6e627817ffeba9b4"
+    };
+    
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
 
+    function escapeHTML(str) {
+        if (str === null || str === undefined) return '';
+        return String(str).replace(/[&<>'"]/g, function(match) { return { '&': '&', '<': '<', '>': '>', "'": ''', '"': '"' }[match]; });
+    }
+    
+    let driverData = null, countdownInterval, currentOrderData = null, activeOrders = [], isRegistering = false, isOnline = true;
+    let wakeLock = null, waitingPollingTimer = null;
+    let lastLocUpdateTs = 0, lastSentLat = 0, lastSentLng = 0, lastActiveHtml = "";
+    let myLocRef = null, firebaseOrdersListener = null;
     let offlineActionQueue = JSON.parse(localStorage.getItem('hut_offline_queue') || '[]');
     let isProcessingQueue = false;
 
-    // دالة حساب المسافة بالأمتار (Haversine formula)
     function calculateDistanceMeters(lat1, lon1, lat2, lon2) {
         if (!lat1 || !lon1) return 9999;
-        const R = 6371e3;
-        const p1 = lat1 * Math.PI/180;
-        const p2 = lat2 * Math.PI/180;
-        const dp = (lat2-lat1) * Math.PI/180;
-        const dl = (lon2-lon1) * Math.PI/180;
+        const R = 6371e3; const p1 = lat1 * Math.PI/180; const p2 = lat2 * Math.PI/180;
+        const dp = (lat2-lat1) * Math.PI/180; const dl = (lon2-lon1) * Math.PI/180;
         const a = Math.sin(dp/2) * Math.sin(dp/2) + Math.cos(p1) * Math.cos(p2) * Math.sin(dl/2) * Math.sin(dl/2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-        return R * c;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
 
     function saveToOfflineQueue(url) {
@@ -391,45 +464,17 @@
     }
 
     async function processOfflineQueue() {
-        if (isProcessingQueue || offlineActionQueue.length === 0 || !navigator.onLine) {
-            document.getElementById('syncStatus').style.display = 'none';
-            return;
-        }
-        
-        isProcessingQueue = true;
-        document.getElementById('syncStatus').style.display = 'flex';
-        document.getElementById('syncText').innerText = `جاري مزامنة ${offlineActionQueue.length} عمليات...`;
-
+        if (isProcessingQueue || offlineActionQueue.length === 0 || !navigator.onLine) { document.getElementById('syncStatus').style.display = 'none'; return; }
+        isProcessingQueue = true; document.getElementById('syncStatus').style.display = 'flex'; document.getElementById('syncText').innerText = `جاري مزامنة ${offlineActionQueue.length} عمليات...`;
         let failedQueue = [];
-
         for (let i = 0; i < offlineActionQueue.length; i++) {
-            const action = offlineActionQueue[i];
-            try {
-                const response = await fetch(action.url, { method: 'GET', mode: 'no-cors', cache: 'no-store' });
-            } catch (err) {
-                failedQueue.push(action);
-            }
+            try { await fetch(offlineActionQueue[i].url, { method: 'GET', cache: 'no-store' }); } catch (err) { failedQueue.push(offlineActionQueue[i]); }
         }
-
-        offlineActionQueue = failedQueue;
-        localStorage.setItem('hut_offline_queue', JSON.stringify(offlineActionQueue));
-        
-        document.getElementById('syncStatus').style.display = 'none';
-        isProcessingQueue = false;
+        offlineActionQueue = failedQueue; localStorage.setItem('hut_offline_queue', JSON.stringify(offlineActionQueue));
+        document.getElementById('syncStatus').style.display = 'none'; isProcessingQueue = false;
     }
-
     setInterval(processOfflineQueue, 5000);
-
-    function safeFetchUpdate(url) {
-        saveToOfflineQueue(url);
-    }
-
-    const svgPhone = `<svg class="svg-icon svg-icon-small" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>`;
-    const svgMap = `<svg class="svg-icon svg-icon-small" viewBox="0 0 24 24"><polygon points="3 11 22 2 13 21 11 13 3 11"></polygon></svg>`;
-    const svgWa = `<svg class="svg-icon svg-icon-small" viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>`;
-    const svgImg = `<svg class="svg-icon svg-icon-small" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>`;
-    const svgSupport = `<svg class="svg-icon" style="width: 14px; height: 14px;" viewBox="0 0 24 24"><path d="M3 18v-6a9 9 0 0 1 18 0v6"></path><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path></svg>`;
-    const svgTimer = `<svg class="svg-icon" style="width: 14px; height: 14px;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>`;
+    function safeFetchUpdate(url) { saveToOfflineQueue(url); }
 
     function openSafeLink(url) {
         if (window.AndroidRadar && window.AndroidRadar.openExternalApp) { window.AndroidRadar.openExternalApp(url); } 
@@ -437,19 +482,13 @@
     }
 
     function muteAlarmOnly() {
-        if (window.AndroidRadar) { window.AndroidRadar.stopAlarm(); }
+        if (window.AndroidRadar) window.AndroidRadar.stopAlarm();
         try { document.getElementById('alertSound').pause(); document.getElementById('doubleOrderSound').pause(); } catch(e) {}
     }
 
-    function showLoading(s, text = "جاري المزامنة مع النظام...") { 
-        document.getElementById('loadingText').innerText = text; 
-        document.getElementById('loadingOverlay').style.display = s ? 'flex' : 'none'; 
-    }
+    function showLoading(s, text = "جاري المزامنة مع النظام...") { document.getElementById('loadingText').innerText = text; document.getElementById('loadingOverlay').style.display = s ? 'flex' : 'none'; }
 
-    window.addEventListener('online', () => { 
-        document.getElementById('offlineBanner').classList.add('hidden-section'); 
-        processOfflineQueue(); 
-    });
+    window.addEventListener('online', () => { document.getElementById('offlineBanner').classList.add('hidden-section'); processOfflineQueue(); });
     window.addEventListener('offline', () => { document.getElementById('offlineBanner').classList.remove('hidden-section'); });
     document.addEventListener('contextmenu', event => event.preventDefault());
 
@@ -461,8 +500,8 @@
             let audio = document.getElementById(id);
             if (audio) { audio.volume = 0; let p = audio.play(); if (p !== undefined) { p.then(() => { audio.pause(); audio.currentTime = 0; audio.volume = 1; }).catch(e => { }); } }
         });
-        if ("Notification" in window && Notification.permission !== "granted") { Notification.requestPermission(); }
-        if (navigator.geolocation) { navigator.geolocation.getCurrentPosition(function(pos) {}, function(err) {}, { enableHighAccuracy: true, maximumAge: 0 }); }
+        if ("Notification" in window && Notification.permission !== "granted") Notification.requestPermission();
+        if (navigator.geolocation) navigator.geolocation.getCurrentPosition(function(pos) {}, function(err) {}, { enableHighAccuracy: true, maximumAge: 0 });
         authAction();
     }
 
@@ -475,16 +514,11 @@
                 if ((Date.now() - session.timestamp) / 3600000 < 24) {
                     driverData = session; document.getElementById('driverPhone').value = session.phone; showDashboard();
                     const savedOrders = localStorage.getItem('hut_active_orders');
-                    if (savedOrders) { 
-                        activeOrders = JSON.parse(savedOrders); 
-                        activeOrders.forEach(o => { if(!o.acceptedTime) o.acceptedTime = Date.now(); });
-                    } 
+                    if (savedOrders) { activeOrders = JSON.parse(savedOrders); activeOrders.forEach(o => { if(!o.acceptedTime) o.acceptedTime = Date.now(); }); } 
                     displayActiveOrders(); return true;
                 }
             } catch(e) {}
-        } else if (pendingStr) {
-            document.getElementById('driverPhone').value = pendingStr; showWaitingRoom(); return true;
-        }
+        } else if (pendingStr) { document.getElementById('driverPhone').value = pendingStr; showWaitingRoom(); return true; }
         return false;
     }
 
@@ -492,13 +526,9 @@
         if (!checkSavedSession()) { 
             const savedDriver = localStorage.getItem('hut_driver'); 
             if (savedDriver) { 
-                driverData = JSON.parse(savedDriver); document.getElementById('driverPhone').value = driverData.phone; 
-                authAction(); 
+                driverData = JSON.parse(savedDriver); document.getElementById('driverPhone').value = driverData.phone; authAction(); 
                 const savedOrders = localStorage.getItem('hut_active_orders'); 
-                if (savedOrders) { 
-                    activeOrders = JSON.parse(savedOrders); 
-                    activeOrders.forEach(o => { if(!o.acceptedTime) o.acceptedTime = Date.now(); });
-                } 
+                if (savedOrders) { activeOrders = JSON.parse(savedOrders); activeOrders.forEach(o => { if(!o.acceptedTime) o.acceptedTime = Date.now(); }); } 
             } 
         } 
     };
@@ -512,14 +542,9 @@
             const name = document.getElementById('driverName').value.trim();
             if (!name) return alert("يرجى كتابة الاسم الثلاثي");
             showLoading(true, "جاري إنشاء الحساب...");
-            const payload = { action: 'DRIVER_REG', token: API_TOKEN, name: name, phone: phone };
-            
-            fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) })
-            .then(() => {
-                showLoading(false);
-                localStorage.setItem('hut_driver_pending', phone);
-                showWaitingRoom();
-            }).catch(() => { showLoading(false); alert("ضعف في الاتصال بالشبكة."); });
+            fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'DRIVER_REG', token: API_TOKEN, name: name, phone: phone }) })
+            .then(() => { showLoading(false); localStorage.setItem('hut_driver_pending', phone); showWaitingRoom(); })
+            .catch(() => { showLoading(false); alert("ضعف في الاتصال بالشبكة."); });
             return;
         }
 
@@ -541,16 +566,14 @@
             localStorage.setItem('hut_driver_pending', phone); showWaitingRoom();
         } else {
             isRegistering = true;
-            document.getElementById('registerFields').classList.remove('hidden-section');
-            document.getElementById('driverPhone').disabled = true;
-            document.getElementById('mainAuthBtn').innerHTML = `إرسال طلب الانضمام <svg class="svg-icon" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>`;
-            document.getElementById('mainAuthBtn').style.background = 'var(--accent-orange)';
+            document.getElementById('registerFields').classList.remove('hidden-section'); document.getElementById('driverPhone').disabled = true;
+            document.getElementById('mainAuthBtn').innerHTML = `إرسال طلب الانضمام <i data-lucide="send"></i>`; document.getElementById('mainAuthBtn').style.background = 'var(--accent-orange)';
+            if (typeof lucide !== 'undefined') lucide.createIcons();
         }
     };
 
     function showWaitingRoom() {
-        document.getElementById('authBox').classList.add('hidden-section');
-        document.getElementById('waitingBox').classList.remove('hidden-section');
+        document.getElementById('authBox').classList.add('hidden-section'); document.getElementById('waitingBox').classList.remove('hidden-section');
         if (waitingPollingTimer) clearInterval(waitingPollingTimer);
         waitingPollingTimer = setInterval(() => checkWaitingStatus(false), 15000); 
     }
@@ -559,18 +582,12 @@
         let rawPhone = document.getElementById('driverPhone').value.trim() || localStorage.getItem('hut_driver_pending');
         if (!rawPhone) return;
         let phone = rawPhone.startsWith('0') ? rawPhone.substring(1) : rawPhone;
-        if (isManual) { document.getElementById('waitingStatusText').innerText = "جاري التحقق اليدوي..."; }
+        if (isManual) document.getElementById('waitingStatusText').innerText = "جاري التحقق اليدوي...";
         
-        const oldScript = document.getElementById('waiting-check-script');
-        if (oldScript) oldScript.remove();
-
-        const script = document.createElement('script');
-        script.id = 'waiting-check-script';
+        const oldScript = document.getElementById('waiting-check-script'); if (oldScript) oldScript.remove();
+        const script = document.createElement('script'); script.id = 'waiting-check-script';
         script.src = `${API_URL}?action=checkDriver&phone=${phone}&token=${API_TOKEN}&callback=handleWaitingCheck&ts=${Date.now()}`;
-        
-        script.onload = () => script.remove();
-        script.onerror = () => script.remove();
-
+        script.onload = () => script.remove(); script.onerror = () => script.remove();
         document.body.appendChild(script);
     }
 
@@ -592,13 +609,26 @@
 
     function showDashboard() {
         document.getElementById('loginSection').classList.add('hidden-section'); document.getElementById('dashboardPage').classList.remove('hidden-section');
-        document.getElementById('driverNameDisplay').innerText = "كابتن " + driverData.name; startSystem();
+        document.getElementById('driverNameDisplay').innerText = "كابتن " + driverData.name; 
+        
+        if (driverData && driverData.phone) {
+            myLocRef = db.ref('drivers_locations/' + driverData.phone);
+            const connectedRef = db.ref('.info/connected');
+            connectedRef.on('value', (snap) => {
+                if (snap.val() === true && isOnline) {
+                    myLocRef.update({ status: 'active', last_update: firebase.database.ServerValue.TIMESTAMP });
+                    myLocRef.onDisconnect().update({ status: 'inactive', last_update: firebase.database.ServerValue.TIMESTAMP });
+                }
+            });
+        }
+        startSystem();
     }
 
     function logout() {
         if (activeOrders.length > 0) return alert("⚠️ قم بإنهاء الطلبات أولاً.");
         if (confirm("تأكيد تسجيل الخروج؟")) { 
             releaseWakeLock(); 
+            if (myLocRef) { myLocRef.update({ status: 'inactive', last_update: firebase.database.ServerValue.TIMESTAMP }); myLocRef.onDisconnect().cancel(); }
             safeFetchUpdate(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=DRIVER&id=${driverData.phone}&status=inactive&token=${API_TOKEN}`); 
             localStorage.clear(); sessionStorage.clear(); location.reload(); 
         }
@@ -608,53 +638,67 @@
         isOnline = document.getElementById('onlineToggle').checked;
         const badge = document.getElementById('onlineStatusBadge');
         let silentAudio = document.getElementById('keepAliveAudio');
+        
         if (isOnline) {
             badge.className = "status-badge online"; badge.innerHTML = `متاح للطلبات`;
             document.getElementById('searchingStatus').classList.remove('offline-mode');
+            if (myLocRef) { myLocRef.update({ status: 'active', last_update: firebase.database.ServerValue.TIMESTAMP }); myLocRef.onDisconnect().update({ status: 'inactive', last_update: firebase.database.ServerValue.TIMESTAMP }); }
             safeFetchUpdate(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=DRIVER&id=${driverData.phone}&status=active&token=${API_TOKEN}`); 
-            adjustPollingRate(); requestWakeLock(); if (silentAudio) silentAudio.play().catch(e=>{}); displayActiveOrders();
+            requestWakeLock(); if (silentAudio) silentAudio.play().catch(e=>{}); displayActiveOrders();
         } else {
             badge.className = "status-badge offline"; badge.innerHTML = `في استراحة`;
             document.getElementById('searchingStatus').classList.add('offline-mode');
+            if (myLocRef) { myLocRef.update({ status: 'inactive', last_update: firebase.database.ServerValue.TIMESTAMP }); myLocRef.onDisconnect().cancel(); }
             safeFetchUpdate(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=DRIVER&id=${driverData.phone}&status=inactive&token=${API_TOKEN}`); 
-            adjustPollingRate(); releaseWakeLock(); if (silentAudio) silentAudio.pause(); displayActiveOrders();
+            releaseWakeLock(); if (silentAudio) silentAudio.pause(); displayActiveOrders();
         }
     }
 
-    function adjustPollingRate() {
-        if (checkOrdersTimer) clearInterval(checkOrdersTimer);
-        if (!isOnline) return; 
-        currentPollingRate = (activeOrders.length === 0) ? 15000 : 8000; checkOrdersTimer = setInterval(checkForOrders, currentPollingRate);
-    }
-
     function startSystem() {
-        if (isOnline) { requestWakeLock(); let silentAudio = document.getElementById('keepAliveAudio'); if (silentAudio) silentAudio.play().catch(e=>{}); }
-        adjustPollingRate(); updateStats(); setInterval(updateStats, 20000); 
+        if (isOnline) { 
+            requestWakeLock(); let silentAudio = document.getElementById('keepAliveAudio'); if (silentAudio) silentAudio.play().catch(e=>{}); 
+
+            if(!firebaseOrdersListener) {
+                firebaseOrdersListener = db.ref('active_orders').on('value', (snapshot) => {
+                    if (!isOnline) return;
+                    const orders = snapshot.val() || {};
+                    
+                    for (let i = activeOrders.length - 1; i >= 0; i--) {
+                        const localOrder = activeOrders[i];
+                        const fbOrder = orders[localOrder.id];
+                        if (!fbOrder || (String(fbOrder.driverPhone) !== String(driverData.phone) && fbOrder.driverPhone !== "pending_driver" && fbOrder.driverPhone !== "manual_pending")) {
+                            forceRemoveActiveOrder("تم سحب أو إلغاء هذا الطلب من قبل الإدارة.", localOrder.id);
+                            if (currentOrderData && String(currentOrderData.id) === String(localOrder.id)) { closeAlert(); currentOrderData = null; }
+                        }
+                    }
+
+                    Object.values(orders).forEach(data => {
+                        if (String(data.driverPhone) === String(driverData.phone) && (data.status === 'pending_driver' || data.status === 'manual_pending')) {
+                            onNewOrder({ id: data.id, resName: data.restaurant, area: data.area, details: data.details || "طلب مصور", price: data.price, photoUrl: data.photoUrl });
+                        }
+                    });
+                });
+            }
+        }
+        
+        updateStats(); setInterval(updateStats, 60000); 
         
         if (navigator.geolocation) {
             navigator.geolocation.watchPosition(
                 pos => {
                     document.getElementById('permissionOverlay').classList.add('hidden-section');
-                    driverData.currentLat = pos.coords.latitude; 
-                    driverData.currentLng = pos.coords.longitude;
+                    driverData.currentLat = pos.coords.latitude; driverData.currentLng = pos.coords.longitude;
                     const now = Date.now();
-                    
                     let isHeadingToCustomer = activeOrders.some(o => o.state === 'picked_up');
                     
-                    // منع تحديث الموقع إذا كان السائق متوجهاً للزبون (لتقليل استهلاك البطارية والشبكة)
                     if (!isHeadingToCustomer) { 
                         const dist = calculateDistanceMeters(lastSentLat, lastSentLng, pos.coords.latitude, pos.coords.longitude);
                         const timeElapsed = now - lastLocUpdateTs;
                         
-                        // التحديث يحدث فقط إذا: (أول مرة) أو (تحرك 50 متر على الأقل) أو (مرت 3 دقائق للحفاظ على نشاط الكابتن)
-                        if (dist >= 50 || timeElapsed > 180000) {
-                            if (timeElapsed > 15000) { // منع الإرسال العشوائي المتتالي (Throttling) بحد أدنى 15 ثانية
-                                lastLocUpdateTs = now; 
-                                lastSentLat = pos.coords.latitude;
-                                lastSentLng = pos.coords.longitude;
-                                
-                                const url = `${API_URL}?action=DRIVER_UPDATE&phone=${driverData.phone}&lat=${pos.coords.latitude}&lng=${pos.coords.longitude}&token=${API_TOKEN}`;
-                                fetch(url, { cache: 'no-store' }).catch(e => console.log('Location update failed'));
+                        if (dist >= 30 || timeElapsed > 120000) {
+                            if (timeElapsed > 10000) { 
+                                lastLocUpdateTs = now; lastSentLat = pos.coords.latitude; lastSentLng = pos.coords.longitude;
+                                if (myLocRef && isOnline) myLocRef.update({ lat: pos.coords.latitude, lng: pos.coords.longitude, last_update: firebase.database.ServerValue.TIMESTAMP }).catch(e => {});
                             }
                         }
                     }
@@ -671,246 +715,152 @@
     }
 
     function forceRemoveActiveOrder(msg, orderId) {
-        let cancelAudio = document.getElementById('cancelSound');
-        cancelAudio.currentTime = 0; 
-        cancelAudio.play().catch(e => {});
-        
-        document.getElementById('cancelAlertText').innerText = `الطلب #${orderId}: ${msg}`;
+        let cancelAudio = document.getElementById('cancelSound'); cancelAudio.currentTime = 0; cancelAudio.play().catch(e => {});
+        document.getElementById('cancelAlertText').innerText = `الطلب #${escapeHTML(orderId)}: ${escapeHTML(msg)}`;
         document.getElementById('cancelAlertOverlay').classList.remove('hidden-section');
-        
-        activeOrders = activeOrders.filter(o => String(o.id) !== String(orderId));
-        localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
+        activeOrders = activeOrders.filter(o => String(o.id) !== String(orderId)); localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
         displayActiveOrders();
     }
 
     window.renderDriverData = function(data) {
         if (!data || !data.orders) return;
         
-        for (let i = activeOrders.length - 1; i >= 0; i--) {
-            const order = activeOrders[i];
-            const serverOrder = data.orders.find(o => String(o[0]) === String(order.id));
-            
-            if (!serverOrder) {
-                forceRemoveActiveOrder("تم حذف هذا الطلب من الإدارة.", order.id);
-            } else {
-                const status = serverOrder[5];
-                const assignedDriver = String(serverOrder[6]);
-                if (status === 'deleted' || status === 'completed' || status === 'settled' || status === 'مكتمل') {
-                    forceRemoveActiveOrder("تم إنهاء أو إلغاء هذا الطلب من قبل الإدارة.", order.id);
-                } else if (assignedDriver !== String(driverData.phone) && assignedDriver !== "pending_driver" && assignedDriver !== "manual_pending") {
-                    forceRemoveActiveOrder("تم سحب الطلب وتعيينه لكابتن آخر.", order.id);
-                }
-            }
-        }
-
-        activeOrders.forEach(order => { 
-            const resInfo = data.restaurants.find(r => r[1] === order.resName); 
-            if (resInfo) { 
-                order.resPhone = resInfo[2]; 
-                order.resArea = resInfo[3]; 
-                order.resLat = parseFloat(resInfo[6]); 
-                order.resLng = parseFloat(resInfo[7]); 
-            }
-        });
-        displayActiveOrders(); 
-
-        let totalOrdersCount = 0;
-        let totalDebtCalc = 0;
-        let ledgerHtmlString = '';
-        let todayCashCalc = 0;
-        
-        // ✅ استخدام التوقيت المحلي بدلاً من UTC لضمان صحة سجل اليوم بعد منتصف الليل
-        const t = new Date();
-        const todayISO = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+        let totalOrdersCount = 0, totalDebtCalc = 0, ledgerHtmlString = '', todayCashCalc = 0;
+        const t = new Date(); const todayISO = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
 
         data.orders.slice(1).forEach(o => {
             if (String(o[6]) === String(driverData.phone)) {
                 const status = o[5];
                 if (status === 'completed' || status === 'مكتمل' || status === 'settled') {
                     totalOrdersCount++; 
-                    
                     const resInfo = data.restaurants.find(r => r[1] === o[1]);
                     if (resInfo && status !== 'settled') {
-                        const paySystem = String(resInfo[8]);
-                        const comm = parseFloat(resInfo[5]) || 0;
-                        if (paySystem.includes('مناصفة')) {
-                            totalDebtCalc += (comm / 2); 
-                        }
+                        const paySystem = String(resInfo[8]); const comm = parseFloat(resInfo[5]) || 0;
+                        if (paySystem.includes('مناصفة')) totalDebtCalc += (comm / 2); 
                     }
-
                     const orderDateStr = o[7];
                     if (orderDateStr) {
                         const orderDateObj = new Date(orderDateStr);
-                        // نحول تاريخ الطلب إلى نفس الصيغة المحلية للمقارنة
                         const orderLocalISO = orderDateObj.getFullYear() + '-' + String(orderDateObj.getMonth() + 1).padStart(2, '0') + '-' + String(orderDateObj.getDate()).padStart(2, '0');
-                        
                         if (orderLocalISO === todayISO) {
-                            const price = parseFloat(o[4]) || 0;
-                            todayCashCalc += price;
-                            const timeFmt = orderDateObj.toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'});
-                            ledgerHtmlString += `
-                            <div class="ledger-item">
-                                <div>
-                                    <h6 class="fw-black m-0 text-dark">#${o[0]} - ${o[1]}</h6>
-                                    <small class="text-muted fw-bold">${timeFmt} | منطقة ${o[2]}</small>
-                                </div>
-                                <h5 class="fw-black text-success m-0">${price} <small class="fs-6">د.ع</small></h5>
-                            </div>`;
+                            const price = parseFloat(o[4]) || 0; todayCashCalc += price;
+                            const timeFmt = escapeHTML(orderDateObj.toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'}));
+                            ledgerHtmlString += `<div class="ledger-item"><div><h6 class="fw-black m-0 text-dark">#${escapeHTML(o[0])} - ${escapeHTML(o[1])}</h6><small class="text-muted fw-bold">${timeFmt} | منطقة ${escapeHTML(o[2])}</small></div><h5 class="fw-black text-success m-0">${escapeHTML(price)} <small class="fs-6">د.ع</small></h5></div>`;
                         }
                     }
                 }
             }
         });
-
-        document.getElementById('statOrdersCount').innerText = totalOrdersCount;
-        document.getElementById('statDebt').innerHTML = `${totalDebtCalc} <small class="fs-6">د.ع</small>`;
-        document.getElementById('ledgerTotalCash').innerHTML = `${todayCashCalc} <small class="fs-5">د.ع</small>`;
-        document.getElementById('ledgerList').innerHTML = ledgerHtmlString || '<div class="text-center text-muted fw-bold py-4">لا توجد رحلات مكتملة اليوم.</div>';
+        document.getElementById('statOrdersCount').innerText = totalOrdersCount; document.getElementById('statDebt').innerHTML = `${totalDebtCalc} <small class="fs-6">د.ع</small>`;
+        document.getElementById('ledgerTotalCash').innerHTML = `${todayCashCalc} <small class="fs-5">د.ع</small>`; document.getElementById('ledgerList').innerHTML = ledgerHtmlString || '<div class="text-center text-muted fw-bold py-4">لا توجد رحلات مكتملة اليوم.</div>';
     };
-
-    function checkForOrders() {
-        if (!isOnline || activeOrders.length >= 2 || !document.getElementById('orderAlertOverlay').classList.contains('hidden-section')) return;
-        
-        const oldScript = document.getElementById('check-orders-script');
-        if (oldScript) oldScript.remove();
-
-        const script = document.createElement('script'); 
-        script.id = 'check-orders-script';
-        script.src = `${API_URL}?action=checkMyOrders&phone=${driverData.phone}&token=${API_TOKEN}&callback=onNewOrder&ts=${Date.now()}`; 
-        
-        script.onload = () => script.remove();
-        script.onerror = () => script.remove();
-        
-        document.body.appendChild(script);
-    }
 
     window.onNewOrder = function(data) {
         if (data && data.id) {
             if (activeOrders.find(o => String(o.id) === String(data.id))) return;
+            if (currentOrderData && String(currentOrderData.id) === String(data.id)) return;
+            
             currentOrderData = data; currentOrderData.expireTime = Date.now() + 60000; 
             document.getElementById('alertTitleText').innerText = activeOrders.length > 0 ? "طلب مزدوج!" : "طلب جديد!";
-            
-            document.getElementById('alertResName').innerText = data.resName; 
-            document.getElementById('alertArea').innerText = data.area;
-            
+            document.getElementById('alertResName').innerText = escapeHTML(data.resName); 
+            document.getElementById('alertArea').innerText = escapeHTML(data.area);
             document.getElementById('orderAlertOverlay').classList.remove('hidden-section');
             if (window.AndroidRadar) { window.AndroidRadar.triggerOrderAlarm(); } else { let audio = document.getElementById(activeOrders.length > 0 ? 'doubleOrderSound' : 'alertSound'); audio.currentTime = 0; audio.play().catch(e => {}); }
             
-            const script = document.createElement('script'); 
-            script.src = `${API_URL}?action=getGlobalData&token=${API_TOKEN}&callback=cacheResDataForNewOrder&ts=${Date.now()}`; 
-            document.body.appendChild(script);
-            
+            const script = document.createElement('script'); script.src = `${API_URL}?action=getGlobalData&token=${API_TOKEN}&callback=cacheResDataForNewOrder&ts=${Date.now()}`; document.body.appendChild(script);
             startCountdown();
         }
     };
 
     window.cacheResDataForNewOrder = function(data) {
         if (!data || !data.restaurants || !currentOrderData) return;
-        const resInfo = data.restaurants.find(r => r[1] === currentOrderData.resName);
+        const resInfo = data.restaurants.find(r => String(r[1]) === String(currentOrderData.resName));
         if (resInfo) {
-            currentOrderData.resPhone = resInfo[2];
-            currentOrderData.resArea = resInfo[3]; 
-            currentOrderData.resLat = parseFloat(resInfo[6]);
-            currentOrderData.resLng = parseFloat(resInfo[7]);
-            document.getElementById('alertResName').innerText = `${currentOrderData.resName} (${resInfo[3] || ''})`;
+            currentOrderData.resPhone = resInfo[2]; currentOrderData.resArea = resInfo[3]; 
+            currentOrderData.resLat = parseFloat(resInfo[6]); currentOrderData.resLng = parseFloat(resInfo[7]);
+            document.getElementById('alertResName').innerText = `${escapeHTML(currentOrderData.resName)} (${escapeHTML(resInfo[3]) || ''})`;
         }
     };
 
     function startCountdown() {
         const circle = document.getElementById('timerCircle'); clearInterval(countdownInterval);
         countdownInterval = setInterval(() => {
+            if (!currentOrderData) { clearInterval(countdownInterval); return; }
             let rem = Math.ceil((currentOrderData.expireTime - Date.now()) / 1000); if (rem < 0) rem = 0; document.getElementById('seconds').innerText = rem;
             if (circle) circle.style.strokeDashoffset = 471 - (rem * (471 / 60)); if (rem <= 0) declineOrder();
         }, 1000);
     }
 
     function acceptOrder() {
-        closeAlert(); 
-        const newOrder = { 
-            id: currentOrderData.id, 
-            resName: currentOrderData.resName, 
-            resArea: currentOrderData.resArea, 
-            details: String(currentOrderData.details), 
-            price: currentOrderData.price, 
-            area: currentOrderData.area, 
-            state: 'heading', 
-            photoUrl: currentOrderData.photoUrl, 
-            resPhone: currentOrderData.resPhone, 
-            resLat: currentOrderData.resLat, 
-            resLng: currentOrderData.resLng,
-            acceptedTime: Date.now() 
-        };
-        activeOrders.push(newOrder); localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
-        displayActiveOrders(); 
-        safeFetchUpdate(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${newOrder.id}&status=accepted&token=${API_TOKEN}`); 
-        updateStats(); 
+        if(!currentOrderData) return; closeAlert(); 
+        const newOrder = { id: currentOrderData.id, resName: currentOrderData.resName, resArea: currentOrderData.resArea, details: String(currentOrderData.details), price: currentOrderData.price, area: currentOrderData.area, state: 'heading', photoUrl: currentOrderData.photoUrl, resPhone: currentOrderData.resPhone, resLat: currentOrderData.resLat, resLng: currentOrderData.resLng, acceptedTime: Date.now() };
+        
+        const currentSavedOrders = JSON.parse(localStorage.getItem('hut_active_orders') || '[]');
+        if (!currentSavedOrders.some(o => String(o.id) === String(newOrder.id))) { currentSavedOrders.push(newOrder); localStorage.setItem('hut_active_orders', JSON.stringify(currentSavedOrders)); activeOrders = currentSavedOrders; }
+        displayActiveOrders(); safeFetchUpdate(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${newOrder.id}&status=accepted&token=${API_TOKEN}`); 
+        currentOrderData = null; updateStats(); 
     }
 
     function closeAlert() { document.getElementById('orderAlertOverlay').classList.add('hidden-section'); clearInterval(countdownInterval); muteAlarmOnly(); }
-    function declineOrder() { safeFetchUpdate(`${API_URL}?action=DECLINE_ORDER&orderId=${currentOrderData.id}&driverPhone=${driverData.phone}&token=${API_TOKEN}`); closeAlert(); }
+    function declineOrder() { if(!currentOrderData) return; safeFetchUpdate(`${API_URL}?action=DECLINE_ORDER&orderId=${currentOrderData.id}&driverPhone=${driverData.phone}&token=${API_TOKEN}`); closeAlert(); currentOrderData = null; }
 
     function displayActiveOrders() {
         let box = document.getElementById('activeOrderBox');
-        if (activeOrders.length === 0) {
-            document.getElementById('searchingStatus').classList.remove('hidden-section');
-            box.classList.add('hidden-section');
-            lastActiveHtml = 'empty';
-            adjustPollingRate(); return;
-        }
-
-        document.getElementById('searchingStatus').classList.add('hidden-section');
-        box.classList.remove('hidden-section');
+        if (activeOrders.length === 0) { document.getElementById('searchingStatus').classList.remove('hidden-section'); box.classList.add('hidden-section'); lastActiveHtml = 'empty'; return; }
+        document.getElementById('searchingStatus').classList.add('hidden-section'); box.classList.remove('hidden-section');
         
-        let html = '';
-        let isDouble = activeOrders.length > 1;
+        let html = ''; let isDouble = activeOrders.length > 1;
 
         activeOrders.forEach((order, index) => {
-            let stateTitle = order.state === 'heading' ? "متوجه للمطعم" : order.state === 'arrived' ? "في المطعم" : "في الطريق للزبون";
+            const safeResName = escapeHTML(order.resName); const safeResArea = escapeHTML(order.resArea || '---'); const safeArea = escapeHTML(order.area); const safeDetails = escapeHTML(String(order.details || "")); const safePrice = escapeHTML(order.price);
             
+            let stateTitle = order.state === 'heading' ? "متوجه للمطعم" : order.state === 'arrived' ? "في المطعم" : "في الطريق للزبون";
             let btnAction = order.state === 'heading' ? "arrive" : order.state === 'arrived' ? "pickup" : "finish";
             let btnText = order.state === 'heading' ? "تأكيد الوصول للمطعم" : order.state === 'arrived' ? "تأكيد استلام الطلب" : "تأكيد تسليم الطلب";
             let btnClass = order.state === 'heading' ? "heading" : order.state === 'arrived' ? "arrived" : "picked";
-            let btnIcon = order.state === 'heading' ? svgMap : order.state === 'arrived' ? svgImg : `<svg class="svg-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+            let btnIcon = order.state === 'heading' ? '<i data-lucide="navigation" size="20"></i>' : order.state === 'arrived' ? '<i data-lucide="package-check" size="20"></i>' : '<i data-lucide="check-circle" size="20"></i>';
             let disabledAttr = "";
 
             if (order.state === 'picked_up') {
                 const timeElapsed = Date.now() - (order.pickupTime || 0);
                 if (timeElapsed < 120000) {
-                    disabledAttr = "disabled";
-                    btnText = "جاري التوجه للزبون ⏳";
-                    setTimeout(() => {
-                        if (document.getElementById(`order-${order.id}`)) displayActiveOrders();
-                    }, 120000 - timeElapsed);
+                    disabledAttr = "disabled"; btnText = "جاري التوجه للزبون ⏳";
+                    setTimeout(() => { if (document.getElementById(`order-${order.id}`)) displayActiveOrders(); }, 120000 - timeElapsed);
                 }
             }
             
-            // ✅ تم تصحيح رابط التوجيه ليفتح تطبيق خرائط جوجل ويرسم مسار القيادة مباشرة
+            // 🟢 ربط الخرائط بـ Google Maps مباشرة لوضع القيادة (Navigation)
             let mapUrl = order.resLat ? `https://www.google.com/maps/dir/?api=1&destination=${order.resLat},${order.resLng}` : '';
             
             let resPhoneStr = order.resPhone ? String(order.resPhone) : "";
             let resPhoneNum = resPhoneStr ? (resPhoneStr.startsWith('0') ? resPhoneStr : '0' + resPhoneStr) : null;
             let waRes = resPhoneStr ? (resPhoneStr.startsWith('0') ? '964' + resPhoneStr.substring(1) : resPhoneStr) : null;
             
-            let safeDetails = String(order.details || "");
             let custMatch = safeDetails.match(/(07[0-9]{8,9})/);
             let custPhoneNum = custMatch ? String(custMatch[0]) : null;
             let waCust = custPhoneNum ? (custPhoneNum.startsWith('0') ? '964' + custPhoneNum.substring(1) : custPhoneNum) : null;
 
+            // 🟢 رسالة الواتساب الذكية الجاهزة
+            let waCustLink = '';
+            if(waCust) {
+                const waMessage = encodeURIComponent(`السلام عليكم، معك كابتن التوصيل من مكتب سفيان 🛵.\nأنا في طريقي إليك، يرجى إرسال موقعك (اللوكيشن 📍) لضمان وصول الطلب بأسرع وقت.`);
+                waCustLink = `https://wa.me/${waCust}?text=${waMessage}`;
+            }
+
             let badgeHtml = isDouble ? `<div class="order-badge double">طلب مزدوج (${index + 1} من ${activeOrders.length})</div>` : `<div class="order-badge">طلب حصري</div>`;
-            
-            let photoBtnHtml = (order.photoUrl && String(order.photoUrl).startsWith("http")) ? `<button class="btn-photo-view" onclick="openSafeLink('${order.photoUrl}')">${svgImg} عرض صورة الوصل من درايف</button>` : '';
+            let photoBtnHtml = (order.photoUrl && String(order.photoUrl).startsWith("http")) ? `<button class="btn-photo-view" onclick="openSafeLink('${escapeHTML(order.photoUrl)}')"><i data-lucide="image" size="16"></i> عرض صورة الوصل</button>` : '';
 
             html += `
-            <div class="global-order-card" id="order-${order.id}">
+            <div class="global-order-card" id="order-${escapeHTML(order.id)}">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <div class="d-flex flex-column gap-2 align-items-start">
                         ${badgeHtml}
-                        <div id="timer-${order.id}" class="timer-badge timer-safe">${svgTimer} --:--</div>
+                        <div id="timer-${escapeHTML(order.id)}" class="timer-badge timer-safe"><i data-lucide="clock" size="14"></i> --:--</div>
                     </div>
                     <div class="d-flex flex-column align-items-end gap-2">
-                        <div class="order-price">${order.price} <small>د.ع</small></div>
-                        <a href="#" onclick="openSafeLink('https://wa.me/9647828942660'); return false;" class="btn-support-mini">
-                            ${svgSupport} الدعم الفني
+                        <div class="order-price">${safePrice} <small>د.ع</small></div>
+                        <a href="#" onclick="openSafeLink('https://wa.me/9647713225471'); return false;" class="btn-support-mini">
+                            <i data-lucide="life-buoy" size="14"></i> الدعم الفني
                         </a>
                     </div>
                 </div>
@@ -920,23 +870,23 @@
                 <div class="route-timeline">
                     <div class="route-point pickup">
                         <div class="point-content">
-                            <div class="point-title">الاستلام من (${order.resArea || '---'})</div>
-                            <div class="point-name">${order.resName}</div>
+                            <div class="point-title">الاستلام من (${safeResArea})</div>
+                            <div class="point-name">${safeResName}</div>
                             <div class="point-actions-grid">
-                                ${resPhoneNum ? `<button class="btn-action-pill call" onclick="openSafeLink('tel:${resPhoneNum}')">${svgPhone} اتصال</button>` : ''}
-                                ${waRes ? `<button class="btn-action-pill whatsapp" onclick="openSafeLink('https://wa.me/${waRes}')">${svgWa} واتساب</button>` : ''}
-                                ${mapUrl ? `<button class="btn-action-pill map" onclick="openSafeLink('${mapUrl}')">${svgMap} الخريطة</button>` : ''}
+                                ${resPhoneNum ? `<button class="btn-action-pill call" onclick="openSafeLink('tel:${escapeHTML(resPhoneNum)}')"><i data-lucide="phone" size="14"></i> اتصال</button>` : ''}
+                                ${waRes ? `<button class="btn-action-pill whatsapp" onclick="openSafeLink('https://wa.me/${escapeHTML(waRes)}')"><i data-lucide="message-circle" size="14"></i> واتساب</button>` : ''}
+                                ${mapUrl ? `<button class="btn-action-pill map" onclick="openSafeLink('${escapeHTML(mapUrl)}')"><i data-lucide="navigation" size="14"></i> الخريطة</button>` : ''}
                             </div>
                         </div>
                     </div>
                     
                     <div class="route-point dropoff">
                         <div class="point-content">
-                            <div class="point-title">التسليم إلى (${order.area})</div>
+                            <div class="point-title">التسليم إلى (${safeArea})</div>
                             <div class="point-name">${safeDetails}</div>
                             <div class="point-actions-grid">
-                                ${custPhoneNum ? `<button class="btn-action-pill call" onclick="openSafeLink('tel:${custPhoneNum}')">${svgPhone} اتصال</button>` : ''}
-                                ${waCust ? `<button class="btn-action-pill whatsapp" onclick="openSafeLink('https://wa.me/${waCust}')">${svgWa} واتساب</button>` : ''}
+                                ${custPhoneNum ? `<button class="btn-action-pill call" onclick="openSafeLink('tel:${escapeHTML(custPhoneNum)}')"><i data-lucide="phone" size="14"></i> اتصال</button>` : ''}
+                                ${waCustLink ? `<button class="btn-action-pill whatsapp" onclick="openSafeLink('${waCustLink}')"><i data-lucide="message-circle" size="14"></i> واتساب للوكيشن</button>` : ''}
                             </div>
                         </div>
                     </div>
@@ -944,97 +894,57 @@
 
                 ${photoBtnHtml}
 
-                <button class="btn-status ${btnClass}" ${disabledAttr} onclick="updateOrderStatus('${order.id}', '${btnAction}', this)">
+                <button class="btn-status ${btnClass}" ${disabledAttr} onclick="updateOrderStatus('${escapeHTML(order.id)}', '${btnAction}', this)">
                     ${btnIcon} ${btnText}
                 </button>
             </div>`;
         });
         
-        if (lastActiveHtml !== html) { box.innerHTML = html; lastActiveHtml = html; }
-        adjustPollingRate();
+        if (lastActiveHtml !== html) { box.innerHTML = html; lastActiveHtml = html; if (typeof lucide !== 'undefined') lucide.createIcons(); }
     }
 
     function updateOrderTimers() {
         activeOrders.forEach(order => {
-            const timerEl = document.getElementById(`timer-${order.id}`);
-            if (!timerEl) return;
-            
-            const startTime = order.acceptedTime || Date.now(); 
-            const totalAllowedMs = 20 * 60 * 1000; 
-            const elapsedMs = Date.now() - startTime;
-            const remainingMs = totalAllowedMs - elapsedMs;
-
-            const isNegative = remainingMs < 0;
-            const absMs = Math.abs(remainingMs);
-            const minutes = Math.floor(absMs / 60000);
-            const seconds = Math.floor((absMs % 60000) / 1000);
-            
+            const timerEl = document.getElementById(`timer-${order.id}`); if (!timerEl) return;
+            const elapsedMs = Date.now() - (order.acceptedTime || Date.now()); const remainingMs = (20 * 60 * 1000) - elapsedMs;
+            const isNegative = remainingMs < 0; const absMs = Math.abs(remainingMs);
+            const minutes = Math.floor(absMs / 60000); const seconds = Math.floor((absMs % 60000) / 1000);
             const formattedTime = (isNegative ? "-" : "") + String(minutes).padStart(2, '0') + ":" + String(seconds).padStart(2, '0');
             
-            timerEl.innerHTML = `${svgTimer} ${formattedTime}`;
-            
-            if (remainingMs > 600000) { 
-                timerEl.className = "timer-badge timer-safe";
-            } else if (remainingMs > 0) { 
-                timerEl.className = "timer-badge timer-warn";
-            } else { 
-                timerEl.className = "timer-badge timer-danger";
-            }
+            timerEl.innerHTML = `<i data-lucide="clock" size="14"></i> ${formattedTime}`;
+            if (remainingMs > 600000) timerEl.className = "timer-badge timer-safe"; else if (remainingMs > 0) timerEl.className = "timer-badge timer-warn"; else timerEl.className = "timer-badge timer-danger";
+            if (typeof lucide !== 'undefined') lucide.createIcons({root: timerEl});
         });
-    }
-
-    setInterval(updateOrderTimers, 1000);
+    } setInterval(updateOrderTimers, 1000);
 
     window.updateOrderStatus = function(id, action, btnElement) {
-        const order = activeOrders.find(o => String(o.id) === String(id));
-        if (!order) return;
-
-        btnElement.innerHTML = `<div class="spinner-border spinner-border-sm"></div> جاري التحديث...`;
-        btnElement.disabled = true;
+        const order = activeOrders.find(o => String(o.id) === String(id)); if (!order) return;
+        btnElement.innerHTML = `<div class="spinner-border spinner-border-sm"></div> جاري التحديث...`; btnElement.disabled = true;
 
         if (action === 'arrive') {
-            order.state = 'arrived';
-            safeFetchUpdate(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${id}&status=arrived_at_res&token=${API_TOKEN}`);
-            localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
-            setTimeout(displayActiveOrders, 300);
+            order.state = 'arrived'; safeFetchUpdate(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${id}&status=arrived_at_res&token=${API_TOKEN}`);
+            localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders)); setTimeout(displayActiveOrders, 300);
         } else if (action === 'pickup') {
-            order.state = 'picked_up';
-            order.pickupTime = Date.now();
-            safeFetchUpdate(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${id}&status=picked_up&token=${API_TOKEN}`);
-            localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
-            setTimeout(displayActiveOrders, 300);
+            order.state = 'picked_up'; order.pickupTime = Date.now(); safeFetchUpdate(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${id}&status=picked_up&token=${API_TOKEN}`);
+            localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders)); setTimeout(displayActiveOrders, 300);
         } else if (action === 'finish') {
             if (Date.now() - order.pickupTime < 120000) return; 
-            
-            const card = document.getElementById(`order-${id}`);
-            if (card) { card.style.opacity = '0'; card.style.transform = 'scale(0.95)'; }
-            setTimeout(() => {
-                activeOrders = activeOrders.filter(o => String(o.id) !== String(id));
-                localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
-                safeFetchUpdate(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${id}&status=completed&token=${API_TOKEN}`);
-                displayActiveOrders();
-                updateStats();
-            }, 300);
+            const card = document.getElementById(`order-${id}`); if (card) { card.style.opacity = '0'; card.style.transform = 'scale(0.95)'; }
+            activeOrders = activeOrders.filter(o => String(o.id) !== String(id)); localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
+            safeFetchUpdate(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${id}&status=completed&token=${API_TOKEN}`);
+            setTimeout(() => { displayActiveOrders(); updateStats(); }, 300);
         }
     };
 
     function updateStats() {
         if (!driverData) return;
-        
-        const oldScript = document.getElementById('update-stats-script');
-        if (oldScript) oldScript.remove();
-
-        const script = document.createElement('script');
-        script.id = 'update-stats-script';
+        const oldScript = document.getElementById('update-stats-script'); if (oldScript) oldScript.remove();
+        const script = document.createElement('script'); script.id = 'update-stats-script';
         script.src = `${API_URL}?action=getGlobalData&token=${API_TOKEN}&callback=renderDriverData&ts=${Date.now()}`;
-        
-        script.onload = () => script.remove();
-        script.onerror = () => script.remove();
-
-        document.body.appendChild(script);
+        script.onload = () => script.remove(); script.onerror = () => script.remove(); document.body.appendChild(script);
     }
     function openLedger() { document.getElementById('ledgerModal').classList.remove('hidden-section'); }
     function closeLedger() { document.getElementById('ledgerModal').classList.add('hidden-section'); }
 </script>
 </body>
-</html>​
+</html>
