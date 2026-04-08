@@ -6,7 +6,7 @@
     
     <title>مكتب سفيان | الإدارة العليا</title>
     
-    <meta name="theme-color" content="#f8fafc">
+    <meta name="theme-color" content="#f4f7f9">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="إدارة الحوت">
@@ -30,161 +30,260 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
 
     <style>
-        /* 🎨 Soft Minimal UI & Neumorphism Color Palette */
+        /* 💎 Design System Variables */
         :root { 
             --sidebar-width: 280px; 
-            --primary-blue: #1e3a8a; 
-            --accent-blue: #3b82f6; 
-            --light-blue: #eff6ff;
-            --bg-light: #f4f7f9; 
+            --primary-blue: #1e3a8a; /* Deep Modern Blue */
+            --accent-blue: #3b82f6; /* Bright Action Blue */
+            --light-blue: #eff6ff; /* Soft BG for active elements */
+            --bg-main: #f4f7f9; /* Off-white / Light Gray */
             --card-bg: #ffffff; 
-            --text-main: #1e293b; 
+            --text-dark: #1e293b; 
             --text-muted: #64748b;
-            --bottom-nav-height: 75px; 
-            --soft-shadow: 0 10px 25px rgba(30, 58, 138, 0.06);
-            --float-shadow: 0 20px 40px rgba(0, 0, 0, 0.08);
-            --neumorph-shadow: 6px 6px 15px rgba(0,0,0,0.03), -6px -6px 15px rgba(255,255,255,0.8);
+            --success-color: #10b981;
+            --danger-color: #ef4444;
+            --warning-color: #f59e0b;
+            --bottom-nav-height: 80px; 
+            
+            /* Modern Shadows */
+            --shadow-sm: 0 4px 15px rgba(0, 0, 0, 0.03);
+            --shadow-md: 0 10px 30px rgba(30, 58, 138, 0.06);
+            --shadow-float: 0 20px 40px rgba(0, 0, 0, 0.08);
+            --shadow-inner: inset 0 2px 4px rgba(0,0,0,0.02);
         }
         
-        html, body { height: 100%; overflow: hidden; overscroll-behavior: none; background-color: var(--bg-light); font-family: 'Cairo', sans-serif; color: var(--text-main); -webkit-tap-highlight-color: transparent; }
+        /* 1️⃣ Global Reset & Typography */
+        html, body { 
+            height: 100%; 
+            overflow: hidden; 
+            overscroll-behavior: none; 
+            background-color: var(--bg-main); 
+            font-family: 'Cairo', sans-serif; 
+            color: var(--text-dark); 
+            -webkit-tap-highlight-color: transparent; 
+        }
         
-        /* Glassmorphism Auth */
-        #authOverlay { position: fixed; inset: 0; background: var(--bg-light); z-index: 10000; display: flex; align-items: center; justify-content: center; }
-        .auth-card { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(20px); border-radius: 35px; padding: 40px; width: 90%; max-width: 400px; box-shadow: var(--float-shadow); border: 1px solid rgba(255,255,255,0.5); text-align: center; }
-        .auth-input { background: #f1f5f9; border: none; border-radius: 20px; padding: 18px; font-weight: 700; width: 100%; text-align: center; color: var(--primary-blue); outline: none; transition: 0.3s; box-shadow: inset 3px 3px 6px rgba(0,0,0,0.03), inset -3px -3px 6px rgba(255,255,255,0.8); margin-bottom: 20px;}
-        .auth-input:focus { box-shadow: 0 0 0 4px var(--light-blue); }
-        .auth-btn { background: var(--primary-blue); color: white; border: none; border-radius: 20px; padding: 18px; width: 100%; font-weight: 800; font-size: 1.1rem; box-shadow: var(--soft-shadow); transition: 0.2s; }
-        .auth-btn:active { transform: scale(0.96); }
+        /* 2️⃣ Auth Screen (Glassmorphism) */
+        #authOverlay { position: fixed; inset: 0; background: var(--bg-main); z-index: 10000; display: flex; align-items: center; justify-content: center; }
+        .auth-card { 
+            background: rgba(255, 255, 255, 0.85); 
+            backdrop-filter: blur(20px); 
+            border-radius: 35px; 
+            padding: 40px 30px; 
+            width: 90%; max-width: 400px; 
+            box-shadow: var(--shadow-float); 
+            border: 1px solid rgba(255,255,255,0.6); 
+            text-align: center; 
+        }
+        .auth-input { 
+            background: var(--bg-main); 
+            border: 2px solid transparent; 
+            border-radius: 20px; 
+            padding: 16px; 
+            font-weight: 700; 
+            width: 100%; 
+            text-align: center; 
+            color: var(--primary-blue); 
+            outline: none; 
+            transition: 0.3s; 
+            margin-bottom: 20px;
+        }
+        .auth-input:focus { background: white; border-color: var(--accent-blue); box-shadow: 0 0 0 4px var(--light-blue); }
+        .auth-btn { 
+            background: var(--primary-blue); 
+            color: white; 
+            border: none; 
+            border-radius: 20px; 
+            padding: 16px; 
+            width: 100%; 
+            font-weight: 800; 
+            font-size: 1.1rem; 
+            box-shadow: var(--shadow-md); 
+            transition: 0.2s; 
+        }
+        .auth-btn:active { transform: scale(0.96); box-shadow: none; }
 
+        /* 3️⃣ Layout Structure */
         #mainDashboard { display: flex; height: 100%; width: 100%; overflow: hidden; }
-        
-        .admin-tab { display: none; animation: fadeIn 0.4s ease-out; }
+        .admin-tab { display: none; animation: slideInFade 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
         .admin-tab.active-tab { display: block; }
+        @keyframes slideInFade { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
         
+        /* 📱 Mobile Layout (Advanced UX) */
         @media (max-width: 768px) {
             .sidebar { display: none !important; }
             .desktop-header { display: none !important; }
-            .main-content { margin-right: 0 !important; padding: 0 !important; width: 100%; height: 100%; position: relative; background: var(--bg-light); }
+            .main-content { margin-right: 0 !important; padding: 0 !important; width: 100%; height: 100%; position: relative; background: var(--bg-main); }
             
-            /* Floating Bottom Nav */
-            .bottom-nav { display: flex; position: fixed; bottom: 0; left: 0; width: 100%; height: var(--bottom-nav-height); background: rgba(255,255,255,0.95); backdrop-filter: blur(15px); justify-content: space-around; align-items: center; z-index: 9999; box-shadow: 0 -5px 30px rgba(0,0,0,0.04); padding-bottom: env(safe-area-inset-bottom); border-top-left-radius: 30px; border-top-right-radius: 30px; }
-            .b-nav-item { display: flex; flex-direction: column; align-items: center; gap: 6px; color: #94a3b8; font-size: 0.75rem; font-weight: 800; width: 25%; transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1); cursor: pointer; padding: 10px 0; }
-            .b-nav-item.active { color: var(--primary-blue); }
-            .b-nav-item.active i { color: var(--accent-blue); transform: translateY(-4px); }
+            /* Floating Bottom Navigation */
+            .bottom-nav { 
+                display: flex; 
+                position: fixed; bottom: 0; left: 0; width: 100%; 
+                height: var(--bottom-nav-height); 
+                background: rgba(255,255,255,0.92); 
+                backdrop-filter: blur(15px); 
+                justify-content: space-around; align-items: center; 
+                z-index: 9999; 
+                box-shadow: 0 -10px 40px rgba(0,0,0,0.05); 
+                padding-bottom: env(safe-area-inset-bottom); 
+                border-top-left-radius: 35px; border-top-right-radius: 35px; 
+            }
+            .b-nav-item { display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--text-muted); font-size: 0.75rem; font-weight: 800; width: 25%; transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1); cursor: pointer; padding: 10px 0; opacity: 0.7;}
+            .b-nav-item.active { color: var(--primary-blue); opacity: 1;}
+            .b-nav-item.active i { color: var(--accent-blue); transform: translateY(-4px); filter: drop-shadow(0 4px 6px rgba(59, 130, 246, 0.3)); }
             
-            .admin-tab { position: absolute; inset: 0; bottom: var(--bottom-nav-height); overflow-y: auto; background: var(--bg-light); z-index: 5; }
+            .admin-tab { position: absolute; inset: 0; bottom: var(--bottom-nav-height); overflow-y: auto; background: var(--bg-main); z-index: 5; }
             
-            /* Modern Map UX */
+            /* 🗺️ Interactive Map Screen */
             #tab-live.active-tab { overflow: hidden; } 
             .map-wrapper { position: absolute; top: 0; left: 0; width: 100%; height: 60%; z-index: 1; }
             #adminMap { width: 100%; height: 100%; border: none; background: #e2e8f0; }
             
-            /* Glass Floating Header */
+            /* Glass Floating Header Over Map */
             .map-floating-header { position: absolute; top: max(20px, env(safe-area-inset-top)); left: 20px; right: 20px; z-index: 10; display: flex; justify-content: space-between; align-items: center; pointer-events: none; }
             .map-floating-header > * { pointer-events: auto; }
-            .brand-pill { background: rgba(255,255,255,0.9); backdrop-filter: blur(10px); padding: 8px 16px; border-radius: 30px; display: flex; align-items: center; gap: 10px; box-shadow: var(--float-shadow); border: 1px solid rgba(255,255,255,0.6); }
+            .brand-pill { background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); padding: 10px 20px; border-radius: 30px; display: flex; align-items: center; gap: 10px; box-shadow: var(--shadow-float); border: 1px solid rgba(255,255,255,0.8); }
             
-            /* Floating Stats Over Map */
-            .map-floating-stats { position: absolute; top: calc(max(20px, env(safe-area-inset-top)) + 65px); right: 20px; z-index: 10; display: flex; flex-direction: column; gap: 12px; pointer-events: none; }
-            .m-stat { background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); padding: 10px 18px; border-radius: 20px; font-weight: 900; font-size: 1rem; box-shadow: var(--float-shadow); display: flex; align-items: center; gap: 10px; pointer-events: auto; border: 1px solid rgba(255,255,255,0.6); color: var(--text-main); }
-            .m-stat i { color: var(--accent-blue); }
+            /* Floating Stats Pills Over Map */
+            .map-floating-stats { position: absolute; top: calc(max(20px, env(safe-area-inset-top)) + 70px); right: 20px; z-index: 10; display: flex; flex-direction: column; gap: 12px; pointer-events: none; }
+            .m-stat { background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); padding: 10px 18px; border-radius: 20px; font-weight: 900; font-size: 1rem; box-shadow: var(--shadow-float); display: flex; align-items: center; gap: 10px; pointer-events: auto; border: 1px solid rgba(255,255,255,0.8); color: var(--text-dark); transition: 0.3s; }
+            .m-stat i { color: var(--primary-blue); }
 
-            /* Soft Bottom Sheet */
-            .bottom-sheet { position: absolute; top: 55%; left: 0; width: 100%; height: 45%; background: var(--bg-light); border-radius: 40px 40px 0 0; z-index: 10; display: flex; flex-direction: column; box-shadow: 0 -15px 40px rgba(0,0,0,0.08); transition: top 0.3s ease; }
-            .sheet-handle { width: 50px; height: 5px; background: #cbd5e1; border-radius: 10px; margin: 15px auto; flex-shrink: 0; }
-            .sheet-content { overflow-y: auto; padding: 0 20px 20px 20px; flex: 1; }
+            /* Soft Bottom Sheet (Radar Details) */
+            .bottom-sheet { position: absolute; top: 55%; left: 0; width: 100%; height: 45%; background: var(--bg-main); border-radius: 40px 40px 0 0; z-index: 10; display: flex; flex-direction: column; box-shadow: 0 -20px 40px rgba(0,0,0,0.08); transition: top 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+            .sheet-handle { width: 50px; height: 6px; background: #cbd5e1; border-radius: 10px; margin: 15px auto; flex-shrink: 0; }
+            .sheet-content { overflow-y: auto; padding: 0 20px 20px 20px; flex: 1; scrollbar-width: none; }
+            .sheet-content::-webkit-scrollbar { display: none; }
             
             .desktop-stats { display: none !important; }
-            .tab-inner-padding { padding: 20px; padding-top: max(30px, env(safe-area-inset-top)); padding-bottom: 100px; }
+            .tab-inner-padding { padding: 25px 20px; padding-top: max(30px, env(safe-area-inset-top)); padding-bottom: 100px; }
         }
 
+        /* 💻 Desktop Layout */
         @media (min-width: 769px) {
-            .sidebar { width: var(--sidebar-width); background: var(--card-bg); height: 100vh; position: fixed; right: 0; top: 0; padding: 30px 20px; z-index: 1005; box-shadow: var(--soft-shadow); border-left: 1px solid #f1f5f9; }
-            .main-content { margin-right: var(--sidebar-width); padding: 40px; height: 100vh; overflow-y: auto; position: relative; width: calc(100% - var(--sidebar-width)); background: var(--bg-light); }
+            .sidebar { width: var(--sidebar-width); background: var(--card-bg); height: 100vh; position: fixed; right: 0; top: 0; padding: 30px 20px; z-index: 1005; box-shadow: var(--shadow-sm); border-left: 1px solid rgba(0,0,0,0.05); }
+            .main-content { margin-right: var(--sidebar-width); padding: 40px; height: 100vh; overflow-y: auto; position: relative; width: calc(100% - var(--sidebar-width)); background: var(--bg-main); }
             .nav-item { display: flex; align-items: center; gap: 15px; padding: 16px 20px; color: var(--text-muted); text-decoration: none; border-radius: 20px; margin-bottom: 10px; cursor: pointer; transition: 0.3s; font-weight: 700; }
             .nav-item:hover { background: var(--light-blue); color: var(--primary-blue); transform: translateX(-5px); }
-            .nav-item.active { background: var(--primary-blue); color: white; box-shadow: var(--soft-shadow); font-weight: 900; }
+            .nav-item.active { background: var(--primary-blue); color: white; box-shadow: var(--shadow-md); font-weight: 900; }
             
-            .map-wrapper { width: 100%; height: 450px; margin-bottom: 30px; }
-            #adminMap { width: 100%; height: 100%; border-radius: 30px; box-shadow: var(--soft-shadow); background: #e2e8f0; z-index: 1; border: 4px solid white; }
+            .map-wrapper { width: 100%; height: 500px; margin-bottom: 30px; }
+            #adminMap { width: 100%; height: 100%; border-radius: 30px; box-shadow: var(--shadow-md); background: #e2e8f0; z-index: 1; border: 5px solid white; }
             .map-floating-header, .map-floating-stats, .sheet-handle { display: none !important; }
             .desktop-stats { display: flex; }
         }
 
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+        /* 4️⃣ UI Components (Soft & Minimal) */
+        
+        /* Stats Cards (Desktop) */
+        .stat-compact { background: var(--card-bg); border-radius: 28px; padding: 25px; box-shadow: var(--shadow-sm); display: flex; align-items: center; justify-content: space-between; transition: 0.3s; border: 1px solid rgba(255,255,255,0.8); }
+        .stat-compact:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); }
+        .stat-compact .icon-box { width: 55px; height: 55px; border-radius: 20px; display: flex; align-items: center; justify-content: center; background: var(--light-blue); }
+        .stat-compact h3 { margin: 0; font-weight: 900; font-size: 2rem; color: var(--text-dark); }
+        .stat-compact p { margin: 0; font-weight: 700; font-size: 0.9rem; color: var(--text-muted); }
 
-        /* Smooth Stat Cards */
-        .stat-compact { background: var(--card-bg); border-radius: 24px; padding: 20px; box-shadow: var(--neumorph-shadow); display: flex; align-items: center; justify-content: space-between; transition: 0.3s; }
-        .stat-compact:hover { transform: translateY(-3px); box-shadow: var(--float-shadow); }
-        .stat-compact .icon-box { width: 50px; height: 50px; border-radius: 16px; display: flex; align-items: center; justify-content: center; background: var(--light-blue); }
-        .stat-compact h3 { margin: 0; font-weight: 900; font-size: 1.8rem; color: var(--text-main); }
-        .stat-compact p { margin: 0; font-weight: 700; font-size: 0.85rem; color: var(--text-muted); }
-
-        .stat-widget { background: var(--card-bg); border-radius: 30px; padding: 25px; box-shadow: var(--neumorph-shadow); height: 100%; transition: 0.3s; border: 1px solid rgba(255,255,255,0.8); }
+        /* List Cards (Partners & Drivers) */
+        .stat-widget { background: var(--card-bg); border-radius: 28px; padding: 25px; box-shadow: var(--shadow-sm); height: 100%; transition: 0.3s; border: 1px solid rgba(0,0,0,0.03); display: flex; flex-direction: column;}
+        .stat-widget:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
         
         /* Modern Pill Filters */
-        .filter-btn-group { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 10px; margin-bottom: 15px; scrollbar-width: none; }
+        .filter-btn-group { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 10px; margin-bottom: 20px; scrollbar-width: none; }
         .filter-btn-group::-webkit-scrollbar { display: none; }
-        .filter-btn { background: var(--card-bg); border: none; padding: 10px 20px; border-radius: 20px; font-weight: 800; color: var(--text-muted); cursor: pointer; font-size: 0.9rem; white-space: nowrap; box-shadow: var(--neumorph-shadow); transition: 0.3s; }
-        .filter-btn.active { background: var(--primary-blue); color: white; box-shadow: var(--soft-shadow); }
-        .filter-btn .badge-count { background: #f1f5f9; color: var(--text-main); padding: 2px 8px; border-radius: 10px; margin-right: 6px; font-size: 0.75rem; }
+        .filter-btn { background: var(--card-bg); border: 1px solid rgba(0,0,0,0.05); padding: 12px 24px; border-radius: 24px; font-weight: 800; color: var(--text-muted); cursor: pointer; font-size: 0.9rem; white-space: nowrap; box-shadow: var(--shadow-sm); transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .filter-btn.active { background: var(--primary-blue); color: white; border-color: var(--primary-blue); box-shadow: 0 8px 20px rgba(30, 58, 138, 0.2); }
+        .filter-btn .badge-count { background: #f1f5f9; color: var(--text-dark); padding: 2px 8px; border-radius: 10px; margin-right: 6px; font-size: 0.75rem; }
         .filter-btn.active .badge-count { background: rgba(255,255,255,0.2); color: white; }
         
-        /* 🎨 Redesigned Order Cards (Soft UI) */
-        .smart-order-card { background: var(--card-bg); border-radius: 28px; padding: 20px; margin-bottom: 20px; box-shadow: var(--neumorph-shadow); position: relative; transition: 0.3s; border: 1px solid rgba(255,255,255,0.8); overflow: hidden; }
+        /* 📦 The Core: Smart Order Cards */
+        .smart-order-card { 
+            background: var(--card-bg); 
+            border-radius: 28px; 
+            padding: 20px; 
+            margin-bottom: 15px; 
+            box-shadow: var(--shadow-sm); 
+            position: relative; 
+            transition: 0.3s; 
+            border: 1px solid rgba(0,0,0,0.03); 
+            overflow: hidden; 
+        }
+        /* Side status indicator */
         .smart-order-card::before { content: ''; position: absolute; right: 0; top: 0; bottom: 0; width: 6px; background: #cbd5e1; border-radius: 0 28px 28px 0; }
         
-        .status-danger::before { background: #ef4444; } .status-warning::before { background: #f59e0b; } .status-success::before { background: #10b981; } .status-primary::before { background: var(--accent-blue); }
+        .status-danger::before { background: var(--danger-color); } 
+        .status-warning::before { background: var(--warning-color); } 
+        .status-success::before { background: var(--success-color); } 
+        .status-primary::before { background: var(--accent-blue); }
+        .status-purple::before { background: #8b5cf6; } 
         
-        .status-ringing { animation: glowOrange 2s infinite; }
-        @keyframes glowOrange { 0% { box-shadow: var(--neumorph-shadow); } 50% { box-shadow: 0 10px 30px rgba(245, 158, 11, 0.2); } 100% { box-shadow: var(--neumorph-shadow); } }
+        .batch-card { background-color: #fafaff; border-color: #e0e7ff;}
 
-        .delay-badge { position: absolute; top: 15px; left: 15px; background: #fef2f2; color: #ef4444; padding: 6px 12px; border-radius: 14px; font-size: 0.75rem; font-weight: 900; border: 1px solid #fecaca; }
-        
-        .info-card-inner { background: #f8fafc; padding: 15px; border-radius: 20px; margin-top: 15px; }
-        
-        /* Modern Buttons */
-        .btn-call-mini { background: #ecfdf5; color: #059669; border: none; border-radius: 14px; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; flex-shrink: 0; box-shadow: 0 4px 10px rgba(16, 185, 129, 0.1); }
-        .btn-call-mini:active { transform: scale(0.9); }
-        
-        .btn-track { background: var(--light-blue); color: var(--accent-blue); border: none; border-radius: 14px; padding: 8px 14px; font-size: 0.8rem; font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: 0.2s;}
-        .btn-track:active { transform: scale(0.95); }
-        
-        .manual-assign-select { border: none; border-radius: 14px; padding: 8px 12px; font-size: 0.8rem; font-weight: 800; max-width: 130px; background: white; color: var(--primary-blue); box-shadow: inset 0 2px 4px rgba(0,0,0,0.02); outline: none; cursor: pointer; }
+        /* Pulse Animations for urgent orders */
+        .status-ringing { animation: softPulseWarning 2s infinite; }
+        @keyframes softPulseWarning { 0% { box-shadow: var(--shadow-sm); } 50% { box-shadow: 0 8px 25px rgba(245, 158, 11, 0.2); } 100% { box-shadow: var(--shadow-sm); } }
 
-        .archive-toolbar { background: var(--card-bg); border-radius: 24px; padding: 20px; box-shadow: var(--neumorph-shadow); margin-bottom: 20px; }
-        .analytics-bar { background: linear-gradient(135deg, var(--primary-blue) 0%, var(--accent-blue) 100%); color: white; border-radius: 24px; padding: 20px 25px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; box-shadow: var(--soft-shadow); }
-        
-        .sov-btn { border: none; border-radius: 14px; width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
-        .sov-btn:active { transform: scale(0.9); box-shadow: none; }
-        .sov-accept { background: #ecfdf5; color: #10b981; } .sov-pause { background: #fffbeb; color: #d97706; } .sov-delete { background: #fef2f2; color: #ef4444; } .sov-reset { background: #f1f5f9; color: var(--primary-blue); } .sov-call { background: var(--primary-blue); color: white; }
+        .status-overdue { animation: softPulseDanger 2s infinite; }
+        @keyframes softPulseDanger { 0% { box-shadow: var(--shadow-sm); } 50% { box-shadow: 0 8px 25px rgba(239, 68, 68, 0.2); } 100% { box-shadow: var(--shadow-sm); } }
 
-        /* Notifications */
+        .delay-badge { position: absolute; top: 15px; left: 15px; background: #fef2f2; color: var(--danger-color); padding: 6px 12px; border-radius: 16px; font-size: 0.75rem; font-weight: 900; border: 1px solid #fecaca; }
+        
+        .info-card-inner { background: var(--bg-main); padding: 15px; border-radius: 20px; margin-top: 15px; border: 1px solid rgba(0,0,0,0.02);}
+        
+        /* Interactive Buttons */
+        .btn-call-mini { background: #ecfdf5; color: var(--success-color); border: none; border-radius: 16px; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; flex-shrink: 0; }
+        .btn-call-mini:active { transform: scale(0.9); background: #d1fae5; }
+        
+        .btn-track { background: var(--light-blue); color: var(--primary-blue); border: none; border-radius: 16px; padding: 8px 16px; font-size: 0.8rem; font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: 0.2s;}
+        .btn-track:active { transform: scale(0.95); background: #dbeafe; }
+        
+        .manual-assign-select { border: 1px solid rgba(0,0,0,0.05); border-radius: 16px; padding: 8px 12px; font-size: 0.8rem; font-weight: 800; max-width: 130px; background: white; color: var(--primary-blue); outline: none; cursor: pointer; }
+
+        /* Toolbar & Analytics */
+        .archive-toolbar { background: var(--card-bg); border-radius: 28px; padding: 20px; box-shadow: var(--shadow-sm); margin-bottom: 20px; border: 1px solid rgba(0,0,0,0.03); }
+        .analytics-bar { background: var(--primary-blue); background-image: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); color: white; border-radius: 28px; padding: 25px 30px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; box-shadow: var(--shadow-md); }
+        
+        /* Action Buttons (Accept, Pause, Delete) */
+        .sov-btn { border: none; border-radius: 16px; width: 42px; height: 42px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; }
+        .sov-btn:active { transform: scale(0.9); }
+        .sov-accept { background: #ecfdf5; color: var(--success-color); } 
+        .sov-pause { background: #fffbeb; color: var(--warning-color); } 
+        .sov-delete { background: #fef2f2; color: var(--danger-color); } 
+        .sov-reset { background: var(--bg-main); color: var(--text-muted); } 
+        .sov-call { background: var(--light-blue); color: var(--primary-blue); }
+
+        /* Toast Notifications */
         #toast-container { position: fixed; top: max(20px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 20000; display: flex; flex-direction: column; gap: 10px; width: 90%; max-width: 350px;}
-        .toast-msg { background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); border-radius: 20px; padding: 15px 20px; box-shadow: var(--float-shadow); display: flex; align-items: center; gap: 12px; font-weight: 800; font-size: 0.9rem; color: var(--text-main); animation: slideDown 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; border: 1px solid rgba(255,255,255,0.5); }
-        .toast-msg.success i { color: #10b981; } .toast-msg.error i { color: #ef4444; }
-        @keyframes slideDown { from { transform: translateY(-100%) scale(0.9); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
+        .toast-msg { background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); border-radius: 24px; padding: 16px 20px; box-shadow: var(--shadow-float); display: flex; align-items: center; gap: 12px; font-weight: 800; font-size: 0.9rem; color: var(--text-dark); animation: slideDown 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; border: 1px solid rgba(0,0,0,0.05); }
+        .toast-msg.success i { color: var(--success-color); } .toast-msg.error i { color: var(--danger-color); }
+        
+        /* Modals */
+        #emergencyModal, #invoiceModal { position: fixed; inset: 0; background: rgba(15,23,42,0.6); z-index: 30000; display: none; align-items: center; justify-content: center; backdrop-filter: blur(5px); padding: 20px;}
+        .emergency-card, .invoice-card { background: var(--card-bg); border-radius: 35px; padding: 30px; width: 100%; max-width: 400px; text-align: center; box-shadow: var(--shadow-float); position: relative; border: 1px solid rgba(255,255,255,0.8);}
+        .emergency-card { border-top: 8px solid var(--danger-color); animation: pulseAlert 2s infinite; }
+        .invoice-row { display: flex; justify-content: space-between; margin-bottom: 12px; font-weight: 700; font-size: 0.9rem; color: var(--text-dark); padding: 8px 0; border-bottom: 1px dashed #e2e8f0;}
+        .invoice-row:last-child { border-bottom: none;}
 
-        /* Driver Performance Dots */
+        /* Map Markers */
         .perf-dot { position: absolute; top: 15px; left: 15px; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; box-shadow: 0 4px 10px rgba(0,0,0,0.1); color: white;}
-        .perf-green { background-color: #10b981; } .perf-yellow { background-color: #f59e0b; } .perf-red { background-color: #ef4444; } 
+        .perf-green { background-color: var(--success-color); } .perf-yellow { background-color: var(--warning-color); } .perf-red { background-color: var(--danger-color); } 
 
         .marker-pulse { border-radius: 50%; border: 3px solid white; box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); animation: pulseMarker 2s infinite; }
         @keyframes pulseMarker { 0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); } 70% { box-shadow: 0 0 0 15px rgba(59, 130, 246, 0); } 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); } }
+        .path-animated { animation: dash 20s linear infinite; }
+        @keyframes dash { to { stroke-dashoffset: -1000; } }
 
+        /* Utilities */
         .btn-loading { color: transparent !important; pointer-events: none; position: relative; }
-        .btn-loading::after { content: ''; position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin-left: -9px; margin-top: -9px; border: 3px solid rgba(0,0,0,0.2); border-top-color: var(--primary-blue); border-radius: 50%; animation: spin 0.8s linear infinite; }
+        .btn-loading::after { content: ''; position: absolute; left: 50%; top: 50%; width: 20px; height: 20px; margin-left: -10px; margin-top: -10px; border: 3px solid rgba(0,0,0,0.1); border-top-color: currentColor; border-radius: 50%; animation: spin 0.8s linear infinite; }
         @keyframes spin { 100% { transform: rotate(360deg); } }
-        
         .flash-update { animation: flashHighlight 1s ease-out; }
         @keyframes flashHighlight { 0% { background-color: var(--light-blue); } 100% { background-color: var(--card-bg); } }
         
         .table { border-collapse: separate; border-spacing: 0 8px; }
-        .table tbody tr { background: var(--card-bg); box-shadow: 0 2px 8px rgba(0,0,0,0.02); transition: 0.2s; border-radius: 16px;}
-        .table tbody tr:hover { transform: translateY(-2px); box-shadow: var(--soft-shadow); }
-        .table td { border: none; padding: 15px; }
-        .table td:first-child { border-top-right-radius: 16px; border-bottom-right-radius: 16px; }
-        .table td:last-child { border-top-left-radius: 16px; border-bottom-left-radius: 16px; }
+        .table tbody tr { background: var(--card-bg); box-shadow: var(--shadow-sm); transition: 0.2s; border-radius: 20px;}
+        .table tbody tr:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+        .table td { border: none; padding: 18px 15px; }
+        .table td:first-child { border-top-right-radius: 20px; border-bottom-right-radius: 20px; }
+        .table td:last-child { border-top-left-radius: 20px; border-bottom-left-radius: 20px; }
     </style>
 </head>
 <body>
@@ -194,9 +293,18 @@
 <audio id="adminAlertSound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" preload="auto"></audio>
 <audio id="emergencySound" src="https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg" preload="auto" loop></audio>
 
+<div id="emergencyModal">
+    <div class="emergency-card">
+        <i data-lucide="alert-triangle" size="60" color="#ef4444" class="mb-3"></i>
+        <h3 class="fw-black text-danger">نداء سيادي!</h3>
+        <p class="text-muted fw-bold mb-4">يوجد طلب معلق لفترة طويلة جداً ويحتاج لتدخل يدوي للتعيين.</p>
+        <button class="auth-btn bg-danger" onclick="closeEmergency()">حسناً، سأتدخل الآن</button>
+    </div>
+</div>
+
 <div id="authOverlay">
     <div class="auth-card">
-        <div class="mb-4 d-inline-block bg-white p-4 rounded-circle shadow-sm">
+        <div class="mb-4 d-inline-block p-4 rounded-circle" style="background: var(--light-blue);">
             <i data-lucide="building-2" size="45" color="#1e3a8a"></i>
         </div>
         <h3 class="fw-black text-dark mb-1">مكتب سفيان</h3>
@@ -208,31 +316,32 @@
 
 <div class="d-none" id="mainDashboard">
     <aside class="sidebar" id="sidebar">
-        <div class="d-flex align-items-center gap-3 mb-5 px-2">
-            <div class="bg-light p-3 rounded-4"><i data-lucide="building-2" color="#1e3a8a" size="28"></i></div>
+        <div class="d-flex align-items-center gap-3 mb-5 px-2 mt-2">
+            <div class="p-3 rounded-4" style="background: var(--light-blue);"><i data-lucide="building-2" color="#1e3a8a" size="28"></i></div>
             <div>
                 <h4 class="m-0 fw-black text-dark">مكتب سفيان</h4>
                 <small class="text-muted fw-bold" style="font-size: 0.75rem;">الإدارة المركزية</small>
             </div>
         </div>
         <nav>
-            <div class="nav-item active desktop-nav-link" onclick="showTab(event, 'live')"><i data-lucide="map"></i> <span>الرصد الميداني</span></div>
-            <div class="nav-item desktop-nav-link" onclick="showTab(event, 'orders')"><i data-lucide="file-text"></i> <span>الأرشيف المركزي</span></div>
-            <div class="nav-item desktop-nav-link" onclick="showTab(event, 'restaurants')"><i data-lucide="store"></i> <span>إدارة الشركاء</span></div>
-            <div class="nav-item desktop-nav-link" onclick="showTab(event, 'drivers')"><i data-lucide="users"></i> <span>إدارة الأسطول</span></div>
+            <div class="nav-item active desktop-nav-link" onclick="showTab(event, 'live')"><i data-lucide="map" size="20"></i> <span>الرصد الميداني</span></div>
+            <div class="nav-item desktop-nav-link" onclick="showTab(event, 'orders')"><i data-lucide="file-text" size="20"></i> <span>الأرشيف المركزي</span></div>
+            <div class="nav-item desktop-nav-link" onclick="showTab(event, 'restaurants')"><i data-lucide="store" size="20"></i> <span>إدارة الشركاء</span></div>
+            <div class="nav-item desktop-nav-link" onclick="showTab(event, 'drivers')"><i data-lucide="users" size="20"></i> <span>إدارة الأسطول</span></div>
         </nav>
     </aside>
 
     <main class="main-content">
         <header class="d-flex justify-content-between align-items-center mb-5 desktop-header">
             <div>
-                <h2 class="fw-black m-0" style="color: var(--text-main);">لوحة التحكم</h2>
+                <h2 class="fw-black m-0" style="color: var(--text-dark);">لوحة التحكم</h2>
                 <p class="text-muted m-0 fw-bold">الرصد المباشر - كركوك</p>
             </div>
             <div id="liveTimeDesk" class="bg-white px-4 py-2 rounded-4 shadow-sm fw-bold text-primary border border-light">00:00</div>
         </header>
 
         <div id="tab-live" class="admin-tab active-tab">
+            
             <div class="row g-4 mb-4 desktop-stats">
                 <div class="col-4"><div class="stat-compact"><div><p>الطلبات النشطة</p><h3 class="text-primary val-orders">0</h3></div><div class="icon-box text-primary"><i data-lucide="package"></i></div></div></div>
                 <div class="col-4"><div class="stat-compact"><div><p>كباتن بالميدان</p><h3 class="text-success val-drivers">0</h3></div><div class="icon-box text-success" style="background:#ecfdf5;"><i data-lucide="truck"></i></div></div></div>
@@ -249,8 +358,8 @@
 
             <div class="map-floating-stats">
                 <div class="m-stat"><i data-lucide="package" size="18"></i> <span class="val-orders">0</span></div>
-                <div class="m-stat"><i data-lucide="truck" size="18"></i> <span class="val-drivers">0</span></div>
-                <div class="m-stat"><i data-lucide="store" size="18"></i> <span class="val-res">0</span></div>
+                <div class="m-stat"><i data-lucide="truck" size="18" style="color: #10b981;"></i> <span class="val-drivers">0</span></div>
+                <div class="m-stat"><i data-lucide="store" size="18" style="color: #f59e0b;"></i> <span class="val-res">0</span></div>
             </div>
 
             <div class="map-wrapper">
@@ -261,14 +370,16 @@
                 <div class="sheet-handle"></div>
                 <div class="sheet-content">
                     <div class="d-flex justify-content-between align-items-center mb-4 mt-2">
-                        <h5 class="fw-black m-0" style="color: var(--text-main);"><i data-lucide="activity" class="text-primary me-2" size="20"></i> الرادار الميداني</h5>
+                        <h5 class="fw-black m-0" style="color: var(--text-dark);"><i data-lucide="activity" class="text-primary me-2" size="22"></i> الرادار الميداني</h5>
                     </div>
                     <div class="filter-btn-group" id="radarFilters">
                         <button class="filter-btn active" onclick="filterRadar('all', this)">الكل</button>
                         <button class="filter-btn" style="color: #ef4444;" onclick="filterRadar('pending', this)">معلق بالرادار</button>
                         <button class="filter-btn" style="color: #10b981;" onclick="filterRadar('active', this)">قيد التوصيل</button>
                     </div>
-                    <div class="row g-3" id="smartOrdersContainer"><div class="text-center p-5 text-muted fw-bold small"><div class="spinner-border spinner-border-sm me-2 text-primary"></div> جاري تهيئة النظام...</div></div>
+                    <div class="row g-3" id="smartOrdersContainer">
+                        <div class="col-12 text-center p-5 text-muted fw-bold small"><div class="spinner-border spinner-border-sm me-2 text-primary"></div> جاري تهيئة النظام السحابي...</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -277,17 +388,17 @@
             <h4 class="fw-black mb-4 text-dark d-md-none">الأرشيف المركزي</h4>
             <div class="archive-toolbar">
                 <div class="row g-3">
-                    <div class="col-12 col-md-3"><input type="text" id="arcSearch" class="auth-input mb-0 py-2" placeholder="بحث برقم الطلب..." oninput="renderArchive()"></div>
-                    <div class="col-6 col-md-2"><select id="arcRes" class="auth-input mb-0 py-2" onchange="renderArchive()"><option value="">كل المطاعم</option></select></div>
-                    <div class="col-6 col-md-2"><select id="arcDriver" class="auth-input mb-0 py-2" onchange="renderArchive()"><option value="">كل الكباتن</option></select></div>
-                    <div class="col-6 col-md-2"><input type="date" id="arcDateFrom" class="auth-input mb-0 py-2" onchange="renderArchive()"></div>
-                    <div class="col-6 col-md-2"><input type="date" id="arcDateTo" class="auth-input mb-0 py-2" onchange="renderArchive()"></div>
-                    <div class="col-12 col-md-1"><button class="auth-btn mb-0 py-2 d-flex align-items-center justify-content-center" style="border-radius: 18px;" onclick="exportExcel()"><i data-lucide="download" size="20"></i></button></div>
+                    <div class="col-12 col-md-3"><input type="text" id="arcSearch" class="auth-input mb-0 py-3" placeholder="بحث برقم الطلب..." oninput="renderArchive()"></div>
+                    <div class="col-6 col-md-2"><select id="arcRes" class="auth-input mb-0 py-3" onchange="renderArchive()"><option value="">كل المطاعم</option></select></div>
+                    <div class="col-6 col-md-2"><select id="arcDriver" class="auth-input mb-0 py-3" onchange="renderArchive()"><option value="">كل الكباتن</option></select></div>
+                    <div class="col-6 col-md-2"><input type="date" id="arcDateFrom" class="auth-input mb-0 py-3" onchange="renderArchive()"></div>
+                    <div class="col-6 col-md-2"><input type="date" id="arcDateTo" class="auth-input mb-0 py-3" onchange="renderArchive()"></div>
+                    <div class="col-12 col-md-1"><button class="auth-btn mb-0 h-100 d-flex align-items-center justify-content-center" onclick="exportExcel()"><i data-lucide="download" size="20"></i></button></div>
                 </div>
             </div>
             <div class="analytics-bar">
-                <div><span class="opacity-75 small fw-bold">عدد الطلبات المكتملة</span> <h3 class="fw-black m-0 mt-1" id="arcTotalCount">0</h3></div>
-                <div class="text-end"><span class="opacity-75 small fw-bold">إجمالي العمولات المستحقة</span> <h3 class="fw-black m-0 mt-1" id="arcTotalComm">0 <span class="fs-6">د.ع</span></h3></div>
+                <div><span class="opacity-75 small fw-bold">الطلبات المكتملة</span> <h2 class="fw-black m-0 mt-1" id="arcTotalCount">0</h2></div>
+                <div class="text-end"><span class="opacity-75 small fw-bold">العمولات المستحقة</span> <h2 class="fw-black m-0 mt-1" id="arcTotalComm">0 <span class="fs-6">د.ع</span></h2></div>
             </div>
             <div class="table-responsive p-1">
                 <table class="table text-center align-middle m-0" id="archiveTable" style="min-width: 700px;">
@@ -300,7 +411,7 @@
         <div id="tab-restaurants" class="admin-tab tab-inner-padding">
             <h4 class="fw-black mb-4 text-dark d-md-none">إدارة الشركاء</h4>
             <div class="mb-4">
-                <input type="text" id="searchResInput" class="auth-input mb-0" placeholder="🔍 بحث عن مطعم أو رقم هاتف..." oninput="triggerSearch('RESTAURANT')">
+                <input type="text" id="searchResInput" class="auth-input mb-0 text-start px-4" placeholder="🔍 بحث عن مطعم أو رقم هاتف..." oninput="triggerSearch('RESTAURANT')">
             </div>
             <div class="filter-btn-group" id="resFiltersGroup">
                 <button class="filter-btn active" onclick="applySectionFilter('RESTAURANT', 'all', this)">الكل <span class="badge-count" id="badge-res-all">0</span></button>
@@ -309,22 +420,22 @@
                 <button class="filter-btn" onclick="applySectionFilter('RESTAURANT', 'inactive', this)">استراحة <span class="badge-count" id="badge-res-inactive">0</span></button>
                 <button class="filter-btn" onclick="applySectionFilter('RESTAURANT', 'banned', this)">موقوف <span class="badge-count" id="badge-res-banned">0</span></button>
             </div>
-            <div class="row g-3" id="resListContainer"></div>
+            <div class="row g-4" id="resListContainer"></div>
         </div>
 
         <div id="tab-drivers" class="admin-tab tab-inner-padding">
             <h4 class="fw-black mb-4 text-dark d-md-none">إدارة الأسطول</h4>
             <div class="mb-4">
-                <input type="text" id="searchDriverInput" class="auth-input mb-0" placeholder="🔍 بحث عن كابتن أو رقم هاتف..." oninput="triggerSearch('DRIVER')">
+                <input type="text" id="searchDriverInput" class="auth-input mb-0 text-start px-4" placeholder="🔍 بحث عن كابتن أو رقم هاتف..." oninput="triggerSearch('DRIVER')">
             </div>
             <div class="filter-btn-group" id="driverFiltersGroup">
                 <button class="filter-btn active" onclick="applySectionFilter('DRIVER', 'all', this)">الكل <span class="badge-count" id="badge-driver-all">0</span></button>
-                <button class="filter-btn" onclick="applySectionFilter('DRIVER', 'pending', this)">طلبات <span class="badge-count" id="badge-driver-pending">0</span></button>
+                <button class="filter-btn" onclick="applySectionFilter('DRIVER', 'pending', this)">طلبات الانضمام <span class="badge-count" id="badge-driver-pending">0</span></button>
                 <button class="filter-btn" onclick="applySectionFilter('DRIVER', 'active', this)">بالميدان <span class="badge-count" id="badge-driver-active">0</span></button>
                 <button class="filter-btn" onclick="applySectionFilter('DRIVER', 'inactive', this)">استراحة <span class="badge-count" id="badge-driver-inactive">0</span></button>
                 <button class="filter-btn" onclick="applySectionFilter('DRIVER', 'banned', this)">موقوف <span class="badge-count" id="badge-driver-banned">0</span></button>
             </div>
-            <div class="row g-3" id="driverListContainer"></div>
+            <div class="row g-4" id="driverListContainer"></div>
         </div>
         
         <nav class="bottom-nav">
@@ -344,6 +455,26 @@
     </main>
 </div>
 
+<div id="invoiceModal" onclick="closeInvoice(event)">
+    <div class="invoice-card" onclick="event.stopPropagation()">
+        <button class="btn btn-sm btn-light rounded-circle position-absolute" style="top:15px; left:15px;" onclick="closeInvoice()"><i data-lucide="x" size="20"></i></button>
+        <div class="invoice-header text-center mb-4">
+            <div class="bg-light d-inline-block p-4 rounded-circle mb-3"><i data-lucide="receipt" class="text-primary" size="35"></i></div>
+            <h4 class="fw-black m-0 text-dark">فاتورة الطلب</h4>
+            <p class="text-muted fw-bold mb-0 mt-1" id="invOrderId">#HUT-0000</p>
+        </div>
+        <div class="invoice-row"><span>تاريخ ووقت الطلب:</span> <span id="invDate">---</span></div>
+        <div class="invoice-row"><span>المطعم الشريك:</span> <span class="text-warning" id="invRes">---</span></div>
+        <div class="invoice-row"><span>الكابتن المنفذ:</span> <span class="text-success" id="invDriver">---</span></div>
+        <div class="invoice-row"><span>تفاصيل الزبون:</span> <span id="invCust" style="text-align: left;">---</span></div>
+        <div class="invoice-row"><span>سعر الطلب:</span> <span class="text-primary fs-6" id="invPrice">---</span></div>
+        <hr class="my-3 opacity-25">
+        <div class="invoice-row"><span>العمولة المفروضة:</span> <span id="invComm" class="text-danger">---</span></div>
+        <div class="invoice-row"><span>نظام الدفع:</span> <span id="invPayType">---</span></div>
+        <div class="invoice-row border-0"><span>حالة المحاسبة:</span> <span id="invStatus">---</span></div>
+    </div>
+</div>
+
 <script>
     if (typeof lucide !== 'undefined') lucide.createIcons();
     
@@ -355,10 +486,8 @@
     let restaurantMarkersLayer = null; 
     let globalData = null; 
     let currentRadarFilter = 'all';
-    
     let currentResSectionFilter = 'all';
     let currentDriverSectionFilter = 'all';
-    
     let masterPassword = ""; 
     let lastPendingCount = 0; 
     let driverPerformanceCache = {};
@@ -442,7 +571,8 @@
         if(!pass) return alert("الرجاء إدخال رمز المرور");
         masterPassword = encodeURIComponent(pass); 
         const btn = document.querySelector('.auth-card button');
-        btn.innerHTML = 'جاري التحقق...';
+        const origText = btn.innerHTML;
+        btn.innerHTML = '<div class="spinner-border spinner-border-sm"></div>';
         btn.disabled = true;
 
         const script = document.createElement('script');
@@ -451,7 +581,7 @@
         document.body.appendChild(script);
         
         setTimeout(() => {
-            if(btn.disabled) { btn.innerHTML = 'تسجيل الدخول'; btn.disabled = false; showToast("تأخر السيرفر، تحقق من الإنترنت", "error"); }
+            if(btn.disabled) { btn.innerHTML = origText; btn.disabled = false; showToast("تأخر السيرفر، تحقق من الإنترنت", "error"); }
         }, 12000);
     }
 
@@ -532,11 +662,11 @@
             }
         });
 
-        try { renderArchive(); } catch(e) { console.error("Archive Error:", e); }
+        try { renderArchive(); } catch(e) { console.error(e); }
         try { updateSectionBadges('RESTAURANT', data.restaurants); } catch(e) {}
         try { updateSectionBadges('DRIVER', data.drivers); } catch(e) {}
-        try { smartRenderFilteredSection('RESTAURANT', data.restaurants, resDebts, resUnpaidCounts); } catch(e) { console.error("Res Error:", e); }
-        try { smartRenderFilteredSection('DRIVER', data.drivers, driverDebts, null); } catch(e) { console.error("Driver Error:", e); }
+        try { smartRenderFilteredSection('RESTAURANT', data.restaurants, resDebts, resUnpaidCounts); } catch(e) { console.error(e); }
+        try { smartRenderFilteredSection('DRIVER', data.drivers, driverDebts, null); } catch(e) { console.error(e); }
 
         if (map && restaurantMarkersLayer) {
             data.restaurants.slice(1).forEach(r => {
@@ -546,8 +676,8 @@
                     if(!isNaN(lat) && !isNaN(lng)) {
                         if(liveResMarkers[rName]) { liveResMarkers[rName].setLatLng([lat, lng]); } 
                         else {
-                            const resIcon = L.divIcon({ className: 'custom-res-icon', html: `<div style="background-color: #f97316; width: 14px; height: 14px; border-radius: 4px; border: 2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transform: rotate(45deg);"></div>`, iconSize: [14, 14], iconAnchor: [7, 7] });
-                            const marker = L.marker([lat, lng], {icon: resIcon, zIndexOffset: -100}).bindPopup(`<div class="text-center fw-bold" style="font-family:'Cairo';"><span class="text-warning">المطعم:</span> ${rName}</div>`);
+                            const resIcon = L.divIcon({ className: 'custom-res-icon', html: `<div style="background-color: var(--accent-blue); width: 14px; height: 14px; border-radius: 4px; border: 2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transform: rotate(45deg);"></div>`, iconSize: [14, 14], iconAnchor: [7, 7] });
+                            const marker = L.marker([lat, lng], {icon: resIcon, zIndexOffset: -100}).bindPopup(`<div class="text-center fw-bold" style="font-family:'Cairo';"><span class="text-primary">المطعم:</span> ${rName}</div>`);
                             restaurantMarkersLayer.addLayer(marker); liveResMarkers[rName] = marker;
                         }
                     }
@@ -561,7 +691,7 @@
             listenToFirebaseOrders(); 
             dataRefreshInterval = setInterval(refreshData, 180000);
         } else {
-            if (liveFirebaseOrders.length > 0) { try { smartRenderRadar(liveFirebaseOrders); } catch(e) { console.error("Radar Error:", e); } }
+            if (liveFirebaseOrders.length > 0) { try { smartRenderRadar(liveFirebaseOrders); } catch(e) {} }
         }
     };
 
@@ -621,7 +751,7 @@
         if(currentRadarFilter === 'active') activeOrdersList = activeOrdersList.filter(o => o[6] && o[6] !== "pending_driver");
 
         if (activeOrdersList.length === 0) {
-            container.innerHTML = '<div class="col-12 text-center p-5 fw-bold text-success small"><i data-lucide="check-circle" size="40" class="mb-3 d-block mx-auto text-success opacity-50"></i> الرادار نظيف، لا توجد طلبات.</div>';
+            container.innerHTML = '<div class="col-12 text-center p-5 fw-bold text-muted small"><div class="bg-light d-inline-block p-4 rounded-circle mb-3"><i data-lucide="check-circle" size="40" class="text-success opacity-50"></i></div><br>الرادار نظيف، لا توجد طلبات هنا.</div>';
             renderedOrdersCache = {}; if (typeof lucide !== 'undefined') lucide.createIcons({root: container}); return;
         }
 
@@ -639,15 +769,15 @@
             const diffSecs = Math.floor((new Date() - new Date(orderTimeStr)) / 1000);
             if(!hasDriver || status === 'pending_driver' || status === 'manual_pending') {
                 if (hasDriver) { 
-                    if (diffSecs > 60) return { class: "status-overdue", desc: "🚨 لا يستجيب", badge: "bg-danger", isRinging: true };
-                    else return { class: "status-ringing", desc: "⏳ جاري الرنين...", badge: "bg-warning text-dark", isRinging: true };
+                    if (diffSecs > 60) return { class: "status-overdue", desc: "🚨 لا يستجيب", badge: "bg-danger text-white border-0", isRinging: true };
+                    else return { class: "status-ringing", desc: "⏳ جاري الرنين...", badge: "bg-warning text-dark border-0", isRinging: true };
                 }
-                return { class: "status-danger", desc: "🔴 بانتظار كابتن", badge: "bg-danger" };
+                return { class: "status-danger", desc: "🔴 بانتظار كابتن", badge: "bg-danger text-white border-0" };
             }
-            if(status === 'picked_up' || status === 'في الطريق') return { class: "status-success", desc: "🟢 بالطريق للزبون", badge: "bg-success" };
-            if(status === 'arrived_at_res') return { class: "status-warning", desc: "🟠 في المطعم", badge: "bg-warning text-dark" };
-            if(status === 'accepted' || status === 'heading') return { class: "status-primary", desc: "🔵 متوجه للمطعم", badge: "bg-primary" };
-            return { class: "status-primary", desc: status, badge: "bg-primary" };
+            if(status === 'picked_up' || status === 'في الطريق') return { class: "status-success", desc: "🟢 بالطريق للزبون", badge: "bg-success text-white border-0" };
+            if(status === 'arrived_at_res') return { class: "status-warning", desc: "🟠 في المطعم", badge: "bg-warning text-dark border-0" };
+            if(status === 'accepted' || status === 'heading') return { class: "status-primary", desc: "🔵 متوجه للمطعم", badge: "bg-primary text-white border-0" };
+            return { class: "status-primary", desc: status, badge: "bg-primary border-0" };
         };
 
         let currentOrderIds = new Set();
@@ -660,17 +790,17 @@
             if (orders.length > 1) {
                 orders.forEach(o => currentOrderIds.add(`double-${driverPhone}`));
                 doubleOrdersHtml += `<div class="col-md-6 col-12" id="double-${driverPhone}"><div class="smart-order-card status-purple batch-card flash-update">
-                    <div class="d-flex justify-content-between align-items-center mb-3 pb-3 border-bottom border-purple">
-                        <h6 class="fw-black m-0 text-purple" style="font-size: 1rem;"><i data-lucide="layers" size="18" class="me-1"></i> مزدوج | ${driverName}</h6>
-                        <button class="btn-track" style="background: #ede9fe; color: #7c3aed;" onclick="trackDriver('${driverPhone}', '${orders[0][1]}')"><i data-lucide="map-pin" size="14"></i> تتبع</button>
+                    <div class="d-flex justify-content-between align-items-center mb-3 pb-3 border-bottom border-light">
+                        <h6 class="fw-black m-0 text-purple" style="font-size: 0.95rem;"><i data-lucide="layers" size="18" class="me-1"></i> مزدوج | ${driverName}</h6>
+                        <button class="btn-track" onclick="trackDriver('${driverPhone}', '${orders[0][1]}')"><i data-lucide="map-pin" size="14"></i> مسار</button>
                     </div>`;
                 orders.forEach((o, index) => {
                     const sInfo = getStatusInfo(o[5], true, o[7]);
                     doubleOrdersHtml += `
-                    <div class="info-card-inner mb-2 bg-white">
+                    <div class="info-card-inner mb-2 bg-white shadow-sm border-0">
                         <div class="d-flex justify-content-between align-items-center mb-2">
                             <span class="fw-black text-purple">#${o[0]}</span>
-                            <span class="badge ${sInfo.badge} px-2 py-1 rounded-2">${sInfo.desc}</span>
+                            <span class="badge ${sInfo.badge} px-2 py-1 rounded-pill">${sInfo.desc}</span>
                         </div>
                         <div class="d-flex justify-content-between small text-muted">
                             <span class="fw-bold"><i data-lucide="store" size="12"></i> ${o[1]}</span>
@@ -681,7 +811,7 @@
                             <button class="btn btn-sm btn-light text-danger p-1 rounded-3" onclick="adminActionOptUI('DELETE', 'ORDER', '${o[0]}', this)"><i data-lucide="trash-2" size="18"></i></button>
                         </div>
                     </div>`;
-                    if(index < orders.length - 1) doubleOrdersHtml += `<div class="text-center my-1"><i data-lucide="link" size="16" style="color: #a78bfa;"></i></div>`;
+                    if(index < orders.length - 1) doubleOrdersHtml += `<div class="text-center my-1"><i data-lucide="link" size="16" style="color: #cbd5e1;"></i></div>`;
                 });
                 doubleOrdersHtml += `</div></div>`;
             }
@@ -689,7 +819,7 @@
 
         let doubleContainer = document.getElementById('doubleOrdersWrapper');
         if (!doubleContainer && doubleOrdersHtml) {
-            doubleContainer = document.createElement('div'); doubleContainer.id = 'doubleOrdersWrapper'; doubleContainer.className = 'row g-3 mb-3';
+            doubleContainer = document.createElement('div'); doubleContainer.id = 'doubleOrdersWrapper'; doubleContainer.className = 'row g-4 mb-4';
             container.prepend(doubleContainer);
         }
         if (doubleContainer) {
@@ -703,7 +833,7 @@
         allSingleOrders.forEach(o => {
             const orderId = o[0], restName = o[1], orderArea = o[2], orderPrice = o[4], status = o[5], driverPhone = o[6], orderTimeStr = o[7];
             const hasDriver = (driverPhone && driverPhone !== "pending_driver" && driverPhone !== "manual_pending");
-            const driverName = hasDriver ? (globalData.drivers.find(d => String(d[2]) === String(driverPhone))?.[1] || 'كابتن جديد') : 'جاري البحث في الرادار...';
+            const driverName = hasDriver ? (globalData.drivers.find(d => String(d[2]) === String(driverPhone))?.[1] || 'كابتن جديد') : 'جاري البحث...';
             const sInfo = getStatusInfo(status, hasDriver, orderTimeStr);
             const diffMins = Math.floor((new Date() - new Date(orderTimeStr)) / 60000);
             
@@ -716,15 +846,15 @@
                     const cardInner = existingCard.querySelector('.smart-order-card');
                     cardInner.className = `smart-order-card ${sInfo.class} flash-update`; 
                     
-                    existingCard.querySelector('.status-badge-ui').className = `badge status-badge-ui ${sInfo.badge} px-2 py-1 rounded-2`;
+                    existingCard.querySelector('.status-badge-ui').className = `badge status-badge-ui ${sInfo.badge} px-2 py-1 rounded-pill`;
                     existingCard.querySelector('.status-badge-ui').innerText = sInfo.desc;
                     existingCard.querySelector('.driver-name-ui').innerHTML = `<i data-lucide="bike" size="14" class="me-1"></i> ${driverName}`;
                     
                     let controlsHtml = '';
-                    if (sInfo.isRinging && hasDriver) controlsHtml += `<button class="btn btn-sm btn-light text-danger p-1 border fw-bold" style="border-radius:10px;" onclick="withdrawOrderOptUI('${orderId}', '${driverPhone}', this)"><i data-lucide="user-minus" size="14"></i> سحب</button>`;
+                    if (sInfo.isRinging && hasDriver) controlsHtml += `<button class="btn btn-sm bg-danger bg-opacity-10 text-danger p-1 border-0 fw-bold" style="border-radius:12px;" onclick="withdrawOrderOptUI('${orderId}', '${driverPhone}', this)"><i data-lucide="user-minus" size="14"></i> سحب</button>`;
                     let currentOptions = activeDriversOptionsCache;
                     if (hasDriver && !sInfo.isRinging) {
-                        controlsHtml += `<button class="btn-call-mini" onclick="window.open('tel:${driverPhone}')"><i data-lucide="phone" size="14"></i></button>`;
+                        controlsHtml += `<button class="btn-call-mini" onclick="window.open('tel:${driverPhone}')"><i data-lucide="phone" size="16"></i></button>`;
                         currentOptions = activeDriversOptionsCache.replace('تعيين يدوي', 'إعادة تعيين 🔄');
                     }
                     controlsHtml += `<select class="manual-assign-select" onchange="assignDriverOptUI('${orderId}', this.value, this)">${currentOptions}</select>`;
@@ -743,11 +873,11 @@
                 const orderTimeStrFormat = new Date(orderTimeStr).toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'});
                 
                 let withdrawBtn = '';
-                if (sInfo.isRinging && hasDriver) withdrawBtn = `<button class="btn btn-sm btn-light text-danger p-1 border fw-bold" style="border-radius:10px;" onclick="withdrawOrderOptUI('${orderId}', '${driverPhone}', this)"><i data-lucide="user-minus" size="14"></i> سحب</button>`;
+                if (sInfo.isRinging && hasDriver) withdrawBtn = `<button class="btn btn-sm bg-danger bg-opacity-10 text-danger p-1 border-0 fw-bold" style="border-radius:12px;" onclick="withdrawOrderOptUI('${orderId}', '${driverPhone}', this)"><i data-lucide="user-minus" size="14"></i> سحب</button>`;
                 
                 let callBtn = ''; let currentOptions = activeDriversOptionsCache;
                 if (hasDriver && !sInfo.isRinging) {
-                    callBtn = `<button class="btn-call-mini" onclick="window.open('tel:${driverPhone}')"><i data-lucide="phone" size="14"></i></button>`;
+                    callBtn = `<button class="btn-call-mini" onclick="window.open('tel:${driverPhone}')"><i data-lucide="phone" size="16"></i></button>`;
                     currentOptions = activeDriversOptionsCache.replace('تعيين يدوي', 'إعادة تعيين 🔄');
                 }
 
@@ -763,24 +893,24 @@
                         ${diffMins > 3 && !hasDriver ? `<div class="delay-badge">${diffMins} دقيقة تأخير</div>` : ''}
                         <div class="d-flex justify-content-between align-items-start mb-3 border-bottom pb-3">
                             <div>
-                                <h5 class="fw-black m-0" style="color: var(--primary-blue);">#${orderId}</h5>
+                                <h5 class="fw-black m-0" style="color: var(--text-dark);">#${orderId}</h5>
                                 <div class="mt-1 small fw-bold text-muted"><i data-lucide="clock" size="12"></i> ${orderTimeStrFormat}</div>
                             </div>
                             <div class="d-flex flex-column align-items-end gap-2">
-                                <span class="badge status-badge-ui ${sInfo.badge} px-2 py-1 rounded-2">${sInfo.desc}</span>
+                                <span class="badge status-badge-ui ${sInfo.badge} px-2 py-1 rounded-pill">${sInfo.desc}</span>
                                 <div class="d-flex gap-2 align-items-center">
                                     ${hasDriver ? `<button class="btn-track" onclick="trackDriver('${driverPhone}', '${restName}')"><i data-lucide="map-pin" size="14"></i> مسار</button>` : ''}
-                                    <button class="btn btn-sm btn-light text-success p-1 rounded-3" onclick="adminActionOptUI('COMPLETE', 'ORDER', '${orderId}', this)"><i data-lucide="check-circle" size="18"></i></button>
-                                    <button class="btn btn-sm btn-light text-danger p-1 rounded-3" onclick="adminActionOptUI('DELETE', 'ORDER', '${orderId}', this)"><i data-lucide="trash-2" size="18"></i></button>
+                                    <button class="btn btn-sm btn-light text-success p-1 rounded-3 shadow-sm border" onclick="adminActionOptUI('COMPLETE', 'ORDER', '${orderId}', this)"><i data-lucide="check-circle" size="18"></i></button>
+                                    <button class="btn btn-sm btn-light text-danger p-1 rounded-3 shadow-sm border" onclick="adminActionOptUI('DELETE', 'ORDER', '${orderId}', this)"><i data-lucide="trash-2" size="18"></i></button>
                                 </div>
                             </div>
                         </div>
                         <div class="d-flex flex-column gap-2">
-                            <div class="info-row">
+                            <div class="info-row bg-light border-0">
                                 <span class="text-muted fw-bold"><i data-lucide="store" class="text-warning me-1" size="16"></i> المطعم</span> 
                                 <span class="text-dark fw-black fs-6">${restName}</span>
                             </div>
-                            <div class="info-card-inner">
+                            <div class="info-card-inner shadow-sm border-0">
                                 <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom border-light">
                                     <span class="fw-bold text-dark"><i data-lucide="map-pin" size="14" class="text-accent me-1"></i> ${orderArea || 'غير محدد'}</span>
                                     <span class="fw-black text-success fs-6">${orderPrice || 0} د.ع</span>
@@ -913,25 +1043,24 @@
             const name = item[1], phone = item[phoneIndex], status = item[4];
             const debtAmount = debtsMap[item[mapKeyIndex]] || 0; 
             
-            // 🟢 تعقيم صارم لرقم الهاتف (لمنع الـ HTML Break)
             const safePhoneId = String(phone).replace(/[^a-zA-Z0-9]/g, '');
             currentIds.add(safePhoneId);
 
             const cardHash = `${status}-${debtAmount}`;
 
             let statusBadge = '';
-            if(status === 'active') statusBadge = '<span class="badge bg-success px-3 py-2 rounded-pill shadow-sm">نشط</span>';
-            else if(status === 'inactive') statusBadge = '<span class="badge bg-warning text-dark px-3 py-2 rounded-pill shadow-sm">استراحة</span>';
-            else if(status === 'pending' || status === 'waiting') statusBadge = '<span class="badge bg-primary px-3 py-2 rounded-pill shadow-sm">قيد الانتظار</span>';
-            else if(status === 'banned') statusBadge = '<span class="badge bg-danger px-3 py-2 rounded-pill shadow-sm">موقوف</span>';
+            if(status === 'active') statusBadge = '<span class="badge bg-success px-3 py-2 rounded-pill border-0">نشط</span>';
+            else if(status === 'inactive') statusBadge = '<span class="badge bg-warning text-dark px-3 py-2 rounded-pill border-0">استراحة</span>';
+            else if(status === 'pending' || status === 'waiting') statusBadge = '<span class="badge bg-primary px-3 py-2 rounded-pill border-0">قيد الانتظار</span>';
+            else if(status === 'banned') statusBadge = '<span class="badge bg-danger px-3 py-2 rounded-pill border-0">موقوف</span>';
 
             let unpaidBadge = '';
-            if (type === 'RESTAURANT' && unpaidCounts && unpaidCounts[name] > 0) unpaidBadge = `<span class="badge bg-danger rounded-pill ms-2 shadow-sm">${unpaidCounts[name]} طلبات</span>`;
+            if (type === 'RESTAURANT' && unpaidCounts && unpaidCounts[name] > 0) unpaidBadge = `<span class="badge bg-danger rounded-pill ms-2 border-0 shadow-sm">${unpaidCounts[name]} طلبات</span>`;
 
             let perfIndicator = '';
             if (type === 'DRIVER') {
                 const perf = driverPerformanceCache[String(phone)] || { class: 'perf-yellow', label: 'مستجد' };
-                perfIndicator = `<span class="perf-dot ${perf.class}"><i data-lucide="zap" size="12"></i></span>`;
+                perfIndicator = `<span class="perf-dot ${perf.class}"><i data-lucide="zap" size="14"></i></span>`;
             }
 
             let existingCard = document.getElementById(`card-${type}-${safePhoneId}`);
@@ -948,25 +1077,25 @@
                     <div class="stat-widget flex-column align-items-stretch">
                         ${perfIndicator}
                         <div class="d-flex justify-content-between align-items-center mb-3">
-                            <div class="bg-light p-3 rounded-4 shadow-sm"><i data-lucide="${icon}" size="24" style="color: var(--primary-blue);"></i></div>
+                            <div class="p-3 rounded-4" style="background: var(--light-blue);"><i data-lucide="${icon}" size="26" style="color: var(--primary-blue);"></i></div>
                             <div class="status-badge-container">${statusBadge}</div>
                         </div>
                         <h5 class="m-0 fw-black text-dark mb-1" style="line-height: 1.4;">${name}</h5>
                         <div class="text-muted fw-bold mb-3" style="font-size:0.85rem;" dir="ltr">${phone}</div>
                         
-                        <div class="bg-light p-3 rounded-4 mb-3 d-flex align-items-center justify-content-between">
+                        <div class="bg-light p-3 rounded-4 mb-3 d-flex align-items-center justify-content-between border-0">
                             <span class="text-danger fw-bold debt-text" style="font-size: 0.85rem;">إجمالي الديون: <b class="ms-1">${debtAmount} د.ع</b> ${unpaidBadge}</span>
                         </div>
 
                         <div class="d-flex justify-content-between align-items-center pt-3 border-top border-light mt-auto">
                             <div class="d-flex gap-2">
-                                <button class="sov-btn sov-accept" onclick="adminActionOptUI('ACCEPT', '${type}', '${phone}', this)"><i data-lucide="check"></i></button>
-                                <button class="sov-btn sov-pause" onclick="adminActionOptUI('PAUSE', '${type}', '${phone}', this)"><i data-lucide="pause"></i></button>
-                                <button class="sov-btn sov-delete" onclick="adminActionOptUI('DELETE', '${type}', '${phone}', this)"><i data-lucide="ban"></i></button>
+                                <button class="sov-btn sov-accept" onclick="adminActionOptUI('ACCEPT', '${type}', '${phone}', this)"><i data-lucide="check" size="18"></i></button>
+                                <button class="sov-btn sov-pause" onclick="adminActionOptUI('PAUSE', '${type}', '${phone}', this)"><i data-lucide="pause" size="18"></i></button>
+                                <button class="sov-btn sov-delete" onclick="adminActionOptUI('DELETE', '${type}', '${phone}', this)"><i data-lucide="ban" size="18"></i></button>
                             </div>
                             <div class="d-flex gap-2">
-                                <button class="sov-btn sov-reset" onclick="resetDebtOptUI('${type}', '${phone}', this)"><i data-lucide="banknote"></i></button>
-                                <button class="sov-btn sov-call" onclick="window.open('tel:${phone}')"><i data-lucide="phone-call"></i></button>
+                                <button class="sov-btn sov-reset" onclick="resetDebtOptUI('${type}', '${phone}', this)"><i data-lucide="banknote" size="18"></i></button>
+                                <button class="sov-btn sov-call shadow-sm" onclick="window.open('tel:${phone}')"><i data-lucide="phone-call" size="18"></i></button>
                             </div>
                         </div>
                     </div>
@@ -1022,7 +1151,7 @@
                 const rLat = parseFloat(restaurant[6]); const rLng = parseFloat(restaurant[7]);
                 if(!isNaN(rLat) && !isNaN(rLng)) {
                     bounds.push([rLat, rLng]); 
-                    trackPolyline = L.polyline([[dLat, dLng], [rLat, rLng]], { color: '#3b82f6', weight: 5, dashArray: '15, 15', className: 'path-animated' }).addTo(map);
+                    trackPolyline = L.polyline([[dLat, dLng], [rLat, rLng]], { color: '#3b82f6', weight: 6, dashArray: '15, 15', className: 'path-animated' }).addTo(map);
                     map.fitBounds(bounds, { padding: [30, 30], maxZoom: 16, animate: true, duration: 1.5 });
                 } else { map.flyTo([dLat, dLng], 16, { duration: 1.5 }); }
             } else { map.flyTo([dLat, dLng], 16, { duration: 1.5 }); }
@@ -1050,7 +1179,7 @@
         if(!confirm(`تأكيد تصفير ديون (${id})؟`)) return;
         
         const original = element.innerHTML;
-        element.innerHTML = '<div class="spinner-border spinner-border-sm"></div>';
+        element.innerHTML = '<div class="spinner-border spinner-border-sm text-primary"></div>';
         element.disabled = true;
 
         fetch(`${API_URL}?action=RESET_DEBT&type=${type}&id=${id}&token=${API_TOKEN}&pass=${masterPassword}`)
@@ -1060,7 +1189,6 @@
         }).catch(e=>{showToast("تم إرسال الأمر", "success");});
     }
 
-    // 🟢 3. تسريع الأزرار الخارقة (Optimistic UI for Actions)
     function adminActionOptUI(cmd, type, id, element) {
         const statusMap = { 'ACCEPT': 'active', 'PAUSE': 'inactive', 'DELETE': 'deleted', 'COMPLETE': 'completed' };
         let newStatus = statusMap[cmd];
@@ -1076,7 +1204,6 @@
             }
         } 
         
-        // ⚡ التحديث الفوري للذاكرة المانعة و الواجهة (Optimistic Update)
         if (type === 'ORDER') localOverrides.orders[String(id)] = { status: newStatus, ts: Date.now() };
         if (type === 'RESTAURANT') {
             localOverrides.restaurants[String(id)] = { status: newStatus, ts: Date.now() };
@@ -1124,7 +1251,6 @@
         }).catch(e=>{});
     }
 
-    // 🟢 4. تعقيم الأرشيف من الاقتباسات (HTML Injection Fix)
     function renderArchive() {
         if(!globalData) return;
         const search = document.getElementById('arcSearch').value.trim().toLowerCase();
@@ -1166,8 +1292,6 @@
                     let driverName = dData ? dData[1] : driverPhone;
                     
                     const orderDataObj = { id: orderId, date: orderDateFormatted, res: restName, driver: driverName, details: details, price: price, comm: comm, payType: payType, isSettled: isSettled };
-                    
-                    // ⚡ التشفير الجذري لحماية الـ HTML
                     const orderDataStr = encodeURIComponent(JSON.stringify(orderDataObj)).replace(/'/g, "%27");
                     
                     archiveHtml += `<tr onclick="openInvoice('${orderDataStr}')" style="cursor:pointer;">
@@ -1182,7 +1306,7 @@
         });
         
         if (totalOrders > displayLimit) {
-            archiveHtml += `<tr><td colspan="5" class="text-center text-muted py-3 fw-bold small">تم إخفاء ${totalOrders - displayLimit} طلب قديم لتسريع الشاشة. استخدم البحث.</td></tr>`;
+            archiveHtml += `<tr><td colspan="5" class="text-center text-muted py-3 fw-bold small">تم إخفاء ${totalOrders - displayLimit} طلب قديم. استخدم البحث.</td></tr>`;
         }
 
         document.getElementById('arcTotalCount').innerText = totalOrders;
@@ -1233,7 +1357,7 @@
         restaurantMarkersLayer = L.layerGroup().addTo(map);
         driverClusterGroup = L.markerClusterGroup({
             iconCreateFunction: function(cluster) {
-                return L.divIcon({ html: '<div style="background-color: var(--primary-blue); color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900; border: 3px solid white; box-shadow: var(--float-shadow);">' + cluster.getChildCount() + '</div>', className: 'custom-cluster-icon', iconSize: L.point(40, 40) });
+                return L.divIcon({ html: '<div style="background-color: var(--primary-blue); color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900; border: 3px solid white; box-shadow: var(--shadow-float);">' + cluster.getChildCount() + '</div>', className: 'custom-cluster-icon', iconSize: L.point(40, 40) });
             }, maxClusterRadius: 40 
         });
         map.addLayer(driverClusterGroup);
