@@ -167,7 +167,6 @@
         .invoice-card { background: white; border-radius: 24px; padding: 25px; width: 100%; max-width: 400px; position: relative; }
         .invoice-row { display: flex; justify-content: space-between; margin-bottom: 10px; font-weight: 700; font-size: 0.85rem; }
         
-        /* تأثير التحديث اللحظي */
         .flash-update { animation: flashHighlight 1s ease-out; }
         @keyframes flashHighlight { 0% { background-color: rgba(59, 130, 246, 0.2); } 100% { background-color: transparent; } }
     </style>
@@ -393,11 +392,9 @@
     let localOverrides = { orders: {}, drivers: {}, restaurants: {} };
     let isEmergencyMuted = false;
 
-    // 🟢 إضافة متغيرات التزامن (Swiss Watch)
     let isFirebaseListening = false;
     let dataRefreshInterval = null;
 
-    // تهيئة Firebase
     const firebaseConfig = {
         apiKey: "AIzaSyAo1rmqUzieYZU3RIwXOAN87GkpNrp-_Hc",
         authDomain: "sufyan-delivery.firebaseapp.com",
@@ -482,7 +479,6 @@
         }, 12000);
     }
 
-    // 🟢 1. الترس الأول: تحميل البيانات الأساسية فقط دون تشغيل Firebase
     window.authResult = function(response) {
         const oldScript = document.getElementById('auth-script');
         if (oldScript) oldScript.remove();
@@ -500,11 +496,8 @@
 
             startClock(); 
             initMap();
-
-            // نظهر للمستخدم أننا نحمل البيانات الأساسية
             document.getElementById('smartOrdersContainer').innerHTML = '<div class="col-12 text-center p-4 fw-bold text-primary small"><div class="spinner-border spinner-border-sm me-2"></div> جاري تهيئة النظام السحابي...</div>';
-            
-            refreshData(); // هذا الاستدعاء هو الذي سيفجر سلسلة التفعيل
+            refreshData(); 
         } else {
             masterPassword = ""; 
             showToast("رمز المرور غير صحيح", "error");
@@ -528,7 +521,6 @@
         document.body.appendChild(script);
     }
 
-    // 🟢 2. الترس الثاني: استلام البيانات وفتح بوابات Firebase
     window.renderData = function(data) {
         const oldScript = document.getElementById('data-fetch-script');
         if (oldScript) oldScript.remove(); 
@@ -586,14 +578,13 @@
             }
         });
 
-        // رسم الأرشيف والإداريات (التي لا تحتاج Firebase)
-        renderArchive();
-        updateSectionBadges('RESTAURANT', data.restaurants);
-        updateSectionBadges('DRIVER', data.drivers);
-        smartRenderFilteredSection('RESTAURANT', data.restaurants, resDebts, resUnpaidCounts);
-        smartRenderFilteredSection('DRIVER', data.drivers, driverDebts, null);
+        // 🟢 صمامات الأمان - محاصرة الأخطاء
+        try { renderArchive(); } catch(e) { console.error("Archive Error:", e); }
+        try { updateSectionBadges('RESTAURANT', data.restaurants); } catch(e) {}
+        try { updateSectionBadges('DRIVER', data.drivers); } catch(e) {}
+        try { smartRenderFilteredSection('RESTAURANT', data.restaurants, resDebts, resUnpaidCounts); } catch(e) { console.error("Res Error:", e); }
+        try { smartRenderFilteredSection('DRIVER', data.drivers, driverDebts, null); } catch(e) { console.error("Driver Error:", e); }
 
-        // رسم الخريطة (للمطاعم الثابتة)
         if (map && restaurantMarkersLayer) {
             data.restaurants.slice(1).forEach(r => {
                 const rName = r[1];
@@ -621,16 +612,15 @@
             });
         }
 
-        // 🟢 الترس الأهم: تشغيل Firebase فقط بعد أن أصبحت globalData جاهزة
         if (!isFirebaseListening) {
             isFirebaseListening = true;
             listenToFirebaseLocations(); 
             listenToFirebaseOrders(); 
-            // تشغيل الفاصل الزمني المستقل (الترس الثالث) كل 3 دقائق للأرشيف فقط
             dataRefreshInterval = setInterval(refreshData, 180000);
         } else {
-            // إذا كنا نقوم بتحديث روتيني (كل 3 دقائق)، نقوم بتحديث الرادار بناءً على الأسماء الجديدة
-            if (liveFirebaseOrders.length > 0) smartRenderRadar(liveFirebaseOrders);
+            if (liveFirebaseOrders.length > 0) {
+                try { smartRenderRadar(liveFirebaseOrders); } catch(e) { console.error("Radar Error:", e); }
+            }
         }
     };
 
@@ -703,8 +693,9 @@
 
             document.querySelectorAll('.val-orders').forEach(el => el.innerText = liveFirebaseOrders.length);
 
-            // 🟢 بما أننا هنا، فهذا يعني أن Firebase مفتوح و globalData جاهزة
-            smartRenderRadar(liveFirebaseOrders);
+            if (globalData) {
+                try { smartRenderRadar(liveFirebaseOrders); } catch(e) { console.error("Radar Hot Error:", e); }
+            }
         });
     }
 
@@ -761,7 +752,6 @@
         let doubleOrdersHtml = '';
         Object.keys(groupedOrders).forEach(driverPhone => {
             const orders = groupedOrders[driverPhone];
-            // 🟢 ترس الأمان الماسي: ماذا لو الكابتن غير موجود في globalData؟
             const driverName = globalData.drivers.find(d => String(d[2]) === String(driverPhone))?.[1] || 'كابتن جديد (جاري التحديث...)';
 
             if (orders.length > 1) {
@@ -811,7 +801,6 @@
         allSingleOrders.forEach(o => {
             const orderId = o[0], restName = o[1], orderArea = o[2], orderPrice = o[4], status = o[5], driverPhone = o[6], orderTimeStr = o[7];
             const hasDriver = (driverPhone && driverPhone !== "pending_driver" && driverPhone !== "manual_pending");
-            // 🟢 ترس الأمان الماسي مرة أخرى
             const driverName = hasDriver ? (globalData.drivers.find(d => String(d[2]) === String(driverPhone))?.[1] || 'كابتن جديد (جاري التحديث...)') : 'جاري البحث في الرادار...';
             const sInfo = getStatusInfo(status, hasDriver, orderTimeStr);
             const diffMins = Math.floor((new Date() - new Date(orderTimeStr)) / 60000);
@@ -909,7 +898,7 @@
                 
                 container.insertAdjacentHTML('beforeend', newCardHtml);
                 const newlyAdded = document.getElementById(`wrapper-${orderId}`);
-                if (typeof lucide !== 'undefined') lucide.createIcons({root: newlyAdded});
+                if (newlyAdded && typeof lucide !== 'undefined') lucide.createIcons({root: newlyAdded});
                 renderedOrdersCache[orderId] = cardStateHash;
             }
         });
@@ -992,6 +981,7 @@
         }
     }
 
+    // 🟢 2. المعالجة الآمنة للـ IDs والأيقونات (The Bulletproof Fix)
     function smartRenderFilteredSection(type, fullList, debtsMap, unpaidCounts) {
         let filteredList = [];
         const filter = type === 'RESTAURANT' ? currentResSectionFilter : currentDriverSectionFilter;
@@ -1031,7 +1021,10 @@
         filteredList.forEach(item => {
             const name = item[1], phone = item[phoneIndex], status = item[4];
             const debtAmount = debtsMap[item[mapKeyIndex]] || 0; 
-            currentIds.add(phone);
+            
+            // 🟢 تعقيم صارم لرقم الهاتف لاستخدامه كـ ID آمن جداً
+            const safePhoneId = String(phone).replace(/[^a-zA-Z0-9]/g, '');
+            currentIds.add(safePhoneId);
 
             const cardHash = `${status}-${debtAmount}`;
 
@@ -1050,17 +1043,17 @@
                 perfIndicator = `<span class="perf-dot ${perf.class}" title="معدل السرعة: ${perf.label}"><i data-lucide="zap" size="10"></i></span>`;
             }
 
-            let existingCard = document.getElementById(`card-${type}-${phone}`);
+            let existingCard = document.getElementById(`card-${type}-${safePhoneId}`);
             
             if (existingCard) {
-                if (cacheObj[phone] !== cardHash) {
+                if (cacheObj[safePhoneId] !== cardHash) {
                     existingCard.querySelector('.status-badge-container').innerHTML = statusBadge;
                     existingCard.querySelector('.debt-text').innerHTML = `ديون: ${debtAmount} د.ع ${unpaidBadge}`;
-                    cacheObj[phone] = cardHash;
+                    cacheObj[safePhoneId] = cardHash;
                 }
             } else {
                 const html = `
-                <div class="col-md-6 col-xl-4" id="card-${type}-${phone}">
+                <div class="col-md-6 col-xl-4" id="card-${type}-${safePhoneId}">
                     <div class="stat-widget flex-column align-items-stretch" style="padding: 12px;">
                         ${perfIndicator}
                         <div class="d-flex justify-content-between align-items-start mb-2">
@@ -1086,17 +1079,21 @@
                     </div>
                 </div>`;
                 container.insertAdjacentHTML('beforeend', html);
-                const newlyAdded = document.getElementById(`card-${type}-${phone}`);
-                if (typeof lucide !== 'undefined') lucide.createIcons({root: newlyAdded});
-                cacheObj[phone] = cardHash;
+                
+                // 🟢 استدعاء آمن لمكتبة الأيقونات
+                const newlyAdded = document.getElementById(`card-${type}-${safePhoneId}`);
+                if (newlyAdded && typeof lucide !== 'undefined') {
+                    lucide.createIcons({root: newlyAdded});
+                }
+                cacheObj[safePhoneId] = cardHash;
             }
         });
 
-        Object.keys(cacheObj).forEach(cachedPhone => {
-            if (!currentIds.has(cachedPhone)) {
-                const stale = document.getElementById(`card-${type}-${cachedPhone}`);
+        Object.keys(cacheObj).forEach(cachedPhoneId => {
+            if (!currentIds.has(cachedPhoneId)) {
+                const stale = document.getElementById(`card-${type}-${cachedPhoneId}`);
                 if (stale) stale.remove();
-                delete cacheObj[cachedPhone];
+                delete cacheObj[cachedPhoneId];
             }
         });
     }
@@ -1223,6 +1220,7 @@
         }).catch(e=>{showToast("تم إرسال الأمر", "success");});
     }
 
+    // 🟢 3. الأرشيف محمي الآن ويعمل بشكل مستقل
     function renderArchive() {
         if(!globalData) return;
         const search = document.getElementById('arcSearch').value.trim().toLowerCase();
