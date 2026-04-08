@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 2.5 - الماسي مع Firebase & ImgBB) ---
-        const CURRENT_APP_VERSION = "2.5"; 
+        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 2.6 - الماسي: إطلاق الطلبات لحظياً) ---
+        const CURRENT_APP_VERSION = "2.6"; 
         if (localStorage.getItem('hut_res_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة مكتشفة... جاري التحديث الإجباري لتسريع النظام!");
             localStorage.setItem('hut_res_app_version', CURRENT_APP_VERSION);
@@ -402,17 +402,17 @@
 </div>
 
 <script type="module">
-    // 🟢 1. تضمين Firebase و الإعدادات الحديثة بدقة
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+    import { getDatabase, ref, onValue, update, set } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
     if (typeof lucide !== 'undefined') lucide.createIcons();
 
-    // روابط النظام المركزية
+    // 🟢 السيرفر الماسي V25
     const API_URL = "https://script.google.com/macros/s/AKfycbzCGEQDmWp5su19c911j1TUxL65t1Y63-LhuXLrq0Z1Qc9sLG9f__4GQa0pN2k5MErw/exec";
     const API_TOKEN = "HUT_SECURE_99";
-    const IMGBB_KEY = "546047e6407dd77fc9518dd37e27cda2"; // مفتاح الرفع السريع للصور
+    const IMGBB_KEY = "546047e6407dd77fc9518dd37e27cda2"; 
 
+    // إعدادات Firebase
     const firebaseConfig = {
       apiKey: "AIzaSyAo1rmqUzieYZU3RIwXOAN87GkpNrp-_Hc",
       authDomain: "sufyan-delivery.firebaseapp.com",
@@ -426,16 +426,16 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
     
-    // متغيرات الجلسة
+    // متغيرات النظام
     let currentResName = "";
     let isRegistering = false;
     let currentOrderMode = 'manual';
-    let base64Receipt = null; // للاستخدام المؤقت قبل الرفع
+    let base64Receipt = null; 
     let dataRefreshInterval;
     let myCustomPriceList = {};
     let waitingPollingTimer = null; 
-    let globalOrders = []; // لتخزين البيانات اللحظية
-    let globalDriversInfo = []; // لمعرفة اسماء الكباتن
+    let globalOrders = []; 
+    let globalDriversInfo = []; 
     
     let pickerMap;
     let regLat = 35.468; 
@@ -444,6 +444,9 @@
     let lastActiveHtml = "";
     let lastArchiveHtml = "";
     let actionBlacklist = []; 
+
+    // مصفوفة الطلبات اللحظية لـ Firebase
+    let liveActiveOrders = [];
 
     document.addEventListener('contextmenu', event => {
         const tag = event.target.tagName;
@@ -687,7 +690,7 @@
                 const img = new Image();
                 img.onload = function() {
                     const canvas = document.createElement('canvas');
-                    const MAX_WIDTH = 800; // دقة جيدة للقراءة وممتازة للرفع السريع
+                    const MAX_WIDTH = 800; // دقة جيدة للرفع السريع
                     let scaleSize = 1;
                     if(img.width > MAX_WIDTH) scaleSize = MAX_WIDTH / img.width;
                     canvas.width = img.width * scaleSize; canvas.height = img.height * scaleSize;
@@ -805,50 +808,48 @@
         if (typeof lucide !== 'undefined') lucide.createIcons();
         window.buildCustomAreaDropdown(); restoreDraft(); 
         
-        fetchColdData(); // الأرشيف ومعلومات المطعم
-        startHotDataListeners(); // تفعيل Firebase للحركات اللحظية
-        dataRefreshInterval = setInterval(fetchColdData, 180000); // تحديث الأرشيف كل 3 دقائق بدلا من 15 ثانية لتخفيف الضغط
+        fetchColdData(); 
+        startHotDataListeners(); 
+        dataRefreshInterval = setInterval(fetchColdData, 180000); // 3 دقائق للأرشيف
     }
 
-    // 🟢 2. جلب البيانات الثقيلة (Cold Data) كل 3 دقائق
     function fetchColdData() {
         if (document.hidden) return;
         fetch(`${API_URL}?action=getGlobalData&token=${API_TOKEN}`)
             .then(res => res.json())
             .then(data => {
-                if(data && data.orders) globalOrders = data.orders;
                 if(data && data.drivers) globalDriversInfo = data.drivers;
                 renderDashboardStats(data);
                 renderActiveOrdersUI(); 
             });
     }
 
-    // 🟢 3. تفعيل Firebase لسماع التحديثات الحية اللحظية (Hot Data)
+    // 🟢 5. الاستماع اللحظي (Firebase) لتحديث حالة الطلب أممام المطعم فوراً
     function startHotDataListeners() {
         const ordersRef = ref(db, 'active_orders');
         onValue(ordersRef, (snapshot) => {
             const activeFbOrders = snapshot.val() || {};
-            let hasChanges = false;
+            let newLiveOrders = [];
 
             Object.values(activeFbOrders).forEach(fbOrder => {
-                // فلترة الطلبات لتشمل مطعمنا فقط
                 if(fbOrder.restaurant === currentResName) {
-                    const existingOrder = globalOrders.find(o => String(o[0]) === String(fbOrder.id));
-                    if (existingOrder) {
-                        existingOrder[5] = fbOrder.status; 
-                        existingOrder[6] = fbOrder.driverPhone || "pending_driver"; 
-                        hasChanges = true;
-                    } else {
-                        // طلب جديد تم انشاؤه للتو ولم يصل بعد من الـ Sheets، نضعه مؤقتاً في الذاكرة
-                        globalOrders.push([fbOrder.id, fbOrder.restaurant, fbOrder.area, "", fbOrder.price, fbOrder.status, fbOrder.driverPhone || "pending_driver", fbOrder.timestamp, fbOrder.photoUrl]);
-                        hasChanges = true;
-                    }
+                    newLiveOrders.push({
+                        id: fbOrder.id,
+                        status: fbOrder.status,
+                        driverPhone: fbOrder.driverPhone || "pending_driver",
+                        timestamp: fbOrder.timestamp,
+                        area: fbOrder.area
+                    });
                 }
             });
-            if (hasChanges) renderActiveOrdersUI();
+            
+            newLiveOrders.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+            liveActiveOrders = newLiveOrders;
+            renderActiveOrdersUI();
         });
     }
 
+    // 🟢 6. الإلغاء اللحظي (مسح من Firebase فوراً ثم إبلاغ السيرفر)
     window.cancelOrderGrace = function(orderId) {
         if(confirm("هل أنت متأكد من إلغاء هذا الطلب؟ سيتم سحبه من الرادار فوراً.")) {
             const card = document.getElementById(`order-${orderId}`);
@@ -859,6 +860,10 @@
             actionBlacklist.push(String(orderId));
             setTimeout(() => { actionBlacklist = actionBlacklist.filter(id => id !== String(orderId)); }, 5000);
 
+            // مسح من Firebase فوراً
+            const updates = {}; updates[`active_orders/${orderId}`] = null; update(ref(db), updates);
+
+            // إبلاغ السيرفر
             fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${orderId}&status=deleted&token=${API_TOKEN}`)
             .then(res=>res.json()).then(response => {
                 if(!response.success) { alert("حدث خطأ. قد يكون الكابتن قد استلم الطلب للتو."); fetchColdData(); }
@@ -911,50 +916,48 @@
         }
     }
 
+    // الاعتماد على الذاكرة اللحظية (liveActiveOrders) بدلا من globalOrders
     function renderActiveOrdersUI() {
         let activeOrdersHtml = '';
-        const today = new Date();
         
-        globalOrders.slice(1).forEach(o => {
-            if(o[1] === currentResName && o[5] !== 'completed' && o[5] !== 'مكتمل' && o[5] !== 'settled' && o[5] !== 'deleted') {
-                const status = o[5], orderId = o[0], orderArea = o[2], driverPhone = o[6], orderDateStr = o[7];
-                if (actionBlacklist.includes(String(orderId))) return;
+        liveActiveOrders.forEach(o => {
+            const status = o.status, orderId = o.id, orderArea = o.area, driverPhone = o.driverPhone, orderDateStr = o.timestamp;
+            if (actionBlacklist.includes(String(orderId))) return;
 
-                const orderDateObj = new Date(orderDateStr);
-                const orderTimeStrFormat = orderDateObj.toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'});
-                
-                let driverName = 'جاري البحث في الرادار...', step = 1, fillWidth = "0%", isCancelable = true;
-                if (status === 'picked_up' || status === 'في الطريق') isCancelable = false; 
+            const orderDateObj = new Date(orderDateStr);
+            const orderTimeStrFormat = orderDateObj.toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'});
+            
+            let driverName = 'جاري البحث في الرادار...', step = 1, fillWidth = "0%", isCancelable = true;
+            if (status === 'picked_up' || status === 'في الطريق') isCancelable = false; 
 
-                if (driverPhone && driverPhone !== "pending_driver" && driverPhone !== "manual_pending") {
-                    const dInfo = globalDriversInfo.find(d => String(d[2]) === String(driverPhone)); if(dInfo) driverName = dInfo[1];
-                    if (status === 'picked_up' || status === 'في الطريق') { step = 4; fillWidth = "100%"; } 
-                    else if (status === 'arrived_at_res') { step = 3; fillWidth = "66%"; } 
-                    else { step = 2; fillWidth = "33%"; }
-                }
-
-                activeOrdersHtml += `
-                <div class="live-order-card" id="order-${orderId}">
-                    <div class="d-flex justify-content-between align-items-start pb-2 border-bottom">
-                        <div><span class="fw-black text-dark fs-5">طلب #${orderId}</span><div class="mt-1 small fw-bold text-muted"><i data-lucide="clock" size="12"></i> أُرسل: ${orderTimeStrFormat}</div></div>
-                        <div class="d-flex flex-column gap-2 align-items-end">
-                            ${driverPhone && driverPhone !== "pending_driver" && driverPhone !== "manual_pending" ? `<button class="btn-call-mini" onclick="window.open('tel:${driverPhone}')"><i data-lucide="phone" size="16"></i></button>` : ''}
-                            ${isCancelable ? `<button class="btn-cancel-grace mt-1" onclick="cancelOrderGrace('${orderId}')"><i data-lucide="x" size="14"></i> إلغاء</button>` : ''}
-                        </div>
-                    </div>
-                    <div class="py-2 d-flex flex-column gap-1">
-                        <div class="small fw-bold text-dark"><i data-lucide="map-pin" size="14" class="text-accent"></i> المنطقة: ${orderArea || 'غير محددة'}</div>
-                        <div class="small fw-bold text-success"><i data-lucide="bike" size="14"></i> الكابتن: ${driverName}</div>
-                    </div>
-                    <div class="progress-tracker mt-2">
-                        <div class="progress-line"></div><div class="progress-line-fill" style="width: ${fillWidth};"></div>
-                        <div class="progress-step ${step >= 1 ? (step === 1 ? 'current' : 'active') : ''}"><div class="progress-dot"><i data-lucide="radar" size="14"></i></div><span class="progress-label">بانتظار</span></div>
-                        <div class="progress-step ${step >= 2 ? (step === 2 ? 'current' : 'active') : ''}"><div class="progress-dot"><i data-lucide="truck" size="14"></i></div><span class="progress-label">متوجه</span></div>
-                        <div class="progress-step ${step >= 3 ? (step === 3 ? 'current' : 'active') : ''}"><div class="progress-dot"><i data-lucide="store" size="14"></i></div><span class="progress-label">بالمطعم</span></div>
-                        <div class="progress-step ${step >= 4 ? (step === 4 ? 'current' : 'active') : ''}"><div class="progress-dot"><i data-lucide="user" size="14"></i></div><span class="progress-label">بالطريق</span></div>
-                    </div>
-                </div>`;
+            if (driverPhone && driverPhone !== "pending_driver" && driverPhone !== "manual_pending") {
+                const dInfo = globalDriversInfo.find(d => String(d[2]) === String(driverPhone)); if(dInfo) driverName = dInfo[1];
+                if (status === 'picked_up' || status === 'في الطريق') { step = 4; fillWidth = "100%"; } 
+                else if (status === 'arrived_at_res') { step = 3; fillWidth = "66%"; } 
+                else { step = 2; fillWidth = "33%"; }
             }
+
+            activeOrdersHtml += `
+            <div class="live-order-card" id="order-${orderId}">
+                <div class="d-flex justify-content-between align-items-start pb-2 border-bottom">
+                    <div><span class="fw-black text-dark fs-5">طلب #${orderId}</span><div class="mt-1 small fw-bold text-muted"><i data-lucide="clock" size="12"></i> أُرسل: ${orderTimeStrFormat}</div></div>
+                    <div class="d-flex flex-column gap-2 align-items-end">
+                        ${driverPhone && driverPhone !== "pending_driver" && driverPhone !== "manual_pending" ? `<button class="btn-call-mini" onclick="window.open('tel:${driverPhone}')"><i data-lucide="phone" size="16"></i></button>` : ''}
+                        ${isCancelable ? `<button class="btn-cancel-grace mt-1" onclick="cancelOrderGrace('${orderId}')"><i data-lucide="x" size="14"></i> إلغاء</button>` : ''}
+                    </div>
+                </div>
+                <div class="py-2 d-flex flex-column gap-1">
+                    <div class="small fw-bold text-dark"><i data-lucide="map-pin" size="14" class="text-accent"></i> المنطقة: ${orderArea || 'غير محددة'}</div>
+                    <div class="small fw-bold text-success"><i data-lucide="bike" size="14"></i> الكابتن: ${driverName}</div>
+                </div>
+                <div class="progress-tracker mt-2">
+                    <div class="progress-line"></div><div class="progress-line-fill" style="width: ${fillWidth};"></div>
+                    <div class="progress-step ${step >= 1 ? (step === 1 ? 'current' : 'active') : ''}"><div class="progress-dot"><i data-lucide="radar" size="14"></i></div><span class="progress-label">بانتظار</span></div>
+                    <div class="progress-step ${step >= 2 ? (step === 2 ? 'current' : 'active') : ''}"><div class="progress-dot"><i data-lucide="truck" size="14"></i></div><span class="progress-label">متوجه</span></div>
+                    <div class="progress-step ${step >= 3 ? (step === 3 ? 'current' : 'active') : ''}"><div class="progress-dot"><i data-lucide="store" size="14"></i></div><span class="progress-label">بالمطعم</span></div>
+                    <div class="progress-step ${step >= 4 ? (step === 4 ? 'current' : 'active') : ''}"><div class="progress-dot"><i data-lucide="user" size="14"></i></div><span class="progress-label">بالطريق</span></div>
+                </div>
+            </div>`;
         });
 
         if (lastActiveHtml !== activeOrdersHtml) {
@@ -964,7 +967,6 @@
         }
     }
 
-    // 🟢 4. معالجة وتصعيد الطلب الجديد (ImgBB + السكريبت + Firebase)
     document.getElementById('orderForm').onsubmit = function(e) {
         e.preventDefault();
         let finalArea = document.getElementById('customerArea').value, areaWithHint = finalArea;
@@ -988,7 +990,6 @@
             if (!base64Receipt) return alert("يرجى التقاط صورة للوصل أولاً.");
             finalDetails = "طلب مصور سريع (انظر الوصل)"; 
             
-            // رفع الصورة أولاً لـ ImgBB
             btn.innerHTML = `<div class="spinner-border spinner-border-sm me-2"></div> جاري الرفع السريع للوصل...`;
             btn.disabled = true;
             
@@ -1010,25 +1011,33 @@
         }
     };
 
+    // 🟢 7. الحقن اللحظي في Firebase مع الإطلاق السريع جداً
     function finalizeOrderPlacement(details, imageUrl, price, area, btn, originalBtnHtml) {
         btn.innerHTML = `<div class="spinner-border spinner-border-sm me-2"></div> جاري الإطلاق للرادار...`;
         
-        // توحيد المعرف
         const uniqueFrontendId = "HUT-" + Math.floor(Date.now() / 1000);
-        const payload = { action: 'NEW_ORDER', token: API_TOKEN, frontendId: uniqueFrontendId, restaurantName: currentResName, area: area, price: price, details: details, image: imageUrl };
-
-        fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) })
-        .then(r => r.json()).then(res => { 
-            btn.innerHTML = originalBtnHtml; btn.disabled = false;
-            if(res.success) {
-                showSuccessMessage();
-            } else { alert("تنبيه: " + (res.msg || res.error)); }
-        })
-        .catch(err => { 
-            btn.innerHTML = originalBtnHtml; btn.disabled = false;
-            alert("الإنترنت ضعيف، ولكن الطلب قيد الإرسال في الخلفية."); 
-            showSuccessMessage(); // تجربة مستخدم أفضل
+        const timestampIso = new Date().toISOString();
+        
+        // 1. حقن الطلب فوراً في Firebase لكي تسمعه الإدارة والكباتن في لحظتها
+        set(ref(db, 'active_orders/' + uniqueFrontendId), {
+            id: uniqueFrontendId,
+            restaurant: currentResName,
+            area: area,
+            status: "pending_driver",
+            driverPhone: "pending_driver",
+            price: price,
+            timestamp: timestampIso,
+            photoUrl: imageUrl,
+            last_update: timestampIso
         });
+
+        // 2. إبلاغ السيرفر بصمت في الخلفية
+        const payload = { action: 'NEW_ORDER', token: API_TOKEN, frontendId: uniqueFrontendId, restaurantName: currentResName, area: area, price: price, details: details, image: imageUrl };
+        fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) }).catch(e=>{});
+
+        // 3. إظهار النجاح للمطعم فوراً
+        btn.innerHTML = originalBtnHtml; btn.disabled = false;
+        showSuccessMessage();
     }
 
     function showSuccessMessage() {
