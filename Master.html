@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 3.3 (إصلاح جدار الحماية CORS والعودة للاتصال الآمن JSONP) ---
-        const CURRENT_APP_VERSION = "3.3"; 
+        // --- إصدار 4.0 (النسخة الإدارية النهائية: State Management + Zero DOM Thrashing) ---
+        const CURRENT_APP_VERSION = "4.0"; 
         if (localStorage.getItem('hut_master_version') !== CURRENT_APP_VERSION) {
             console.log("تحديث الإدارة المكتشف... جاري تفريغ الذاكرة المؤقتة!");
             localStorage.setItem('hut_master_version', CURRENT_APP_VERSION);
@@ -389,16 +389,19 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
     
-    let map, heatLayer, driverClusterGroup, trackPolyline = null;
-    let restaurantMarkersLayer = null; 
+    let map, driverClusterGroup, trackPolyline = null, restaurantMarkersLayer = null; 
     let activeDriverMarkers = {}; 
 
-    // 🟢 فصل البيانات لسهولة القراءة
-    let globalData = { orders: [], drivers: [], restaurants: [] }; 
+    // 🟢 فصل الـ State
+    window.appState = {
+        orders: [],
+        drivers: [],
+        restaurants: []
+    };
+    
     let currentRadarFilter = 'all';
     let currentResSectionFilter = 'all';
     let currentDriverSectionFilter = 'all';
-    
     let masterPassword = ""; 
     let lastPendingCount = 0; 
     let driverPerformanceCache = {};
@@ -407,18 +410,18 @@
     let lastResHtml = "";
     let lastDriverHtml = "";
     let lastArchiveHtml = "";
-
+    
     let localOverrides = { orders: {}, drivers: {}, restaurants: {} };
     let fetchPauseTimeout = null;
     let isEmergencyMuted = false;
 
-    let renderTimeout = null;
-    window.queueRender = function() {
-        if (renderTimeout) return;
-        renderTimeout = requestAnimationFrame(() => {
+    // 🟢 دالة الـ SyncUI - حارس البوابة (تحديث صامت 4 مرات بالثانية كحد أقصى)
+    let syncInterval = null;
+    function startUISync() {
+        if (syncInterval) return;
+        syncInterval = setInterval(() => {
             window.renderDataUI();
-            renderTimeout = null;
-        });
+        }, 500); // تحديث الواجهة كل نصف ثانية فقط (يقتل الـ Thrashing)
     }
 
     window.showToast = function(msg, type = 'success') {
@@ -496,7 +499,8 @@
             initMap(); startClock(); 
             window.fetchColdData(); 
             startHotDataListeners(); 
-            setInterval(window.fetchColdData, 180000); 
+            setInterval(window.fetchColdData, 180000); // جلب Sheets كل 3 دقائق
+            startUISync(); // تشغيل حارس البوابة (المسؤول عن إظهار كل شيء)
         } else {
             masterPassword = ""; window.showToast("رمز المرور غير صحيح", "error");
         }
@@ -509,7 +513,6 @@
         }, 1000); 
     }
 
-    // 🟢 جلب البيانات الباردة (Sheets) بطريقة آمنة
     window.fetchColdData = function() {
         if (document.hidden || fetchPauseTimeout !== null) return;
         
@@ -524,11 +527,14 @@
 
     window.processColdData = function(data) {
         if (!data) return;
-        globalData.drivers = data.drivers || [];
-        globalData.restaurants = data.restaurants || [];
         
+        // تحديث الـ State الأساسي للشركاء
+        if (data.drivers) window.appState.drivers = data.drivers;
+        if (data.restaurants) window.appState.restaurants = data.restaurants;
+        
+        // دمج ذكي للطلبات للحفاظ على الـ Hot Data
         if (data.orders && data.orders.length > 0) {
-            const freshOrdersMap = new Map(globalData.orders.map(o => [o[0], o]));
+            const freshOrdersMap = new Map(window.appState.orders.map(o => [o[0], o]));
             data.orders.forEach(sheetOrder => {
                 const existingHotOrder = freshOrdersMap.get(sheetOrder[0]);
                 if (!existingHotOrder) {
@@ -539,16 +545,18 @@
                     }
                 }
             });
-            globalData.orders = Array.from(freshOrdersMap.values());
+            window.appState.orders = Array.from(freshOrdersMap.values());
         }
         
-        if(document.getElementById('arcRes').options.length === 1 && globalData.restaurants && globalData.drivers) {
-            globalData.restaurants.slice(1).forEach(r => document.getElementById('arcRes').innerHTML += `<option value="${r[1]}">${r[1]}</option>`);
-            globalData.drivers.slice(1).forEach(d => document.getElementById('arcDriver').innerHTML += `<option value="${String(d[2])}">${d[1]}</option>`);
+        // ملء خيارات الفلتر (مرة واحدة)
+        if(document.getElementById('arcRes').options.length === 1 && window.appState.restaurants.length > 0) {
+            window.appState.restaurants.slice(1).forEach(r => document.getElementById('arcRes').innerHTML += `<option value="${r[1]}">${r[1]}</option>`);
+            window.appState.drivers.slice(1).forEach(d => document.getElementById('arcDriver').innerHTML += `<option value="${String(d[2])}">${d[1]}</option>`);
         }
         
-        if (map && restaurantMarkersLayer && restaurantMarkersLayer.getLayers().length === 0) {
-            globalData.restaurants.slice(1).forEach(r => {
+        // رسم المطاعم
+        if (map && restaurantMarkersLayer && restaurantMarkersLayer.getLayers().length === 0 && window.appState.restaurants.length > 0) {
+            window.appState.restaurants.slice(1).forEach(r => {
                 if(r[4] === 'active' && r[6] && r[7]) { 
                     const lat = parseFloat(r[6]), lng = parseFloat(r[7]);
                     if(!isNaN(lat) && !isNaN(lng)) {
@@ -559,17 +567,14 @@
                 }
             });
         }
-        
-        window.queueRender();
     }
 
-    // 🟢 الاستماع لـ Firebase (Hot Data)
     function startHotDataListeners() {
         const locRef = ref(db, 'drivers_locations');
         onValue(locRef, (snapshot) => {
             const locations = snapshot.val();
-            if (locations && globalData.drivers.length > 0) {
-                globalData.drivers.forEach(d => {
+            if (locations && window.appState.drivers.length > 0) {
+                window.appState.drivers.forEach(d => {
                     const phone = String(d[2]);
                     if (locations[phone]) {
                         d[4] = locations[phone].status || d[4]; 
@@ -577,7 +582,7 @@
                         d[6] = locations[phone].lng || d[6];
                     }
                 });
-                updateMapMarkers(); window.queueRender();
+                updateMapMarkers(); // الماركرز تتحدث فوراً لكن الواجهة تنتظر الـ SyncUI
             }
         });
 
@@ -585,33 +590,33 @@
         onValue(ordersRef, (snapshot) => {
             const activeFbOrders = snapshot.val() || {};
             
-            globalData.orders = globalData.orders.filter(o => {
+            // 1. تنظيف الطلبات المكتملة
+            window.appState.orders = window.appState.orders.filter(o => {
                 if (o[5] === 'completed' || o[5] === 'settled' || o[5] === 'deleted' || o[0] === 'ID') return true; 
                 return !!activeFbOrders[o[0]]; 
             });
 
+            // 2. تحديث الطلبات الحية
             let requiresColdSync = false;
             Object.values(activeFbOrders).forEach(fbOrder => {
-                const existingOrder = globalData.orders.find(o => String(o[0]) === String(fbOrder.id));
+                const existingOrder = window.appState.orders.find(o => String(o[0]) === String(fbOrder.id));
                 if (existingOrder) {
                     existingOrder[5] = fbOrder.status; 
                     existingOrder[6] = fbOrder.driverPhone || "pending_driver"; 
                 } else {
-                    globalData.orders.push([fbOrder.id, fbOrder.restaurant, fbOrder.area, "", fbOrder.price, fbOrder.status, fbOrder.driverPhone || "pending_driver", fbOrder.timestamp, fbOrder.photoUrl]);
+                    window.appState.orders.push([fbOrder.id, fbOrder.restaurant, fbOrder.area, "", fbOrder.price, fbOrder.status, fbOrder.driverPhone || "pending_driver", fbOrder.timestamp, fbOrder.photoUrl]);
                     requiresColdSync = true;
                 }
             });
 
             if (requiresColdSync) window.fetchColdData(); 
-            window.queueRender(); 
         });
     }
 
-    // 🟢 حركة الخريطة الانسيابية
     function updateMapMarkers() {
-        if (!map || !driverClusterGroup || !globalData.drivers) return;
+        if (!map || !driverClusterGroup || window.appState.drivers.length === 0) return;
 
-        globalData.drivers.slice(1).forEach(d => {
+        window.appState.drivers.slice(1).forEach(d => {
             const phone = String(d[2]);
             if(d[4] === 'active' && d[5] && d[6]) { 
                 const lat = parseFloat(d[5]); const lng = parseFloat(d[6]);
@@ -640,32 +645,28 @@
         });
     }
 
-    // 🟢 رسم الشاشة
+    // 🟢 حارس البوابة (المسؤول عن إظهار كل شيء)
     window.renderDataUI = function() {
-        if (!globalData || !globalData.orders) return;
+        if (!window.appState || window.appState.orders.length === 0) return;
+        
         const now = Date.now();
 
-        globalData.orders.forEach(o => {
+        // تطبيق الأوامر المانعة المؤقتة (Overrides)
+        window.appState.orders.forEach(o => {
             let override = localOverrides.orders[o[0]];
-            if (override) {
-                if (now - override.ts < 120000) { o[5] = override.status || o[5]; if (override.driverPhone) o[6] = override.driverPhone; } 
-                else { delete localOverrides.orders[o[0]]; }
-            }
+            if (override) { if (now - override.ts < 120000) { o[5] = override.status || o[5]; if (override.driverPhone) o[6] = override.driverPhone; } else { delete localOverrides.orders[o[0]]; } }
         });
-
-        globalData.drivers.forEach(d => {
+        window.appState.drivers.forEach(d => {
             let override = localOverrides.drivers[d[2]];
-            if (override && (now - override.ts < 120000)) d[4] = override.status;
-            else if (override) delete localOverrides.drivers[d[2]];
+            if (override && (now - override.ts < 120000)) d[4] = override.status; else if (override) delete localOverrides.drivers[d[2]];
         });
-
-        globalData.restaurants.forEach(r => {
+        window.appState.restaurants.forEach(r => {
             let override = localOverrides.restaurants[r[2]]; 
-            if (override && (now - override.ts < 120000)) r[4] = override.status;
-            else if (override) delete localOverrides.restaurants[r[2]];
+            if (override && (now - override.ts < 120000)) r[4] = override.status; else if (override) delete localOverrides.restaurants[r[2]];
         });
 
-        const activeOrdersList = globalData.orders.slice(1).filter(o => o[5] !== 'completed' && o[5] !== 'مكتمل' && o[5] !== 'settled' && o[5] !== 'deleted');
+        // فلترة الطلبات النشطة
+        const activeOrdersList = window.appState.orders.slice(1).filter(o => o[5] !== 'completed' && o[5] !== 'مكتمل' && o[5] !== 'settled' && o[5] !== 'deleted');
 
         let currentPendingCount = 0; let hasEmergency = false;
         activeOrdersList.forEach(o => {
@@ -682,27 +683,25 @@
         if (hasEmergency) { if (!isEmergencyMuted) window.triggerEmergency(); } 
         else { isEmergencyMuted = false; const eModal = document.getElementById('emergencyModal'); if (eModal && eModal.style.display === 'flex') window.closeEmergency(); }
 
-        const countOrders = activeOrdersList.length;
-        const countDrivers = globalData.drivers.filter(d => d[4] === 'active').length;
-        const countRes = globalData.restaurants.filter(r => r[4] === 'active').length;
-        
-        document.querySelectorAll('.val-orders').forEach(el => el.innerText = countOrders);
-        document.querySelectorAll('.val-drivers').forEach(el => el.innerText = countDrivers);
-        document.querySelectorAll('.val-res').forEach(el => el.innerText = countRes);
+        // إحصائيات علوية
+        document.querySelectorAll('.val-orders').forEach(el => el.innerText = activeOrdersList.length);
+        document.querySelectorAll('.val-drivers').forEach(el => el.innerText = window.appState.drivers.filter(d => d[4] === 'active').length);
+        document.querySelectorAll('.val-res').forEach(el => el.innerText = window.appState.restaurants.filter(r => r[4] === 'active').length);
 
+        // حساب الديون
         let resDebts = {}; let resUnpaidCounts = {}; let driverDebts = {};
-        globalData.restaurants.slice(1).forEach(r => { resDebts[r[1]] = 0; resUnpaidCounts[r[1]] = 0; }); 
+        window.appState.restaurants.slice(1).forEach(r => { resDebts[r[1]] = 0; resUnpaidCounts[r[1]] = 0; }); 
         
-        globalData.drivers.slice(1).forEach(d => {
+        window.appState.drivers.slice(1).forEach(d => {
             driverDebts[String(d[2])] = 0;
-            driverPerformanceCache[String(d[2])] = calculateDriverPerformanceBySpeed(globalData.orders, String(d[2]));
+            driverPerformanceCache[String(d[2])] = calculateDriverPerformanceBySpeed(window.appState.orders, String(d[2]));
         }); 
         
-        globalData.orders.slice(1).forEach(o => {
+        window.appState.orders.slice(1).forEach(o => {
             const status = o[5];
             if (status === 'completed' || status === 'مكتمل') {
                 const rName = o[1]; const dPhone = String(o[6]);
-                const rData = globalData.restaurants.find(r => r[1] === rName);
+                const rData = window.appState.restaurants.find(r => r[1] === rName);
                 if (rData) {
                     const comm = parseFloat(rData[5]) || 0; const payType = String(rData[8]); 
                     if (resUnpaidCounts[rName] !== undefined) resUnpaidCounts[rName]++; 
@@ -714,16 +713,19 @@
             }
         });
 
+        // 🟢 استدعاء دوال الرسم الفرعية وإعطائها المتغيرات الجاهزة
         window.renderRadar(activeOrdersList); 
         window.renderArchive();
         
-        updateSectionBadges('RESTAURANT', globalData.restaurants);
-        updateSectionBadges('DRIVER', globalData.drivers);
-        renderFilteredSection('RESTAURANT', globalData.restaurants, resDebts, resUnpaidCounts);
-        renderFilteredSection('DRIVER', globalData.drivers, driverDebts, null);
+        updateSectionBadges('RESTAURANT', window.appState.restaurants);
+        updateSectionBadges('DRIVER', window.appState.drivers);
+        
+        renderFilteredSection('RESTAURANT', window.appState.restaurants, resDebts, resUnpaidCounts);
+        renderFilteredSection('DRIVER', window.appState.drivers, driverDebts, null);
     }
 
     function updateSectionBadges(type, list) {
+        if (!list || list.length === 0) return;
         const prefix = type === 'RESTAURANT' ? 'res' : 'driver';
         const counts = { all: 0, pending: 0, active: 0, inactive: 0, banned: 0 };
         list.slice(1).forEach(item => {
@@ -751,31 +753,20 @@
     window.applySectionFilter = function(type, filter, btnElement) {
         if(type === 'RESTAURANT') currentResSectionFilter = filter;
         else currentDriverSectionFilter = filter;
-        const group = btnElement.closest('.filter-btn-group');
-        group.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-        btnElement.classList.add('active');
-
-        if (globalData) {
-            let resDebts = {}; let resUnpaidCounts = {}; let driverDebts = {};
-            globalData.restaurants.slice(1).forEach(r => { resDebts[r[1]] = 0; resUnpaidCounts[r[1]] = 0; }); 
-            globalData.drivers.slice(1).forEach(d => { driverDebts[String(d[2])] = 0; }); 
-            globalData.orders.slice(1).forEach(o => {
-                if (o[5] === 'completed' || o[5] === 'مكتمل') {
-                    const rData = globalData.restaurants.find(r => r[1] === o[1]);
-                    if (rData) {
-                        const comm = parseFloat(rData[5]) || 0; 
-                        if (resUnpaidCounts[o[1]] !== undefined) resUnpaidCounts[o[1]]++; 
-                        if (String(rData[8]).includes('مناصفة')) { resDebts[o[1]] += (comm / 2); driverDebts[String(o[6])] += (comm / 2); } 
-                        else { resDebts[o[1]] += comm; }
-                    }
-                }
-            });
-            if(type === 'RESTAURANT') renderFilteredSection('RESTAURANT', globalData.restaurants, resDebts, resUnpaidCounts);
-            else renderFilteredSection('DRIVER', globalData.drivers, driverDebts, null);
+        
+        if(btnElement) {
+            const group = btnElement.closest('.filter-btn-group');
+            group.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            btnElement.classList.add('active');
         }
+
+        // إجبار النظام على إعادة الرسم بتسريع الخطوة
+        window.renderDataUI(); 
     }
 
     function renderFilteredSection(type, fullList, debtsMap, unpaidCounts) {
+        if (!fullList || fullList.length === 0) return;
+        
         let filteredList = [];
         const filter = type === 'RESTAURANT' ? currentResSectionFilter : currentDriverSectionFilter;
         
@@ -873,21 +864,15 @@
         currentRadarFilter = type;
         document.querySelectorAll('.radar-filter-btn').forEach(b => b.classList.remove('active', 'border-danger', 'border-success'));
         btnElement.classList.add('active');
-        window.renderRadar();
+        window.renderDataUI();
     }
 
-    window.renderRadar = function(activeOrdersList = null) {
-        if(!globalData) return;
-        
-        if (!activeOrdersList) {
-            activeOrdersList = globalData.orders.slice(1).filter(o => 
-                o[5] !== 'completed' && o[5] !== 'مكتمل' && o[5] !== 'settled' && o[5] !== 'deleted'
-            );
-        }
+    window.renderRadar = function(activeOrdersList) {
+        if (!activeOrdersList) return;
 
         let smartHtml = '';
         let activeDriversOptions = '<option value="" disabled selected>تعيين يدوي</option>';
-        globalData.drivers.slice(1).forEach(d => {
+        window.appState.drivers.slice(1).forEach(d => {
             if(d[4] === 'active') {
                 const perf = driverPerformanceCache[String(d[2])] || { class: 'perf-yellow' };
                 let symbol = perf.class === 'perf-green' ? '🟢' : (perf.class === 'perf-red' ? '🔴' : '🟡');
@@ -926,7 +911,7 @@
 
         Object.keys(groupedOrders).forEach(driverPhone => {
             const orders = groupedOrders[driverPhone];
-            const driverName = globalData.drivers.find(d => String(d[2]) === String(driverPhone))?.[1] || 'غير معروف';
+            const driverName = window.appState.drivers.find(d => String(d[2]) === String(driverPhone))?.[1] || 'غير معروف';
 
             if (orders.length > 1) {
                 smartHtml += `<div class="col-md-6 col-12"><div class="smart-order-card status-purple batch-card">
@@ -1036,33 +1021,27 @@
         </div>`;
     }
 
+    // الأفعال (Actions)
     window.withdrawOrderOptUI = function(orderId, driverPhone, element) {
         if(!confirm("هل أنت متأكد من سحب الطلب من هذا الكابتن وإعادته للرادار للبحث عن غيره؟")) return;
-        
-        const oldScript = document.getElementById('withdraw-script');
-        if (oldScript) oldScript.remove();
-        
+        fetchPauseTimeout = setTimeout(() => { fetchPauseTimeout = null; }, 3000);
         element.classList.add('btn-loading');
-        const card = document.getElementById(`order-${orderId}`);
-        if(card) card.style.opacity = '0.5';
 
         localOverrides.orders[String(orderId)] = { status: 'pending_driver', driverPhone: 'pending_driver', ts: Date.now() };
+        window.renderDataUI(); // تحديث فوري للشاشة
 
         const url = `${API_URL}?action=DECLINE_ORDER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}&pass=${masterPassword}`;
-        const script = document.createElement('script'); 
-        script.id = 'withdraw-script';
-        script.src = `${url}&callback=silentCallback&ts=${Date.now()}`; 
-        
+        const script = document.createElement('script'); script.src = `${url}&callback=silentCallback&ts=${Date.now()}`; 
         script.onload = () => script.remove(); 
-        script.onerror = () => { script.remove(); window.showToast("فشل الاتصال", "error"); if(card) card.style.opacity = '1'; };
-        
-        document.body.appendChild(script); window.showToast("تم سحب الطلب وإعادته للرادار", "success");
+        script.onerror = () => { script.remove(); window.showToast("فشل الاتصال", "error"); };
+        document.body.appendChild(script); 
+        window.showToast("تم سحب الطلب وإعادته للرادار", "success");
     }
 
     window.trackDriver = function(driverPhone, restName) {
-        if(!map || !globalData) return;
-        const driver = globalData.drivers.find(d => String(d[2]) === String(driverPhone));
-        const restaurant = globalData.restaurants.find(r => r[1] === restName);
+        if(!map || !window.appState) return;
+        const driver = window.appState.drivers.find(d => String(d[2]) === String(driverPhone));
+        const restaurant = window.appState.restaurants.find(r => r[1] === restName);
 
         if(driver && driver[5] && driver[6]) {
             const dLat = parseFloat(driver[5]); const dLng = parseFloat(driver[6]);
@@ -1086,41 +1065,27 @@
 
     window.assignDriverOptUI = function(orderId, driverPhone, element) {
         if(!driverPhone) return;
-        
-        const oldScript = document.getElementById('assign-script');
-        if (oldScript) oldScript.remove();
-        
+        fetchPauseTimeout = setTimeout(() => { fetchPauseTimeout = null; }, 3000);
         element.classList.add('btn-loading');
-        const card = document.getElementById(`order-${orderId}`);
-        if(card) card.style.opacity = '0.5';
         
         localOverrides.orders[String(orderId)] = { status: 'manual_pending', driverPhone: driverPhone, ts: Date.now() };
+        window.renderDataUI();
 
         const url = `${API_URL}?action=ASSIGN_DRIVER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}&pass=${masterPassword}`;
-        const script = document.createElement('script'); 
-        script.id = 'assign-script';
-        script.src = `${url}&callback=silentCallback&ts=${Date.now()}`; 
-        
+        const script = document.createElement('script'); script.src = `${url}&callback=silentCallback&ts=${Date.now()}`; 
         script.onload = () => script.remove(); 
-        script.onerror = () => { script.remove(); window.showToast("فشل الاتصال", "error"); if(card) card.style.opacity = '1'; };
-        
-        document.body.appendChild(script); window.showToast("تم إرسال التعيين", "success");
+        script.onerror = () => { script.remove(); window.showToast("فشل الاتصال", "error"); };
+        document.body.appendChild(script); 
+        window.showToast("تم إرسال التعيين", "success");
     }
 
     window.resetDebtOptUI = function(type, id, element) {
         if(!confirm(`تأكيد تصفير ديون (${id})؟`)) return;
-        
-        const oldScript = document.getElementById('reset-script');
-        if (oldScript) oldScript.remove();
-        
+        fetchPauseTimeout = setTimeout(() => { fetchPauseTimeout = null; }, 3000);
         element.classList.add('btn-loading');
         const url = `${API_URL}?action=RESET_DEBT&type=${type}&id=${id}&token=${API_TOKEN}&pass=${masterPassword}`;
-        const script = document.createElement('script'); 
-        script.id = 'reset-script';
-        script.src = `${url}&callback=silentCallback&ts=${Date.now()}`; 
-        
+        const script = document.createElement('script'); script.src = `${url}&callback=silentCallback&ts=${Date.now()}`; 
         script.onload = () => script.remove(); script.onerror = () => script.remove();
-        
         document.body.appendChild(script); window.showToast("تم تصفير الديون", "success");
     }
 
@@ -1131,34 +1096,21 @@
 
         if (cmd === 'COMPLETE' || cmd === 'DELETE') {
             if(!confirm(cmd === 'COMPLETE' ? "تأكيد الإتمام القسري؟" : "تأكيد الحظر؟")) return;
-            const card = element.closest('.col-md-6') || element.closest('.col-12');
-            
-            if (card && (cmd === 'DELETE' || (cmd === 'COMPLETE' && type === 'ORDER'))) { 
-                card.style.transition = '0.3s'; card.style.opacity = '0'; card.style.transform = 'scale(0.95)';
-                setTimeout(() => card.style.display = 'none', 300); 
-                
-                if (type === 'ORDER') localOverrides.orders[String(id)] = { status: newStatus, ts: Date.now() };
-                if (type === 'RESTAURANT') localOverrides.restaurants[String(id)] = { status: newStatus, ts: Date.now() };
-                if (type === 'DRIVER') localOverrides.drivers[String(id)] = { status: newStatus, ts: Date.now() };
-            }
-        } else {
-             if (type === 'ORDER') localOverrides.orders[String(id)] = { status: newStatus, ts: Date.now() };
-             if (type === 'RESTAURANT') localOverrides.restaurants[String(id)] = { status: newStatus, ts: Date.now() };
-             if (type === 'DRIVER') localOverrides.drivers[String(id)] = { status: newStatus, ts: Date.now() };
-        }
+        } 
         
-        const oldScript = document.getElementById('action-script');
-        if (oldScript) oldScript.remove();
+        // تطبيق فوري
+        if (type === 'ORDER') localOverrides.orders[String(id)] = { status: newStatus, ts: Date.now() };
+        if (type === 'RESTAURANT') localOverrides.restaurants[String(id)] = { status: newStatus, ts: Date.now() };
+        if (type === 'DRIVER') localOverrides.drivers[String(id)] = { status: newStatus, ts: Date.now() };
         
+        fetchPauseTimeout = setTimeout(() => { fetchPauseTimeout = null; }, 3000); 
         element.classList.add('btn-loading'); 
+        window.renderDataUI(); // تحديث الشاشة
 
         const script = document.createElement('script'); 
-        script.id = 'action-script';
         script.src = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${id}&status=${newStatus}&token=${API_TOKEN}&pass=${masterPassword}&callback=silentCallback&ts=${Date.now()}`; 
-        
         script.onload = () => script.remove(); script.onerror = () => script.remove();
-        
-        document.body.appendChild(script); window.showToast("تم إرسال الأمر", "success");
+        document.body.appendChild(script); window.showToast("تم التنفيذ بنجاح", "success");
     }
 
     window.silentCallback = function(response) {
@@ -1166,7 +1118,7 @@
     };
 
     window.renderArchive = function() {
-        if(!globalData) return;
+        if(!window.appState || window.appState.orders.length === 0) return;
         const search = document.getElementById('arcSearch').value.trim().toLowerCase();
         const resFilter = document.getElementById('arcRes').value; const driverFilter = document.getElementById('arcDriver').value;
         const dateFrom = document.getElementById('arcDateFrom').value; const dateTo = document.getElementById('arcDateTo').value;
@@ -1174,7 +1126,7 @@
         let archiveHtml = ''; let totalOrders = 0; let totalComm = 0;
         let displayedCount = 0; let displayLimit = 150; 
 
-        const completedOrders = globalData.orders.slice(1).filter(o => o[5] === 'completed' || o[5] === 'مكتمل' || o[5] === 'settled').reverse();
+        const completedOrders = window.appState.orders.slice(1).filter(o => o[5] === 'completed' || o[5] === 'مكتمل' || o[5] === 'settled').reverse();
         
         completedOrders.forEach(o => {
             const orderId = o[0], restName = o[1], price = o[4], details = o[3], status = o[5], driverPhone = o[6];
@@ -1194,13 +1146,13 @@
                 totalOrders++;
                 const isSettled = (status === 'settled');
                 let comm = 0, payType = "المطعم يدفع";
-                const rData = globalData.restaurants.find(r => r[1] === restName);
+                const rData = window.appState.restaurants.find(r => r[1] === restName);
                 if(rData) { comm = parseFloat(rData[5]) || 0; payType = String(rData[8]); }
                 totalComm += comm;
                 
                 if (displayedCount < displayLimit) {
                     displayedCount++;
-                    const dData = globalData.drivers.find(d => String(d[2]) === String(driverPhone));
+                    const dData = window.appState.drivers.find(d => String(d[2]) === String(driverPhone));
                     let driverName = dData ? dData[1] : driverPhone;
                     const orderDataObj = { id: orderId, date: orderDateFormatted, res: restName, driver: driverName, details: details, price: price, comm: comm, payType: payType, isSettled: isSettled };
                     const orderDataStr = encodeURIComponent(JSON.stringify(orderDataObj));
