@@ -1,22 +1,14 @@
-<!DOCTYPE html>
+ <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 2.8 - الدخول الآمن والسريع) ---
+        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 2.8 - الدخول الآمن والربط الذكي) ---
         const CURRENT_APP_VERSION = "2.8"; 
         if (localStorage.getItem('hut_res_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة مكتشفة... جاري التحديث الإجباري لتسريع النظام!");
             localStorage.setItem('hut_res_app_version', CURRENT_APP_VERSION);
-            if ('caches' in window) {
-                caches.keys().then(function(names) {
-                    for (let name of names) caches.delete(name);
-                });
-            }
-            if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.getRegistrations().then(function(registrations) {
-                    for(let registration of registrations) { registration.update(); }
-                });
-            }
+            if ('caches' in window) { caches.keys().then(names => { for (let name of names) caches.delete(name); }); }
+            if ('serviceWorker' in navigator) { navigator.serviceWorker.getRegistrations().then(regs => { for(let reg of regs) reg.update(); }); }
             window.location.reload(true);
         }
     </script>
@@ -29,11 +21,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="مطاعم سفيان">
-    <meta name="mobile-web-app-capable" content="yes">
-
-    <link rel="manifest" href="manifest_restaurant.json">
-    <link rel="apple-touch-icon" href="rest-logo.png">
-
+    
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
 
@@ -45,37 +33,26 @@
         /* 💎 Light Blue Minimal Theme */
         :root {
             --primary-dark: #1e293b;
-            --primary-blue: #3b82f6; /* الأزرق الفاتح / الأساسي */
-            --deep-blue: #1e3a8a; /* الأزرق الغامق للهيدر */
-            --light-blue: #eff6ff; /* خلفيات زرقاء هادئة */
+            --primary-blue: #3b82f6; 
+            --deep-blue: #1e3a8a; 
+            --light-blue: #eff6ff; 
             --bg-main: #f8fafc;
             --card-bg: #ffffff;
             --success: #10b981;
             --danger: #ef4444;
             --warning: #f59e0b;
-            
-            /* Soft Shadows */
             --shadow-sm: 0 4px 15px rgba(59, 130, 246, 0.05);
             --shadow-md: 0 10px 25px rgba(30, 58, 138, 0.08);
             --shadow-neu: 6px 6px 15px rgba(0,0,0,0.02), -6px -6px 15px #ffffff;
         }
 
         body { 
-            background: var(--bg-main); 
-            font-family: 'Cairo', sans-serif; 
-            color: var(--primary-dark); 
-            -webkit-tap-highlight-color: transparent;
-            user-select: none;
-            -webkit-user-select: none;
-            overscroll-behavior-y: contain;
-            padding-bottom: env(safe-area-inset-bottom);
+            background: var(--bg-main); font-family: 'Cairo', sans-serif; color: var(--primary-dark); 
+            -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none;
+            overscroll-behavior-y: contain; padding-bottom: env(safe-area-inset-bottom);
         }
 
-        input, textarea, select {
-            user-select: text !important;
-            -webkit-user-select: text !important;
-        }
-
+        input, textarea, select { user-select: text !important; -webkit-user-select: text !important; }
         .hidden-section { display: none !important; }
 
         /* Loading Screen */
@@ -103,8 +80,7 @@
         
         .login-card { 
             background: var(--card-bg); border-radius: 35px; padding: 35px; 
-            border: 1px solid rgba(59, 130, 246, 0.1); box-shadow: var(--shadow-md); 
-            position: relative; 
+            border: 1px solid rgba(59, 130, 246, 0.1); box-shadow: var(--shadow-md); position: relative; 
         }
         
         .form-label { font-weight: 800; color: #64748b; font-size: 0.85rem; margin-bottom: 8px; display: block; text-align: right; }
@@ -122,7 +98,8 @@
             display: flex; align-items: center; justify-content: center; gap: 10px;
             transition: 0.2s; box-shadow: var(--shadow-md); margin-bottom: 20px;
         }
-        .btn-action:active { transform: scale(0.96); box-shadow: none; }
+        .btn-action:active:not(:disabled) { transform: scale(0.96); box-shadow: none; }
+        .btn-action:disabled { opacity: 0.7; cursor: not-allowed; }
 
         /* 📊 Mini Stats */
         .stat-box { background: var(--light-blue); border-radius: 18px; padding: 15px 10px; text-align: center; border: 1px solid rgba(59,130,246,0.1); transition: 0.3s;}
@@ -145,17 +122,16 @@
         /* 🚀 Compact Order Cards */
         .live-order-card { 
             background: white; border-radius: 20px; padding: 16px; margin-bottom: 12px; 
-            border: 1px solid rgba(59, 130, 246, 0.1); 
-            border-right: 4px solid var(--primary-blue); 
-            display: flex; flex-direction: column; gap: 8px; 
-            box-shadow: var(--shadow-sm); transition: opacity 0.3s ease, transform 0.3s ease; 
+            border: 1px solid rgba(59, 130, 246, 0.1); border-right: 4px solid var(--primary-blue); 
+            display: flex; flex-direction: column; gap: 8px; box-shadow: var(--shadow-sm); transition: 0.3s; 
         }
         
         .btn-call-mini { background: #ecfdf5; border: none; border-radius: 12px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--success); transition: 0.2s;}
         .btn-call-mini:active { transform: scale(0.9); }
         
-        .btn-cancel-grace { background: #fef2f2; color: var(--danger); border: none; padding: 6px 12px; border-radius: 10px; font-size: 0.75rem; font-weight: 800; cursor: pointer; transition: 0.2s; }
-        .btn-cancel-grace:active { transform: scale(0.95); }
+        .btn-cancel-grace { background: #fef2f2; color: var(--danger); border: none; padding: 6px 12px; border-radius: 10px; font-size: 0.75rem; font-weight: 800; cursor: pointer; transition: 0.2s; display: flex; align-items: center; gap: 4px;}
+        .btn-cancel-grace:active:not(:disabled) { transform: scale(0.95); }
+        .btn-cancel-grace:disabled { opacity: 0.6; cursor: not-allowed; }
 
         /* Clean Progress Tracker */
         .progress-tracker { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; position: relative; padding: 0 5px; }
@@ -184,9 +160,14 @@
         @keyframes softPulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.7; transform: scale(0.95); } 100% { opacity: 1; transform: scale(1); } }
         .btn-refresh-waiting { background: #f1f5f9; color: var(--text-muted); border: none; font-weight: 800; border-radius: 16px; padding: 12px; transition: 0.2s; font-size: 0.9rem;}
         .btn-refresh-waiting:active { background: #e2e8f0; }
+
+        /* Global App Toast */
+        #global-toast-container { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 99999; display: flex; flex-direction: column; gap: 10px; width: 90%; max-width: 350px;}
     </style>
 </head>
 <body>
+
+<div id="global-toast-container"></div>
 
 <div id="loadingOverlay">
     <div class="spinner-grow text-primary" role="status"></div>
@@ -226,12 +207,10 @@
                         <label class="form-label" style="text-align: right; color: var(--primary-blue); font-size: 0.8rem;">
                             <i data-lucide="map-pin" size="14"></i> حدد موقع المطعم بدقة:
                         </label>
-                        
                         <div class="d-flex gap-2 mb-2">
                             <input type="text" id="mapSearchInput" class="custom-input py-2 mb-0" placeholder="بحث بالمنطقة..." style="font-size: 0.8rem; flex: 1;">
                             <button type="button" class="btn btn-primary fw-bold rounded-3 px-3" onclick="searchLocation()" style="background: var(--primary-blue); border: none; font-size:0.85rem;">بحث</button>
                         </div>
-                        
                         <div class="position-relative">
                             <div id="pickerMap"></div>
                             <img src="https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png" class="map-crosshair" alt="Pin">
@@ -425,7 +404,7 @@
 </div>
 
 <script type="module">
-    // 🟢 1. تضمين Firebase والإعدادات المركزية
+    // 🟢 1. تضمين Firebase 
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getDatabase, ref, onValue, update, set } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
@@ -439,16 +418,13 @@
       apiKey: "AIzaSyAo1rmqUzieYZU3RIwXOAN87GkpNrp-_Hc",
       authDomain: "sufyan-delivery.firebaseapp.com",
       databaseURL: "https://sufyan-delivery-default-rtdb.europe-west1.firebasedatabase.app",
-      projectId: "sufyan-delivery",
-      storageBucket: "sufyan-delivery.firebasestorage.app",
-      messagingSenderId: "941542380637",
-      appId: "1:941542380637:web:9623fa6e627817ffeba9b4"
+      projectId: "sufyan-delivery"
     };
 
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
     
-    // متغيرات الجلسة 
+    // متغيرات الجلسة
     let currentResName = "";
     let isRegistering = false;
     let currentOrderMode = 'manual';
@@ -456,7 +432,6 @@
     let dataRefreshInterval;
     let myCustomPriceList = {};
     let waitingPollingTimer = null; 
-    let globalOrders = []; 
     let globalDriversInfo = []; 
     
     let pickerMap;
@@ -467,6 +442,16 @@
     let lastArchiveHtml = "";
     let actionBlacklist = []; 
     let liveActiveOrders = [];
+
+    // التنبيهات الماسية
+    window.showGlobalToast = function(msg, type = 'success') {
+        const container = document.getElementById('global-toast-container');
+        const toast = document.createElement('div');
+        toast.style.cssText = `background: ${type === 'success' ? '#10b981' : '#ef4444'}; color: white; padding: 12px 20px; border-radius: 16px; font-weight: 800; font-size: 0.9rem; box-shadow: 0 10px 20px rgba(0,0,0,0.2); text-align: center; animation: slideDown 0.3s forwards;`;
+        toast.innerHTML = msg;
+        container.appendChild(toast);
+        setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 3500);
+    }
 
     document.addEventListener('contextmenu', event => {
         const tag = event.target.tagName;
@@ -503,7 +488,7 @@
                 window.showLoading(false);
                 if (data && data.length > 0) {
                     if(pickerMap) { pickerMap.flyTo([data[0].lat, data[0].lon], 16); regLat = data[0].lat; regLng = data[0].lon; }
-                } else { alert("لم يتم العثور على المكان."); }
+                } else { window.showGlobalToast("لم يتم العثور على المكان.", "error"); }
             }).catch(err => { window.showLoading(false); });
     }
 
@@ -606,12 +591,13 @@
 
     /* --- 🟢 2. المعمارية المحصنة لتسجيل الدخول (The Master Fix) --- */
     
-    // دالة الدخول التلقائي (تعمل عند فتح التطبيق فقط)
+    // دالة الدخول التلقائي الذكية (تعمل صامتاً بدون Loading وهمي)
     function autoLogin() {
         const sessionStr = localStorage.getItem('hut_res_session');
         const pendingStr = localStorage.getItem('hut_res_pending');
         const savedPhoneStr = localStorage.getItem('hut_res_phone');
 
+        // الأولوية 1: الجلسة النشطة
         if (sessionStr) {
             try {
                 const session = JSON.parse(sessionStr);
@@ -625,16 +611,19 @@
             } catch(e) {}
         } 
         
+        // الأولوية 2: في غرفة الانتظار
         if (pendingStr) {
             document.getElementById('checkPhone').value = pendingStr; 
             showWaitingRoom(); 
             return;
         }
 
+        // الأولوية 3: رقم محفوظ لكن الجلسة منتهية (نعيد التحقق بصمت)
         if (savedPhoneStr) {
             document.getElementById('checkPhone').value = savedPhoneStr;
-            // التحقق الصامت من السيرفر إذا كان لديه رقم محفوظ مسبقاً
-            fetch(`${API_URL}?action=checkRes&phone=${savedPhoneStr.startsWith('0') ? savedPhoneStr.substring(1) : savedPhoneStr}&token=${API_TOKEN}`)
+            const cleanPhone = savedPhoneStr.startsWith('0') ? savedPhoneStr.substring(1) : savedPhoneStr;
+            
+            fetch(`${API_URL}?action=checkRes&phone=${cleanPhone}&token=${API_TOKEN}`)
             .then(r => r.json()).then(data => {
                 if(data.status === "active" || data.status === "inactive") {
                     currentResName = data.name;
@@ -652,7 +641,7 @@
         autoLogin();
     };
 
-    window.logout = function() { if(confirm("هل تريد تسجيل الخروج؟ سيتم مسح الذاكرة المؤقتة.")) { localStorage.clear(); sessionStorage.clear(); location.reload(); } }
+    window.logout = function() { if(confirm("هل تريد تسجيل الخروج من النظام؟")) { localStorage.clear(); sessionStorage.clear(); location.reload(); } }
     window.showLoading = function(s, text = "جاري المعالجة...") { document.getElementById('loadingText').innerText = text; document.getElementById('loadingOverlay').style.display = s ? 'flex' : 'none'; }
 
     window.switchTab = function(mode, triggerSave = true) {
@@ -684,7 +673,7 @@
 
     window.processImage = function(input) {
         if (input.files && input.files[0]) {
-            window.showLoading(true, "تحسين الوصل...");
+            window.showLoading(true, "تحسين جودة الوصل...");
             const reader = new FileReader();
             reader.onload = function(e) {
                 const img = new Image();
@@ -710,10 +699,10 @@
         window.saveDraft(); 
     }
 
-    // دالة الدخول اليدوي (تعمل عند ضغط الزر فقط)
+    // دالة الدخول اليدوي (للمستخدم الجديد أو عند فقدان الجلسة)
     window.manualAuthAction = function() {
         let rawPhone = document.getElementById('checkPhone').value.trim();
-        if(!rawPhone) return alert("يرجى إدخال رقم الهاتف");
+        if(!rawPhone) return window.showGlobalToast("يرجى إدخال رقم الهاتف أولاً", "error");
         let phone = rawPhone.startsWith('0') ? rawPhone.substring(1) : rawPhone;
 
         const btn = document.getElementById('mainAuthBtn');
@@ -728,8 +717,8 @@
             const pay = document.getElementById('regPay').value;
             const rawPriceListText = document.getElementById('regPriceList').value;
 
-            if(!name || !area || !comm) { btn.innerHTML = origBtnText; btn.disabled = false; return alert("يرجى ملء جميع التفاصيل، وتحديد موقعك على الخريطة.");}
-            if(Math.abs(regLat - 35.468) < 0.001 && Math.abs(regLng - 44.392) < 0.001) { btn.innerHTML = origBtnText; btn.disabled = false; return alert("الرجاء تحديد موقع مطعمك على الخريطة.");}
+            if(!name || !area || !comm) { btn.innerHTML = origBtnText; btn.disabled = false; return window.showGlobalToast("الرجاء ملء جميع الحقول.", "error");}
+            if(Math.abs(regLat - 35.468) < 0.001 && Math.abs(regLng - 44.392) < 0.001) { btn.innerHTML = origBtnText; btn.disabled = false; return window.showGlobalToast("حدد موقع مطعمك على الخريطة أولاً.", "error");}
             
             const packedPriceList = parseCustomPriceList(rawPriceListText);
             sendRegistration(name, phone, area, comm, pay, regLat, regLng, packedPriceList, btn, origBtnText);
@@ -744,7 +733,7 @@
             })
             .catch(err => { 
                 btn.innerHTML = origBtnText; btn.disabled = false;
-                alert("خطأ في الاتصال، حاول مجدداً."); 
+                window.showGlobalToast("خطأ في الاتصال، حاول مجدداً.", "error"); 
             });
     }
 
@@ -753,10 +742,11 @@
         fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) })
         .then(() => {
             btn.innerHTML = origBtnText; btn.disabled = false;
-            localStorage.setItem('hut_res_phone', phone); localStorage.setItem('hut_res_pending', phone); showWaitingRoom();
+            const formattedPhone = phone.startsWith('0') ? phone : '0' + phone;
+            localStorage.setItem('hut_res_phone', formattedPhone); localStorage.setItem('hut_res_pending', formattedPhone); showWaitingRoom();
         }).catch(() => { 
             btn.innerHTML = origBtnText; btn.disabled = false;
-            alert("حدث خطأ أثناء الإرسال."); 
+            window.showGlobalToast("حدث خطأ أثناء الإرسال.", "error"); 
         });
     }
 
@@ -770,6 +760,7 @@
         let rawPhone = document.getElementById('checkPhone').value.trim() || localStorage.getItem('hut_res_pending');
         if(!rawPhone) return;
         let phone = rawPhone.startsWith('0') ? rawPhone.substring(1) : rawPhone;
+        
         if(isManual) {
              const statText = document.getElementById('waitingStatusText');
              if(statText) statText.innerText = "جاري التحقق اليدوي...";
@@ -790,7 +781,7 @@
                     document.getElementById('waitingBox').classList.add('hidden-section');
                     enterDashboard();
                 } else if (data.status === "banned") {
-                    clearInterval(waitingPollingTimer); localStorage.removeItem('hut_res_pending'); alert("⚠️ حسابك محظور."); location.reload();
+                    clearInterval(waitingPollingTimer); localStorage.removeItem('hut_res_pending'); alert("⚠️ تم حظر الحساب."); location.reload();
                 }
             }).catch(e=>{});
     }
@@ -807,7 +798,7 @@
             const formattedPhone = phone.startsWith('0') ? phone : '0' + phone;
             localStorage.setItem('hut_res_phone', formattedPhone); localStorage.setItem('hut_res_pending', formattedPhone); showWaitingRoom();
         } else if(data.status === "banned") {
-            alert("⚠️ عذراً، الحساب الخاص بك محظور من قبل الإدارة."); localStorage.clear(); sessionStorage.clear();
+            window.showGlobalToast("⚠️ الحساب الخاص بك محظور.", "error"); localStorage.clear(); sessionStorage.clear();
         } else {
             isRegistering = true;
             document.getElementById('registerFields').classList.remove('hidden-section'); document.getElementById('checkPhone').disabled = true;
@@ -816,7 +807,7 @@
         }
     };
 
-    /* --- لوحة تحكم المطعم --- */
+    /* --- 📊 لوحة تحكم المطعم (Dashboard) --- */
     function enterDashboard() {
         document.getElementById('loginSection').classList.add('hidden-section'); document.getElementById('orderSection').classList.remove('hidden-section');
         document.getElementById('resTitle').innerText = currentResName; 
@@ -825,10 +816,10 @@
         
         fetchColdData(); 
         startHotDataListeners(); 
-        dataRefreshInterval = setInterval(fetchColdData, 180000); // 3 دقائق للأرشيف
+        dataRefreshInterval = setInterval(fetchColdData, 180000); // 3 دقائق
     }
 
-    // 🟢 3. الأرشيف الآمن
+    // 🟢 3. الأرشيف الآمن: عدم المسح في حالة ضعف النت
     function fetchColdData() {
         if (document.hidden) return;
         fetch(`${API_URL}?action=getGlobalData&token=${API_TOKEN}`)
@@ -837,12 +828,18 @@
                 if(data && data.drivers) globalDriversInfo = data.drivers;
                 renderDashboardStats(data);
                 renderActiveOrdersUI(); 
-            }).catch(e => console.error("Cold Fetch Error", e));
+            }).catch(e => console.error("Silent Fetch Error", e));
     }
 
     function renderDashboardStats(data) {
+        // حماية متقدمة: إذا لم يجد المطعم، لا يفعل شيئاً (ربما خطأ في جلب البيانات)
         const resInfo = data.restaurants.find(r => r[1] === currentResName);
-        if(!resInfo || (resInfo[4] !== 'active' && resInfo[4] !== 'inactive')) { alert("⚠️ تم إيقاف الحساب."); localStorage.clear(); sessionStorage.clear(); location.reload(); return; }
+        if(!resInfo) return; 
+
+        // حماية 2: الطرد يتم فقط إذا كانت الحالة صريحة بالحظر أو الحذف
+        if(resInfo[4] === 'banned' || resInfo[4] === 'deleted') {
+             alert("⚠️ تم إيقاف أو حذف الحساب."); localStorage.clear(); sessionStorage.clear(); location.reload(); return; 
+        }
 
         const commRate = parseFloat(resInfo[5]) || 0;
         const paySystem = resInfo[8] || 'المطعم يدفع';
@@ -869,7 +866,13 @@
                     if(orderISO === todayISO) {
                         const priceVal = parseFloat(o[4]) || 0; todaySalesTotal += priceVal;
                         let driverName = "مكتمل"; const dInfo = data.drivers.find(d => String(d[2]) === String(driverPhone)); if(dInfo) driverName = dInfo[1];
-                        todayArchiveHtml += `<div class="archive-item"><div><span class="fw-black text-dark">#${orderId}</span><div class="small text-muted fw-bold">الكابتن: ${driverName}</div></div><div class="text-end"><span class="fw-black text-success">${o[4]} <small class="fs-6">د.ع</small></span><div class="small text-muted">${orderTimeStrFormat}</div></div></div>`;
+                        
+                        // ⚡ التعقيم لحماية الـ HTML
+                        const safeOrderStr = encodeURIComponent(JSON.stringify({
+                            id: orderId, date: orderDateStr, res: currentResName, driver: driverName, price: priceVal, comm: commRate
+                        })).replace(/'/g, "%27");
+
+                        todayArchiveHtml += `<div class="archive-item"><div><span class="fw-black text-dark" style="font-size:0.9rem;">#${orderId}</span><div class="small text-muted fw-bold mt-1"><i data-lucide="bike" size="12"></i> ${driverName}</div></div><div class="text-end"><span class="fw-black text-success fs-6">${o[4]} <small>د.ع</small></span><div class="small text-muted">${orderTimeStrFormat}</div></div></div>`;
                     }
                 }
             }
@@ -877,15 +880,16 @@
 
         document.getElementById('statMonthOrders').innerText = monthlyCount;
         document.getElementById('statUnpaid').innerText = totalUnpaid;
-        document.getElementById('todayTotalSales').innerHTML = `${todaySalesTotal} <small class="fs-6">د.ع</small>`;
+        document.getElementById('todayTotalSales').innerHTML = `${todaySalesTotal} <small>د.ع</small>`;
 
         if (lastArchiveHtml !== todayArchiveHtml) {
             document.getElementById('todayArchiveItems').innerHTML = todayArchiveHtml || `<div class="text-center text-muted fw-bold py-4 small border rounded-4 border-dashed bg-white">الأرشيف فارغ اليوم.</div>`;
             lastArchiveHtml = todayArchiveHtml;
+            if (typeof lucide !== 'undefined') lucide.createIcons({root: document.getElementById('todayArchiveItems')});
         }
     }
 
-    // 🟢 4. الاستماع اللحظي الدقيق والموفر للبيانات
+    // 🟢 4. الاستماع اللحظي (Firebase)
     function startHotDataListeners() {
         const ordersRef = ref(db, 'active_orders');
         onValue(ordersRef, (snapshot) => {
@@ -960,10 +964,10 @@
         }
     }
 
-    // 🟢 5. إلغاء آمن (Safe Deletion with UI Fix)
+    // 🟢 5. إلغاء الطلب (Optimistic Cancel)
     window.cancelOrderGrace = function(orderId, btnEl) {
-        if(confirm("هل أنت متأكد من إلغاء هذا الطلب؟ سيتم سحبه من الرادار فوراً.")) {
-            // Optimistic UI Feedback
+        if(confirm("هل أنت متأكد من إلغاء الطلب وسحبه من الرادار؟")) {
+            
             const originalHtml = btnEl.innerHTML;
             btnEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
             btnEl.disabled = true;
@@ -979,24 +983,24 @@
             // مسح من Firebase فوراً
             const updates = {}; updates[`active_orders/${orderId}`] = null; update(ref(db), updates);
 
-            // إبلاغ السيرفر
+            // إبلاغ السيرفر بصمت
             fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${orderId}&status=deleted&token=${API_TOKEN}`)
             .then(res=>res.json()).then(response => {
-                if(!response.success) { alert("تنبيه: قد يكون الكابتن استلم الطلب."); fetchColdData(); }
+                if(!response.success) { window.showGlobalToast("تنبيه: قد يكون الكابتن استلم الطلب للتو.", "error"); fetchColdData(); }
             }).catch(e=>{});
         }
     }
 
-    // الإرسال السريع جداً 
+    // 🟢 6. الإرسال السريع جداً (Optimistic Inject)
     document.getElementById('orderForm').onsubmit = function(e) {
         e.preventDefault();
         let finalArea = document.getElementById('customerArea').value, areaWithHint = finalArea;
 
         if (finalArea === "أخرى") {
             let cName = document.getElementById('customAreaName').value.trim(), cPrice = document.getElementById('customAreaPrice').value.trim();
-            if(!cName || !cPrice) return alert("يرجى إدخال اسم المنطقة الجديدة وسعر التوصيل.");
+            if(!cName || !cPrice) return window.showGlobalToast("يرجى إدخال اسم المنطقة والسعر.", "error");
             areaWithHint = `${cName} (توصيل: ${cPrice})`;
-        } else if (!finalArea && currentOrderMode === 'manual') { return alert("يرجى اختيار منطقة الزبون من القائمة."); } 
+        } else if (!finalArea && currentOrderMode === 'manual') { return window.showGlobalToast("يرجى اختيار منطقة الزبون.", "error"); } 
         else if (myCustomPriceList[finalArea]) { areaWithHint = `${finalArea} (توصيل: ${myCustomPriceList[finalArea]})`; }
 
         let finalDetails = "", finalPrice = parseFloat(document.getElementById('orderPrice').value) || 0; 
@@ -1005,10 +1009,11 @@
 
         if (currentOrderMode === 'manual') {
             const custPhone = document.getElementById('customerPhone').value.trim(), extra = document.getElementById('customerDetails').value.trim();
-            if (!custPhone) return alert("يرجى كتابة رقم الزبون."); finalDetails = `الهاتف: ${custPhone} | ${extra}`;
+            if (!custPhone) return window.showGlobalToast("رقم الزبون مطلوب.", "error"); 
+            finalDetails = `الهاتف: ${custPhone} | ${extra}`;
             finalizeOrderPlacement(finalDetails, "", finalPrice, areaWithHint, btn, originalBtnHtml);
         } else {
-            if (!base64Receipt) return alert("يرجى التقاط صورة للوصل أولاً.");
+            if (!base64Receipt) return window.showGlobalToast("يرجى إرفاق صورة الوصل.", "error");
             finalDetails = "طلب مصور سريع (انظر الوصل)"; 
             btn.innerHTML = `<div class="spinner-border spinner-border-sm me-2"></div> رفع سريع...`;
             btn.disabled = true;
@@ -1018,7 +1023,7 @@
             .then(res => res.json()).then(data => {
                 if(data && data.data && data.data.url) finalizeOrderPlacement(finalDetails, data.data.url, finalPrice, areaWithHint, btn, originalBtnHtml);
                 else throw new Error("ImgBB Error");
-            }).catch(err => { btn.innerHTML = originalBtnHtml; btn.disabled = false; alert("تأكد من جودة الإنترنت لديك."); });
+            }).catch(err => { btn.innerHTML = originalBtnHtml; btn.disabled = false; window.showGlobalToast("خطأ في رفع الصورة.", "error"); });
         }
     };
 
