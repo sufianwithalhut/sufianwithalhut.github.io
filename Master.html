@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 3.2 (إصلاح اللاق + تسريع بناء الرادار) ---
-        const CURRENT_APP_VERSION = "3.2"; 
+        // --- إصدار 3.3 (إصلاح جدار الحماية CORS والعودة للاتصال الآمن JSONP) ---
+        const CURRENT_APP_VERSION = "3.3"; 
         if (localStorage.getItem('hut_master_version') !== CURRENT_APP_VERSION) {
             console.log("تحديث الإدارة المكتشف... جاري تفريغ الذاكرة المؤقتة!");
             localStorage.setItem('hut_master_version', CURRENT_APP_VERSION);
@@ -32,6 +32,7 @@
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js" defer></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
     <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js" defer></script>
@@ -158,6 +159,12 @@
 
         .perf-dot { position: absolute; top: 12px; left: 12px; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; box-shadow: 0 2px 8px rgba(0,0,0,0.15); color: white; font-weight: 900; font-size: 0.7rem;}
         .perf-green { background-color: #10b981; } .perf-yellow { background-color: #f59e0b; } .perf-red { background-color: #ef4444; } 
+
+        .leaflet-interactive.path-animated { animation: dash 20s linear infinite; }
+        @keyframes dash { to { stroke-dashoffset: -1000; } }
+
+        .marker-pulse { border-radius: 50%; border: 3px solid white; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); animation: pulseMarker 2s infinite; }
+        @keyframes pulseMarker { 0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); } 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }
 
         .btn-loading { opacity: 0.7 !important; pointer-events: none !important; position: relative; color: transparent !important; }
         .btn-loading::after { content: ''; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 16px; height: 16px; border: 2px solid rgba(0,0,0,0.2); border-top-color: #000; border-radius: 50%; animation: spin 1s linear infinite; }
@@ -463,27 +470,36 @@
         const btn = document.querySelector('.auth-card button');
         btn.innerHTML = 'جاري التحقق...'; btn.disabled = true;
 
-        fetch(`${API_URL}?action=VERIFY_MASTER_PASS&pass=${masterPassword}&token=${API_TOKEN}`)
-            .then(res => res.json())
-            .then(response => {
-                btn.innerHTML = 'تسجيل الدخول'; btn.disabled = false;
-                if(response.success) {
-                    document.getElementById('authOverlay').style.display = 'none';
-                    document.getElementById('mainDashboard').classList.remove('d-none');
-                    const audio = document.getElementById('adminAlertSound');
-                    audio.volume = 0; audio.play().then(() => { audio.pause(); audio.currentTime = 0; audio.volume = 1; }).catch(e=>{});
+        const oldScript = document.getElementById('auth-script');
+        if (oldScript) oldScript.remove();
+        
+        const script = document.createElement('script');
+        script.id = 'auth-script';
+        script.src = `${API_URL}?action=VERIFY_MASTER_PASS&pass=${masterPassword}&token=${API_TOKEN}&callback=authResult&ts=${Date.now()}`;
+        document.body.appendChild(script);
+        
+        setTimeout(() => {
+            if(btn.disabled) { btn.innerHTML = 'تسجيل الدخول'; btn.disabled = false; window.showToast("⏳ تأخر السيرفر", "error"); }
+        }, 12000);
+    }
 
-                    initMap(); startClock(); 
-                    fetchColdData(); 
-                    startHotDataListeners(); 
-                    setInterval(fetchColdData, 180000); 
-                } else {
-                    masterPassword = ""; window.showToast("رمز المرور غير صحيح", "error");
-                }
-            }).catch(err => {
-                btn.innerHTML = 'تسجيل الدخول'; btn.disabled = false;
-                window.showToast("خطأ في الاتصال بالسيرفر", "error");
-            });
+    window.authResult = function(response) {
+        const btn = document.querySelector('.auth-card button');
+        btn.innerHTML = 'تسجيل الدخول'; btn.disabled = false;
+
+        if(response.success) {
+            document.getElementById('authOverlay').style.display = 'none';
+            document.getElementById('mainDashboard').classList.remove('d-none');
+            const audio = document.getElementById('adminAlertSound');
+            audio.volume = 0; audio.play().then(() => { audio.pause(); audio.currentTime = 0; audio.volume = 1; }).catch(e=>{});
+
+            initMap(); startClock(); 
+            window.fetchColdData(); 
+            startHotDataListeners(); 
+            setInterval(window.fetchColdData, 180000); 
+        } else {
+            masterPassword = ""; window.showToast("رمز المرور غير صحيح", "error");
+        }
     }
 
     function startClock() { 
@@ -493,53 +509,58 @@
         }, 1000); 
     }
 
-    // 🟢 جلب البيانات الباردة (Sheets)
-    function fetchColdData() {
+    // 🟢 جلب البيانات الباردة (Sheets) بطريقة آمنة
+    window.fetchColdData = function() {
         if (document.hidden || fetchPauseTimeout !== null) return;
-        fetch(`${API_URL}?action=getGlobalData&token=${API_TOKEN}`)
-            .then(res => res.json())
-            .then(data => {
-                // دمج البيانات المستلمة
-                globalData.drivers = data.drivers || [];
-                globalData.restaurants = data.restaurants || [];
-                
-                // دمج الطلبات مع الحفاظ على الحالات اللحظية (Hot)
-                if (data.orders && data.orders.length > 0) {
-                    const freshOrdersMap = new Map(globalData.orders.map(o => [o[0], o]));
-                    data.orders.forEach(sheetOrder => {
-                        const existingHotOrder = freshOrdersMap.get(sheetOrder[0]);
-                        if (!existingHotOrder) {
-                            freshOrdersMap.set(sheetOrder[0], sheetOrder);
-                        } else {
-                            // إذا كانت حالة الشيت مكتملة/محذوفة نعتمدها، عدا ذلك نفضل Firebase
-                            if (sheetOrder[5] === 'completed' || sheetOrder[5] === 'settled' || sheetOrder[5] === 'deleted') {
-                                freshOrdersMap.set(sheetOrder[0], sheetOrder);
-                            }
-                        }
-                    });
-                    globalData.orders = Array.from(freshOrdersMap.values());
+        
+        const oldScript = document.getElementById('cold-data-script');
+        if (oldScript) oldScript.remove();
+        
+        const script = document.createElement('script');
+        script.id = 'cold-data-script';
+        script.src = `${API_URL}?action=getGlobalData&token=${API_TOKEN}&callback=processColdData&ts=${Date.now()}`;
+        document.body.appendChild(script);
+    }
+
+    window.processColdData = function(data) {
+        if (!data) return;
+        globalData.drivers = data.drivers || [];
+        globalData.restaurants = data.restaurants || [];
+        
+        if (data.orders && data.orders.length > 0) {
+            const freshOrdersMap = new Map(globalData.orders.map(o => [o[0], o]));
+            data.orders.forEach(sheetOrder => {
+                const existingHotOrder = freshOrdersMap.get(sheetOrder[0]);
+                if (!existingHotOrder) {
+                    freshOrdersMap.set(sheetOrder[0], sheetOrder);
+                } else {
+                    if (sheetOrder[5] === 'completed' || sheetOrder[5] === 'settled' || sheetOrder[5] === 'deleted') {
+                        freshOrdersMap.set(sheetOrder[0], sheetOrder);
+                    }
                 }
-                
-                if(document.getElementById('arcRes').options.length === 1 && globalData.restaurants && globalData.drivers) {
-                    globalData.restaurants.slice(1).forEach(r => document.getElementById('arcRes').innerHTML += `<option value="${r[1]}">${r[1]}</option>`);
-                    globalData.drivers.slice(1).forEach(d => document.getElementById('arcDriver').innerHTML += `<option value="${String(d[2])}">${d[1]}</option>`);
-                }
-                
-                if (map && restaurantMarkersLayer && restaurantMarkersLayer.getLayers().length === 0) {
-                    globalData.restaurants.slice(1).forEach(r => {
-                        if(r[4] === 'active' && r[6] && r[7]) { 
-                            const lat = parseFloat(r[6]), lng = parseFloat(r[7]);
-                            if(!isNaN(lat) && !isNaN(lng)) {
-                                const resIcon = L.divIcon({ className: 'custom-res-icon', html: `<div style="background-color: #f97316; width: 12px; height: 12px; border-radius: 3px; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.4); transform: rotate(45deg);"></div>`, iconSize: [12, 12], iconAnchor: [6, 6] });
-                                const marker = L.marker([lat, lng], {icon: resIcon, zIndexOffset: -100}).bindPopup(`<div class="text-center fw-bold" style="font-family:'Cairo';"><span class="text-warning">المطعم:</span> ${r[1]}</div>`);
-                                restaurantMarkersLayer.addLayer(marker);
-                            }
-                        }
-                    });
-                }
-                
-                window.queueRender();
             });
+            globalData.orders = Array.from(freshOrdersMap.values());
+        }
+        
+        if(document.getElementById('arcRes').options.length === 1 && globalData.restaurants && globalData.drivers) {
+            globalData.restaurants.slice(1).forEach(r => document.getElementById('arcRes').innerHTML += `<option value="${r[1]}">${r[1]}</option>`);
+            globalData.drivers.slice(1).forEach(d => document.getElementById('arcDriver').innerHTML += `<option value="${String(d[2])}">${d[1]}</option>`);
+        }
+        
+        if (map && restaurantMarkersLayer && restaurantMarkersLayer.getLayers().length === 0) {
+            globalData.restaurants.slice(1).forEach(r => {
+                if(r[4] === 'active' && r[6] && r[7]) { 
+                    const lat = parseFloat(r[6]), lng = parseFloat(r[7]);
+                    if(!isNaN(lat) && !isNaN(lng)) {
+                        const resIcon = L.divIcon({ className: 'custom-res-icon', html: `<div style="background-color: #f97316; width: 12px; height: 12px; border-radius: 3px; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.4); transform: rotate(45deg);"></div>`, iconSize: [12, 12], iconAnchor: [6, 6] });
+                        const marker = L.marker([lat, lng], {icon: resIcon, zIndexOffset: -100}).bindPopup(`<div class="text-center fw-bold" style="font-family:'Cairo';"><span class="text-warning">المطعم:</span> ${r[1]}</div>`);
+                        restaurantMarkersLayer.addLayer(marker);
+                    }
+                }
+            });
+        }
+        
+        window.queueRender();
     }
 
     // 🟢 الاستماع لـ Firebase (Hot Data)
@@ -564,15 +585,11 @@
         onValue(ordersRef, (snapshot) => {
             const activeFbOrders = snapshot.val() || {};
             
-            // 1. تنظيف الطلبات المحذوفة من Firebase (والتي لا تزال في globalData ولم تحذف في Sheets)
-            // هذا يمنع بقاء الطلبات "المعلقة" إلى الأبد
             globalData.orders = globalData.orders.filter(o => {
                 if (o[5] === 'completed' || o[5] === 'settled' || o[5] === 'deleted' || o[0] === 'ID') return true; 
-                // إذا كان الطلب نشطاً في الذاكرة لكنه غير موجود في Firebase، نعيد جلبه من Sheets للتأكد
                 return !!activeFbOrders[o[0]]; 
             });
 
-            // 2. تحديث الطلبات الحية
             let requiresColdSync = false;
             Object.values(activeFbOrders).forEach(fbOrder => {
                 const existingOrder = globalData.orders.find(o => String(o[0]) === String(fbOrder.id));
@@ -585,7 +602,7 @@
                 }
             });
 
-            if (requiresColdSync) fetchColdData(); 
+            if (requiresColdSync) window.fetchColdData(); 
             window.queueRender(); 
         });
     }
@@ -697,7 +714,6 @@
             }
         });
 
-        // تشغيل الرسم للرادار
         window.renderRadar(activeOrdersList); 
         window.renderArchive();
         
@@ -860,7 +876,6 @@
         window.renderRadar();
     }
 
-    // 🟢 دالة الرادار (مربوطة بـ window)
     window.renderRadar = function(activeOrdersList = null) {
         if(!globalData) return;
         
@@ -946,7 +961,7 @@
 
         pendingOrders.forEach(o => { smartHtml += generateSingleCardHTML(o, false, 'جاري البحث...', null, activeDriversOptions); });
         
-        const currentRadarHtml = smartHtml || '<div class="col-12 text-center p-4 fw-bold text-success small">الرادار نظيف، لا توجد طلبات.</div>';
+        const currentRadarHtml = smartHtml || '<div class="col-12 text-center p-4 fw-bold text-success small">الرادار نظيف، لا توجد طلبات نشطة.</div>';
         if (lastRadarHtml !== currentRadarHtml) {
             const container = document.getElementById('smartOrdersContainer');
             container.innerHTML = currentRadarHtml;
@@ -1023,7 +1038,10 @@
 
     window.withdrawOrderOptUI = function(orderId, driverPhone, element) {
         if(!confirm("هل أنت متأكد من سحب الطلب من هذا الكابتن وإعادته للرادار للبحث عن غيره؟")) return;
-        fetchPauseTimeout = setTimeout(() => { fetchPauseTimeout = null; }, 3000);
+        
+        const oldScript = document.getElementById('withdraw-script');
+        if (oldScript) oldScript.remove();
+        
         element.classList.add('btn-loading');
         const card = document.getElementById(`order-${orderId}`);
         if(card) card.style.opacity = '0.5';
@@ -1031,11 +1049,12 @@
         localOverrides.orders[String(orderId)] = { status: 'pending_driver', driverPhone: 'pending_driver', ts: Date.now() };
 
         const url = `${API_URL}?action=DECLINE_ORDER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}&pass=${masterPassword}`;
-        const script = document.createElement('script'); script.src = `${url}&callback=silentCallback&ts=${Date.now()}`; 
+        const script = document.createElement('script'); 
+        script.id = 'withdraw-script';
+        script.src = `${url}&callback=silentCallback&ts=${Date.now()}`; 
         
         script.onload = () => script.remove(); 
         script.onerror = () => { script.remove(); window.showToast("فشل الاتصال", "error"); if(card) card.style.opacity = '1'; };
-        setTimeout(() => { if(script.parentNode) script.remove(); }, 15000);
         
         document.body.appendChild(script); window.showToast("تم سحب الطلب وإعادته للرادار", "success");
     }
@@ -1067,7 +1086,10 @@
 
     window.assignDriverOptUI = function(orderId, driverPhone, element) {
         if(!driverPhone) return;
-        fetchPauseTimeout = setTimeout(() => { fetchPauseTimeout = null; }, 3000);
+        
+        const oldScript = document.getElementById('assign-script');
+        if (oldScript) oldScript.remove();
+        
         element.classList.add('btn-loading');
         const card = document.getElementById(`order-${orderId}`);
         if(card) card.style.opacity = '0.5';
@@ -1075,24 +1097,29 @@
         localOverrides.orders[String(orderId)] = { status: 'manual_pending', driverPhone: driverPhone, ts: Date.now() };
 
         const url = `${API_URL}?action=ASSIGN_DRIVER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}&pass=${masterPassword}`;
-        const script = document.createElement('script'); script.src = `${url}&callback=silentCallback&ts=${Date.now()}`; 
+        const script = document.createElement('script'); 
+        script.id = 'assign-script';
+        script.src = `${url}&callback=silentCallback&ts=${Date.now()}`; 
         
         script.onload = () => script.remove(); 
         script.onerror = () => { script.remove(); window.showToast("فشل الاتصال", "error"); if(card) card.style.opacity = '1'; };
-        setTimeout(() => { if(script.parentNode) script.remove(); }, 15000);
         
         document.body.appendChild(script); window.showToast("تم إرسال التعيين", "success");
     }
 
     window.resetDebtOptUI = function(type, id, element) {
         if(!confirm(`تأكيد تصفير ديون (${id})؟`)) return;
-        fetchPauseTimeout = setTimeout(() => { fetchPauseTimeout = null; }, 3000);
+        
+        const oldScript = document.getElementById('reset-script');
+        if (oldScript) oldScript.remove();
+        
         element.classList.add('btn-loading');
         const url = `${API_URL}?action=RESET_DEBT&type=${type}&id=${id}&token=${API_TOKEN}&pass=${masterPassword}`;
-        const script = document.createElement('script'); script.src = `${url}&callback=silentCallback&ts=${Date.now()}`; 
+        const script = document.createElement('script'); 
+        script.id = 'reset-script';
+        script.src = `${url}&callback=silentCallback&ts=${Date.now()}`; 
         
         script.onload = () => script.remove(); script.onerror = () => script.remove();
-        setTimeout(() => { if(script.parentNode) script.remove(); }, 15000);
         
         document.body.appendChild(script); window.showToast("تم تصفير الديون", "success");
     }
@@ -1120,20 +1147,22 @@
              if (type === 'DRIVER') localOverrides.drivers[String(id)] = { status: newStatus, ts: Date.now() };
         }
         
-        fetchPauseTimeout = setTimeout(() => { fetchPauseTimeout = null; }, 3000); 
+        const oldScript = document.getElementById('action-script');
+        if (oldScript) oldScript.remove();
+        
         element.classList.add('btn-loading'); 
 
         const script = document.createElement('script'); 
+        script.id = 'action-script';
         script.src = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${id}&status=${newStatus}&token=${API_TOKEN}&pass=${masterPassword}&callback=silentCallback&ts=${Date.now()}`; 
         
         script.onload = () => script.remove(); script.onerror = () => script.remove();
-        setTimeout(() => { if(script.parentNode) script.remove(); }, 15000);
         
         document.body.appendChild(script); window.showToast("تم إرسال الأمر", "success");
     }
 
     window.silentCallback = function(response) {
-        if(!response.success) { window.showToast("خطأ: " + (response.msg || response.error), "error"); fetchColdData(); }
+        if(!response.success) { window.showToast("خطأ: " + (response.msg || response.error), "error"); window.fetchColdData(); }
     };
 
     window.renderArchive = function() {
