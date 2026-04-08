@@ -1,1389 +1,1056 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
+    <script>
+        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 2.8 - الدخول الآمن والربط الذكي) ---
+        const CURRENT_APP_VERSION = "2.8"; 
+        if (localStorage.getItem('hut_res_app_version') !== CURRENT_APP_VERSION) {
+            console.log("نسخة جديدة مكتشفة... جاري التحديث الإجباري لتسريع النظام!");
+            localStorage.setItem('hut_res_app_version', CURRENT_APP_VERSION);
+            if ('caches' in window) { caches.keys().then(names => { for (let name of names) caches.delete(name); }); }
+            if ('serviceWorker' in navigator) { navigator.serviceWorker.getRegistrations().then(regs => { for(let reg of regs) reg.update(); }); }
+            window.location.reload(true);
+        }
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     
-    <title>مكتب سفيان | الإدارة العليا</title>
-    
-    <meta name="theme-color" content="#fcfcfd">
+    <title>مطاعم سفيان | نظام الحوت</title>
+
+    <meta name="theme-color" content="#1e3a8a">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <meta name="apple-mobile-web-app-title" content="إدارة الحوت">
-    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="مطاعم سفيان">
     
-    <link rel="apple-touch-icon" href="master-logo.png">
-    <link rel="manifest" href="manifest_master.json">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
 
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest" defer></script>
     
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js" defer></script>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
-    <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js" defer></script>
-
-    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
-
     <style>
-        /* 💎 Design System Variables (ORANGE THEME) */
-        :root { 
-            --sidebar-width: 280px; 
-            --primary-orange: #f97316; /* Main Modern Orange */
-            --accent-orange: #ea580c; /* Deep Orange for hover/active */
-            --light-orange: #fff7ed; /* Very soft orange for backgrounds */
-            --bg-main: #fcfcfd; /* Clean almost white background */
-            --card-bg: #ffffff; 
-            --text-dark: #1e293b; 
-            --text-muted: #64748b;
-            --success-color: #10b981;
-            --danger-color: #ef4444;
-            --warning-color: #f59e0b;
-            --bottom-nav-height: 80px; 
-            
-            /* Modern Shadows */
-            --shadow-sm: 0 4px 15px rgba(0, 0, 0, 0.03);
-            --shadow-md: 0 10px 30px rgba(249, 115, 22, 0.06);
-            --shadow-float: 0 20px 40px rgba(0, 0, 0, 0.06);
-            --shadow-inner: inset 0 2px 4px rgba(0,0,0,0.02);
-            --neumorph-shadow: 6px 6px 15px rgba(0,0,0,0.03), -6px -6px 15px rgba(255,255,255,0.8);
-        }
-        
-        /* 1️⃣ Global Reset & Typography */
-        html, body { 
-            height: 100%; 
-            overflow: hidden; 
-            overscroll-behavior: none; 
-            background-color: var(--bg-main); 
-            font-family: 'Cairo', sans-serif; 
-            color: var(--text-dark); 
-            -webkit-tap-highlight-color: transparent; 
-        }
-        
-        /* 2️⃣ Auth Screen (Glassmorphism) */
-        #authOverlay { position: fixed; inset: 0; background: var(--bg-main); z-index: 10000; display: flex; align-items: center; justify-content: center; }
-        .auth-card { 
-            background: rgba(255, 255, 255, 0.85); 
-            backdrop-filter: blur(20px); 
-            border-radius: 35px; 
-            padding: 40px 30px; 
-            width: 90%; max-width: 400px; 
-            box-shadow: var(--shadow-float); 
-            border: 1px solid rgba(255,255,255,0.6); 
-            text-align: center; 
-        }
-        .auth-input { 
-            background: var(--bg-main); 
-            border: 2px solid transparent; 
-            border-radius: 20px; 
-            padding: 16px; 
-            font-weight: 700; 
-            width: 100%; 
-            text-align: center; 
-            color: var(--primary-orange); 
-            outline: none; 
-            transition: 0.3s; 
-            margin-bottom: 20px;
-        }
-        .auth-input:focus { background: white; border-color: var(--accent-orange); box-shadow: 0 0 0 4px var(--light-orange); }
-        .auth-btn { 
-            background: var(--primary-orange); 
-            color: white; 
-            border: none; 
-            border-radius: 20px; 
-            padding: 16px; 
-            width: 100%; 
-            font-weight: 800; 
-            font-size: 1.1rem; 
-            box-shadow: var(--shadow-md); 
-            transition: 0.2s; 
-        }
-        .auth-btn:active { transform: scale(0.96); box-shadow: none; }
-
-        /* 3️⃣ Layout Structure */
-        #mainDashboard { display: flex; height: 100%; width: 100%; overflow: hidden; }
-        .admin-tab { display: none; animation: slideInFade 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
-        .admin-tab.active-tab { display: block; }
-        @keyframes slideInFade { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-        
-        /* 📱 Mobile Layout (Advanced UX) */
-        @media (max-width: 768px) {
-            .sidebar { display: none !important; }
-            .desktop-header { display: none !important; }
-            .main-content { margin-right: 0 !important; padding: 0 !important; width: 100%; height: 100%; position: relative; background: var(--bg-main); }
-            
-            /* Floating Bottom Navigation */
-            .bottom-nav { 
-                display: flex; 
-                position: fixed; bottom: 0; left: 0; width: 100%; 
-                height: var(--bottom-nav-height); 
-                background: rgba(255,255,255,0.92); 
-                backdrop-filter: blur(15px); 
-                justify-content: space-around; align-items: center; 
-                z-index: 9999; 
-                box-shadow: 0 -10px 40px rgba(0,0,0,0.05); 
-                padding-bottom: env(safe-area-inset-bottom); 
-                border-top-left-radius: 35px; border-top-right-radius: 35px; 
-            }
-            .b-nav-item { display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--text-muted); font-size: 0.75rem; font-weight: 800; width: 25%; transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1); cursor: pointer; padding: 10px 0; opacity: 0.7;}
-            .b-nav-item.active { color: var(--primary-orange); opacity: 1;}
-            .b-nav-item.active i { color: var(--primary-orange); transform: translateY(-4px); filter: drop-shadow(0 4px 6px rgba(249, 115, 22, 0.3)); }
-            
-            .admin-tab { position: absolute; inset: 0; bottom: var(--bottom-nav-height); overflow-y: auto; background: var(--bg-main); z-index: 5; }
-            
-            /* 🗺️ Interactive Map Screen */
-            #tab-live.active-tab { overflow: hidden; } 
-            .map-wrapper { position: absolute; top: 0; left: 0; width: 100%; height: 60%; z-index: 1; }
-            #adminMap { width: 100%; height: 100%; border: none; background: #262626; /* Dark background to match dark theme map */ }
-            
-            /* Glass Floating Header Over Map */
-            .map-floating-header { position: absolute; top: max(20px, env(safe-area-inset-top)); left: 20px; right: 20px; z-index: 10; display: flex; justify-content: space-between; align-items: center; pointer-events: none; }
-            .map-floating-header > * { pointer-events: auto; }
-            .brand-pill { background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); padding: 10px 20px; border-radius: 30px; display: flex; align-items: center; gap: 10px; box-shadow: var(--shadow-float); border: 1px solid rgba(255,255,255,0.8); }
-            
-            /* Floating Stats Pills Over Map */
-            .map-floating-stats { position: absolute; top: calc(max(20px, env(safe-area-inset-top)) + 70px); right: 20px; z-index: 10; display: flex; flex-direction: column; gap: 12px; pointer-events: none; }
-            .m-stat { background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); padding: 10px 18px; border-radius: 20px; font-weight: 900; font-size: 1rem; box-shadow: var(--shadow-float); display: flex; align-items: center; gap: 10px; pointer-events: auto; border: 1px solid rgba(255,255,255,0.8); color: var(--text-dark); transition: 0.3s; }
-            .m-stat i { color: var(--primary-orange); }
-
-            /* Soft Bottom Sheet (Radar Details) */
-            .bottom-sheet { position: absolute; top: 55%; left: 0; width: 100%; height: 45%; background: var(--bg-main); border-radius: 40px 40px 0 0; z-index: 10; display: flex; flex-direction: column; box-shadow: 0 -20px 40px rgba(0,0,0,0.08); transition: top 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
-            .sheet-handle { width: 50px; height: 6px; background: #cbd5e1; border-radius: 10px; margin: 15px auto; flex-shrink: 0; }
-            .sheet-content { overflow-y: auto; padding: 0 20px 20px 20px; flex: 1; scrollbar-width: none; }
-            .sheet-content::-webkit-scrollbar { display: none; }
-            
-            .desktop-stats { display: none !important; }
-            .tab-inner-padding { padding: 25px 20px; padding-top: max(30px, env(safe-area-inset-top)); padding-bottom: 100px; }
+        /* 💎 Light Blue Minimal Theme */
+        :root {
+            --primary-dark: #1e293b;
+            --primary-blue: #3b82f6; 
+            --deep-blue: #1e3a8a; 
+            --light-blue: #eff6ff; 
+            --bg-main: #f8fafc;
+            --card-bg: #ffffff;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --shadow-sm: 0 4px 15px rgba(59, 130, 246, 0.05);
+            --shadow-md: 0 10px 25px rgba(30, 58, 138, 0.08);
+            --shadow-neu: 6px 6px 15px rgba(0,0,0,0.02), -6px -6px 15px #ffffff;
         }
 
-        /* 💻 Desktop Layout */
-        @media (min-width: 769px) {
-            .sidebar { width: var(--sidebar-width); background: var(--card-bg); height: 100vh; position: fixed; right: 0; top: 0; padding: 30px 20px; z-index: 1005; box-shadow: var(--shadow-sm); border-left: 1px solid rgba(0,0,0,0.05); }
-            .main-content { margin-right: var(--sidebar-width); padding: 40px; height: 100vh; overflow-y: auto; position: relative; width: calc(100% - var(--sidebar-width)); background: var(--bg-main); }
-            .nav-item { display: flex; align-items: center; gap: 15px; padding: 16px 20px; color: var(--text-muted); text-decoration: none; border-radius: 20px; margin-bottom: 10px; cursor: pointer; transition: 0.3s; font-weight: 700; }
-            .nav-item:hover { background: var(--light-orange); color: var(--primary-orange); transform: translateX(-5px); }
-            .nav-item.active { background: var(--primary-orange); color: white; box-shadow: var(--shadow-md); font-weight: 900; }
-            
-            .map-wrapper { width: 100%; height: 500px; margin-bottom: 30px; }
-            #adminMap { width: 100%; height: 100%; border-radius: 30px; box-shadow: var(--shadow-md); background: #262626; z-index: 1; border: 5px solid white; } /* Dark Map matching */
-            .map-floating-header, .map-floating-stats, .sheet-handle { display: none !important; }
-            .desktop-stats { display: flex; }
+        body { 
+            background: var(--bg-main); font-family: 'Cairo', sans-serif; color: var(--primary-dark); 
+            -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none;
+            overscroll-behavior-y: contain; padding-bottom: env(safe-area-inset-bottom);
         }
 
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+        input, textarea, select { user-select: text !important; -webkit-user-select: text !important; }
+        .hidden-section { display: none !important; }
 
-        /* Smooth Stat Cards */
-        .stat-compact { background: var(--card-bg); border-radius: 28px; padding: 25px; box-shadow: var(--shadow-sm); display: flex; align-items: center; justify-content: space-between; transition: 0.3s; border: 1px solid rgba(255,255,255,0.8); }
-        .stat-compact:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); }
-        .stat-compact .icon-box { width: 55px; height: 55px; border-radius: 20px; display: flex; align-items: center; justify-content: center; background: var(--light-orange); }
-        .stat-compact h3 { margin: 0; font-weight: 900; font-size: 2rem; color: var(--text-dark); }
-        .stat-compact p { margin: 0; font-weight: 700; font-size: 0.9rem; color: var(--text-muted); }
-
-        /* List Cards (Partners & Drivers) */
-        .stat-widget { background: var(--card-bg); border-radius: 28px; padding: 25px; box-shadow: var(--shadow-sm); height: 100%; transition: 0.3s; border: 1px solid rgba(0,0,0,0.03); display: flex; flex-direction: column;}
-        .stat-widget:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
-        
-        /* Modern Pill Filters */
-        .filter-btn-group { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 10px; margin-bottom: 20px; scrollbar-width: none; }
-        .filter-btn-group::-webkit-scrollbar { display: none; }
-        .filter-btn { background: var(--card-bg); border: 1px solid rgba(0,0,0,0.05); padding: 12px 24px; border-radius: 24px; font-weight: 800; color: var(--text-muted); cursor: pointer; font-size: 0.9rem; white-space: nowrap; box-shadow: var(--shadow-sm); transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
-        .filter-btn.active { background: var(--primary-orange); color: white; border-color: var(--primary-orange); box-shadow: 0 8px 20px rgba(249, 115, 22, 0.2); }
-        .filter-btn .badge-count { background: #f1f5f9; color: var(--text-dark); padding: 2px 8px; border-radius: 10px; margin-right: 6px; font-size: 0.75rem; }
-        .filter-btn.active .badge-count { background: rgba(255,255,255,0.2); color: white; }
-        
-        /* 📦 The Core: Smart Order Cards */
-        .smart-order-card { 
-            background: var(--card-bg); 
-            border-radius: 28px; 
-            padding: 20px; 
-            margin-bottom: 15px; 
-            box-shadow: var(--shadow-sm); 
-            position: relative; 
-            transition: 0.3s; 
-            border: 1px solid rgba(0,0,0,0.03); 
-            overflow: hidden; 
+        /* Loading Screen */
+        #loadingOverlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);
+            z-index: 9999; display: none; align-items: center; justify-content: center;
+            flex-direction: column; color: var(--primary-blue);
         }
-        /* Side status indicator */
-        .smart-order-card::before { content: ''; position: absolute; right: 0; top: 0; bottom: 0; width: 6px; background: #cbd5e1; border-radius: 0 28px 28px 0; }
-        
-        .status-danger::before { background: var(--danger-color); } 
-        .status-warning::before { background: var(--warning-color); } 
-        .status-success::before { background: var(--success-color); } 
-        .status-primary::before { background: var(--accent-orange); }
-        .status-purple::before { background: #8b5cf6; } 
-        
-        .batch-card { background-color: #fafaff; border-color: #e0e7ff;}
 
-        /* Pulse Animations for urgent orders */
-        .status-ringing { animation: softPulseWarning 2s infinite; }
-        @keyframes softPulseWarning { 0% { box-shadow: var(--shadow-sm); } 50% { box-shadow: 0 8px 25px rgba(245, 158, 11, 0.2); } 100% { box-shadow: var(--shadow-sm); } }
+        /* 🌊 Header Gradient */
+        .app-header {
+            background: linear-gradient(135deg, var(--deep-blue) 0%, var(--primary-blue) 100%);
+            color: white; padding: 45px 20px 75px 20px; 
+            border-bottom-left-radius: 35px; border-bottom-right-radius: 35px;
+            text-align: center; box-shadow: var(--shadow-md);
+        }
 
-        .status-overdue { animation: softPulseDanger 2s infinite; }
-        @keyframes softPulseDanger { 0% { box-shadow: var(--shadow-sm); } 50% { box-shadow: 0 8px 25px rgba(239, 68, 68, 0.2); } 100% { box-shadow: var(--shadow-sm); } }
+        /* 📦 Minimal Cards */
+        .glass-card {
+            background: var(--card-bg); border-radius: 28px; padding: 25px;
+            border: 1px solid rgba(255,255,255,0.8); box-shadow: var(--shadow-neu); 
+            margin-top: -35px; margin-bottom: 20px; position: relative;
+        }
+        
+        .login-card { 
+            background: var(--card-bg); border-radius: 35px; padding: 35px; 
+            border: 1px solid rgba(59, 130, 246, 0.1); box-shadow: var(--shadow-md); position: relative; 
+        }
+        
+        .form-label { font-weight: 800; color: #64748b; font-size: 0.85rem; margin-bottom: 8px; display: block; text-align: right; }
+        
+        .custom-input {
+            background: #f1f5f9; border: 2px solid transparent; border-radius: 16px;
+            padding: 14px; font-weight: 700; transition: 0.3s; width: 100%; font-size: 0.95rem; color: var(--primary-dark);
+        }
+        .custom-input.phone-format { letter-spacing: 2px; font-size: 1.2rem; text-align: center; color: var(--primary-blue); }
+        .custom-input:focus { background: white; border-color: var(--primary-blue); outline: none; box-shadow: 0 0 0 4px var(--light-blue); }
 
-        .delay-badge { position: absolute; top: 15px; left: 15px; background: #fef2f2; color: var(--danger-color); padding: 6px 12px; border-radius: 16px; font-size: 0.75rem; font-weight: 900; border: 1px solid #fecaca; }
-        
-        .info-card-inner { background: var(--bg-main); padding: 15px; border-radius: 20px; margin-top: 15px; border: 1px solid rgba(0,0,0,0.02);}
-        
-        /* Interactive Buttons */
-        .btn-call-mini { background: #ecfdf5; color: var(--success-color); border: none; border-radius: 16px; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; flex-shrink: 0; }
-        .btn-call-mini:active { transform: scale(0.9); background: #d1fae5; }
-        
-        .btn-track { background: var(--light-orange); color: var(--primary-orange); border: none; border-radius: 16px; padding: 8px 16px; font-size: 0.8rem; font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: 0.2s;}
-        .btn-track:active { transform: scale(0.95); background: #ffedd5; }
-        
-        .manual-assign-select { border: 1px solid rgba(0,0,0,0.05); border-radius: 16px; padding: 8px 12px; font-size: 0.8rem; font-weight: 800; max-width: 130px; background: white; color: var(--primary-orange); outline: none; cursor: pointer; }
+        .btn-action {
+            background: var(--primary-blue); color: white; border: none; border-radius: 16px;
+            padding: 18px; font-weight: 900; width: 100%; font-size: 1.05rem;
+            display: flex; align-items: center; justify-content: center; gap: 10px;
+            transition: 0.2s; box-shadow: var(--shadow-md); margin-bottom: 20px;
+        }
+        .btn-action:active:not(:disabled) { transform: scale(0.96); box-shadow: none; }
+        .btn-action:disabled { opacity: 0.7; cursor: not-allowed; }
 
-        /* Toolbar & Analytics */
-        .archive-toolbar { background: var(--card-bg); border-radius: 28px; padding: 20px; box-shadow: var(--shadow-sm); margin-bottom: 20px; border: 1px solid rgba(0,0,0,0.03); }
-        .analytics-bar { background: var(--primary-orange); background-image: linear-gradient(135deg, #f97316 0%, #ea580c 100%); color: white; border-radius: 28px; padding: 25px 30px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; box-shadow: var(--shadow-md); }
+        /* 📊 Mini Stats */
+        .stat-box { background: var(--light-blue); border-radius: 18px; padding: 15px 10px; text-align: center; border: 1px solid rgba(59,130,246,0.1); transition: 0.3s;}
+        .stat-box h3 { margin: 0; font-weight: 900; color: var(--primary-blue); font-size: 1.4rem;}
+        .stat-box p { margin: 0; font-size: 0.7rem; font-weight: 800; color: #64748b; margin-top: 4px; text-transform: uppercase;}
+
+        /* Toggle Buttons */
+        .order-type-toggle { display: flex; background: #f1f5f9; border-radius: 18px; padding: 5px; margin-bottom: 20px; }
+        .toggle-btn {
+            flex: 1; text-align: center; padding: 10px; font-weight: 800; color: #64748b;
+            border-radius: 14px; cursor: pointer; transition: 0.3s;
+            display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 0.85rem;
+        }
+        .toggle-btn.active { background: white; color: var(--primary-blue); box-shadow: var(--shadow-sm); }
+
+        .camera-btn { background: var(--light-blue); border: 2px dashed var(--primary-blue); border-radius: 18px; padding: 25px; text-align: center; color: var(--primary-blue); font-weight: 800; cursor: pointer; transition: 0.2s; display: flex; flex-direction: column; align-items: center; gap: 10px; font-size: 0.9rem;}
+        .camera-btn:active { transform: scale(0.98); background: #dbeafe; }
+        .preview-img { width: 100%; max-height: 180px; object-fit: contain; border-radius: 12px; border: 2px solid #e2e8f0; margin-top: 15px; }
+
+        /* 🚀 Compact Order Cards */
+        .live-order-card { 
+            background: white; border-radius: 20px; padding: 16px; margin-bottom: 12px; 
+            border: 1px solid rgba(59, 130, 246, 0.1); border-right: 4px solid var(--primary-blue); 
+            display: flex; flex-direction: column; gap: 8px; box-shadow: var(--shadow-sm); transition: 0.3s; 
+        }
         
-        /* Action Buttons (Accept, Pause, Delete) */
-        .sov-btn { border: none; border-radius: 16px; width: 42px; height: 42px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; }
-        .sov-btn:active { transform: scale(0.9); box-shadow: none; }
-        .sov-accept { background: #ecfdf5; color: var(--success-color); } 
-        .sov-pause { background: #fffbeb; color: var(--warning-color); } 
-        .sov-delete { background: #fef2f2; color: var(--danger-color); } 
-        .sov-reset { background: var(--bg-main); color: var(--text-muted); } 
-        .sov-call { background: var(--light-orange); color: var(--primary-orange); }
-
-        /* Toast Notifications */
-        #toast-container { position: fixed; top: max(20px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 20000; display: flex; flex-direction: column; gap: 10px; width: 90%; max-width: 350px;}
-        .toast-msg { background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); border-radius: 24px; padding: 16px 20px; box-shadow: var(--shadow-float); display: flex; align-items: center; gap: 12px; font-weight: 800; font-size: 0.9rem; color: var(--text-dark); animation: slideDown 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; border: 1px solid rgba(0,0,0,0.05); }
-        .toast-msg.success i { color: var(--success-color); } .toast-msg.error i { color: var(--danger-color); }
+        .btn-call-mini { background: #ecfdf5; border: none; border-radius: 12px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--success); transition: 0.2s;}
+        .btn-call-mini:active { transform: scale(0.9); }
         
-        /* Modals */
-        #emergencyModal, #invoiceModal { position: fixed; inset: 0; background: rgba(15,23,42,0.6); z-index: 30000; display: none; align-items: center; justify-content: center; backdrop-filter: blur(5px); padding: 20px;}
-        .emergency-card, .invoice-card { background: var(--card-bg); border-radius: 35px; padding: 30px; width: 100%; max-width: 400px; text-align: center; box-shadow: var(--shadow-float); position: relative; border: 1px solid rgba(255,255,255,0.8);}
-        .emergency-card { border-top: 8px solid var(--danger-color); animation: pulseAlert 2s infinite; }
-        .invoice-row { display: flex; justify-content: space-between; margin-bottom: 12px; font-weight: 700; font-size: 0.9rem; color: var(--text-dark); padding: 8px 0; border-bottom: 1px dashed #e2e8f0;}
-        .invoice-row:last-child { border-bottom: none;}
+        .btn-cancel-grace { background: #fef2f2; color: var(--danger); border: none; padding: 6px 12px; border-radius: 10px; font-size: 0.75rem; font-weight: 800; cursor: pointer; transition: 0.2s; display: flex; align-items: center; gap: 4px;}
+        .btn-cancel-grace:active:not(:disabled) { transform: scale(0.95); }
+        .btn-cancel-grace:disabled { opacity: 0.6; cursor: not-allowed; }
 
-        /* Map Markers */
-        .perf-dot { position: absolute; top: 15px; left: 15px; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; box-shadow: 0 4px 10px rgba(0,0,0,0.1); color: white;}
-        .perf-green { background-color: var(--success-color); } .perf-yellow { background-color: var(--warning-color); } .perf-red { background-color: var(--danger-color); } 
-
-        .marker-pulse { border-radius: 50%; border: 3px solid white; box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.7); animation: pulseMarker 2s infinite; }
-        @keyframes pulseMarker { 0% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.7); } 70% { box-shadow: 0 0 0 15px rgba(249, 115, 22, 0); } 100% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0); } }
-        .path-animated { animation: dash 20s linear infinite; }
-        @keyframes dash { to { stroke-dashoffset: -1000; } }
-
-        /* Utilities */
-        .btn-loading { color: transparent !important; pointer-events: none; position: relative; }
-        .btn-loading::after { content: ''; position: absolute; left: 50%; top: 50%; width: 20px; height: 20px; margin-left: -10px; margin-top: -10px; border: 3px solid rgba(0,0,0,0.1); border-top-color: currentColor; border-radius: 50%; animation: spin 0.8s linear infinite; }
-        @keyframes spin { 100% { transform: rotate(360deg); } }
-        .flash-update { animation: flashHighlight 1s ease-out; }
-        @keyframes flashHighlight { 0% { background-color: var(--light-orange); } 100% { background-color: var(--card-bg); } }
+        /* Clean Progress Tracker */
+        .progress-tracker { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; position: relative; padding: 0 5px; }
+        .progress-line { position: absolute; top: 10px; left: 15px; right: 15px; height: 3px; background: #f1f5f9; z-index: 1; }
+        .progress-line-fill { position: absolute; top: 10px; right: 15px; height: 3px; background: var(--primary-blue); z-index: 2; transition: 0.4s ease-out; }
+        .progress-step { position: relative; z-index: 3; display: flex; flex-direction: column; align-items: center; gap: 4px; width: 25%; }
+        .progress-dot { width: 22px; height: 22px; border-radius: 50%; background: #f1f5f9; border: 3px solid white; display: flex; align-items: center; justify-content: center; transition: 0.3s; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .progress-step.active .progress-dot { background: var(--primary-blue); border-color: var(--light-blue); }
+        .progress-step.current .progress-dot { background: var(--warning); border-color: white; animation: pulseDot 1.5s infinite; }
+        .progress-label { font-size: 0.6rem; font-weight: 800; color: #64748b; text-align: center; }
         
-        .table { border-collapse: separate; border-spacing: 0 8px; }
-        .table tbody tr { background: var(--card-bg); box-shadow: var(--shadow-sm); transition: 0.2s; border-radius: 20px;}
-        .table tbody tr:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
-        .table td { border: none; padding: 18px 15px; }
-        .table td:first-child { border-top-right-radius: 20px; border-bottom-right-radius: 20px; }
-        .table td:last-child { border-top-left-radius: 20px; border-bottom-left-radius: 20px; }
+        @keyframes pulseDot { 0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); } 70% { box-shadow: 0 0 0 8px rgba(245, 158, 11, 0); } 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); } }
+
+        /* Compact Archive Item */
+        .archive-item { display: flex; justify-content: space-between; align-items: center; background: var(--card-bg); padding: 12px 15px; border-radius: 16px; border: 1px solid #f1f5f9; margin-bottom: 8px; box-shadow: var(--shadow-sm);}
+        
+        .success-toast { background: var(--light-blue); color: var(--primary-blue); border-radius: 20px; padding: 15px; margin-top: 15px; display: flex; align-items: center; gap: 12px; border: 1px solid rgba(59, 130, 246, 0.2); animation: slideUp 0.4s ease-out; }
+        
+        @keyframes slideUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+
+        #pickerMap { height: 200px; border-radius: 16px; border: 2px solid #cbd5e1; z-index: 1; position: relative; }
+        .map-crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -100%); z-index: 1000; pointer-events: none; width: 35px; height: 35px; }
+
+        .waiting-pulse { animation: softPulse 2s infinite; display: inline-block;}
+        @keyframes softPulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.7; transform: scale(0.95); } 100% { opacity: 1; transform: scale(1); } }
+        .btn-refresh-waiting { background: #f1f5f9; color: var(--text-muted); border: none; font-weight: 800; border-radius: 16px; padding: 12px; transition: 0.2s; font-size: 0.9rem;}
+        .btn-refresh-waiting:active { background: #e2e8f0; }
+
+        /* Global App Toast */
+        #global-toast-container { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 99999; display: flex; flex-direction: column; gap: 10px; width: 90%; max-width: 350px;}
     </style>
 </head>
 <body>
 
-<div id="toast-container"></div>
+<div id="global-toast-container"></div>
 
-<audio id="adminAlertSound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" preload="auto"></audio>
-<audio id="emergencySound" src="https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg" preload="auto" loop></audio>
+<div id="loadingOverlay">
+    <div class="spinner-grow text-primary" role="status"></div>
+    <span class="mt-3 fw-bold small" id="loadingText">جاري المعالجة...</span>
+</div>
 
-<div id="emergencyModal">
-    <div class="emergency-card">
-        <i data-lucide="alert-triangle" size="60" color="#ef4444" class="mb-3"></i>
-        <h3 class="fw-black text-danger">نداء سيادي!</h3>
-        <p class="text-muted fw-bold mb-4">يوجد طلب معلق لفترة طويلة جداً ويحتاج لتدخل يدوي للتعيين.</p>
-        <button class="auth-btn bg-danger" onclick="closeEmergency()">حسناً، سأتدخل الآن</button>
+<audio id="welcomeSound" src="https://actions.google.com/sounds/v1/water/water_drop.ogg"></audio>
+
+<div id="loginSection" class="container py-4">
+    <div class="text-center mb-4 mt-2">
+        <div class="d-inline-block p-4 rounded-circle shadow-sm mb-3" style="background: var(--light-blue);">
+            <i data-lucide="store" size="45" color="#3b82f6"></i>
+        </div>
+        <h2 class="fw-black text-dark">مكتب سفيان للشركاء</h2>
+        <p class="text-muted fw-bold small">المنصة المدعومة بنظام الحوت</p>
+    </div>
+
+    <div class="row justify-content-center">
+        <div class="col-lg-5">
+            <div class="login-card" id="authBox">
+                <div class="mb-4 text-center">
+                    <label class="form-label text-center">رقم هاتف الإدارة المسجل</label>
+                    <input type="tel" id="checkPhone" class="custom-input phone-format" placeholder="07XXXXXXXXX" dir="ltr" autocomplete="off">
+                </div>
+
+                <div id="registerFields" class="hidden-section text-start" style="animation: fadeIn 0.5s;">
+                    <hr class="my-4 opacity-10">
+                    <div class="d-flex align-items-center justify-content-center gap-2 mb-4 text-primary">
+                        <i data-lucide="sparkles" size="18"></i>
+                        <h6 class="fw-black m-0">تسجيل مطعم جديد</h6>
+                    </div>
+                    
+                    <div class="mb-3"><input type="text" id="regName" class="custom-input py-2" placeholder="الاسم التجاري للمطعم" autocomplete="off"></div>
+                    <div class="mb-3"><input type="text" id="regArea" class="custom-input py-2" placeholder="منطقة المطعم الأساسية" autocomplete="off"></div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label" style="text-align: right; color: var(--primary-blue); font-size: 0.8rem;">
+                            <i data-lucide="map-pin" size="14"></i> حدد موقع المطعم بدقة:
+                        </label>
+                        <div class="d-flex gap-2 mb-2">
+                            <input type="text" id="mapSearchInput" class="custom-input py-2 mb-0" placeholder="بحث بالمنطقة..." style="font-size: 0.8rem; flex: 1;">
+                            <button type="button" class="btn btn-primary fw-bold rounded-3 px-3" onclick="searchLocation()" style="background: var(--primary-blue); border: none; font-size:0.85rem;">بحث</button>
+                        </div>
+                        <div class="position-relative">
+                            <div id="pickerMap"></div>
+                            <img src="https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png" class="map-crosshair" alt="Pin">
+                            <button type="button" class="btn btn-sm btn-light text-primary position-absolute shadow-sm border fw-bold d-flex align-items-center gap-1" style="bottom: 10px; right: 10px; z-index: 1000; border-radius: 10px; font-size:0.7rem;" onclick="forceLocateMe()">
+                                <i data-lucide="crosshair" size="14"></i> موقعي
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="row g-2 mb-3 mt-2">
+                        <div class="col-6"><input type="number" id="regComm" class="custom-input py-2" placeholder="العمولة (د.ع)" autocomplete="off"></div>
+                        <div class="col-6">
+                            <select id="regPay" class="custom-input py-2 px-2">
+                                <option value="المطعم يدفع" selected>المطعم يدفع</option>
+                                <option value="مناصفة">مناصفة مع السائق</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label" style="text-align: right; color: var(--primary-blue); font-size: 0.8rem;">
+                            <i data-lucide="clipboard-list" size="14"></i> لستة الأسعار:
+                        </label>
+                        <textarea id="regPriceList" class="custom-input" rows="3" placeholder="انسخ الرسالة من الواتساب والصقها..." style="font-size: 0.85rem; text-align: right; resize: none;"></textarea>
+                    </div>
+                </div>
+
+                <button class="btn-action" id="mainAuthBtn" onclick="manualAuthAction()">
+                    دخول المنصة <i data-lucide="arrow-left" size="18"></i>
+                </button>
+            </div>
+
+            <div class="login-card hidden-section text-center" id="waitingBox">
+                <div class="waiting-pulse mb-3 p-4 rounded-circle d-inline-block" style="background: var(--light-blue);">
+                    <i data-lucide="hourglass" size="50" class="text-primary"></i>
+                </div>
+                <h4 class="fw-black mb-2 text-dark">أنت في غرفة الانتظار</h4>
+                <p class="text-muted fw-bold mb-4" style="font-size: 0.85rem;">حسابك قيد المراجعة، ستدخل تلقائياً فور موافقة الإدارة.</p>
+                
+                <div class="d-flex align-items-center justify-content-center gap-2 mb-3">
+                    <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                    <span class="text-primary fw-bold" style="font-size: 0.85rem;" id="waitingStatusText">الاستعلام التلقائي يعمل...</span>
+                </div>
+                <button class="btn-refresh-waiting w-100" onclick="checkWaitingStatus(true)">تحديث يدوي <i data-lucide="refresh-cw" size="14" class="ms-1"></i></button>
+            </div>
+        </div>
     </div>
 </div>
 
-<div id="authOverlay">
-    <div class="auth-card">
-        <div class="mb-4 d-inline-block p-4 rounded-circle" style="background: var(--light-orange);">
-            <i data-lucide="building-2" size="45" color="#f97316"></i>
+<div id="orderSection" class="hidden-section">
+    <div class="app-header">
+        <div class="d-flex justify-content-between align-items-center container px-2">
+            <div class="text-end">
+                <h3 class="fw-black m-0" id="resTitle" style="letter-spacing: -0.5px;">جاري التحميل...</h3>
+                <div class="fw-bold mt-1" style="color: #bfdbfe; font-size: 0.8rem; display: flex; align-items: center; justify-content: flex-end; gap: 4px;">
+                    <i data-lucide="building-2" size="14"></i> مكتب سفيان للشركاء
+                </div>
+            </div>
+            <button class="btn btn-sm btn-light text-primary rounded-pill px-3 fw-bold shadow-sm" onclick="logout()"><i data-lucide="power" size="14" class="me-1"></i> خروج</button>
         </div>
-        <h3 class="fw-black text-dark mb-1">مكتب سفيان</h3>
-        <p class="text-muted fw-bold mb-4" style="font-size:0.9rem;">الإدارة العليا - نظام الحوت</p>
-        <input type="password" id="masterPass" class="auth-input" placeholder="رمز المرور الآمن" autocomplete="off" onkeypress="if(event.key === 'Enter') checkAuth()">
-        <button class="auth-btn" onclick="checkAuth()">تسجيل الدخول</button>
+    </div>
+
+    <div class="container pb-4">
+        <div class="row justify-content-center">
+            <div class="col-lg-5">
+                
+                <div class="glass-card" style="padding: 20px;">
+                    <div class="row g-2">
+                        <div class="col-4">
+                            <div class="stat-box">
+                                <h3 id="statMonthOrders">0</h3>
+                                <p>طلبات الشهر</p>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="stat-box" style="background: #fef2f2; border-color: #fee2e2;">
+                                <h3 id="statUnpaid" class="text-danger">0</h3>
+                                <p>العمولة (د.ع)</p>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="stat-box" style="background: #ecfdf5; border-color: #d1fae5;">
+                                <h3 id="statPayType" class="text-success fs-6 mt-2 mb-1" style="line-height: 1.2;">---</h3>
+                                <p>نظام الدفع</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-card" style="padding: 25px;">
+                    <h5 class="fw-black mb-4 text-dark"><i data-lucide="send" class="me-2 text-primary" size="20"></i> إرسال طلب جديد</h5>
+                    
+                    <div class="order-type-toggle">
+                        <div class="toggle-btn active" id="tabManual" onclick="switchTab('manual')">
+                            <i data-lucide="keyboard" size="16"></i> إدخال يدوي
+                        </div>
+                        <div class="toggle-btn" id="tabPhoto" onclick="switchTab('photo')">
+                            <i data-lucide="camera" size="16"></i> تصوير سريع
+                        </div>
+                    </div>
+                    
+                    <form id="orderForm">
+                        <div class="row g-2 mb-3">
+                            <div class="col-12" id="areaContainer">
+                                <label class="form-label">المنطقة</label>
+                                <select id="customerArea" class="custom-input form-select py-2" onchange="saveDraft(); showSelectedPrice();">
+                                    <option value="" disabled selected>-- جاري الجلب --</option>
+                                </select>
+                                <div id="priceHint" class="text-primary small fw-bold mt-1 hidden-section px-1"></div>
+                                
+                                <div id="customAreaSection" class="hidden-section mt-2 p-3 rounded-4" style="background: var(--light-blue);">
+                                    <input type="text" id="customAreaName" class="custom-input mb-2 py-2 bg-white" placeholder="اسم المنطقة" oninput="saveDraft()">
+                                    <input type="number" id="customAreaPrice" class="custom-input py-2 mb-0 bg-white" placeholder="سعر التوصيل (د.ع)" oninput="saveDraft()">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">سعر الطلب (للكابتن)</label>
+                            <input type="number" id="orderPrice" class="custom-input py-2" placeholder="15000" autocomplete="off" required oninput="saveDraft()">
+                        </div>
+
+                        <div id="manualSection">
+                            <div class="mb-3">
+                                <label class="form-label">هاتف الزبون</label>
+                                <input type="tel" id="customerPhone" class="custom-input phone-format py-2" placeholder="07XXXXXXXXX" dir="ltr" autocomplete="off" oninput="saveDraft()">
+                            </div>
+                            <div class="mb-3">
+                                <input type="text" id="customerDetails" class="custom-input py-2 text-start" placeholder="تفاصيل العنوان (اختياري)" autocomplete="off" oninput="saveDraft()">
+                            </div>
+                        </div>
+
+                        <div id="photoSection" class="hidden-section">
+                            <div class="mb-3">
+                                <input type="file" id="receiptPhoto" accept="image/*" capture="environment" class="d-none" onchange="processImage(this)">
+                                <label for="receiptPhoto" class="camera-btn" id="cameraBtn">
+                                    <i data-lucide="scan-line" size="30"></i>
+                                    <span>التقط صورة الوصل</span>
+                                </label>
+                                <div id="photoPreviewContainer" class="hidden-section text-center">
+                                    <img id="photoPreview" class="preview-img" src="" alt="الوصل">
+                                    <button type="button" class="btn btn-sm btn-light text-danger mt-2 fw-bold w-100" onclick="removePhoto()">إعادة التصوير</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button type="submit" id="submitOrderBtn" class="btn-action mt-2">
+                            إطلاق للرادار <i data-lucide="zap" size="18"></i>
+                        </button>
+                    </form>
+
+                    <div id="orderStatusBox" class="hidden-section">
+                        <div class="success-toast">
+                            <i data-lucide="check-circle" size="28"></i>
+                            <div style="line-height: 1.3;">
+                                <div class="fw-black text-dark" id="statusMsg">تم الإرسال لحظياً!</div>
+                                <span class="text-primary small fw-bold">يبحث عن كابتن الآن 📡</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-2">
+                    <div class="order-type-toggle mb-3" style="background: #e2e8f0; padding:4px;">
+                        <div class="toggle-btn active py-2" id="tabLiveOrders" onclick="switchListTab('live')">
+                            <i data-lucide="activity" size="16"></i> قيد التوصيل
+                        </div>
+                        <div class="toggle-btn py-2" id="tabTodayArchive" onclick="switchListTab('archive')">
+                            <i data-lucide="check-circle-2" size="16"></i> المكتملة
+                        </div>
+                    </div>
+
+                    <div id="activeOrdersList">
+                        <div class="text-center text-muted fw-bold py-4 small">لا توجد طلبات نشطة.</div>
+                    </div>
+
+                    <div id="todayArchiveList" class="hidden-section">
+                        <div class="d-flex justify-content-between align-items-center mb-2 px-1">
+                            <span class="fw-bold text-muted" style="font-size: 0.8rem;">المبيعات اليوم:</span>
+                            <span class="fw-black text-success" id="todayTotalSales">0 <small>د.ع</small></span>
+                        </div>
+                        <div id="todayArchiveItems">
+                            <div class="text-center text-muted fw-bold py-4 small">الأرشيف فارغ اليوم.</div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
     </div>
 </div>
 
-<div class="d-none" id="mainDashboard">
-    <aside class="sidebar" id="sidebar">
-        <div class="d-flex align-items-center gap-3 mb-5 px-2 mt-2">
-            <div class="p-3 rounded-4" style="background: var(--light-orange);"><i data-lucide="building-2" color="#f97316" size="28"></i></div>
-            <div>
-                <h4 class="m-0 fw-black text-dark">مكتب سفيان</h4>
-                <small class="text-muted fw-bold" style="font-size: 0.75rem;">الإدارة المركزية</small>
-            </div>
-        </div>
-        <nav>
-            <div class="nav-item active desktop-nav-link" onclick="showTab(event, 'live')"><i data-lucide="map" size="20"></i> <span>الرصد الميداني</span></div>
-            <div class="nav-item desktop-nav-link" onclick="showTab(event, 'orders')"><i data-lucide="file-text" size="20"></i> <span>الأرشيف المركزي</span></div>
-            <div class="nav-item desktop-nav-link" onclick="showTab(event, 'restaurants')"><i data-lucide="store" size="20"></i> <span>إدارة الشركاء</span></div>
-            <div class="nav-item desktop-nav-link" onclick="showTab(event, 'drivers')"><i data-lucide="users" size="20"></i> <span>إدارة الأسطول</span></div>
-        </nav>
-    </aside>
+<script type="module">
+    // 🟢 1. تضمين Firebase 
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getDatabase, ref, onValue, update, set } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-    <main class="main-content">
-        <header class="d-flex justify-content-between align-items-center mb-5 desktop-header">
-            <div>
-                <h2 class="fw-black m-0" style="color: var(--text-dark);">لوحة التحكم</h2>
-                <p class="text-muted m-0 fw-bold">الرصد المباشر - كركوك</p>
-            </div>
-            <div id="liveTimeDesk" class="bg-white px-4 py-2 rounded-4 shadow-sm fw-bold text-primary border border-light" style="color: var(--primary-orange) !important;">00:00</div>
-        </header>
-
-        <div id="tab-live" class="admin-tab active-tab">
-            
-            <div class="row g-4 mb-4 desktop-stats">
-                <div class="col-4"><div class="stat-compact"><div><p>الطلبات النشطة</p><h3 class="val-orders" style="color: var(--primary-orange);">0</h3></div><div class="icon-box text-primary" style="color: var(--primary-orange) !important;"><i data-lucide="package"></i></div></div></div>
-                <div class="col-4"><div class="stat-compact"><div><p>كباتن بالميدان</p><h3 class="text-success val-drivers">0</h3></div><div class="icon-box text-success" style="background:#ecfdf5;"><i data-lucide="truck"></i></div></div></div>
-                <div class="col-4"><div class="stat-compact"><div><p>مطاعم متصلة</p><h3 class="text-warning val-res">0</h3></div><div class="icon-box text-warning" style="background:#fffbeb;"><i data-lucide="store"></i></div></div></div>
-            </div>
-
-            <div class="map-floating-header">
-                <div class="brand-pill">
-                    <i data-lucide="building-2" size="20" color="#f97316"></i>
-                    <h6 class="m-0 fw-black" style="color: var(--primary-orange);">مكتب سفيان</h6>
-                </div>
-                <div id="liveTimeMob" class="brand-pill fw-bold small" style="color: var(--primary-orange);">00:00</div>
-            </div>
-
-            <div class="map-floating-stats">
-                <div class="m-stat"><i data-lucide="package" size="18" style="color: var(--primary-orange);"></i> <span class="val-orders">0</span></div>
-                <div class="m-stat"><i data-lucide="truck" size="18" style="color: #10b981;"></i> <span class="val-drivers">0</span></div>
-                <div class="m-stat"><i data-lucide="store" size="18" style="color: #f59e0b;"></i> <span class="val-res">0</span></div>
-            </div>
-
-            <div class="map-wrapper">
-                <div id="adminMap"></div>
-            </div>
-            
-            <div class="bottom-sheet">
-                <div class="sheet-handle"></div>
-                <div class="sheet-content">
-                    <div class="d-flex justify-content-between align-items-center mb-4 mt-2">
-                        <h5 class="fw-black m-0" style="color: var(--text-dark);"><i data-lucide="activity" class="me-2" size="22" style="color: var(--primary-orange);"></i> الرادار الميداني</h5>
-                    </div>
-                    <div class="filter-btn-group" id="radarFilters">
-                        <button class="filter-btn active" onclick="filterRadar('all', this)">الكل</button>
-                        <button class="filter-btn" style="color: #ef4444;" onclick="filterRadar('pending', this)">معلق بالرادار</button>
-                        <button class="filter-btn" style="color: #10b981;" onclick="filterRadar('active', this)">قيد التوصيل</button>
-                    </div>
-                    <div class="row g-3" id="smartOrdersContainer">
-                        <div class="col-12 text-center p-5 text-muted fw-bold small"><div class="spinner-border spinner-border-sm me-2" style="color: var(--primary-orange);"></div> جاري تهيئة النظام السحابي...</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div id="tab-orders" class="admin-tab tab-inner-padding">
-            <h4 class="fw-black mb-4 text-dark d-md-none">الأرشيف المركزي</h4>
-            <div class="archive-toolbar">
-                <div class="row g-3">
-                    <div class="col-12 col-md-3"><input type="text" id="arcSearch" class="auth-input mb-0 py-3" placeholder="بحث برقم الطلب..." oninput="renderArchive()"></div>
-                    <div class="col-6 col-md-2"><select id="arcRes" class="auth-input mb-0 py-3" onchange="renderArchive()"><option value="">كل المطاعم</option></select></div>
-                    <div class="col-6 col-md-2"><select id="arcDriver" class="auth-input mb-0 py-3" onchange="renderArchive()"><option value="">كل الكباتن</option></select></div>
-                    <div class="col-6 col-md-2"><input type="date" id="arcDateFrom" class="auth-input mb-0 py-3" onchange="renderArchive()"></div>
-                    <div class="col-6 col-md-2"><input type="date" id="arcDateTo" class="auth-input mb-0 py-3" onchange="renderArchive()"></div>
-                    <div class="col-12 col-md-1"><button class="auth-btn mb-0 h-100 d-flex align-items-center justify-content-center" onclick="exportExcel()"><i data-lucide="download" size="20"></i></button></div>
-                </div>
-            </div>
-            <div class="analytics-bar">
-                <div><span class="opacity-75 small fw-bold">الطلبات المكتملة</span> <h2 class="fw-black m-0 mt-1" id="arcTotalCount">0</h2></div>
-                <div class="text-end"><span class="opacity-75 small fw-bold">العمولات المستحقة</span> <h2 class="fw-black m-0 mt-1" id="arcTotalComm">0 <span class="fs-6">د.ع</span></h2></div>
-            </div>
-            <div class="table-responsive p-1">
-                <table class="table text-center align-middle m-0" id="archiveTable" style="min-width: 700px;">
-                    <thead><tr style="color: var(--text-muted); font-size: 0.9rem;"><th>رقم الطلب</th><th>التاريخ</th><th>المطعم</th><th>الكابتن</th><th>الحالة</th></tr></thead>
-                    <tbody id="ordersTableBody"></tbody>
-                </table>
-            </div>
-        </div>
-        
-        <div id="tab-restaurants" class="admin-tab tab-inner-padding">
-            <h4 class="fw-black mb-4 text-dark d-md-none">إدارة الشركاء</h4>
-            <div class="mb-4">
-                <input type="text" id="searchResInput" class="auth-input mb-0 text-start px-4" placeholder="🔍 بحث عن مطعم أو رقم هاتف..." oninput="triggerSearch('RESTAURANT')">
-            </div>
-            <div class="filter-btn-group" id="resFiltersGroup">
-                <button class="filter-btn active" onclick="applySectionFilter('RESTAURANT', 'all', this)">الكل <span class="badge-count" id="badge-res-all">0</span></button>
-                <button class="filter-btn" onclick="applySectionFilter('RESTAURANT', 'pending', this)">طلبات الانضمام <span class="badge-count" id="badge-res-pending">0</span></button>
-                <button class="filter-btn" onclick="applySectionFilter('RESTAURANT', 'active', this)">مفعل <span class="badge-count" id="badge-res-active">0</span></button>
-                <button class="filter-btn" onclick="applySectionFilter('RESTAURANT', 'inactive', this)">استراحة <span class="badge-count" id="badge-res-inactive">0</span></button>
-                <button class="filter-btn" onclick="applySectionFilter('RESTAURANT', 'banned', this)">موقوف <span class="badge-count" id="badge-res-banned">0</span></button>
-            </div>
-            <div class="row g-4" id="resListContainer"></div>
-        </div>
-
-        <div id="tab-drivers" class="admin-tab tab-inner-padding">
-            <h4 class="fw-black mb-4 text-dark d-md-none">إدارة الأسطول</h4>
-            <div class="mb-4">
-                <input type="text" id="searchDriverInput" class="auth-input mb-0 text-start px-4" placeholder="🔍 بحث عن كابتن أو رقم هاتف..." oninput="triggerSearch('DRIVER')">
-            </div>
-            <div class="filter-btn-group" id="driverFiltersGroup">
-                <button class="filter-btn active" onclick="applySectionFilter('DRIVER', 'all', this)">الكل <span class="badge-count" id="badge-driver-all">0</span></button>
-                <button class="filter-btn" onclick="applySectionFilter('DRIVER', 'pending', this)">طلبات الانضمام <span class="badge-count" id="badge-driver-pending">0</span></button>
-                <button class="filter-btn" onclick="applySectionFilter('DRIVER', 'active', this)">بالميدان <span class="badge-count" id="badge-driver-active">0</span></button>
-                <button class="filter-btn" onclick="applySectionFilter('DRIVER', 'inactive', this)">استراحة <span class="badge-count" id="badge-driver-inactive">0</span></button>
-                <button class="filter-btn" onclick="applySectionFilter('DRIVER', 'banned', this)">موقوف <span class="badge-count" id="badge-driver-banned">0</span></button>
-            </div>
-            <div class="row g-4" id="driverListContainer"></div>
-        </div>
-        
-        <nav class="bottom-nav">
-            <div class="b-nav-item active" onclick="showTab(event, 'live')">
-                <i data-lucide="map" size="24"></i><span>الميدان</span>
-            </div>
-            <div class="b-nav-item" onclick="showTab(event, 'orders')">
-                <i data-lucide="file-text" size="24"></i><span>الأرشيف</span>
-            </div>
-            <div class="b-nav-item" onclick="showTab(event, 'restaurants')">
-                <i data-lucide="store" size="24"></i><span>المطاعم</span>
-            </div>
-            <div class="b-nav-item" onclick="showTab(event, 'drivers')">
-                <i data-lucide="users" size="24"></i><span>الأسطول</span>
-            </div>
-        </nav>
-    </main>
-</div>
-
-<div id="invoiceModal" onclick="closeInvoice(event)">
-    <div class="invoice-card" onclick="event.stopPropagation()">
-        <button class="btn btn-sm btn-light rounded-circle position-absolute" style="top:15px; left:15px;" onclick="closeInvoice()"><i data-lucide="x" size="20"></i></button>
-        <div class="invoice-header text-center mb-4">
-            <div class="bg-light d-inline-block p-4 rounded-circle mb-3"><i data-lucide="receipt" style="color: var(--primary-orange);" size="35"></i></div>
-            <h4 class="fw-black m-0 text-dark">فاتورة الطلب</h4>
-            <p class="text-muted fw-bold mb-0 mt-1" id="invOrderId">#HUT-0000</p>
-        </div>
-        <div class="invoice-row"><span>تاريخ ووقت الطلب:</span> <span id="invDate">---</span></div>
-        <div class="invoice-row"><span>المطعم الشريك:</span> <span class="text-warning" id="invRes">---</span></div>
-        <div class="invoice-row"><span>الكابتن المنفذ:</span> <span class="text-success" id="invDriver">---</span></div>
-        <div class="invoice-row"><span>تفاصيل الزبون:</span> <span id="invCust" style="text-align: left;">---</span></div>
-        <div class="invoice-row"><span>سعر الطلب:</span> <span class="fs-6" style="color: var(--primary-orange);" id="invPrice">---</span></div>
-        <hr class="my-3 opacity-25">
-        <div class="invoice-row"><span>العمولة المفروضة:</span> <span id="invComm" class="text-danger">---</span></div>
-        <div class="invoice-row"><span>نظام الدفع:</span> <span id="invPayType">---</span></div>
-        <div class="invoice-row border-0"><span>حالة المحاسبة:</span> <span id="invStatus">---</span></div>
-    </div>
-</div>
-
-<script>
     if (typeof lucide !== 'undefined') lucide.createIcons();
-    
-    // 🟢 السيرفر الأساسي الماسي V25
+
     const API_URL = "https://script.google.com/macros/s/AKfycbzCGEQDmWp5su19c911j1TUxL65t1Y63-LhuXLrq0Z1Qc9sLG9f__4GQa0pN2k5MErw/exec";
     const API_TOKEN = "HUT_SECURE_99";
-    
-    let map, heatLayer, driverClusterGroup, trackPolyline = null;
-    let restaurantMarkersLayer = null; 
-    let globalData = null; 
-    let currentRadarFilter = 'all';
-    let currentResSectionFilter = 'all';
-    let currentDriverSectionFilter = 'all';
-    let masterPassword = ""; 
-    let lastPendingCount = 0; 
-    let driverPerformanceCache = {};
-
-    let renderedOrdersCache = {}; 
-    let renderedDriverCards = {};
-    let renderedResCards = {};
-    let activeDriversOptionsCache = ''; 
-
-    let liveFirebaseOrders = [];
-    let liveDriverMarkers = {}; 
-    let liveResMarkers = {};
-
-    let localOverrides = { orders: {}, drivers: {}, restaurants: {} };
-    let isEmergencyMuted = false;
-
-    let isFirebaseListening = false;
-    let dataRefreshInterval = null;
+    const IMGBB_KEY = "546047e6407dd77fc9518dd37e27cda2"; 
 
     const firebaseConfig = {
-        apiKey: "AIzaSyAo1rmqUzieYZU3RIwXOAN87GkpNrp-_Hc",
-        authDomain: "sufyan-delivery.firebaseapp.com",
-        databaseURL: "https://sufyan-delivery-default-rtdb.europe-west1.firebasedatabase.app",
-        projectId: "sufyan-delivery",
-        storageBucket: "sufyan-delivery.firebasestorage.app",
-        messagingSenderId: "941542380637",
-        appId: "1:941542380637:web:9623fa6e627817ffeba9b4"
+      apiKey: "AIzaSyAo1rmqUzieYZU3RIwXOAN87GkpNrp-_Hc",
+      authDomain: "sufyan-delivery.firebaseapp.com",
+      databaseURL: "https://sufyan-delivery-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "sufyan-delivery"
     };
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
 
-    function showToast(msg, type = 'success') {
-        const container = document.getElementById('toast-container');
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    
+    // متغيرات الجلسة
+    let currentResName = "";
+    let isRegistering = false;
+    let currentOrderMode = 'manual';
+    let base64Receipt = null; 
+    let dataRefreshInterval;
+    let myCustomPriceList = {};
+    let waitingPollingTimer = null; 
+    let globalDriversInfo = []; 
+    
+    let pickerMap;
+    let regLat = 35.468; 
+    let regLng = 44.392;
+
+    let lastActiveHtml = "";
+    let lastArchiveHtml = "";
+    let actionBlacklist = []; 
+    let liveActiveOrders = [];
+
+    // التنبيهات الماسية
+    window.showGlobalToast = function(msg, type = 'success') {
+        const container = document.getElementById('global-toast-container');
         const toast = document.createElement('div');
-        toast.className = `toast-msg ${type}`;
-        const icon = type === 'success' ? '<i data-lucide="check-circle"></i>' : '<i data-lucide="alert-circle"></i>';
-        toast.innerHTML = `${icon} <span style="flex:1;">${msg}</span>`;
+        toast.style.cssText = `background: ${type === 'success' ? '#10b981' : '#ef4444'}; color: white; padding: 12px 20px; border-radius: 16px; font-weight: 800; font-size: 0.9rem; box-shadow: 0 10px 20px rgba(0,0,0,0.2); text-align: center; animation: slideDown 0.3s forwards;`;
+        toast.innerHTML = msg;
         container.appendChild(toast);
-        if (typeof lucide !== 'undefined') lucide.createIcons({root: toast});
-        setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 400); }, 3000);
+        setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 3500);
     }
 
-    function triggerEmergency() {
-        const modal = document.getElementById('emergencyModal');
-        if (modal.style.display !== 'flex') {
-            modal.style.display = 'flex';
-            const audio = document.getElementById('emergencySound');
-            audio.currentTime = 0; audio.play().catch(e=>{});
+    document.addEventListener('contextmenu', event => {
+        const tag = event.target.tagName;
+        if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') event.preventDefault();
+    });
+
+    /* --- دوال التسجيل والخريطة --- */
+    window.initPickerMap = function() {
+        if (!document.getElementById('pickerMap')) return;
+        if(pickerMap) { setTimeout(() => { pickerMap.invalidateSize(); }, 500); return; }
+        pickerMap = L.map('pickerMap', { zoomControl: false }).setView([regLat, regLng], 14);
+        L.control.zoom({ position: 'bottomleft' }).addTo(pickerMap);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(pickerMap);
+        pickerMap.on('move', function () { regLat = pickerMap.getCenter().lat; regLng = pickerMap.getCenter().lng; });
+        if(navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(pos => {
+                regLat = pos.coords.latitude; regLng = pos.coords.longitude; pickerMap.setView([regLat, regLng], 16);
+            }, null, { timeout: 5000 });
         }
     }
 
-    function closeEmergency() {
-        document.getElementById('emergencyModal').style.display = 'none';
-        document.getElementById('emergencySound').pause();
-        isEmergencyMuted = true;
+    window.searchLocation = function() {
+        const query = document.getElementById('mapSearchInput').value.trim();
+        if (!query) return;
+        const coordMatch = query.match(/@([0-9.-]+),([0-9.-]+)/);
+        if (coordMatch && coordMatch.length >= 3) {
+            const lat = parseFloat(coordMatch[1]); const lng = parseFloat(coordMatch[2]);
+            if(pickerMap) { pickerMap.flyTo([lat, lng], 16); regLat = lat; regLng = lng; } return;
+        }
+        window.showLoading(true, "جاري البحث...");
+        fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ", كركوك, العراق")}&limit=1`)
+            .then(res => res.json())
+            .then(data => {
+                window.showLoading(false);
+                if (data && data.length > 0) {
+                    if(pickerMap) { pickerMap.flyTo([data[0].lat, data[0].lon], 16); regLat = data[0].lat; regLng = data[0].lon; }
+                } else { window.showGlobalToast("لم يتم العثور على المكان.", "error"); }
+            }).catch(err => { window.showLoading(false); });
     }
 
-    function calculateDriverPerformanceBySpeed(ordersData, driverPhone) {
-        const today = new Date();
-        const currentMonth = today.getMonth();
-        const currentYear = today.getFullYear();
-        let deliveryTimes = []; 
-        for (let i = ordersData.length - 1; i >= 1; i--) {
-            const o = ordersData[i];
-            const orderDateStr = o[7];
-            if (!orderDateStr) continue;
-            const orderDate = new Date(orderDateStr);
-            if (orderDate.getMonth() === currentMonth && orderDate.getFullYear() === currentYear && o[6] === driverPhone && (o[5] === 'completed' || o[5] === 'مكتمل' || o[5] === 'settled')) {
-                deliveryTimes.push(1); 
-                if(deliveryTimes.length >= 10) break; 
-            }
+    window.forceLocateMe = function() {
+        if(navigator.geolocation) {
+            window.showLoading(true, "تحديد...");
+            navigator.geolocation.getCurrentPosition(pos => {
+                window.showLoading(false);
+                regLat = pos.coords.latitude; regLng = pos.coords.longitude; pickerMap.flyTo([regLat, regLng], 16);
+            }, err => { window.showLoading(false); }, { enableHighAccuracy: true, timeout: 10000 });
         }
-        const count = deliveryTimes.length;
-        if (count >= 10) return { class: 'perf-green', label: 'ممتاز' };
-        if (count > 0) return { class: 'perf-yellow', label: 'نشط' };
-        return { class: 'perf-red', label: 'جديد/متأخر' };
     }
 
-    function checkAuth() {
-        const pass = document.getElementById('masterPass').value.trim();
-        if(!pass) return alert("الرجاء إدخال رمز المرور");
-        masterPassword = encodeURIComponent(pass); 
-        const btn = document.querySelector('.auth-card button');
-        const origText = btn.innerHTML;
-        btn.innerHTML = '<div class="spinner-border spinner-border-sm"></div>';
-        btn.disabled = true;
-
-        const script = document.createElement('script');
-        script.id = 'auth-script';
-        script.src = `${API_URL}?action=VERIFY_MASTER_PASS&pass=${masterPassword}&token=${API_TOKEN}&callback=authResult&ts=${Date.now()}`;
-        document.body.appendChild(script);
-        
-        setTimeout(() => {
-            if(btn.disabled) { btn.innerHTML = origText; btn.disabled = false; showToast("تأخر السيرفر، تحقق من الإنترنت", "error"); }
-        }, 12000);
-    }
-
-    window.authResult = function(response) {
-        const oldScript = document.getElementById('auth-script');
-        if (oldScript) oldScript.remove();
-        
-        const btn = document.querySelector('.auth-card button');
-        btn.innerHTML = 'تسجيل الدخول';
-        btn.disabled = false;
-
-        if(response.success) {
-            document.getElementById('authOverlay').style.display = 'none';
-            document.getElementById('mainDashboard').classList.remove('d-none');
-            
-            const audio = document.getElementById('adminAlertSound');
-            audio.volume = 0; audio.play().then(() => { audio.pause(); audio.currentTime = 0; audio.volume = 1; }).catch(e=>{});
-
-            startClock(); 
-            initMap();
-            document.getElementById('smartOrdersContainer').innerHTML = '<div class="col-12 text-center p-4 fw-bold small" style="color: var(--primary-orange);"><div class="spinner-border spinner-border-sm me-2"></div> جاري تهيئة النظام السحابي...</div>';
-            refreshData(); 
-        } else {
-            masterPassword = ""; showToast("رمز المرور غير صحيح", "error");
-        }
-    };
-
-    function startClock() { setInterval(() => { 
-        const now = new Date();
-        const timeStr = now.toLocaleTimeString('ar-EG', {hour: '2-digit', minute:'2-digit'});
-        document.getElementById('liveTimeDesk').innerText = timeStr; 
-        document.getElementById('liveTimeMob').innerText = timeStr; 
-    }, 1000); }
-
-    function refreshData() {
-        const oldScript = document.getElementById('data-fetch-script');
-        if (oldScript) oldScript.remove(); 
-        const script = document.createElement('script');
-        script.id = 'data-fetch-script';
-        script.src = `${API_URL}?action=getGlobalData&token=${API_TOKEN}&callback=renderData&ts=${Date.now()}`;
-        document.body.appendChild(script);
-    }
-
-    window.renderData = function(data) {
-        const oldScript = document.getElementById('data-fetch-script');
-        if (oldScript) oldScript.remove(); 
-
-        const now = Date.now();
-        data.drivers.forEach(d => { let override = localOverrides.drivers[d[2]]; if (override && (now - override.ts < 120000)) d[4] = override.status; else if (override) delete localOverrides.drivers[d[2]]; });
-        data.restaurants.forEach(r => { let override = localOverrides.restaurants[r[2]]; if (override && (now - override.ts < 120000)) r[4] = override.status; else if (override) delete localOverrides.restaurants[r[2]]; });
-
-        globalData = data; 
-        
-        if(document.getElementById('arcRes').options.length === 1) {
-            data.restaurants.slice(1).forEach(r => document.getElementById('arcRes').innerHTML += `<option value="${r[1]}">${r[1]}</option>`);
-            data.drivers.slice(1).forEach(d => document.getElementById('arcDriver').innerHTML += `<option value="${String(d[2])}">${d[1]}</option>`);
-        }
-
-        const countDrivers = data.drivers.filter(d => d[4] === 'active').length;
-        const countRes = data.restaurants.filter(r => r[4] === 'active').length;
-        document.querySelectorAll('.val-drivers').forEach(el => el.innerText = countDrivers);
-        document.querySelectorAll('.val-res').forEach(el => el.innerText = countRes);
-
-        let resDebts = {}; let resUnpaidCounts = {}; let driverDebts = {};
-        data.restaurants.slice(1).forEach(r => { resDebts[r[1]] = 0; resUnpaidCounts[r[1]] = 0; }); 
-        data.drivers.slice(1).forEach(d => { driverDebts[String(d[2])] = 0; driverPerformanceCache[String(d[2])] = calculateDriverPerformanceBySpeed(data.orders, String(d[2])); }); 
-        
-        data.orders.slice(1).forEach(o => {
-            const status = o[5];
-            if (status === 'completed' || status === 'مكتمل') {
-                const rName = o[1]; const dPhone = String(o[6]);
-                const rData = data.restaurants.find(r => r[1] === rName);
-                if (rData) {
-                    const comm = parseFloat(rData[5]) || 0; const payType = String(rData[8]); 
-                    if (resUnpaidCounts[rName] !== undefined) resUnpaidCounts[rName]++; 
-                    if (payType.includes('مناصفة')) { if (resDebts[rName] !== undefined) resDebts[rName] += (comm / 2); if (driverDebts[dPhone] !== undefined) driverDebts[dPhone] += (comm / 2); } 
-                    else { if (resDebts[rName] !== undefined) resDebts[rName] += comm; }
-                }
-            }
-        });
-
-        try { renderArchive(); } catch(e) { console.error("Archive Error:", e); }
-        try { updateSectionBadges('RESTAURANT', data.restaurants); } catch(e) {}
-        try { updateSectionBadges('DRIVER', data.drivers); } catch(e) {}
-        try { smartRenderFilteredSection('RESTAURANT', data.restaurants, resDebts, resUnpaidCounts); } catch(e) { console.error("Res Error:", e); }
-        try { smartRenderFilteredSection('DRIVER', data.drivers, driverDebts, null); } catch(e) { console.error("Driver Error:", e); }
-
-        if (map && restaurantMarkersLayer) {
-            data.restaurants.slice(1).forEach(r => {
-                const rName = r[1];
-                if(r[4] === 'active' && r[6] && r[7]) { 
-                    const lat = parseFloat(r[6]), lng = parseFloat(r[7]);
-                    if(!isNaN(lat) && !isNaN(lng)) {
-                        if(liveResMarkers[rName]) { liveResMarkers[rName].setLatLng([lat, lng]); } 
-                        else {
-                            const resIcon = L.divIcon({ className: 'custom-res-icon', html: `<div style="background-color: var(--accent-orange); width: 14px; height: 14px; border-radius: 4px; border: 2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transform: rotate(45deg);"></div>`, iconSize: [14, 14], iconAnchor: [7, 7] });
-                            const marker = L.marker([lat, lng], {icon: resIcon, zIndexOffset: -100}).bindPopup(`<div class="text-center fw-bold" style="font-family:'Cairo';"><span class="text-primary">المطعم:</span> ${rName}</div>`);
-                            restaurantMarkersLayer.addLayer(marker); liveResMarkers[rName] = marker;
-                        }
-                    }
-                } else if(liveResMarkers[rName]) { restaurantMarkersLayer.removeLayer(liveResMarkers[rName]); delete liveResMarkers[rName]; }
-            });
-        }
-
-        if (!isFirebaseListening) {
-            isFirebaseListening = true;
-            listenToFirebaseLocations(); 
-            listenToFirebaseOrders(); 
-            dataRefreshInterval = setInterval(refreshData, 180000);
-        } else {
-            if (liveFirebaseOrders.length > 0) { try { smartRenderRadar(liveFirebaseOrders); } catch(e) { console.error("Radar Error:", e); } }
-        }
-    };
-
-    function listenToFirebaseOrders() {
-        db.ref('active_orders').on('value', (snapshot) => {
-            const ordersObj = snapshot.val();
-            let newActiveOrders = []; let currentPendingCount = 0; let hasEmergency = false; const now = Date.now();
-
-            if (ordersObj) {
-                Object.values(ordersObj).forEach(o => {
-                    let orderDetails = "طلب توصيل";
-                    if(globalData && globalData.orders) { const existingOrder = globalData.orders.find(go => go[0] === o.id); if(existingOrder) orderDetails = existingOrder[3]; }
-                    let orderArr = [ o.id || '', o.restaurant || '', o.area || 'غير محدد', orderDetails, o.price || 0, o.status || 'pending', o.driverPhone || '', o.last_update || o.timestamp || '', o.photoUrl || '' ];
-
-                    let override = localOverrides.orders[orderArr[0]];
-                    if (override) {
-                        if (now - override.ts < 120000) { orderArr[5] = override.status || orderArr[5]; if (override.driverPhone) orderArr[6] = override.driverPhone; } 
-                        else { delete localOverrides.orders[orderArr[0]]; }
-                    }
-
-                    newActiveOrders.push(orderArr);
-                    if (!orderArr[6] || orderArr[6] === "pending_driver" || orderArr[6] === "manual_pending") {
-                        currentPendingCount++;
-                        if (orderArr[7]) { const orderTime = new Date(orderArr[7]); if ((new Date() - orderTime) / 60000 >= 3) hasEmergency = true; }
-                    }
-                });
-            }
-
-            newActiveOrders.sort((a, b) => new Date(b[7]) - new Date(a[7]));
-            liveFirebaseOrders = newActiveOrders;
-
-            if(currentPendingCount > lastPendingCount) { const audio = document.getElementById('adminAlertSound'); audio.currentTime = 0; audio.play().catch(e=>{}); }
-            lastPendingCount = currentPendingCount;
-
-            if (hasEmergency) { if (!isEmergencyMuted) triggerEmergency(); } 
-            else { isEmergencyMuted = false; const eModal = document.getElementById('emergencyModal'); if (eModal && eModal.style.display === 'flex') closeEmergency(); }
-
-            document.querySelectorAll('.val-orders').forEach(el => el.innerText = liveFirebaseOrders.length);
-            if (globalData) { try { smartRenderRadar(liveFirebaseOrders); } catch(e) {} }
-            updateHeatmap(liveFirebaseOrders);
-        });
-    }
-
-    function updateHeatmap(orders) {
-        if(!heatLayer || !globalData) return;
-        const heatPoints = [];
-        orders.forEach(o => {
-            const restName = o[1];
-            const rData = globalData.restaurants.find(r => r[1] === restName);
-            if(rData && rData[6] && rData[7]) {
-                const lat = parseFloat(rData[6]); const lng = parseFloat(rData[7]);
-                if(!isNaN(lat) && !isNaN(lng)) heatPoints.push([lat, lng, 1]); 
-            }
-        });
-        heatLayer.setLatLngs(heatPoints);
-    }
-
-    function smartRenderRadar(activeOrdersList) {
-        const container = document.getElementById('smartOrdersContainer');
-        
-        let newActiveDriversOptions = '<option value="" disabled selected>تعيين يدوي</option>';
-        globalData.drivers.slice(1).forEach(d => {
-            if(d[4] === 'active') {
-                const perf = driverPerformanceCache[String(d[2])] || { class: 'perf-yellow' };
-                let symbol = perf.class === 'perf-green' ? '🟢' : (perf.class === 'perf-red' ? '🔴' : '🟡');
-                newActiveDriversOptions += `<option value="${String(d[2])}">${symbol} ${d[1]}</option>`;
-            }
-        });
-        activeDriversOptionsCache = newActiveDriversOptions;
-
-        if(currentRadarFilter === 'pending') activeOrdersList = activeOrdersList.filter(o => !o[6] || o[6] === "pending_driver");
-        if(currentRadarFilter === 'active') activeOrdersList = activeOrdersList.filter(o => o[6] && o[6] !== "pending_driver");
-
-        if (activeOrdersList.length === 0) {
-            container.innerHTML = `<div class="col-12 text-center p-5 fw-bold small" style="color: var(--primary-orange);"><div class="bg-light d-inline-block p-4 rounded-circle mb-3"><i data-lucide="check-circle" size="40" style="color: var(--primary-orange); opacity:0.5;"></i></div><br>الرادار نظيف، لا توجد طلبات هنا.</div>`;
-            renderedOrdersCache = {}; if (typeof lucide !== 'undefined') lucide.createIcons({root: container}); return;
-        }
-
-        if(container.innerHTML.includes("الرادار نظيف") || container.innerHTML.includes("جاري تهيئة")) container.innerHTML = '';
-
-        let groupedOrders = {}; let pendingOrders = [];
-        activeOrdersList.forEach(o => {
-            const driverPhone = o[6];
-            if (driverPhone && driverPhone !== "pending_driver" && driverPhone !== "manual_pending") {
-                if (!groupedOrders[driverPhone]) groupedOrders[driverPhone] = []; groupedOrders[driverPhone].push(o);
-            } else { pendingOrders.push(o); }
-        });
-
-        const getStatusInfo = (status, hasDriver, orderTimeStr) => {
-            const diffSecs = Math.floor((new Date() - new Date(orderTimeStr)) / 1000);
-            if(!hasDriver || status === 'pending_driver' || status === 'manual_pending') {
-                if (hasDriver) { 
-                    if (diffSecs > 60) return { class: "status-overdue", desc: "🚨 لا يستجيب", badge: "bg-danger text-white border-0", isRinging: true };
-                    else return { class: "status-ringing", desc: "⏳ جاري الرنين...", badge: "bg-warning text-dark border-0", isRinging: true };
-                }
-                return { class: "status-danger", desc: "🔴 بانتظار كابتن", badge: "bg-danger text-white border-0" };
-            }
-            if(status === 'picked_up' || status === 'في الطريق') return { class: "status-success", desc: "🟢 بالطريق للزبون", badge: "bg-success text-white border-0" };
-            if(status === 'arrived_at_res') return { class: "status-warning", desc: "🟠 في المطعم", badge: "bg-warning text-dark border-0" };
-            if(status === 'accepted' || status === 'heading') return { class: "status-primary", desc: "🔵 متوجه للمطعم", badge: "bg-primary text-white border-0" };
-            return { class: "status-primary", desc: status, badge: "bg-primary border-0" };
+    /* --- Draft & UI Switchers --- */
+    window.saveDraft = function() {
+        const draft = {
+            mode: currentOrderMode, area: document.getElementById('customerArea').value,
+            customAreaName: document.getElementById('customAreaName').value, customAreaPrice: document.getElementById('customAreaPrice').value,
+            phone: document.getElementById('customerPhone').value, details: document.getElementById('customerDetails').value,
+            price: document.getElementById('orderPrice').value, image: base64Receipt
         };
-
-        let currentOrderIds = new Set();
-        let doubleOrdersHtml = '';
-
-        Object.keys(groupedOrders).forEach(driverPhone => {
-            const orders = groupedOrders[driverPhone];
-            const driverName = globalData.drivers.find(d => String(d[2]) === String(driverPhone))?.[1] || 'كابتن جديد (جاري التحديث...)';
-
-            if (orders.length > 1) {
-                orders.forEach(o => currentOrderIds.add(`double-${driverPhone}`));
-                doubleOrdersHtml += `<div class="col-md-6 col-12" id="double-${driverPhone}"><div class="smart-order-card status-purple batch-card flash-update">
-                    <div class="d-flex justify-content-between align-items-center mb-3 pb-3 border-bottom border-light">
-                        <h6 class="fw-black m-0 text-purple" style="font-size: 0.95rem;"><i data-lucide="layers" size="18" class="me-1"></i> مزدوج | ${driverName}</h6>
-                        <button class="btn-track" onclick="trackDriver('${driverPhone}', '${orders[0][1]}')"><i data-lucide="map-pin" size="14"></i> مسار</button>
-                    </div>`;
-                orders.forEach((o, index) => {
-                    const sInfo = getStatusInfo(o[5], true, o[7]);
-                    doubleOrdersHtml += `
-                    <div class="info-card-inner mb-2 bg-white shadow-sm border-0">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <span class="fw-black text-purple">#${o[0]}</span>
-                            <span class="badge ${sInfo.badge} px-2 py-1 rounded-pill">${sInfo.desc}</span>
-                        </div>
-                        <div class="d-flex justify-content-between small text-muted">
-                            <span class="fw-bold"><i data-lucide="store" size="12"></i> ${o[1]}</span>
-                            <span class="text-success fw-bold">${o[4]} د.ع</span>
-                        </div>
-                        <div class="d-flex justify-content-end gap-2 mt-2 pt-2 border-top border-light">
-                            <button class="btn btn-sm btn-light text-success p-1 rounded-3" onclick="adminActionOptUI('COMPLETE', 'ORDER', '${o[0]}', this)"><i data-lucide="check-circle" size="18"></i></button>
-                            <button class="btn btn-sm btn-light text-danger p-1 rounded-3" onclick="adminActionOptUI('DELETE', 'ORDER', '${o[0]}', this)"><i data-lucide="trash-2" size="18"></i></button>
-                        </div>
-                    </div>`;
-                    if(index < orders.length - 1) doubleOrdersHtml += `<div class="text-center my-1"><i data-lucide="link" size="16" style="color: #cbd5e1;"></i></div>`;
-                });
-                doubleOrdersHtml += `</div></div>`;
-            }
-        });
-
-        let doubleContainer = document.getElementById('doubleOrdersWrapper');
-        if (!doubleContainer && doubleOrdersHtml) {
-            doubleContainer = document.createElement('div'); doubleContainer.id = 'doubleOrdersWrapper'; doubleContainer.className = 'row g-4 mb-4';
-            container.prepend(doubleContainer);
-        }
-        if (doubleContainer) {
-             if (doubleOrdersHtml) { doubleContainer.innerHTML = doubleOrdersHtml; if (typeof lucide !== 'undefined') lucide.createIcons({root: doubleContainer}); }
-             else { doubleContainer.remove(); }
-        }
-
-        const allSingleOrders = [...pendingOrders];
-        Object.keys(groupedOrders).forEach(phone => { if(groupedOrders[phone].length === 1) allSingleOrders.push(groupedOrders[phone][0]); });
-
-        allSingleOrders.forEach(o => {
-            const orderId = o[0], restName = o[1], orderArea = o[2], orderPrice = o[4], status = o[5], driverPhone = o[6], orderTimeStr = o[7];
-            const hasDriver = (driverPhone && driverPhone !== "pending_driver" && driverPhone !== "manual_pending");
-            const driverName = hasDriver ? (globalData.drivers.find(d => String(d[2]) === String(driverPhone))?.[1] || 'كابتن جديد') : 'جاري البحث في الرادار...';
-            const sInfo = getStatusInfo(status, hasDriver, orderTimeStr);
-            const diffMins = Math.floor((new Date() - new Date(orderTimeStr)) / 60000);
-            
-            currentOrderIds.add(orderId);
-            const cardStateHash = `${status}-${driverPhone}-${diffMins}`;
-            let existingCard = document.getElementById(`wrapper-${orderId}`);
-            
-            if (existingCard) {
-                if (renderedOrdersCache[orderId] !== cardStateHash) {
-                    const cardInner = existingCard.querySelector('.smart-order-card');
-                    cardInner.className = `smart-order-card ${sInfo.class} flash-update`; 
-                    
-                    existingCard.querySelector('.status-badge-ui').className = `badge status-badge-ui ${sInfo.badge} px-2 py-1 rounded-pill`;
-                    existingCard.querySelector('.status-badge-ui').innerText = sInfo.desc;
-                    existingCard.querySelector('.driver-name-ui').innerHTML = `<i data-lucide="bike" size="14" class="me-1"></i> ${driverName}`;
-                    
-                    let controlsHtml = '';
-                    if (sInfo.isRinging && hasDriver) controlsHtml += `<button class="btn btn-sm bg-danger bg-opacity-10 text-danger p-1 border-0 fw-bold" style="border-radius:12px;" onclick="withdrawOrderOptUI('${orderId}', '${driverPhone}', this)"><i data-lucide="user-minus" size="14"></i> سحب</button>`;
-                    let currentOptions = activeDriversOptionsCache;
-                    if (hasDriver && !sInfo.isRinging) {
-                        controlsHtml += `<button class="btn-call-mini" onclick="window.open('tel:${driverPhone}')"><i data-lucide="phone" size="16"></i></button>`;
-                        currentOptions = activeDriversOptionsCache.replace('تعيين يدوي', 'إعادة تعيين 🔄');
-                    }
-                    controlsHtml += `<select class="manual-assign-select" onchange="assignDriverOptUI('${orderId}', this.value, this)">${currentOptions}</select>`;
-                    
-                    const controlsWrapper = existingCard.querySelector('.driver-controls-ui');
-                    if(controlsWrapper.innerHTML !== controlsHtml) { controlsWrapper.innerHTML = controlsHtml; if (typeof lucide !== 'undefined') lucide.createIcons({root: controlsWrapper}); }
-
-                    let delayEl = existingCard.querySelector('.delay-badge');
-                    if (diffMins > 3 && !hasDriver) {
-                        if(delayEl) delayEl.innerText = `${diffMins} دقيقة`; else cardInner.insertAdjacentHTML('afterbegin', `<div class="delay-badge">${diffMins} دقيقة تأخير</div>`);
-                    } else if (delayEl) { delayEl.remove(); }
-
-                    renderedOrdersCache[orderId] = cardStateHash;
-                }
-            } else {
-                const orderTimeStrFormat = new Date(orderTimeStr).toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'});
-                
-                let withdrawBtn = '';
-                if (sInfo.isRinging && hasDriver) withdrawBtn = `<button class="btn btn-sm bg-danger bg-opacity-10 text-danger p-1 border-0 fw-bold" style="border-radius:12px;" onclick="withdrawOrderOptUI('${orderId}', '${driverPhone}', this)"><i data-lucide="user-minus" size="14"></i> سحب</button>`;
-                
-                let callBtn = ''; let currentOptions = activeDriversOptionsCache;
-                if (hasDriver && !sInfo.isRinging) {
-                    callBtn = `<button class="btn-call-mini" onclick="window.open('tel:${driverPhone}')"><i data-lucide="phone" size="16"></i></button>`;
-                    currentOptions = activeDriversOptionsCache.replace('تعيين يدوي', 'إعادة تعيين 🔄');
-                }
-
-                let driverControls = `
-                    <div class="d-flex gap-2 align-items-center driver-controls-ui">
-                        ${withdrawBtn} ${callBtn}
-                        <select class="manual-assign-select" onchange="assignDriverOptUI('${orderId}', this.value, this)">${currentOptions}</select>
-                    </div>`;
-
-                const newCardHtml = `
-                <div class="col-md-6 col-12" id="wrapper-${orderId}">
-                    <div class="smart-order-card ${sInfo.class} flash-update">
-                        ${diffMins > 3 && !hasDriver ? `<div class="delay-badge">${diffMins} دقيقة تأخير</div>` : ''}
-                        <div class="d-flex justify-content-between align-items-start mb-3 border-bottom pb-3">
-                            <div>
-                                <h5 class="fw-black m-0" style="color: var(--text-dark);">#${orderId}</h5>
-                                <div class="mt-1 small fw-bold text-muted"><i data-lucide="clock" size="12"></i> ${orderTimeStrFormat}</div>
-                            </div>
-                            <div class="d-flex flex-column align-items-end gap-2">
-                                <span class="badge status-badge-ui ${sInfo.badge} px-2 py-1 rounded-pill">${sInfo.desc}</span>
-                                <div class="d-flex gap-2 align-items-center">
-                                    ${hasDriver ? `<button class="btn-track" onclick="trackDriver('${driverPhone}', '${restName}')"><i data-lucide="map-pin" size="14"></i> مسار</button>` : ''}
-                                    <button class="btn btn-sm btn-light text-success p-1 rounded-3 shadow-sm border" onclick="adminActionOptUI('COMPLETE', 'ORDER', '${orderId}', this)"><i data-lucide="check-circle" size="18"></i></button>
-                                    <button class="btn btn-sm btn-light text-danger p-1 rounded-3 shadow-sm border" onclick="adminActionOptUI('DELETE', 'ORDER', '${orderId}', this)"><i data-lucide="trash-2" size="18"></i></button>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="d-flex flex-column gap-2">
-                            <div class="info-row bg-light border-0">
-                                <span class="text-muted fw-bold"><i data-lucide="store" class="text-warning me-1" size="16"></i> المطعم</span> 
-                                <span class="text-dark fw-black fs-6">${restName}</span>
-                            </div>
-                            <div class="info-card-inner shadow-sm border-0">
-                                <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom border-light">
-                                    <span class="fw-bold text-dark"><i data-lucide="map-pin" size="14" class="text-accent me-1"></i> ${orderArea || 'غير محدد'}</span>
-                                    <span class="fw-black text-success fs-6">${orderPrice || 0} د.ع</span>
-                                </div>
-                                <div class="d-flex justify-content-between align-items-center mt-1">
-                                    <span class="fw-bold text-primary driver-name-ui"><i data-lucide="bike" size="14" class="me-1"></i> ${driverName}</span>
-                                    ${driverControls}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>`;
-                
-                container.insertAdjacentHTML('beforeend', newCardHtml);
-                const newlyAdded = document.getElementById(`wrapper-${orderId}`);
-                if (newlyAdded && typeof lucide !== 'undefined') lucide.createIcons({root: newlyAdded});
-                renderedOrdersCache[orderId] = cardStateHash;
-            }
-        });
-
-        Object.keys(renderedOrdersCache).forEach(cachedId => {
-            if (!currentOrderIds.has(cachedId)) {
-                const staleCard = document.getElementById(`wrapper-${cachedId}`);
-                if (staleCard) staleCard.remove();
-                delete renderedOrdersCache[cachedId];
-            }
-        });
+        sessionStorage.setItem('hut_order_draft', JSON.stringify(draft));
     }
 
-    function listenToFirebaseLocations() {
-        if(!map) return;
-        db.ref('drivers_locations').on('value', (snapshot) => {
-            const locs = snapshot.val();
-            if(!locs) return;
-            Object.keys(locs).forEach(phone => {
-                if(liveDriverMarkers[phone]) {
-                    const lat = parseFloat(locs[phone].lat); const lng = parseFloat(locs[phone].lng);
-                    if(!isNaN(lat) && !isNaN(lng)) { liveDriverMarkers[phone].setLatLng([lat, lng]); }
+    function restoreDraft() {
+        const draftStr = sessionStorage.getItem('hut_order_draft');
+        if(draftStr) {
+            try {
+                const draft = JSON.parse(draftStr);
+                if(draft.mode) window.switchTab(draft.mode, false);
+                if(draft.area) { 
+                    document.getElementById('customerArea').value = draft.area; 
+                    if(draft.area === "أخرى") {
+                        document.getElementById('customAreaSection').classList.remove('hidden-section');
+                        if(draft.customAreaName) document.getElementById('customAreaName').value = draft.customAreaName;
+                        if(draft.customAreaPrice) document.getElementById('customAreaPrice').value = draft.customAreaPrice;
+                    }
+                }
+                if(draft.phone) document.getElementById('customerPhone').value = draft.phone;
+                if(draft.details) document.getElementById('customerDetails').value = draft.details;
+                if(draft.price) document.getElementById('orderPrice').value = draft.price;
+                if(draft.image) {
+                    base64Receipt = draft.image; document.getElementById('photoPreview').src = base64Receipt;
+                    document.getElementById('cameraBtn').classList.add('hidden-section'); document.getElementById('photoPreviewContainer').classList.remove('hidden-section');
+                }
+            } catch(e) {}
+        }
+    }
+
+    function clearDraft() { sessionStorage.removeItem('hut_order_draft'); }
+
+    window.buildCustomAreaDropdown = function() {
+        const select = document.getElementById('customerArea');
+        select.innerHTML = '<option value="" disabled selected>-- اختر منطقة الزبون --</option>';
+        if (Object.keys(myCustomPriceList).length > 0) {
+            Object.keys(myCustomPriceList).sort().forEach(area => { select.innerHTML += `<option value="${area}">${area}</option>`; });
+        }
+        select.innerHTML += '<option value="أخرى">منطقة أخرى (إدخال يدوي)</option>';
+        const draftStr = sessionStorage.getItem('hut_order_draft');
+        if(draftStr) { try { const d = JSON.parse(draftStr); if(d.area && document.querySelector(`#customerArea option[value="${d.area}"]`)) { select.value = d.area; window.showSelectedPrice(); } } catch(e) {} }
+    }
+
+    window.showSelectedPrice = function() {
+        const areaName = document.getElementById('customerArea').value;
+        const priceHint = document.getElementById('priceHint');
+        const customSec = document.getElementById('customAreaSection');
+
+        if (areaName === "أخرى") {
+            priceHint.classList.add('hidden-section'); customSec.classList.remove('hidden-section');
+            if (typeof lucide !== 'undefined') lucide.createIcons(); return;
+        } else { customSec.classList.add('hidden-section'); }
+        
+        if (!areaName) { priceHint.classList.add('hidden-section'); return; }
+
+        priceHint.classList.remove('hidden-section');
+        const price = myCustomPriceList[areaName];
+        if (price) {
+            priceHint.innerHTML = `<i data-lucide="info" size="12" class="me-1"></i> سعر الكابتن المعتمد: <b>${price} د.ع</b>`;
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+    }
+
+    function parseCustomPriceList(rawText) {
+        if (!rawText || rawText.trim() === "") return "{}";
+        let resultObj = {};
+        const arabic = ['٠','١','٢','٣','٤','٥','٦','٧','٨','٩'];
+        let cln = rawText.replace(/[٠-٩]/g, w => arabic.indexOf(w)).replace(/[\u{1F300}-\u{27BF}]/gu, ' ');
+        cln.split('\n').forEach(line => {
+            if(line.trim() === "" || line.includes("تسعيرة")) return;
+            line.split('+').forEach(sub => {
+                let match = sub.trim().match(/(.+?)\s*(\d+)\s*$/);
+                if (match && match.length >= 3) {
+                    let area = match[1].replace(/[-._!@#$%^&*()=]+$/g, '').trim(); 
+                    if(area && match[2]) resultObj[area] = parseInt(match[2].trim());
                 }
             });
         });
+        return JSON.stringify(resultObj);
     }
 
-    function updateSectionBadges(type, list) {
-        const prefix = type === 'RESTAURANT' ? 'res' : 'driver';
-        const counts = { all: 0, pending: 0, active: 0, inactive: 0, banned: 0 };
-        list.slice(1).forEach(item => {
-            const status = item[4];
-            if (status !== 'deleted') counts.all++;
-            if (status === 'pending' || status === 'waiting') counts.pending++;
-            if (status === 'active') counts.active++;
-            if (status === 'inactive') counts.inactive++;
-            if (status === 'banned') counts.banned++;
-        });
-        document.getElementById(`badge-${prefix}-all`).innerText = counts.all;
-        document.getElementById(`badge-${prefix}-pending`).innerText = counts.pending;
-        document.getElementById(`badge-${prefix}-active`).innerText = counts.active;
-        document.getElementById(`badge-${prefix}-inactive`).innerText = counts.inactive;
-        document.getElementById(`badge-${prefix}-banned`).innerText = counts.banned;
-    }
+    /* --- 🟢 2. المعمارية المحصنة لتسجيل الدخول (The Master Fix) --- */
+    
+    // دالة الدخول التلقائي الذكية (تعمل صامتاً بدون Loading وهمي)
+    function autoLogin() {
+        const sessionStr = localStorage.getItem('hut_res_session');
+        const pendingStr = localStorage.getItem('hut_res_pending');
+        const savedPhoneStr = localStorage.getItem('hut_res_phone');
 
-    function triggerSearch(type) {
-        const group = type === 'RESTAURANT' ? document.getElementById('resFiltersGroup') : document.getElementById('driverFiltersGroup');
-        const activeBtn = group.querySelector('.active');
-        const filter = type === 'RESTAURANT' ? currentResSectionFilter : currentDriverSectionFilter;
-        applySectionFilter(type, filter, activeBtn);
-    }
-
-    function applySectionFilter(type, filter, btnElement) {
-        if(type === 'RESTAURANT') currentResSectionFilter = filter;
-        else currentDriverSectionFilter = filter;
-        const group = btnElement.closest('.filter-btn-group');
-        group.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-        btnElement.classList.add('active');
-
-        if (globalData) {
-            let resDebts = {}; let resUnpaidCounts = {}; let driverDebts = {};
-            globalData.restaurants.slice(1).forEach(r => { resDebts[r[1]] = 0; resUnpaidCounts[r[1]] = 0; }); 
-            globalData.drivers.slice(1).forEach(d => { driverDebts[String(d[2])] = 0; }); 
-            globalData.orders.slice(1).forEach(o => {
-                if (o[5] === 'completed' || o[5] === 'مكتمل') {
-                    const rData = globalData.restaurants.find(r => r[1] === o[1]);
-                    if (rData) {
-                        const comm = parseFloat(rData[5]) || 0; 
-                        if (resUnpaidCounts[o[1]] !== undefined) resUnpaidCounts[o[1]]++; 
-                        if (String(rData[8]).includes('مناصفة')) { resDebts[o[1]] += (comm / 2); driverDebts[String(o[6])] += (comm / 2); } 
-                        else { resDebts[o[1]] += comm; }
-                    }
+        // الأولوية 1: الجلسة النشطة
+        if (sessionStr) {
+            try {
+                const session = JSON.parse(sessionStr);
+                const diffHours = (Date.now() - session.timestamp) / (1000 * 60 * 60);
+                if (diffHours < 24) {
+                    document.getElementById('checkPhone').value = session.phone;
+                    currentResName = session.name; 
+                    enterDashboard(); 
+                    return;
                 }
-            });
-            if(type === 'RESTAURANT') smartRenderFilteredSection('RESTAURANT', globalData.restaurants, resDebts, resUnpaidCounts);
-            else smartRenderFilteredSection('DRIVER', globalData.drivers, driverDebts, null);
-        }
-    }
-
-    function smartRenderFilteredSection(type, fullList, debtsMap, unpaidCounts) {
-        let filteredList = [];
-        const filter = type === 'RESTAURANT' ? currentResSectionFilter : currentDriverSectionFilter;
-        
-        const searchQuery = type === 'RESTAURANT' ? 
-            (document.getElementById('searchResInput') ? document.getElementById('searchResInput').value.trim().toLowerCase() : '') : 
-            (document.getElementById('searchDriverInput') ? document.getElementById('searchDriverInput').value.trim().toLowerCase() : '');
-
-        fullList.slice(1).forEach(item => {
-            const status = item[4]; const name = String(item[1]).toLowerCase(); const phone = String(item[2]).toLowerCase();
-            if (status === 'deleted') return;
-            if (searchQuery && !name.includes(searchQuery) && !phone.includes(searchQuery)) return;
-
-            if (filter === 'all') filteredList.push(item);
-            else if (filter === 'pending' && (status === 'pending' || status === 'waiting')) filteredList.push(item);
-            else if (filter === status) filteredList.push(item);
-        });
-
-        const containerId = type === 'RESTAURANT' ? 'resListContainer' : 'driverListContainer';
-        const container = document.getElementById(containerId);
-        const icon = type === 'RESTAURANT' ? 'store' : 'user';
-        const phoneIndex = 2; const mapKeyIndex = type === 'RESTAURANT' ? 1 : 2; 
-        
-        let currentIds = new Set();
-        let cacheObj = type === 'RESTAURANT' ? renderedResCards : renderedDriverCards;
-
-        if (filteredList.length === 0) {
-            container.innerHTML = `<div class="col-12 text-center py-5 text-muted fw-bold">لا توجد حسابات مطابقة للبحث.</div>`;
-            if (type === 'RESTAURANT') renderedResCards = {}; else renderedDriverCards = {};
-            return;
-        }
-        if(container.innerHTML.includes("لا توجد حسابات")) container.innerHTML = '';
-
-        filteredList.forEach(item => {
-            const name = item[1], phone = item[phoneIndex], status = item[4];
-            const debtAmount = debtsMap[item[mapKeyIndex]] || 0; 
-            
-            const safePhoneId = String(phone).replace(/[^a-zA-Z0-9]/g, '');
-            currentIds.add(safePhoneId);
-
-            const cardHash = `${status}-${debtAmount}`;
-
-            let statusBadge = '';
-            if(status === 'active') statusBadge = '<span class="badge bg-success px-3 py-2 rounded-pill border-0">نشط</span>';
-            else if(status === 'inactive') statusBadge = '<span class="badge bg-warning text-dark px-3 py-2 rounded-pill border-0">استراحة</span>';
-            else if(status === 'pending' || status === 'waiting') statusBadge = '<span class="badge bg-primary px-3 py-2 rounded-pill border-0">قيد الانتظار</span>';
-            else if(status === 'banned') statusBadge = '<span class="badge bg-danger px-3 py-2 rounded-pill border-0">موقوف</span>';
-
-            let unpaidBadge = '';
-            if (type === 'RESTAURANT' && unpaidCounts && unpaidCounts[name] > 0) unpaidBadge = `<span class="badge bg-danger rounded-pill ms-2 border-0 shadow-sm">${unpaidCounts[name]} طلبات</span>`;
-
-            let perfIndicator = '';
-            if (type === 'DRIVER') {
-                const perf = driverPerformanceCache[String(phone)] || { class: 'perf-yellow', label: 'مستجد' };
-                perfIndicator = `<span class="perf-dot ${perf.class}"><i data-lucide="zap" size="14"></i></span>`;
-            }
-
-            let existingCard = document.getElementById(`card-${type}-${safePhoneId}`);
-            
-            if (existingCard) {
-                if (cacheObj[safePhoneId] !== cardHash) {
-                    existingCard.querySelector('.status-badge-container').innerHTML = statusBadge;
-                    existingCard.querySelector('.debt-text').innerHTML = `إجمالي الديون: <b class="ms-1">${debtAmount} د.ع</b> ${unpaidBadge}`;
-                    cacheObj[safePhoneId] = cardHash;
-                }
-            } else {
-                const html = `
-                <div class="col-md-6 col-xl-4" id="card-${type}-${safePhoneId}">
-                    <div class="stat-widget flex-column align-items-stretch">
-                        ${perfIndicator}
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <div class="p-3 rounded-4" style="background: var(--light-orange);"><i data-lucide="${icon}" size="26" style="color: var(--primary-orange);"></i></div>
-                            <div class="status-badge-container">${statusBadge}</div>
-                        </div>
-                        <h5 class="m-0 fw-black text-dark mb-1" style="line-height: 1.4;">${name}</h5>
-                        <div class="text-muted fw-bold mb-3" style="font-size:0.85rem;" dir="ltr">${phone}</div>
-                        
-                        <div class="bg-light p-3 rounded-4 mb-3 d-flex align-items-center justify-content-between border-0">
-                            <span class="text-danger fw-bold debt-text" style="font-size: 0.85rem;">إجمالي الديون: <b class="ms-1">${debtAmount} د.ع</b> ${unpaidBadge}</span>
-                        </div>
-
-                        <div class="d-flex justify-content-between align-items-center pt-3 border-top border-light mt-auto">
-                            <div class="d-flex gap-2">
-                                <button class="sov-btn sov-accept" onclick="adminActionOptUI('ACCEPT', '${type}', '${phone}', this)"><i data-lucide="check" size="18"></i></button>
-                                <button class="sov-btn sov-pause" onclick="adminActionOptUI('PAUSE', '${type}', '${phone}', this)"><i data-lucide="pause" size="18"></i></button>
-                                <button class="sov-btn sov-delete" onclick="adminActionOptUI('DELETE', '${type}', '${phone}', this)"><i data-lucide="ban" size="18"></i></button>
-                            </div>
-                            <div class="d-flex gap-2">
-                                <button class="sov-btn sov-reset" onclick="resetDebtOptUI('${type}', '${phone}', this)"><i data-lucide="banknote" size="18"></i></button>
-                                <button class="sov-btn sov-call shadow-sm" onclick="window.open('tel:${phone}')"><i data-lucide="phone-call" size="18"></i></button>
-                            </div>
-                        </div>
-                    </div>
-                </div>`;
-                container.insertAdjacentHTML('beforeend', html);
-                const newlyAdded = document.getElementById(`card-${type}-${safePhoneId}`);
-                if (newlyAdded && typeof lucide !== 'undefined') lucide.createIcons({root: newlyAdded});
-                cacheObj[safePhoneId] = cardHash;
-            }
-        });
-
-        Object.keys(cacheObj).forEach(cachedPhoneId => {
-            if (!currentIds.has(cachedPhoneId)) {
-                const stale = document.getElementById(`card-${type}-${cachedPhoneId}`);
-                if (stale) stale.remove();
-                delete cacheObj[cachedPhoneId];
-            }
-        });
-    }
-
-    function filterRadar(type, btnElement) {
-        currentRadarFilter = type;
-        document.querySelectorAll('.radar-filter-btn').forEach(b => b.classList.remove('active'));
-        btnElement.classList.add('active');
-        if (liveFirebaseOrders.length > 0) smartRenderRadar(liveFirebaseOrders);
-    }
-
-    function withdrawOrderOptUI(orderId, driverPhone, element) {
-        if(!confirm("سحب الطلب من هذا الكابتن وإعادته للرادار؟")) return;
-        element.disabled = true;
-        localOverrides.orders[String(orderId)] = { status: 'pending_driver', driverPhone: 'pending_driver', ts: Date.now() };
-
-        fetch(`${API_URL}?action=DECLINE_ORDER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}&pass=${masterPassword}`)
-        .then(r => r.json()).then(res => {
-            if(res.success) showToast("تم سحب الطلب", "success");
-        }).catch(e => { showToast("أمر مرسل للخلفية", "success"); });
-    }
-
-    function trackDriver(driverPhone, restName) {
-        if(!map || !globalData) return;
-        const driver = globalData.drivers.find(d => String(d[2]) === String(driverPhone));
-        const restaurant = globalData.restaurants.find(r => r[1] === restName);
-
-        if(driver && driver[5] && driver[6]) {
-            let dLat = parseFloat(driver[5]); let dLng = parseFloat(driver[6]);
-            if(liveDriverMarkers[String(driverPhone)]) { const pos = liveDriverMarkers[String(driverPhone)].getLatLng(); dLat = pos.lat; dLng = pos.lng; }
-            if(isNaN(dLat) || isNaN(dLng)) return;
-            
-            let bounds = [[dLat, dLng]]; 
-            if(trackPolyline) map.removeLayer(trackPolyline);
-
-            if(restaurant && restaurant[6] && restaurant[7]) {
-                const rLat = parseFloat(restaurant[6]); const rLng = parseFloat(restaurant[7]);
-                if(!isNaN(rLat) && !isNaN(rLng)) {
-                    bounds.push([rLat, rLng]); 
-                    trackPolyline = L.polyline([[dLat, dLng], [rLat, rLng]], { color: '#f97316', weight: 6, dashArray: '15, 15', className: 'path-animated' }).addTo(map);
-                    map.fitBounds(bounds, { padding: [30, 30], maxZoom: 16, animate: true, duration: 1.5 });
-                } else { map.flyTo([dLat, dLng], 16, { duration: 1.5 }); }
-            } else { map.flyTo([dLat, dLng], 16, { duration: 1.5 }); }
-            
-            if(window.innerWidth <= 768) { document.getElementById('tab-live').scrollTop = 0; } else { window.scrollTo({ top: 0, behavior: 'smooth' }); }
-        }
-    }
-
-    function assignDriverOptUI(orderId, driverPhone, element) {
-        if(!driverPhone) return;
-        element.disabled = true;
-        const card = document.getElementById(`wrapper-${orderId}`);
-        if(card) { card.style.transition = '0.3s'; card.style.opacity = '0.5'; }
-        
-        localOverrides.orders[String(orderId)] = { status: 'manual_pending', driverPhone: driverPhone, ts: Date.now() };
-
-        fetch(`${API_URL}?action=ASSIGN_DRIVER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}&pass=${masterPassword}`)
-        .then(r=>r.json()).then(res=>{
-             if(!res.success) { showToast("خطأ", "error"); if(card) card.style.opacity = '1'; element.disabled = false;}
-             else showToast("تم الإرسال", "success");
-        }).catch(e=>{showToast("تم الإرسال", "success");});
-    }
-
-    function resetDebtOptUI(type, id, element) {
-        if(!confirm(`تأكيد تصفير ديون (${id})؟`)) return;
-        
-        const original = element.innerHTML;
-        element.innerHTML = '<div class="spinner-border spinner-border-sm text-primary"></div>';
-        element.disabled = true;
-
-        fetch(`${API_URL}?action=RESET_DEBT&type=${type}&id=${id}&token=${API_TOKEN}&pass=${masterPassword}`)
-        .then(r=>r.json()).then(res=>{
-            if(res.success) { showToast("تم التصفير", "success"); element.innerHTML = original; element.disabled = false; refreshData();}
-            else { showToast("خطأ", "error"); element.innerHTML = original; element.disabled = false; }
-        }).catch(e=>{showToast("تم إرسال الأمر", "success");});
-    }
-
-    function adminActionOptUI(cmd, type, id, element) {
-        const statusMap = { 'ACCEPT': 'active', 'PAUSE': 'inactive', 'DELETE': 'deleted', 'COMPLETE': 'completed' };
-        let newStatus = statusMap[cmd];
-        if (cmd === 'DELETE' && type !== 'ORDER') newStatus = 'banned'; 
-
-        if (cmd === 'COMPLETE' || cmd === 'DELETE') {
-            if(!confirm(cmd === 'COMPLETE' ? "تأكيد الإتمام؟" : "تأكيد الحذف/الحظر؟")) return;
-            const card = element.closest('.col-md-6') || element.closest('.col-12');
-            
-            if (card && (cmd === 'DELETE' || (cmd === 'COMPLETE' && type === 'ORDER'))) { 
-                card.style.transition = '0.3s'; card.style.opacity = '0'; card.style.transform = 'scale(0.95)';
-                setTimeout(() => card.style.display = 'none', 300); 
-            }
+            } catch(e) {}
         } 
         
-        if (type === 'ORDER') localOverrides.orders[String(id)] = { status: newStatus, ts: Date.now() };
-        if (type === 'RESTAURANT') {
-            localOverrides.restaurants[String(id)] = { status: newStatus, ts: Date.now() };
-            let resItem = globalData.restaurants.find(r => String(r[2]) === String(id));
-            if(resItem) resItem[4] = newStatus;
-            
-            let resDebts = {}; let resUnpaidCounts = {};
-            globalData.restaurants.slice(1).forEach(r => { resDebts[r[1]] = 0; resUnpaidCounts[r[1]] = 0; });
-            globalData.orders.slice(1).forEach(o => {
-                if (o[5] === 'completed' || o[5] === 'مكتمل') {
-                    const rData = globalData.restaurants.find(r => r[1] === o[1]);
-                    if (rData) {
-                        const comm = parseFloat(rData[5]) || 0; 
-                        if (resUnpaidCounts[o[1]] !== undefined) resUnpaidCounts[o[1]]++; 
-                        if (String(rData[8]).includes('مناصفة')) { resDebts[o[1]] += (comm / 2); } else { resDebts[o[1]] += comm; }
-                    }
-                }
-            });
-            smartRenderFilteredSection('RESTAURANT', globalData.restaurants, resDebts, resUnpaidCounts);
-            updateSectionBadges('RESTAURANT', globalData.restaurants);
+        // الأولوية 2: في غرفة الانتظار
+        if (pendingStr) {
+            document.getElementById('checkPhone').value = pendingStr; 
+            showWaitingRoom(); 
+            return;
         }
-        if (type === 'DRIVER') {
-            localOverrides.drivers[String(id)] = { status: newStatus, ts: Date.now() };
-            let drvItem = globalData.drivers.find(d => String(d[2]) === String(id));
-            if(drvItem) drvItem[4] = newStatus;
+
+        // الأولوية 3: رقم محفوظ لكن الجلسة منتهية (نعيد التحقق بصمت)
+        if (savedPhoneStr) {
+            document.getElementById('checkPhone').value = savedPhoneStr;
+            const cleanPhone = savedPhoneStr.startsWith('0') ? savedPhoneStr.substring(1) : savedPhoneStr;
             
-            let driverDebts = {};
-            globalData.drivers.slice(1).forEach(d => { driverDebts[String(d[2])] = 0; });
-            globalData.orders.slice(1).forEach(o => {
-                if (o[5] === 'completed' || o[5] === 'مكتمل') {
-                    const rData = globalData.restaurants.find(r => r[1] === o[1]);
-                    if (rData) {
-                        const comm = parseFloat(rData[5]) || 0; 
-                        if (String(rData[8]).includes('مناصفة')) { driverDebts[String(o[6])] += (comm / 2); } 
-                    }
+            fetch(`${API_URL}?action=checkRes&phone=${cleanPhone}&token=${API_TOKEN}`)
+            .then(r => r.json()).then(data => {
+                if(data.status === "active" || data.status === "inactive") {
+                    currentResName = data.name;
+                    localStorage.setItem('hut_res_session', JSON.stringify({ phone: savedPhoneStr, name: data.name, timestamp: Date.now() }));
+                    try { if (data.priceList && data.priceList.trim() !== "") myCustomPriceList = JSON.parse(data.priceList); } catch(e) {}
+                    enterDashboard();
+                } else if(data.status === "banned") {
+                    localStorage.clear(); sessionStorage.clear();
                 }
-            });
-            smartRenderFilteredSection('DRIVER', globalData.drivers, driverDebts, null);
-            updateSectionBadges('DRIVER', globalData.drivers);
+            }).catch(e=>{});
         }
-        
-        fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${id}&status=${newStatus}&token=${API_TOKEN}&pass=${masterPassword}`)
-        .then(r=>r.json()).then(res=>{
-             if(!res.success) { showToast("خطأ", "error"); refreshData(); } 
-        }).catch(e=>{});
     }
 
-    function renderArchive() {
-        if(!globalData) return;
-        const search = document.getElementById('arcSearch').value.trim().toLowerCase();
-        const resFilter = document.getElementById('arcRes').value;
-        const driverFilter = document.getElementById('arcDriver').value;
-        const dateFrom = document.getElementById('arcDateFrom').value;
-        const dateTo = document.getElementById('arcDateTo').value;
-        
-        let archiveHtml = ''; let totalOrders = 0; let totalComm = 0;
-        let displayedCount = 0; let displayLimit = 150; 
+    window.onload = function() {
+        autoLogin();
+    };
 
-        const completedOrders = globalData.orders.slice(1).filter(o => o[5] === 'completed' || o[5] === 'مكتمل' || o[5] === 'settled').reverse();
+    window.logout = function() { if(confirm("هل تريد تسجيل الخروج من النظام؟")) { localStorage.clear(); sessionStorage.clear(); location.reload(); } }
+    window.showLoading = function(s, text = "جاري المعالجة...") { document.getElementById('loadingText').innerText = text; document.getElementById('loadingOverlay').style.display = s ? 'flex' : 'none'; }
+
+    window.switchTab = function(mode, triggerSave = true) {
+        currentOrderMode = mode;
+        document.getElementById('tabManual').classList.remove('active'); document.getElementById('tabPhoto').classList.remove('active');
         
-        completedOrders.forEach(o => {
-            const orderId = o[0], restName = o[1], price = o[4], details = o[3], status = o[5], driverPhone = o[6];
-            let orderDateISO = "", orderDateFormatted = "---";
-            if (o[7]) {
-                const orderDateObj = new Date(o[7]);
-                if (!isNaN(orderDateObj.getTime())) { orderDateISO = orderDateObj.toISOString().split('T')[0]; orderDateFormatted = orderDateObj.toLocaleString('ar-EG'); }
+        if (mode === 'manual') {
+            document.getElementById('tabManual').classList.add('active');
+            document.getElementById('manualSection').classList.remove('hidden-section'); document.getElementById('photoSection').classList.add('hidden-section');
+            document.getElementById('customerPhone').required = true;
+        } else {
+            document.getElementById('tabPhoto').classList.add('active');
+            document.getElementById('photoSection').classList.remove('hidden-section'); document.getElementById('manualSection').classList.add('hidden-section');
+            document.getElementById('customerPhone').required = false;
+        }
+        if (triggerSave) window.saveDraft();
+    }
+
+    window.switchListTab = function(tab) {
+        document.getElementById('tabLiveOrders').classList.remove('active'); document.getElementById('tabTodayArchive').classList.remove('active');
+        if (tab === 'live') {
+            document.getElementById('tabLiveOrders').classList.add('active');
+            document.getElementById('activeOrdersList').classList.remove('hidden-section'); document.getElementById('todayArchiveList').classList.add('hidden-section');
+        } else {
+            document.getElementById('tabTodayArchive').classList.add('active');
+            document.getElementById('todayArchiveList').classList.remove('hidden-section'); document.getElementById('activeOrdersList').classList.add('hidden-section');
+        }
+    }
+
+    window.processImage = function(input) {
+        if (input.files && input.files[0]) {
+            window.showLoading(true, "تحسين جودة الوصل...");
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    let scaleSize = img.width > 800 ? 800 / img.width : 1;
+                    canvas.width = img.width * scaleSize; canvas.height = img.height * scaleSize;
+                    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                    base64Receipt = canvas.toDataURL('image/jpeg', 0.7); 
+                    document.getElementById('photoPreview').src = base64Receipt;
+                    document.getElementById('cameraBtn').classList.add('hidden-section'); document.getElementById('photoPreviewContainer').classList.remove('hidden-section');
+                    window.saveDraft(); window.showLoading(false);
+                }
+                img.src = e.target.result;
             }
-            let match = true;
-            if(search && !String(orderId).toLowerCase().includes(search) && !String(details).toLowerCase().includes(search)) match = false;
-            if(resFilter && restName !== resFilter) match = false;
-            if(driverFilter && String(driverPhone) !== driverFilter) match = false;
-            if(dateFrom && orderDateISO && orderDateISO < dateFrom) match = false;
-            if(dateTo && orderDateISO && orderDateISO > dateTo) match = false;
+            reader.readAsDataURL(input.files[0]);
+        }
+    }
+
+    window.removePhoto = function() {
+        base64Receipt = null; document.getElementById('receiptPhoto').value = "";
+        document.getElementById('cameraBtn').classList.remove('hidden-section'); document.getElementById('photoPreviewContainer').classList.add('hidden-section');
+        window.saveDraft(); 
+    }
+
+    // دالة الدخول اليدوي (للمستخدم الجديد أو عند فقدان الجلسة)
+    window.manualAuthAction = function() {
+        let rawPhone = document.getElementById('checkPhone').value.trim();
+        if(!rawPhone) return window.showGlobalToast("يرجى إدخال رقم الهاتف أولاً", "error");
+        let phone = rawPhone.startsWith('0') ? rawPhone.substring(1) : rawPhone;
+
+        const btn = document.getElementById('mainAuthBtn');
+        const origBtnText = btn.innerHTML;
+        btn.innerHTML = `<div class="spinner-border spinner-border-sm text-white"></div>`;
+        btn.disabled = true;
+
+        if (isRegistering) {
+            const name = document.getElementById('regName').value.trim();
+            const area = document.getElementById('regArea').value.trim();
+            const comm = document.getElementById('regComm').value.trim();
+            const pay = document.getElementById('regPay').value;
+            const rawPriceListText = document.getElementById('regPriceList').value;
+
+            if(!name || !area || !comm) { btn.innerHTML = origBtnText; btn.disabled = false; return window.showGlobalToast("الرجاء ملء جميع الحقول.", "error");}
+            if(Math.abs(regLat - 35.468) < 0.001 && Math.abs(regLng - 44.392) < 0.001) { btn.innerHTML = origBtnText; btn.disabled = false; return window.showGlobalToast("حدد موقع مطعمك على الخريطة أولاً.", "error");}
             
-            if(match) {
-                totalOrders++;
-                const isSettled = (status === 'settled');
-                let comm = 0, payType = "المطعم يدفع";
-                const rData = globalData.restaurants.find(r => r[1] === restName);
-                if(rData) { comm = parseFloat(rData[5]) || 0; payType = String(rData[8]); }
-                totalComm += comm;
+            const packedPriceList = parseCustomPriceList(rawPriceListText);
+            sendRegistration(name, phone, area, comm, pay, regLat, regLng, packedPriceList, btn, origBtnText);
+            return;
+        }
+
+        fetch(`${API_URL}?action=checkRes&phone=${phone}&token=${API_TOKEN}`)
+            .then(r => r.json())
+            .then(data => {
+                btn.innerHTML = origBtnText; btn.disabled = false;
+                handleLogin(data, phone);
+            })
+            .catch(err => { 
+                btn.innerHTML = origBtnText; btn.disabled = false;
+                window.showGlobalToast("خطأ في الاتصال، حاول مجدداً.", "error"); 
+            });
+    }
+
+    function sendRegistration(name, phone, area, comm, pay, lat, lng, priceListStr, btn, origBtnText) {
+        const payload = { action: 'RESTAURANT_REG', token: API_TOKEN, name: name, phone: phone, area: area, comm: comm, pay: pay, lat: lat, lng: lng, priceList: priceListStr };
+        fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) })
+        .then(() => {
+            btn.innerHTML = origBtnText; btn.disabled = false;
+            const formattedPhone = phone.startsWith('0') ? phone : '0' + phone;
+            localStorage.setItem('hut_res_phone', formattedPhone); localStorage.setItem('hut_res_pending', formattedPhone); showWaitingRoom();
+        }).catch(() => { 
+            btn.innerHTML = origBtnText; btn.disabled = false;
+            window.showGlobalToast("حدث خطأ أثناء الإرسال.", "error"); 
+        });
+    }
+
+    function showWaitingRoom() {
+        document.getElementById('authBox').classList.add('hidden-section'); document.getElementById('waitingBox').classList.remove('hidden-section');
+        if(waitingPollingTimer) clearInterval(waitingPollingTimer);
+        waitingPollingTimer = setInterval(() => checkWaitingStatus(false), 15000); 
+    }
+
+    window.checkWaitingStatus = function(isManual = false) {
+        let rawPhone = document.getElementById('checkPhone').value.trim() || localStorage.getItem('hut_res_pending');
+        if(!rawPhone) return;
+        let phone = rawPhone.startsWith('0') ? rawPhone.substring(1) : rawPhone;
+        
+        if(isManual) {
+             const statText = document.getElementById('waitingStatusText');
+             if(statText) statText.innerText = "جاري التحقق اليدوي...";
+        }
+        
+        fetch(`${API_URL}?action=checkRes&phone=${phone}&token=${API_TOKEN}`)
+            .then(r => r.json())
+            .then(data => {
+                const statText = document.getElementById('waitingStatusText');
+                if(statText) statText.innerText = "جاري الاستعلام التلقائي...";
                 
-                if (displayedCount < displayLimit) {
-                    displayedCount++;
-                    const dData = globalData.drivers.find(d => String(d[2]) === String(driverPhone));
-                    let driverName = dData ? dData[1] : driverPhone;
+                if(data.status === "active" || data.status === "inactive") {
+                    clearInterval(waitingPollingTimer); localStorage.removeItem('hut_res_pending');
+                    currentResName = data.name;
+                    try { if (data.priceList && data.priceList.trim() !== "") myCustomPriceList = JSON.parse(data.priceList); } catch(e) {}
+                    localStorage.setItem('hut_res_session', JSON.stringify({ phone: rawPhone, name: data.name, timestamp: Date.now() }));
+                    const wAudio = document.getElementById('welcomeSound'); if(wAudio) { wAudio.currentTime = 0; wAudio.play().catch(e=>{}); }
+                    document.getElementById('waitingBox').classList.add('hidden-section');
+                    enterDashboard();
+                } else if (data.status === "banned") {
+                    clearInterval(waitingPollingTimer); localStorage.removeItem('hut_res_pending'); alert("⚠️ تم حظر الحساب."); location.reload();
+                }
+            }).catch(e=>{});
+    }
+
+    function handleLogin(data, phone) {
+        if(data.status === "active" || data.status === "inactive") {
+            currentResName = data.name; 
+            const formattedPhone = phone.startsWith('0') ? phone : '0' + phone;
+            localStorage.setItem('hut_res_phone', formattedPhone); localStorage.removeItem('hut_res_pending');
+            try { if (data.priceList && data.priceList.trim() !== "") myCustomPriceList = JSON.parse(data.priceList); } catch(e) {}
+            localStorage.setItem('hut_res_session', JSON.stringify({ phone: formattedPhone, name: data.name, timestamp: Date.now() }));
+            enterDashboard();
+        } else if(data.status === "pending" || data.status === "waiting") {
+            const formattedPhone = phone.startsWith('0') ? phone : '0' + phone;
+            localStorage.setItem('hut_res_phone', formattedPhone); localStorage.setItem('hut_res_pending', formattedPhone); showWaitingRoom();
+        } else if(data.status === "banned") {
+            window.showGlobalToast("⚠️ الحساب الخاص بك محظور.", "error"); localStorage.clear(); sessionStorage.clear();
+        } else {
+            isRegistering = true;
+            document.getElementById('registerFields').classList.remove('hidden-section'); document.getElementById('checkPhone').disabled = true;
+            const btn = document.getElementById('mainAuthBtn'); btn.innerHTML = `إرسال طلب الانضمام <i data-lucide="send" size="18"></i>`;
+            if (typeof lucide !== 'undefined') lucide.createIcons(); setTimeout(window.initPickerMap, 300);
+        }
+    };
+
+    /* --- 📊 لوحة تحكم المطعم (Dashboard) --- */
+    function enterDashboard() {
+        document.getElementById('loginSection').classList.add('hidden-section'); document.getElementById('orderSection').classList.remove('hidden-section');
+        document.getElementById('resTitle').innerText = currentResName; 
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+        window.buildCustomAreaDropdown(); restoreDraft(); 
+        
+        fetchColdData(); 
+        startHotDataListeners(); 
+        dataRefreshInterval = setInterval(fetchColdData, 180000); // 3 دقائق
+    }
+
+    // 🟢 3. الأرشيف الآمن: عدم المسح في حالة ضعف النت
+    function fetchColdData() {
+        if (document.hidden) return;
+        fetch(`${API_URL}?action=getGlobalData&token=${API_TOKEN}`)
+            .then(res => res.json())
+            .then(data => {
+                if(data && data.drivers) globalDriversInfo = data.drivers;
+                renderDashboardStats(data);
+                renderActiveOrdersUI(); 
+            }).catch(e => console.error("Silent Fetch Error", e));
+    }
+
+    function renderDashboardStats(data) {
+        // حماية متقدمة: إذا لم يجد المطعم، لا يفعل شيئاً (ربما خطأ في جلب البيانات)
+        const resInfo = data.restaurants.find(r => r[1] === currentResName);
+        if(!resInfo) return; 
+
+        // حماية 2: الطرد يتم فقط إذا كانت الحالة صريحة بالحظر أو الحذف
+        if(resInfo[4] === 'banned' || resInfo[4] === 'deleted') {
+             alert("⚠️ تم إيقاف أو حذف الحساب."); localStorage.clear(); sessionStorage.clear(); location.reload(); return; 
+        }
+
+        const commRate = parseFloat(resInfo[5]) || 0;
+        const paySystem = resInfo[8] || 'المطعم يدفع';
+        document.getElementById('statPayType').innerText = paySystem.includes("مناصفة") ? "مناصفة" : "المطعم";
+
+        const today = new Date(); const todayISO = today.toISOString().split('T')[0];
+        const currentMonth = today.getMonth(); const currentYear = today.getFullYear();
+        
+        let monthlyCount = 0, totalUnpaid = 0, todaySalesTotal = 0;
+        let todayArchiveHtml = '';
+
+        data.orders.slice(1).forEach(o => {
+            if(o[1] === currentResName) {
+                const status = o[5], orderId = o[0], driverPhone = o[6], orderDateStr = o[7];
+                const orderDateObj = new Date(orderDateStr);
+                const orderISO = orderDateObj.toISOString().split('T')[0];
+                const orderTimeStrFormat = orderDateObj.toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'});
+                const isThisMonth = orderDateObj.getMonth() === currentMonth && orderDateObj.getFullYear() === currentYear;
+
+                if (status === 'completed' || status === 'مكتمل' || status === 'settled') {
+                    if(isThisMonth) monthlyCount++;
+                    if(status !== 'settled') { totalUnpaid += paySystem.includes('مناصفة') ? (commRate / 2) : commRate; }
                     
-                    const orderDataObj = { id: orderId, date: orderDateFormatted, res: restName, driver: driverName, details: details, price: price, comm: comm, payType: payType, isSettled: isSettled };
-                    const orderDataStr = encodeURIComponent(JSON.stringify(orderDataObj)).replace(/'/g, "%27");
-                    
-                    archiveHtml += `<tr onclick="openInvoice('${orderDataStr}')" style="cursor:pointer;">
-                        <td class="fw-bold text-nowrap text-primary" style="font-size:0.9rem;">${orderId || '-'}</td>
-                        <td class="small fw-bold text-muted text-nowrap">${orderDateISO || '-'}</td>
-                        <td class="fw-bold text-dark" style="white-space: normal;">${restName || '-'}</td>
-                        <td class="text-muted fw-bold" style="white-space: normal;">${driverName}</td>
-                        <td><span class="badge ${isSettled ? 'bg-light text-muted border' : 'bg-success bg-opacity-10 text-success border border-success'} px-3 py-2 rounded-pill shadow-sm">${isSettled ? 'مسدد' : 'مكتمل'}</span></td>
-                    </tr>`;
+                    if(orderISO === todayISO) {
+                        const priceVal = parseFloat(o[4]) || 0; todaySalesTotal += priceVal;
+                        let driverName = "مكتمل"; const dInfo = data.drivers.find(d => String(d[2]) === String(driverPhone)); if(dInfo) driverName = dInfo[1];
+                        
+                        // ⚡ التعقيم لحماية الـ HTML
+                        const safeOrderStr = encodeURIComponent(JSON.stringify({
+                            id: orderId, date: orderDateStr, res: currentResName, driver: driverName, price: priceVal, comm: commRate
+                        })).replace(/'/g, "%27");
+
+                        todayArchiveHtml += `<div class="archive-item"><div><span class="fw-black text-dark" style="font-size:0.9rem;">#${orderId}</span><div class="small text-muted fw-bold mt-1"><i data-lucide="bike" size="12"></i> ${driverName}</div></div><div class="text-end"><span class="fw-black text-success fs-6">${o[4]} <small>د.ع</small></span><div class="small text-muted">${orderTimeStrFormat}</div></div></div>`;
+                    }
                 }
             }
         });
-        
-        if (totalOrders > displayLimit) {
-            archiveHtml += `<tr><td colspan="5" class="text-center text-muted py-3 fw-bold small">تم إخفاء ${totalOrders - displayLimit} طلب قديم. استخدم البحث.</td></tr>`;
-        }
 
-        document.getElementById('arcTotalCount').innerText = totalOrders;
-        document.getElementById('arcTotalComm').innerHTML = `${totalComm} <span class="fs-6">د.ع</span>`;
-        
-        const currentArchiveHtml = archiveHtml || `<tr><td colspan="5" class="text-center text-muted py-5 fw-bold">لا توجد طلبات.</td></tr>`;
-        if (lastArchiveHtml !== currentArchiveHtml) {
-            document.getElementById('ordersTableBody').innerHTML = currentArchiveHtml;
-            lastArchiveHtml = currentArchiveHtml;
+        document.getElementById('statMonthOrders').innerText = monthlyCount;
+        document.getElementById('statUnpaid').innerText = totalUnpaid;
+        document.getElementById('todayTotalSales').innerHTML = `${todaySalesTotal} <small>د.ع</small>`;
+
+        if (lastArchiveHtml !== todayArchiveHtml) {
+            document.getElementById('todayArchiveItems').innerHTML = todayArchiveHtml || `<div class="text-center text-muted fw-bold py-4 small border rounded-4 border-dashed bg-white">الأرشيف فارغ اليوم.</div>`;
+            lastArchiveHtml = todayArchiveHtml;
+            if (typeof lucide !== 'undefined') lucide.createIcons({root: document.getElementById('todayArchiveItems')});
         }
     }
 
-    function openInvoice(dataStr) {
-        const data = JSON.parse(decodeURIComponent(dataStr));
-        document.getElementById('invOrderId').innerText = "#" + data.id; document.getElementById('invDate').innerText = data.date; document.getElementById('invRes').innerText = data.res; document.getElementById('invDriver').innerText = data.driver; document.getElementById('invCust').innerText = data.details; document.getElementById('invPrice').innerText = data.price + " د.ع"; document.getElementById('invComm').innerText = data.comm + " د.ع"; document.getElementById('invPayType').innerText = data.payType; document.getElementById('invStatus').innerHTML = data.isSettled ? '<span class="badge bg-secondary">تم تسوية الحساب</span>' : '<span class="badge bg-success">مكتمل (غير مسدد)</span>';
-        document.getElementById('invoiceModal').style.display = 'flex';
-    }
-    function closeInvoice(e) { if(!e || e.target.id === 'invoiceModal') document.getElementById('invoiceModal').style.display = 'none'; }
+    // 🟢 4. الاستماع اللحظي (Firebase)
+    function startHotDataListeners() {
+        const ordersRef = ref(db, 'active_orders');
+        onValue(ordersRef, (snapshot) => {
+            const activeFbOrders = snapshot.val() || {};
+            let newLiveOrders = [];
 
-    function exportExcel() {
-        let csv = '\uFEFF'; csv += "ID الطلب,التاريخ,المطعم,الكابتن,الحالة\n";
-        const rows = document.querySelectorAll("#archiveTable tbody tr");
-        if(rows.length === 0 || rows[0].cells.length === 1) return showToast("لا توجد بيانات للتصدير", "error");
-        rows.forEach(row => { let rowData = []; row.querySelectorAll("td").forEach(cell => rowData.push('"' + cell.innerText.trim() + '"')); csv += rowData.join(",") + "\n"; });
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "تقرير_الحوت_" + new Date().toISOString().split('T')[0] + ".csv"; document.body.appendChild(link); link.click(); document.body.removeChild(link);
-    }
-
-    function showTab(e, name) {
-        document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active-tab'));
-        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-        document.querySelectorAll('.b-nav-item').forEach(n => n.classList.remove('active'));
-        
-        document.getElementById('tab-' + name).classList.add('active-tab');
-        
-        document.querySelectorAll(`.desktop-nav-link[onclick*="${name}"]`).forEach(el => el.classList.add('active'));
-        document.querySelectorAll(`.mobile-nav-link[onclick*="${name}"]`).forEach(el => el.classList.add('active'));
-
-        if (typeof lucide !== 'undefined') lucide.createIcons();
-        if(name === 'live' && map) { setTimeout(() => { map.invalidateSize(); }, 300); }
-    }
-
-    function initMap() {
-        const kirkukLocation = [35.468, 44.392];
-        map = L.map('adminMap', { zoomControl: false }).setView(kirkukLocation, 13);
-        L.control.zoom({ position: 'topright' }).addTo(map);
-        // استخدام خريطة داكنة مميزة تتناسب مع البرتقالي
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OpenStreetMap & CartoDB', maxZoom: 19 }).addTo(map);
-        
-        // Heatmap Orange Gradient
-        heatLayer = L.heatLayer([], { radius: 25, blur: 15, maxZoom: 14, gradient: {0.4: '#fed7aa', 0.6: '#fb923c', 0.8: '#f97316', 1.0: '#ea580c'} }).addTo(map);
-        restaurantMarkersLayer = L.layerGroup().addTo(map);
-        driverClusterGroup = L.markerClusterGroup({
-            iconCreateFunction: function(cluster) {
-                return L.divIcon({ html: '<div style="background-color: var(--primary-orange); color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900; border: 3px solid white; box-shadow: var(--shadow-float);">' + cluster.getChildCount() + '</div>', className: 'custom-cluster-icon', iconSize: L.point(40, 40) });
-            }, maxClusterRadius: 40 
+            Object.values(activeFbOrders).forEach(fbOrder => {
+                if(fbOrder.restaurant === currentResName) {
+                    newLiveOrders.push({
+                        id: fbOrder.id,
+                        status: fbOrder.status,
+                        driverPhone: fbOrder.driverPhone || "pending_driver",
+                        timestamp: fbOrder.timestamp,
+                        area: fbOrder.area
+                    });
+                }
+            });
+            
+            newLiveOrders.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+            liveActiveOrders = newLiveOrders;
+            renderActiveOrdersUI();
         });
-        map.addLayer(driverClusterGroup);
-        setTimeout(() => { map.invalidateSize(); }, 1000);
+    }
+
+    function renderActiveOrdersUI() {
+        let activeOrdersHtml = '';
+        
+        liveActiveOrders.forEach(o => {
+            const status = o.status, orderId = o.id, orderArea = o.area, driverPhone = o.driverPhone, orderDateStr = o.timestamp;
+            if (actionBlacklist.includes(String(orderId))) return;
+
+            const orderDateObj = new Date(orderDateStr);
+            const orderTimeStrFormat = orderDateObj.toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'});
+            
+            let driverName = 'جاري البحث في الرادار...', step = 1, fillWidth = "0%", isCancelable = true;
+            if (status === 'picked_up' || status === 'في الطريق') isCancelable = false; 
+
+            if (driverPhone && driverPhone !== "pending_driver" && driverPhone !== "manual_pending") {
+                const dInfo = globalDriversInfo.find(d => String(d[2]) === String(driverPhone)); if(dInfo) driverName = dInfo[1];
+                if (status === 'picked_up' || status === 'في الطريق') { step = 4; fillWidth = "100%"; } 
+                else if (status === 'arrived_at_res') { step = 3; fillWidth = "66%"; } 
+                else { step = 2; fillWidth = "33%"; }
+            }
+
+            activeOrdersHtml += `
+            <div class="live-order-card" id="order-${orderId}">
+                <div class="d-flex justify-content-between align-items-start pb-2 border-bottom border-light">
+                    <div><span class="fw-black text-dark" style="font-size:0.95rem;">#${orderId}</span><div class="mt-1 small fw-bold text-muted"><i data-lucide="clock" size="12"></i> أُرسل: ${orderTimeStrFormat}</div></div>
+                    <div class="d-flex flex-column gap-2 align-items-end">
+                        ${driverPhone && driverPhone !== "pending_driver" && driverPhone !== "manual_pending" ? `<button class="btn-call-mini" onclick="window.open('tel:${driverPhone}')"><i data-lucide="phone" size="16"></i></button>` : ''}
+                        ${isCancelable ? `<button class="btn-cancel-grace mt-1" onclick="cancelOrderGrace('${orderId}', this)"><i data-lucide="x" size="14"></i> إلغاء</button>` : ''}
+                    </div>
+                </div>
+                <div class="py-2 d-flex flex-column gap-1">
+                    <div class="small fw-bold" style="color: var(--primary-dark);"><i data-lucide="map-pin" size="14" class="text-primary me-1"></i> ${orderArea || 'غير محددة'}</div>
+                    <div class="small fw-bold text-primary"><i data-lucide="bike" size="14" class="me-1"></i> ${driverName}</div>
+                </div>
+                <div class="progress-tracker mt-2">
+                    <div class="progress-line"></div><div class="progress-line-fill" style="width: ${fillWidth};"></div>
+                    <div class="progress-step ${step >= 1 ? (step === 1 ? 'current' : 'active') : ''}"><div class="progress-dot"><i data-lucide="radar" size="12"></i></div><span class="progress-label">بانتظار</span></div>
+                    <div class="progress-step ${step >= 2 ? (step === 2 ? 'current' : 'active') : ''}"><div class="progress-dot"><i data-lucide="truck" size="12"></i></div><span class="progress-label">متوجه</span></div>
+                    <div class="progress-step ${step >= 3 ? (step === 3 ? 'current' : 'active') : ''}"><div class="progress-dot"><i data-lucide="store" size="12"></i></div><span class="progress-label">بالمطعم</span></div>
+                    <div class="progress-step ${step >= 4 ? (step === 4 ? 'current' : 'active') : ''}"><div class="progress-dot"><i data-lucide="user" size="12"></i></div><span class="progress-label">بالطريق</span></div>
+                </div>
+            </div>`;
+        });
+
+        if (lastActiveHtml !== activeOrdersHtml) {
+            document.getElementById('activeOrdersList').innerHTML = activeOrdersHtml || `<div class="text-center text-muted fw-bold py-4 small border rounded-4 border-dashed bg-white">لا توجد طلبات نشطة حالياً.</div>`;
+            lastActiveHtml = activeOrdersHtml;
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+    }
+
+    // 🟢 5. إلغاء الطلب (Optimistic Cancel)
+    window.cancelOrderGrace = function(orderId, btnEl) {
+        if(confirm("هل أنت متأكد من إلغاء الطلب وسحبه من الرادار؟")) {
+            
+            const originalHtml = btnEl.innerHTML;
+            btnEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+            btnEl.disabled = true;
+
+            const card = document.getElementById(`order-${orderId}`);
+            if(card) {
+                card.style.opacity = '0';
+                setTimeout(() => card.style.display = 'none', 300);
+            }
+            actionBlacklist.push(String(orderId));
+            setTimeout(() => { actionBlacklist = actionBlacklist.filter(id => id !== String(orderId)); }, 5000);
+
+            // مسح من Firebase فوراً
+            const updates = {}; updates[`active_orders/${orderId}`] = null; update(ref(db), updates);
+
+            // إبلاغ السيرفر بصمت
+            fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${orderId}&status=deleted&token=${API_TOKEN}`)
+            .then(res=>res.json()).then(response => {
+                if(!response.success) { window.showGlobalToast("تنبيه: قد يكون الكابتن استلم الطلب للتو.", "error"); fetchColdData(); }
+            }).catch(e=>{});
+        }
+    }
+
+    // 🟢 6. الإرسال السريع جداً (Optimistic Inject)
+    document.getElementById('orderForm').onsubmit = function(e) {
+        e.preventDefault();
+        let finalArea = document.getElementById('customerArea').value, areaWithHint = finalArea;
+
+        if (finalArea === "أخرى") {
+            let cName = document.getElementById('customAreaName').value.trim(), cPrice = document.getElementById('customAreaPrice').value.trim();
+            if(!cName || !cPrice) return window.showGlobalToast("يرجى إدخال اسم المنطقة والسعر.", "error");
+            areaWithHint = `${cName} (توصيل: ${cPrice})`;
+        } else if (!finalArea && currentOrderMode === 'manual') { return window.showGlobalToast("يرجى اختيار منطقة الزبون.", "error"); } 
+        else if (myCustomPriceList[finalArea]) { areaWithHint = `${finalArea} (توصيل: ${myCustomPriceList[finalArea]})`; }
+
+        let finalDetails = "", finalPrice = parseFloat(document.getElementById('orderPrice').value) || 0; 
+        const btn = document.getElementById('submitOrderBtn');
+        const originalBtnHtml = btn.innerHTML;
+
+        if (currentOrderMode === 'manual') {
+            const custPhone = document.getElementById('customerPhone').value.trim(), extra = document.getElementById('customerDetails').value.trim();
+            if (!custPhone) return window.showGlobalToast("رقم الزبون مطلوب.", "error"); 
+            finalDetails = `الهاتف: ${custPhone} | ${extra}`;
+            finalizeOrderPlacement(finalDetails, "", finalPrice, areaWithHint, btn, originalBtnHtml);
+        } else {
+            if (!base64Receipt) return window.showGlobalToast("يرجى إرفاق صورة الوصل.", "error");
+            finalDetails = "طلب مصور سريع (انظر الوصل)"; 
+            btn.innerHTML = `<div class="spinner-border spinner-border-sm me-2"></div> رفع سريع...`;
+            btn.disabled = true;
+            
+            let formData = new FormData(); formData.append("image", base64Receipt.split(',')[1]);
+            fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, { method: "POST", body: formData })
+            .then(res => res.json()).then(data => {
+                if(data && data.data && data.data.url) finalizeOrderPlacement(finalDetails, data.data.url, finalPrice, areaWithHint, btn, originalBtnHtml);
+                else throw new Error("ImgBB Error");
+            }).catch(err => { btn.innerHTML = originalBtnHtml; btn.disabled = false; window.showGlobalToast("خطأ في رفع الصورة.", "error"); });
+        }
+    };
+
+    function finalizeOrderPlacement(details, imageUrl, price, area, btn, originalBtnHtml) {
+        btn.innerHTML = `<div class="spinner-border spinner-border-sm me-2"></div> إطلاق للرادار...`;
+        
+        const uniqueFrontendId = "HUT-" + Math.floor(Date.now() / 1000);
+        const timestampIso = new Date().toISOString();
+        
+        // الحقن الفوري لـ Firebase
+        set(ref(db, 'active_orders/' + uniqueFrontendId), {
+            id: uniqueFrontendId, restaurant: currentResName, area: area, status: "pending_driver",
+            driverPhone: "pending_driver", price: price, timestamp: timestampIso, photoUrl: imageUrl, last_update: timestampIso
+        });
+
+        // الإبلاغ الصامت للسيرفر
+        fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'NEW_ORDER', token: API_TOKEN, frontendId: uniqueFrontendId, restaurantName: currentResName, area: area, price: price, details: details, image: imageUrl }) }).catch(e=>{});
+
+        btn.innerHTML = originalBtnHtml; btn.disabled = false;
+        
+        document.getElementById('orderStatusBox').classList.remove('hidden-section');
+        document.getElementById('customerPhone').value = ""; document.getElementById('customerDetails').value = ""; document.getElementById('orderPrice').value = ""; document.getElementById('customAreaName').value = ""; document.getElementById('customAreaPrice').value = "";
+        document.getElementById('priceHint').classList.add('hidden-section'); document.getElementById('customerArea').selectedIndex = 0; document.getElementById('customAreaSection').classList.add('hidden-section');
+        window.removePhoto(); clearDraft();
+        
+        setTimeout(() => { document.getElementById('orderStatusBox').classList.add('hidden-section'); window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); }, 1500);
     }
 </script>
-
 </body>
 </html>
