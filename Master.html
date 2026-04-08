@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 3.0 (نسخة القيادة العليا: مزامنة Firebase + Diffing Map Algorithm) ---
-        const CURRENT_APP_VERSION = "3.0"; 
+        // --- إصدار 3.1 (نسخة القيادة العليا: إصلاح اختناق الـ Modules وربط القوائم) ---
+        const CURRENT_APP_VERSION = "3.1"; 
         if (localStorage.getItem('hut_master_version') !== CURRENT_APP_VERSION) {
             console.log("تحديث الإدارة المكتشف... جاري تفريغ الذاكرة المؤقتة!");
             localStorage.setItem('hut_master_version', CURRENT_APP_VERSION);
@@ -146,18 +146,15 @@
         .sov-btn:active { transform: scale(0.9); }
         .sov-accept { background: #eff6ff; color: var(--accent-blue); } .sov-pause { background: #fffbeb; color: #d97706; } .sov-delete { background: #fef2f2; color: #ef4444; } .sov-reset { background: #ecfdf5; color: #10b981; } .sov-call { background: var(--primary-blue); color: white; }
 
-        /* Toast Notifications */
         #toast-container { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 20000; display: flex; flex-direction: column; gap: 10px; width: 90%; max-width: 350px;}
         .toast-msg { background: white; border-right: 5px solid var(--primary-blue); border-radius: 12px; padding: 12px 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 0.85rem; animation: slideDown 0.3s ease-out forwards; }
         .toast-msg.success { border-color: #10b981; } .toast-msg.error { border-color: #ef4444; }
         @keyframes slideDown { from { transform: translateY(-100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
-        /* Emergency Modal */
         #emergencyModal { position: fixed; inset: 0; background: rgba(15,23,42,0.8); z-index: 30000; display: none; align-items: center; justify-content: center; backdrop-filter: blur(5px); }
         .emergency-card { background: white; border-radius: 24px; padding: 30px; width: 90%; max-width: 400px; text-align: center; border-top: 8px solid #ef4444; box-shadow: 0 25px 50px rgba(0,0,0,0.3); animation: pulseAlert 2s infinite; }
         @keyframes pulseAlert { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); } 70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
 
-        /* Driver Performance Dots */
         .perf-dot { position: absolute; top: 12px; left: 12px; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; box-shadow: 0 2px 8px rgba(0,0,0,0.15); color: white; font-weight: 900; font-size: 0.7rem;}
         .perf-green { background-color: #10b981; } .perf-yellow { background-color: #f59e0b; } .perf-red { background-color: #ef4444; } 
 
@@ -175,7 +172,6 @@
         .invoice-card { background: white; border-radius: 24px; padding: 25px; width: 100%; max-width: 400px; position: relative; }
         .invoice-row { display: flex; justify-content: space-between; margin-bottom: 10px; font-weight: 700; font-size: 0.85rem; }
         
-        /* 🟢 تنسيق الحركة السلسة للماركرات على الخريطة */
         .leaflet-marker-icon { transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
     </style>
 </head>
@@ -370,7 +366,6 @@
 </div>
 
 <script type="module">
-    // 🟢 1. دمج Firebase v9 للإدارة العليا
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
@@ -394,8 +389,6 @@
     
     let map, heatLayer, driverClusterGroup, trackPolyline = null;
     let restaurantMarkersLayer = null; 
-    
-    // 🟢 2. قواميس الخريطة لمنع إعادة الرسم
     let activeDriverMarkers = {}; 
 
     let globalData = null; 
@@ -416,12 +409,12 @@
     let fetchPauseTimeout = null;
     let isEmergencyMuted = false;
 
-    // 🟢 3. أداة الـ Throttling للـ DOM
+    // 🟢 حل اختناق الثروتل: ربط دالة renderData بـ window بشكل صريح
     let renderTimeout = null;
-    function queueRender() {
+    window.queueRender = function() {
         if (renderTimeout) return;
         renderTimeout = requestAnimationFrame(() => {
-            renderDataUI();
+            window.renderDataUI();
             renderTimeout = null;
         });
     }
@@ -486,9 +479,9 @@
                     audio.volume = 0; audio.play().then(() => { audio.pause(); audio.currentTime = 0; audio.volume = 1; }).catch(e=>{});
 
                     initMap(); startClock(); 
-                    fetchColdData(); // الجلب الأول الشامل
-                    startHotDataListeners(); // تفعيل Firebase
-                    setInterval(fetchColdData, 180000); // تحديث الأرشيف كل 3 دقائق
+                    fetchColdData(); 
+                    startHotDataListeners(); 
+                    setInterval(fetchColdData, 180000); 
                 } else {
                     masterPassword = ""; window.showToast("رمز المرور غير صحيح", "error");
                 }
@@ -512,13 +505,11 @@
             .then(data => {
                 globalData = data;
                 
-                // ملء الفلاتر مرة واحدة
                 if(document.getElementById('arcRes').options.length === 1 && data.restaurants && data.drivers) {
                     data.restaurants.slice(1).forEach(r => document.getElementById('arcRes').innerHTML += `<option value="${r[1]}">${r[1]}</option>`);
                     data.drivers.slice(1).forEach(d => document.getElementById('arcDriver').innerHTML += `<option value="${String(d[2])}">${d[1]}</option>`);
                 }
                 
-                // رسم المطاعم على الخريطة لأول مرة
                 if (map && restaurantMarkersLayer && restaurantMarkersLayer.getLayers().length === 0) {
                     data.restaurants.slice(1).forEach(r => {
                         if(r[4] === 'active' && r[6] && r[7]) { 
@@ -532,11 +523,10 @@
                     });
                 }
                 
-                queueRender();
+                window.queueRender();
             });
     }
 
-    // 🟢 4. الاستماع لحركة الكباتن والطلبات (Hot Data)
     function startHotDataListeners() {
         const locRef = ref(db, 'drivers_locations');
         onValue(locRef, (snapshot) => {
@@ -552,7 +542,7 @@
                         hasChanges = true;
                     }
                 });
-                if(hasChanges) { updateMapMarkers(); queueRender(); }
+                if(hasChanges) { updateMapMarkers(); window.queueRender(); }
             }
         });
 
@@ -575,12 +565,11 @@
                     }
                 });
                 if (requiresColdSync) fetchColdData(); 
-                else if (hasChanges) queueRender(); 
+                else if (hasChanges) window.queueRender(); 
             }
         });
     }
 
-    // 🟢 5. خوارزمية تحديث الخريطة الناعمة (Diffing)
     function updateMapMarkers() {
         if (!map || !driverClusterGroup || !globalData) return;
 
@@ -591,10 +580,8 @@
                 
                 if(!isNaN(lat) && !isNaN(lng)) {
                     if (activeDriverMarkers[phone]) {
-                        // تحريك سلس فقط
                         activeDriverMarkers[phone].setLatLng([lat, lng]);
                     } else {
-                        // رسم كابتن جديد
                         const perf = driverPerformanceCache[phone] || { class: 'perf-yellow' };
                         let colorHex = '#f59e0b', pulseClass = '';
                         if(perf.class === 'perf-green') { colorHex = '#10b981'; pulseClass = 'marker-pulse'; }
@@ -607,7 +594,6 @@
                     }
                 }
             } else {
-                // الكابتن أوفلاين، نحذفه من الخريطة
                 if (activeDriverMarkers[phone]) {
                     driverClusterGroup.removeLayer(activeDriverMarkers[phone]);
                     delete activeDriverMarkers[phone];
@@ -616,7 +602,8 @@
         });
     }
 
-    function renderDataUI() {
+    // 🟢 الدالة الأساسية لرسم الشاشة (مربوطة بـ window)
+    window.renderDataUI = function() {
         if (!globalData) return;
         const now = Date.now();
 
@@ -1012,7 +999,7 @@
 
     window.withdrawOrderOptUI = function(orderId, driverPhone, element) {
         if(!confirm("هل أنت متأكد من سحب الطلب من هذا الكابتن وإعادته للرادار للبحث عن غيره؟")) return;
-        pauseAutoFetch();
+        fetchPauseTimeout = setTimeout(() => { fetchPauseTimeout = null; }, 3000);
         element.classList.add('btn-loading');
         const card = document.getElementById(`order-${orderId}`);
         if(card) card.style.opacity = '0.5';
@@ -1054,14 +1041,9 @@
         }
     }
 
-    function pauseAutoFetch() {
-        if (fetchPauseTimeout) clearTimeout(fetchPauseTimeout);
-        fetchPauseTimeout = setTimeout(() => { fetchPauseTimeout = null; }, 3000);
-    }
-
     window.assignDriverOptUI = function(orderId, driverPhone, element) {
         if(!driverPhone) return;
-        pauseAutoFetch();
+        fetchPauseTimeout = setTimeout(() => { fetchPauseTimeout = null; }, 3000);
         element.classList.add('btn-loading');
         const card = document.getElementById(`order-${orderId}`);
         if(card) card.style.opacity = '0.5';
@@ -1080,7 +1062,8 @@
 
     window.resetDebtOptUI = function(type, id, element) {
         if(!confirm(`تأكيد تصفير ديون (${id})؟`)) return;
-        pauseAutoFetch(); element.classList.add('btn-loading');
+        fetchPauseTimeout = setTimeout(() => { fetchPauseTimeout = null; }, 3000);
+        element.classList.add('btn-loading');
         const url = `${API_URL}?action=RESET_DEBT&type=${type}&id=${id}&token=${API_TOKEN}&pass=${masterPassword}`;
         const script = document.createElement('script'); script.src = `${url}&callback=silentCallback&ts=${Date.now()}`; 
         
@@ -1113,7 +1096,8 @@
              if (type === 'DRIVER') localOverrides.drivers[String(id)] = { status: newStatus, ts: Date.now() };
         }
         
-        pauseAutoFetch(); element.classList.add('btn-loading'); 
+        fetchPauseTimeout = setTimeout(() => { fetchPauseTimeout = null; }, 3000); 
+        element.classList.add('btn-loading'); 
 
         const script = document.createElement('script'); 
         script.src = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${id}&status=${newStatus}&token=${API_TOKEN}&pass=${masterPassword}&callback=silentCallback&ts=${Date.now()}`; 
