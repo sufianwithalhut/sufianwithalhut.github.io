@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 2.7 - Blue Minimal Edition) ---
-        const CURRENT_APP_VERSION = "2.7"; 
+        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 2.8 - الدخول الآمن والسريع) ---
+        const CURRENT_APP_VERSION = "2.8"; 
         if (localStorage.getItem('hut_res_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة مكتشفة... جاري التحديث الإجباري لتسريع النظام!");
             localStorage.setItem('hut_res_app_version', CURRENT_APP_VERSION);
@@ -148,7 +148,7 @@
             border: 1px solid rgba(59, 130, 246, 0.1); 
             border-right: 4px solid var(--primary-blue); 
             display: flex; flex-direction: column; gap: 8px; 
-            box-shadow: var(--shadow-sm); transition: 0.3s; 
+            box-shadow: var(--shadow-sm); transition: opacity 0.3s ease, transform 0.3s ease; 
         }
         
         .btn-call-mini { background: #ecfdf5; border: none; border-radius: 12px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--success); transition: 0.2s;}
@@ -209,7 +209,7 @@
             <div class="login-card" id="authBox">
                 <div class="mb-4 text-center">
                     <label class="form-label text-center">رقم هاتف الإدارة المسجل</label>
-                    <input type="tel" id="checkPhone" class="custom-input phone-format" placeholder="07XXXXXXXXX" dir="ltr" autocomplete="off" readonly onfocus="this.removeAttribute('readonly');">
+                    <input type="tel" id="checkPhone" class="custom-input phone-format" placeholder="07XXXXXXXXX" dir="ltr" autocomplete="off">
                 </div>
 
                 <div id="registerFields" class="hidden-section text-start" style="animation: fadeIn 0.5s;">
@@ -259,7 +259,7 @@
                     </div>
                 </div>
 
-                <button class="btn-action" id="mainAuthBtn" onclick="authAction()">
+                <button class="btn-action" id="mainAuthBtn" onclick="manualAuthAction()">
                     دخول المنصة <i data-lucide="arrow-left" size="18"></i>
                 </button>
             </div>
@@ -448,7 +448,7 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
     
-    // متغيرات الجلسة (Untouched Logic)
+    // متغيرات الجلسة 
     let currentResName = "";
     let isRegistering = false;
     let currentOrderMode = 'manual';
@@ -473,7 +473,7 @@
         if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') event.preventDefault();
     });
 
-    /* --- دوال التسجيل والخريطة (لا تلاعب بها) --- */
+    /* --- دوال التسجيل والخريطة --- */
     window.initPickerMap = function() {
         if (!document.getElementById('pickerMap')) return;
         if(pickerMap) { setTimeout(() => { pickerMap.invalidateSize(); }, 500); return; }
@@ -604,37 +604,61 @@
         return JSON.stringify(resultObj);
     }
 
-    /* --- نظام التسجيل (Untouched) --- */
-    function checkSavedSession() {
+    /* --- 🟢 2. المعمارية المحصنة لتسجيل الدخول (The Master Fix) --- */
+    
+    // دالة الدخول التلقائي (تعمل عند فتح التطبيق فقط)
+    function autoLogin() {
         const sessionStr = localStorage.getItem('hut_res_session');
         const pendingStr = localStorage.getItem('hut_res_pending');
+        const savedPhoneStr = localStorage.getItem('hut_res_phone');
+
         if (sessionStr) {
             try {
                 const session = JSON.parse(sessionStr);
-                if ((Date.now() - session.timestamp) / 3600000 < 24) {
-                    document.getElementById('checkPhone').value = session.phone.startsWith('0') ? session.phone : '0' + session.phone;
-                    currentResName = session.name; enterDashboard(); return true;
+                const diffHours = (Date.now() - session.timestamp) / (1000 * 60 * 60);
+                if (diffHours < 24) {
+                    document.getElementById('checkPhone').value = session.phone;
+                    currentResName = session.name; 
+                    enterDashboard(); 
+                    return;
                 }
             } catch(e) {}
-        } else if (pendingStr) {
-            document.getElementById('checkPhone').value = pendingStr; showWaitingRoom(); return true;
+        } 
+        
+        if (pendingStr) {
+            document.getElementById('checkPhone').value = pendingStr; 
+            showWaitingRoom(); 
+            return;
         }
-        return false;
+
+        if (savedPhoneStr) {
+            document.getElementById('checkPhone').value = savedPhoneStr;
+            // التحقق الصامت من السيرفر إذا كان لديه رقم محفوظ مسبقاً
+            fetch(`${API_URL}?action=checkRes&phone=${savedPhoneStr.startsWith('0') ? savedPhoneStr.substring(1) : savedPhoneStr}&token=${API_TOKEN}`)
+            .then(r => r.json()).then(data => {
+                if(data.status === "active" || data.status === "inactive") {
+                    currentResName = data.name;
+                    localStorage.setItem('hut_res_session', JSON.stringify({ phone: savedPhoneStr, name: data.name, timestamp: Date.now() }));
+                    try { if (data.priceList && data.priceList.trim() !== "") myCustomPriceList = JSON.parse(data.priceList); } catch(e) {}
+                    enterDashboard();
+                } else if(data.status === "banned") {
+                    localStorage.clear(); sessionStorage.clear();
+                }
+            }).catch(e=>{});
+        }
     }
 
     window.onload = function() {
-        if (!checkSavedSession()) {
-            const savedPhone = localStorage.getItem('hut_res_phone');
-            if(savedPhone) { document.getElementById('checkPhone').value = savedPhone.startsWith('0') ? savedPhone : '0' + savedPhone; window.authAction(); }
-        }
+        autoLogin();
     };
 
-    window.logout = function() { if(confirm("تسجيل الخروج؟")) { localStorage.clear(); sessionStorage.clear(); location.reload(); } }
+    window.logout = function() { if(confirm("هل تريد تسجيل الخروج؟ سيتم مسح الذاكرة المؤقتة.")) { localStorage.clear(); sessionStorage.clear(); location.reload(); } }
     window.showLoading = function(s, text = "جاري المعالجة...") { document.getElementById('loadingText').innerText = text; document.getElementById('loadingOverlay').style.display = s ? 'flex' : 'none'; }
 
     window.switchTab = function(mode, triggerSave = true) {
         currentOrderMode = mode;
         document.getElementById('tabManual').classList.remove('active'); document.getElementById('tabPhoto').classList.remove('active');
+        
         if (mode === 'manual') {
             document.getElementById('tabManual').classList.add('active');
             document.getElementById('manualSection').classList.remove('hidden-section'); document.getElementById('photoSection').classList.add('hidden-section');
@@ -686,69 +710,113 @@
         window.saveDraft(); 
     }
 
-    window.authAction = function() {
+    // دالة الدخول اليدوي (تعمل عند ضغط الزر فقط)
+    window.manualAuthAction = function() {
         let rawPhone = document.getElementById('checkPhone').value.trim();
-        if(!rawPhone) return alert("رقم الهاتف مطلوب");
+        if(!rawPhone) return alert("يرجى إدخال رقم الهاتف");
         let phone = rawPhone.startsWith('0') ? rawPhone.substring(1) : rawPhone;
 
+        const btn = document.getElementById('mainAuthBtn');
+        const origBtnText = btn.innerHTML;
+        btn.innerHTML = `<div class="spinner-border spinner-border-sm text-white"></div>`;
+        btn.disabled = true;
+
         if (isRegistering) {
-            const name = document.getElementById('regName').value.trim(), area = document.getElementById('regArea').value.trim(), comm = document.getElementById('regComm').value.trim(), pay = document.getElementById('regPay').value;
-            if(!name || !area || !comm) return alert("الرجاء ملء التفاصيل.");
-            window.showLoading(true, "إرسال...");
-            const payload = { action: 'RESTAURANT_REG', token: API_TOKEN, name: name, phone: phone, area: area, comm: comm, pay: pay, lat: regLat, lng: regLng, priceList: parseCustomPriceList(document.getElementById('regPriceList').value) };
-            fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) })
-            .then(() => { window.showLoading(false); localStorage.setItem('hut_res_phone', phone); localStorage.setItem('hut_res_pending', phone); showWaitingRoom(); }).catch(() => { window.showLoading(false); });
+            const name = document.getElementById('regName').value.trim();
+            const area = document.getElementById('regArea').value.trim();
+            const comm = document.getElementById('regComm').value.trim();
+            const pay = document.getElementById('regPay').value;
+            const rawPriceListText = document.getElementById('regPriceList').value;
+
+            if(!name || !area || !comm) { btn.innerHTML = origBtnText; btn.disabled = false; return alert("يرجى ملء جميع التفاصيل، وتحديد موقعك على الخريطة.");}
+            if(Math.abs(regLat - 35.468) < 0.001 && Math.abs(regLng - 44.392) < 0.001) { btn.innerHTML = origBtnText; btn.disabled = false; return alert("الرجاء تحديد موقع مطعمك على الخريطة.");}
+            
+            const packedPriceList = parseCustomPriceList(rawPriceListText);
+            sendRegistration(name, phone, area, comm, pay, regLat, regLng, packedPriceList, btn, origBtnText);
             return;
         }
 
-        window.showLoading(true, "فحص الحساب...");
-        fetch(`${API_URL}?action=checkRes&phone=${phone}&token=${API_TOKEN}`).then(r => r.json()).then(data => handleLogin(data, phone)).catch(err => { window.showLoading(false); });
+        fetch(`${API_URL}?action=checkRes&phone=${phone}&token=${API_TOKEN}`)
+            .then(r => r.json())
+            .then(data => {
+                btn.innerHTML = origBtnText; btn.disabled = false;
+                handleLogin(data, phone);
+            })
+            .catch(err => { 
+                btn.innerHTML = origBtnText; btn.disabled = false;
+                alert("خطأ في الاتصال، حاول مجدداً."); 
+            });
+    }
+
+    function sendRegistration(name, phone, area, comm, pay, lat, lng, priceListStr, btn, origBtnText) {
+        const payload = { action: 'RESTAURANT_REG', token: API_TOKEN, name: name, phone: phone, area: area, comm: comm, pay: pay, lat: lat, lng: lng, priceList: priceListStr };
+        fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) })
+        .then(() => {
+            btn.innerHTML = origBtnText; btn.disabled = false;
+            localStorage.setItem('hut_res_phone', phone); localStorage.setItem('hut_res_pending', phone); showWaitingRoom();
+        }).catch(() => { 
+            btn.innerHTML = origBtnText; btn.disabled = false;
+            alert("حدث خطأ أثناء الإرسال."); 
+        });
     }
 
     function showWaitingRoom() {
         document.getElementById('authBox').classList.add('hidden-section'); document.getElementById('waitingBox').classList.remove('hidden-section');
         if(waitingPollingTimer) clearInterval(waitingPollingTimer);
-        waitingPollingTimer = setInterval(() => window.checkWaitingStatus(false), 15000); 
+        waitingPollingTimer = setInterval(() => checkWaitingStatus(false), 15000); 
     }
 
     window.checkWaitingStatus = function(isManual = false) {
         let rawPhone = document.getElementById('checkPhone').value.trim() || localStorage.getItem('hut_res_pending');
         if(!rawPhone) return;
-        if(isManual) document.getElementById('waitingStatusText').innerText = "تحقق يدوي...";
-        fetch(`${API_URL}?action=checkRes&phone=${rawPhone.startsWith('0') ? rawPhone.substring(1) : rawPhone}&token=${API_TOKEN}`)
-            .then(r => r.json()).then(data => {
-                document.getElementById('waitingStatusText').innerText = "استعلام تلقائي...";
+        let phone = rawPhone.startsWith('0') ? rawPhone.substring(1) : rawPhone;
+        if(isManual) {
+             const statText = document.getElementById('waitingStatusText');
+             if(statText) statText.innerText = "جاري التحقق اليدوي...";
+        }
+        
+        fetch(`${API_URL}?action=checkRes&phone=${phone}&token=${API_TOKEN}`)
+            .then(r => r.json())
+            .then(data => {
+                const statText = document.getElementById('waitingStatusText');
+                if(statText) statText.innerText = "جاري الاستعلام التلقائي...";
+                
                 if(data.status === "active" || data.status === "inactive") {
                     clearInterval(waitingPollingTimer); localStorage.removeItem('hut_res_pending');
                     currentResName = data.name;
                     try { if (data.priceList && data.priceList.trim() !== "") myCustomPriceList = JSON.parse(data.priceList); } catch(e) {}
                     localStorage.setItem('hut_res_session', JSON.stringify({ phone: rawPhone, name: data.name, timestamp: Date.now() }));
                     const wAudio = document.getElementById('welcomeSound'); if(wAudio) { wAudio.currentTime = 0; wAudio.play().catch(e=>{}); }
-                    document.getElementById('waitingBox').classList.add('hidden-section'); enterDashboard();
-                } else if (data.status === "banned") { clearInterval(waitingPollingTimer); localStorage.removeItem('hut_res_pending'); alert("محظور"); location.reload(); }
+                    document.getElementById('waitingBox').classList.add('hidden-section');
+                    enterDashboard();
+                } else if (data.status === "banned") {
+                    clearInterval(waitingPollingTimer); localStorage.removeItem('hut_res_pending'); alert("⚠️ حسابك محظور."); location.reload();
+                }
             }).catch(e=>{});
     }
 
     function handleLogin(data, phone) {
-        window.showLoading(false);
         if(data.status === "active" || data.status === "inactive") {
-            currentResName = data.name; localStorage.setItem('hut_res_phone', phone); localStorage.removeItem('hut_res_pending');
+            currentResName = data.name; 
+            const formattedPhone = phone.startsWith('0') ? phone : '0' + phone;
+            localStorage.setItem('hut_res_phone', formattedPhone); localStorage.removeItem('hut_res_pending');
             try { if (data.priceList && data.priceList.trim() !== "") myCustomPriceList = JSON.parse(data.priceList); } catch(e) {}
-            localStorage.setItem('hut_res_session', JSON.stringify({ phone: phone, name: data.name, timestamp: Date.now() }));
+            localStorage.setItem('hut_res_session', JSON.stringify({ phone: formattedPhone, name: data.name, timestamp: Date.now() }));
             enterDashboard();
         } else if(data.status === "pending" || data.status === "waiting") {
-            localStorage.setItem('hut_res_phone', phone); localStorage.setItem('hut_res_pending', phone); showWaitingRoom();
+            const formattedPhone = phone.startsWith('0') ? phone : '0' + phone;
+            localStorage.setItem('hut_res_phone', formattedPhone); localStorage.setItem('hut_res_pending', formattedPhone); showWaitingRoom();
         } else if(data.status === "banned") {
-            alert("⚠️ حساب محظور."); localStorage.clear(); sessionStorage.clear();
+            alert("⚠️ عذراً، الحساب الخاص بك محظور من قبل الإدارة."); localStorage.clear(); sessionStorage.clear();
         } else {
             isRegistering = true;
             document.getElementById('registerFields').classList.remove('hidden-section'); document.getElementById('checkPhone').disabled = true;
-            const btn = document.getElementById('mainAuthBtn'); btn.innerHTML = `طلب انضمام <i data-lucide="send" size="16"></i>`;
+            const btn = document.getElementById('mainAuthBtn'); btn.innerHTML = `إرسال طلب الانضمام <i data-lucide="send" size="18"></i>`;
             if (typeof lucide !== 'undefined') lucide.createIcons(); setTimeout(window.initPickerMap, 300);
         }
     };
 
-    /* --- المنطق الماسي للوحة التحكم --- */
+    /* --- لوحة تحكم المطعم --- */
     function enterDashboard() {
         document.getElementById('loginSection').classList.add('hidden-section'); document.getElementById('orderSection').classList.remove('hidden-section');
         document.getElementById('resTitle').innerText = currentResName; 
@@ -757,71 +825,24 @@
         
         fetchColdData(); 
         startHotDataListeners(); 
-        dataRefreshInterval = setInterval(fetchColdData, 180000); 
+        dataRefreshInterval = setInterval(fetchColdData, 180000); // 3 دقائق للأرشيف
     }
 
-    // جلب الأرشيف الثقيل كل 3 دقائق (منع استنزاف السيرفر)
+    // 🟢 3. الأرشيف الآمن
     function fetchColdData() {
         if (document.hidden) return;
         fetch(`${API_URL}?action=getGlobalData&token=${API_TOKEN}`)
             .then(res => res.json())
             .then(data => {
                 if(data && data.drivers) globalDriversInfo = data.drivers;
-                renderDashboardStats(data); // 🟢 إصلاح الأرشيف موجود داخل هذه الدالة
+                renderDashboardStats(data);
                 renderActiveOrdersUI(); 
-            });
+            }).catch(e => console.error("Cold Fetch Error", e));
     }
 
-    // 🟢 2. الاستماع للـ Firebase باحترافية
-    function startHotDataListeners() {
-        const ordersRef = ref(db, 'active_orders');
-        onValue(ordersRef, (snapshot) => {
-            const activeFbOrders = snapshot.val() || {};
-            let newLiveOrders = [];
-
-            // ⚡ تصفية الطلبات في جهاز العميل (بدل جلب كل شيء، نأخذ ما يخصنا)
-            Object.values(activeFbOrders).forEach(fbOrder => {
-                if(fbOrder.restaurant === currentResName) {
-                    newLiveOrders.push({
-                        id: fbOrder.id,
-                        status: fbOrder.status,
-                        driverPhone: fbOrder.driverPhone || "pending_driver",
-                        timestamp: fbOrder.timestamp,
-                        area: fbOrder.area
-                    });
-                }
-            });
-            
-            newLiveOrders.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
-            liveActiveOrders = newLiveOrders;
-            renderActiveOrdersUI();
-        });
-    }
-
-    // 🟢 3. الإلغاء اللحظي الآمن
-    window.cancelOrderGrace = function(orderId) {
-        if(confirm("سحب الطلب من الرادار؟")) {
-            // Optimistic UI (إخفاء فوري)
-            const card = document.getElementById(`order-${orderId}`);
-            if(card) { card.style.opacity = '0'; setTimeout(() => card.style.display = 'none', 300); }
-            actionBlacklist.push(String(orderId));
-            setTimeout(() => { actionBlacklist = actionBlacklist.filter(id => id !== String(orderId)); }, 5000);
-
-            // حذف من Firebase
-            const updates = {}; updates[`active_orders/${orderId}`] = null; update(ref(db), updates);
-
-            // ابلاغ جوجل سكريبت
-            fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${orderId}&status=deleted&token=${API_TOKEN}`)
-            .then(res=>res.json()).then(response => {
-                if(!response.success) fetchColdData(); // إذا فشل، أعد تحميل الحالة الحقيقية
-            }).catch(e=>{});
-        }
-    }
-
-    // 🟢 4. إصلاح الأرشيف وحماية المتغيرات (HTML Injection Fix)
     function renderDashboardStats(data) {
         const resInfo = data.restaurants.find(r => r[1] === currentResName);
-        if(!resInfo) return;
+        if(!resInfo || (resInfo[4] !== 'active' && resInfo[4] !== 'inactive')) { alert("⚠️ تم إيقاف الحساب."); localStorage.clear(); sessionStorage.clear(); location.reload(); return; }
 
         const commRate = parseFloat(resInfo[5]) || 0;
         const paySystem = resInfo[8] || 'المطعم يدفع';
@@ -848,13 +869,7 @@
                     if(orderISO === todayISO) {
                         const priceVal = parseFloat(o[4]) || 0; todaySalesTotal += priceVal;
                         let driverName = "مكتمل"; const dInfo = data.drivers.find(d => String(d[2]) === String(driverPhone)); if(dInfo) driverName = dInfo[1];
-                        
-                        // ⚡ التعقيم لحماية الـ HTML من المسافات أو الاقتباسات
-                        const safeOrderStr = encodeURIComponent(JSON.stringify({
-                            id: orderId, date: orderDateStr, res: currentResName, driver: driverName, price: priceVal, comm: commRate
-                        })).replace(/'/g, "%27");
-
-                        todayArchiveHtml += `<div class="archive-item"><div><span class="fw-black text-dark" style="font-size:0.9rem;">#${orderId}</span><div class="small text-muted fw-bold mt-1"><i data-lucide="bike" size="12"></i> ${driverName}</div></div><div class="text-end"><span class="fw-black text-success fs-6">${o[4]} <small>د.ع</small></span><div class="small text-muted">${orderTimeStrFormat}</div></div></div>`;
+                        todayArchiveHtml += `<div class="archive-item"><div><span class="fw-black text-dark">#${orderId}</span><div class="small text-muted fw-bold">الكابتن: ${driverName}</div></div><div class="text-end"><span class="fw-black text-success">${o[4]} <small class="fs-6">د.ع</small></span><div class="small text-muted">${orderTimeStrFormat}</div></div></div>`;
                     }
                 }
             }
@@ -862,13 +877,37 @@
 
         document.getElementById('statMonthOrders').innerText = monthlyCount;
         document.getElementById('statUnpaid').innerText = totalUnpaid;
-        document.getElementById('todayTotalSales').innerHTML = `${todaySalesTotal} <small>د.ع</small>`;
+        document.getElementById('todayTotalSales').innerHTML = `${todaySalesTotal} <small class="fs-6">د.ع</small>`;
 
         if (lastArchiveHtml !== todayArchiveHtml) {
             document.getElementById('todayArchiveItems').innerHTML = todayArchiveHtml || `<div class="text-center text-muted fw-bold py-4 small border rounded-4 border-dashed bg-white">الأرشيف فارغ اليوم.</div>`;
             lastArchiveHtml = todayArchiveHtml;
-            if (typeof lucide !== 'undefined') lucide.createIcons({root: document.getElementById('todayArchiveItems')});
         }
+    }
+
+    // 🟢 4. الاستماع اللحظي الدقيق والموفر للبيانات
+    function startHotDataListeners() {
+        const ordersRef = ref(db, 'active_orders');
+        onValue(ordersRef, (snapshot) => {
+            const activeFbOrders = snapshot.val() || {};
+            let newLiveOrders = [];
+
+            Object.values(activeFbOrders).forEach(fbOrder => {
+                if(fbOrder.restaurant === currentResName) {
+                    newLiveOrders.push({
+                        id: fbOrder.id,
+                        status: fbOrder.status,
+                        driverPhone: fbOrder.driverPhone || "pending_driver",
+                        timestamp: fbOrder.timestamp,
+                        area: fbOrder.area
+                    });
+                }
+            });
+            
+            newLiveOrders.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+            liveActiveOrders = newLiveOrders;
+            renderActiveOrdersUI();
+        });
     }
 
     function renderActiveOrdersUI() {
@@ -897,7 +936,7 @@
                     <div><span class="fw-black text-dark" style="font-size:0.95rem;">#${orderId}</span><div class="mt-1 small fw-bold text-muted"><i data-lucide="clock" size="12"></i> أُرسل: ${orderTimeStrFormat}</div></div>
                     <div class="d-flex flex-column gap-2 align-items-end">
                         ${driverPhone && driverPhone !== "pending_driver" && driverPhone !== "manual_pending" ? `<button class="btn-call-mini" onclick="window.open('tel:${driverPhone}')"><i data-lucide="phone" size="16"></i></button>` : ''}
-                        ${isCancelable ? `<button class="btn-cancel-grace mt-1" onclick="cancelOrderGrace('${orderId}')"><i data-lucide="x" size="14"></i> إلغاء</button>` : ''}
+                        ${isCancelable ? `<button class="btn-cancel-grace mt-1" onclick="cancelOrderGrace('${orderId}', this)"><i data-lucide="x" size="14"></i> إلغاء</button>` : ''}
                     </div>
                 </div>
                 <div class="py-2 d-flex flex-column gap-1">
@@ -921,7 +960,34 @@
         }
     }
 
-    // 🟢 5. الإطلاق اللحظي المطلق
+    // 🟢 5. إلغاء آمن (Safe Deletion with UI Fix)
+    window.cancelOrderGrace = function(orderId, btnEl) {
+        if(confirm("هل أنت متأكد من إلغاء هذا الطلب؟ سيتم سحبه من الرادار فوراً.")) {
+            // Optimistic UI Feedback
+            const originalHtml = btnEl.innerHTML;
+            btnEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+            btnEl.disabled = true;
+
+            const card = document.getElementById(`order-${orderId}`);
+            if(card) {
+                card.style.opacity = '0';
+                setTimeout(() => card.style.display = 'none', 300);
+            }
+            actionBlacklist.push(String(orderId));
+            setTimeout(() => { actionBlacklist = actionBlacklist.filter(id => id !== String(orderId)); }, 5000);
+
+            // مسح من Firebase فوراً
+            const updates = {}; updates[`active_orders/${orderId}`] = null; update(ref(db), updates);
+
+            // إبلاغ السيرفر
+            fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${orderId}&status=deleted&token=${API_TOKEN}`)
+            .then(res=>res.json()).then(response => {
+                if(!response.success) { alert("تنبيه: قد يكون الكابتن استلم الطلب."); fetchColdData(); }
+            }).catch(e=>{});
+        }
+    }
+
+    // الإرسال السريع جداً 
     document.getElementById('orderForm').onsubmit = function(e) {
         e.preventDefault();
         let finalArea = document.getElementById('customerArea').value, areaWithHint = finalArea;
@@ -962,13 +1028,13 @@
         const uniqueFrontendId = "HUT-" + Math.floor(Date.now() / 1000);
         const timestampIso = new Date().toISOString();
         
-        // الحقن الفوري ⚡
+        // الحقن الفوري لـ Firebase
         set(ref(db, 'active_orders/' + uniqueFrontendId), {
             id: uniqueFrontendId, restaurant: currentResName, area: area, status: "pending_driver",
             driverPhone: "pending_driver", price: price, timestamp: timestampIso, photoUrl: imageUrl, last_update: timestampIso
         });
 
-        // الإبلاغ الصامت
+        // الإبلاغ الصامت للسيرفر
         fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'NEW_ORDER', token: API_TOKEN, frontendId: uniqueFrontendId, restaurantName: currentResName, area: area, price: price, details: details, image: imageUrl }) }).catch(e=>{});
 
         btn.innerHTML = originalBtnHtml; btn.disabled = false;
@@ -978,7 +1044,6 @@
         document.getElementById('priceHint').classList.add('hidden-section'); document.getElementById('customerArea').selectedIndex = 0; document.getElementById('customAreaSection').classList.add('hidden-section');
         window.removePhoto(); clearDraft();
         
-        // سحب الشاشة للأسفل بسلاسة لرؤية الطلب
         setTimeout(() => { document.getElementById('orderStatusBox').classList.add('hidden-section'); window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); }, 1500);
     }
 </script>
