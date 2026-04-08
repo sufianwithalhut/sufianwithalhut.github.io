@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 6.6 (النسخة الماسية الفائقة: استجابة لحظية 100% بين الكابتن والإدارة) ---
-        const CURRENT_APP_VERSION = "6.6"; 
+        // --- إصدار 6.8 (النسخة الماسية: استجابة لحظية + واتساب ذكي + حماية جغرافية من الاحتيال) ---
+        const CURRENT_APP_VERSION = "6.8"; 
         
         if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة... جاري تطهير الكاش!");
@@ -360,7 +360,6 @@
 </div>
 
 <script type="module">
-    // 🟢 تضمين Firebase
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getDatabase, ref, onValue, update } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
@@ -371,10 +370,7 @@
       apiKey: "AIzaSyAo1rmqUzieYZU3RIwXOAN87GkpNrp-_Hc",
       authDomain: "sufyan-delivery.firebaseapp.com",
       databaseURL: "https://sufyan-delivery-default-rtdb.europe-west1.firebasedatabase.app",
-      projectId: "sufyan-delivery",
-      storageBucket: "sufyan-delivery.firebasestorage.app",
-      messagingSenderId: "941542380637",
-      appId: "1:941542380637:web:9623fa6e627817ffeba9b4"
+      projectId: "sufyan-delivery"
     };
 
     const app = initializeApp(firebaseConfig);
@@ -384,7 +380,6 @@
     let wakeLock = null, waitingPollingTimer = null, statsInterval = null;
     let lastLocUpdateTs = 0, lastSentLat = 0, lastSentLng = 0, lastActiveHtml = "";
 
-    // 🟢 Offline Queue
     let offlineActionQueue = JSON.parse(localStorage.getItem('hut_offline_queue') || '[]');
     let isProcessingQueue = false;
 
@@ -408,13 +403,14 @@
 
     async function processOfflineQueue() {
         if (isProcessingQueue || offlineActionQueue.length === 0 || !navigator.onLine) {
-            document.getElementById('syncStatus').style.display = 'none';
+            const syncEl = document.getElementById('syncStatus');
+            if(syncEl) syncEl.style.display = 'none';
             return;
         }
         
         isProcessingQueue = true;
-        document.getElementById('syncStatus').style.display = 'flex';
-        document.getElementById('syncText').innerText = `جاري مزامنة ${offlineActionQueue.length} عمليات...`;
+        const syncEl = document.getElementById('syncStatus');
+        if(syncEl) { syncEl.style.display = 'flex'; document.getElementById('syncText').innerText = `جاري مزامنة ${offlineActionQueue.length} عمليات...`; }
 
         let failedQueue = [];
         for (let i = 0; i < offlineActionQueue.length; i++) {
@@ -426,7 +422,7 @@
 
         offlineActionQueue = failedQueue;
         localStorage.setItem('hut_offline_queue', JSON.stringify(offlineActionQueue));
-        document.getElementById('syncStatus').style.display = 'none';
+        if(syncEl) syncEl.style.display = 'none';
         isProcessingQueue = false;
     }
     setInterval(processOfflineQueue, 5000);
@@ -445,9 +441,49 @@
         else { window.open(url, '_blank'); }
     }
 
+    // 🟢 واتساب ذكي ومزين بالإيموجيز
+    window.openSmartWhatsapp = function(phone, resName, area, orderId) {
+        if(!phone) return;
+        const msg = encodeURIComponent(`مرحباً بك! 🛵\nأنا كابتن شركة سفيان، والمسؤول عن توصيل طلبك اللذيذ 🍔 من (${resName}) المخصص لمنطقة (${area}) ✨.\n\nيرجى إرسال موقعك الدقيق (Location) 📍 لتسليم الطلبية بأسرع وقت ممكن 🚀.\nشكراً لك! 🌹`);
+        let cleanPhone = phone;
+        if (cleanPhone.startsWith('0')) { cleanPhone = '964' + cleanPhone.substring(1); }
+        const url = `https://wa.me/${cleanPhone}?text=${msg}`;
+        window.openSafeLink(url);
+    }
+
     window.muteAlarmOnly = function() {
         if (window.AndroidRadar) { window.AndroidRadar.stopAlarm(); }
         try { document.getElementById('alertSound').pause(); document.getElementById('doubleOrderSound').pause(); } catch(e) {}
+    }
+
+    function showToast(msg, type = 'success') {
+        const container = document.getElementById('toast-container');
+        if (!container) {
+            const cont = document.createElement('div');
+            cont.id = 'toast-container';
+            cont.style.cssText = 'position:fixed; top:20px; left:50%; transform:translateX(-50%); z-index:99999; display:flex; flex-direction:column; gap:10px;';
+            document.body.appendChild(cont);
+        }
+        const toast = document.createElement('div');
+        toast.style.cssText = `background: ${type === 'success' ? '#10b981' : '#ef4444'}; color: white; padding: 15px 20px; border-radius: 20px; font-weight: 800; font-size: 0.95rem; box-shadow: 0 10px 25px rgba(0,0,0,0.25); text-align: center; animation: slideDown 0.3s forwards; line-height: 1.4;`;
+        toast.innerHTML = msg;
+        document.getElementById('toast-container').appendChild(toast);
+        setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 5000);
+    }
+
+    // 🟢 رسالة الجمعة الراقية
+    function checkFridayMessage() {
+        const today = new Date();
+        if (today.getDay() === 5) { 
+            const lastShown = localStorage.getItem('hut_friday_msg');
+            const todayStr = today.toISOString().split('T')[0];
+            if (lastShown !== todayStr) {
+                setTimeout(() => {
+                    showToast('جمعة مباركة ومتقبلة بإذن الله 🕌✨<br>لا تنسَ الصلاة على الحبيب المصطفى ﷺ 📿🤲.<br>رزقك الله من واسع فضله 💙', 'success');
+                    localStorage.setItem('hut_friday_msg', todayStr);
+                }, 3000); 
+            }
+        }
     }
 
     function showLoading(s, text = "جاري المزامنة مع النظام...") { 
@@ -582,20 +618,19 @@
     function showDashboard() {
         document.getElementById('loginSection').classList.add('hidden-section'); document.getElementById('dashboardPage').classList.remove('hidden-section');
         document.getElementById('driverNameDisplay').innerText = "كابتن " + driverData.name; startSystem();
+        checkFridayMessage(); // تفعيل رسالة الجمعة
     }
 
     window.logout = function() {
         if (activeOrders.length > 0) return alert("⚠️ قم بإنهاء الطلبات أولاً.");
         if (confirm("تأكيد تسجيل الخروج؟")) { 
             releaseWakeLock(); 
-            // 🟢 إبلاغ Firebase والإكسل بتسجيل الخروج
             updateFirebaseLocationStatus('inactive');
             safeFetchUpdate(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=DRIVER&id=${driverData.phone}&status=inactive&token=${API_TOKEN}`); 
             localStorage.clear(); sessionStorage.clear(); location.reload(); 
         }
     }
 
-    // 🟢 5. تسريع تحديث حالة الكابتن لتكون لحظية تماماً
     window.toggleOnlineStatus = function() {
         isOnline = document.getElementById('onlineToggle').checked;
         const badge = document.getElementById('onlineStatusBadge');
@@ -603,28 +638,18 @@
         if (isOnline) {
             badge.className = "status-badge online"; badge.innerHTML = `متاح للطلبات`;
             document.getElementById('searchingStatus').classList.remove('offline-mode');
-            
-            // تحديث Firebase فوراً لتراه الإدارة
             updateFirebaseLocationStatus('active');
-            // إرسال Backup للإكسل
             safeFetchUpdate(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=DRIVER&id=${driverData.phone}&status=active&token=${API_TOKEN}`); 
-            
             requestWakeLock(); if (silentAudio) silentAudio.play().catch(e=>{}); 
-            
-            if(!statsInterval) statsInterval = setInterval(updateStats, 60000); // تفعيل العداد
+            if(!statsInterval) statsInterval = setInterval(updateStats, 60000); 
             displayActiveOrders();
         } else {
             badge.className = "status-badge offline"; badge.innerHTML = `في استراحة`;
             document.getElementById('searchingStatus').classList.add('offline-mode');
-            
-            // تحديث Firebase فوراً
             updateFirebaseLocationStatus('inactive');
-            // إرسال Backup للإكسل
             safeFetchUpdate(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=DRIVER&id=${driverData.phone}&status=inactive&token=${API_TOKEN}`); 
-            
             releaseWakeLock(); if (silentAudio) silentAudio.pause(); 
-            
-            if(statsInterval) { clearInterval(statsInterval); statsInterval = null; } // إيقاف العداد لتخفيف الضغط
+            if(statsInterval) { clearInterval(statsInterval); statsInterval = null; } 
             displayActiveOrders();
         }
     }
@@ -638,10 +663,7 @@
     }
 
     function startSystem() {
-        if (isOnline) { 
-            requestWakeLock(); let silentAudio = document.getElementById('keepAliveAudio'); if (silentAudio) silentAudio.play().catch(e=>{}); 
-            statsInterval = setInterval(updateStats, 60000); 
-        }
+        if (isOnline) { requestWakeLock(); let silentAudio = document.getElementById('keepAliveAudio'); if (silentAudio) silentAudio.play().catch(e=>{}); statsInterval = setInterval(updateStats, 60000); }
         updateStats(); 
         startHotDataListeners(); 
         
@@ -659,8 +681,8 @@
                         const dist = calculateDistanceMeters(lastSentLat, lastSentLng, pos.coords.latitude, pos.coords.longitude);
                         const timeElapsed = now - lastLocUpdateTs;
                         
-                        if (dist >= 50 || timeElapsed > 180000) {
-                            if (timeElapsed > 15000) { 
+                        if (dist >= 30 || timeElapsed > 180000) {
+                            if (timeElapsed > 10000) {  
                                 lastLocUpdateTs = now; 
                                 lastSentLat = pos.coords.latitude;
                                 lastSentLng = pos.coords.longitude;
@@ -751,7 +773,6 @@
         }, 1000);
     }
 
-    // 🟢 6. تسريع تحديث الطلبات للإدارة لتصبح لحظية (No timeouts)
     window.acceptOrder = function() {
         closeAlert(); 
         const newOrder = { 
@@ -763,7 +784,6 @@
         activeOrders.push(newOrder); localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
         displayActiveOrders(); 
         
-        // إبلاغ Firebase فوراً (سرعة البرق للإدارة)
         const updates = {};
         updates[`active_orders/${newOrder.id}/status`] = 'accepted';
         updates[`active_orders/${newOrder.id}/driverPhone`] = driverData.phone;
@@ -818,7 +838,11 @@
             let safeDetails = String(order.details || "");
             let custMatch = safeDetails.match(/(07[0-9]{8,9})/);
             let custPhoneNum = custMatch ? String(custMatch[0]) : null;
-            let waCust = custPhoneNum ? (custPhoneNum.startsWith('0') ? '964' + custPhoneNum.substring(1) : custPhoneNum) : null;
+            
+            let waCustHtml = '';
+            if(custPhoneNum) {
+                waCustHtml = `<button class="btn-action-pill whatsapp" onclick="window.openSmartWhatsapp('${custPhoneNum}', '${order.resName}', '${order.area}', '${order.id}')">${svgWa} رسالة للزبون</button>`;
+            }
 
             let badgeHtml = isDouble ? `<div class="order-badge double">طلب مزدوج (${index + 1} من ${activeOrders.length})</div>` : `<div class="order-badge">طلب حصري</div>`;
             let photoBtnHtml = (order.photoUrl && String(order.photoUrl).startsWith("http")) ? `<button class="btn-photo-view" onclick="window.openSafeLink('${order.photoUrl}')">${svgImg} عرض صورة الوصل</button>` : '';
@@ -847,7 +871,7 @@
                             <div class="point-name">${order.resName}</div>
                             <div class="point-actions-grid">
                                 ${resPhoneNum ? `<button class="btn-action-pill call" onclick="window.openSafeLink('tel:${resPhoneNum}')">${svgPhone} اتصال</button>` : ''}
-                                ${waRes ? `<button class="btn-action-pill whatsapp" onclick="window.openSafeLink('https://wa.me/${waRes}')">${svgWa} واتساب</button>` : ''}
+                                ${waRes ? `<button class="btn-action-pill whatsapp" onclick="window.openSafeLink('https://wa.me/${waRes}')">${svgWa} المطعم</button>` : ''}
                                 ${mapUrl ? `<button class="btn-action-pill map" onclick="window.openSafeLink('${mapUrl}')">${svgMap} الخريطة</button>` : ''}
                             </div>
                         </div>
@@ -859,7 +883,7 @@
                             <div class="point-name">${safeDetails}</div>
                             <div class="point-actions-grid">
                                 ${custPhoneNum ? `<button class="btn-action-pill call" onclick="window.openSafeLink('tel:${custPhoneNum}')">${svgPhone} اتصال</button>` : ''}
-                                ${waCust ? `<button class="btn-action-pill whatsapp" onclick="window.openSafeLink('https://wa.me/${waCust}')">${svgWa} واتساب</button>` : ''}
+                                ${waCustHtml}
                             </div>
                         </div>
                     </div>
@@ -900,39 +924,55 @@
 
     setInterval(updateOrderTimers, 1000);
 
-    // 🟢 تحديثات لحظية للطلبات (لا يوجد تأخير)
+    // 🟢 تحديث الأزرار الخارقة + السياج الجغرافي
     window.updateOrderStatus = function(id, action, btnElement) {
         const order = activeOrders.find(o => String(o.id) === String(id));
         if (!order) return;
 
-        // إخفاء الزر مؤقتاً كنوع من التأكيد البصري بدلاً من التعليق
-        btnElement.innerHTML = `<div class="spinner-border spinner-border-sm"></div> جاري التحديث...`;
+        // 🛑 Anti-Fraud Check (نظام حماية الموقع)
+        if (action === 'arrive') {
+            if (order.resLat && order.resLng && driverData && driverData.currentLat && driverData.currentLng) {
+                const dist = calculateDistanceMeters(driverData.currentLat, driverData.currentLng, order.resLat, order.resLng);
+                // السماح بـ 150 متر كمسافة أمان لتفاوت أجهزة الموبايل
+                if (dist > 150) {
+                    showToast(`⚠️ لا يمكنك تأكيد الوصول!<br>أنت تبعد <b>${Math.round(dist)} متر</b> عن المطعم 📍`, "error");
+                    return; 
+                }
+            }
+        }
+
+        const origHtml = btnElement.innerHTML;
+        btnElement.innerHTML = `<div class="spinner-border spinner-border-sm text-white"></div>`;
         btnElement.disabled = true;
 
         if (action === 'arrive') {
             order.state = 'arrived';
             const updates = {}; updates[`active_orders/${id}/status`] = 'arrived_at_res'; update(ref(db), updates);
+            localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders)); 
+            displayActiveOrders(); 
             safeFetchUpdate(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${id}&status=arrived_at_res&token=${API_TOKEN}`);
-            localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders)); displayActiveOrders();
-        } else if (action === 'pickup') {
+        } 
+        else if (action === 'pickup') {
             order.state = 'picked_up'; order.pickupTime = Date.now();
             const updates = {}; updates[`active_orders/${id}/status`] = 'picked_up'; update(ref(db), updates);
+            localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders)); 
+            displayActiveOrders(); 
             safeFetchUpdate(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${id}&status=picked_up&token=${API_TOKEN}`);
-            localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders)); displayActiveOrders();
-        } else if (action === 'finish') {
-            if (Date.now() - order.pickupTime < 120000) return; 
+        } 
+        else if (action === 'finish') {
+            if (Date.now() - order.pickupTime < 120000) { btnElement.innerHTML = origHtml; btnElement.disabled = false; return; }
             
             const card = document.getElementById(`order-${id}`);
-            if (card) { card.style.opacity = '0'; card.style.transform = 'scale(0.95)'; }
+            if (card) { card.style.transition = '0.3s'; card.style.opacity = '0'; card.style.transform = 'scale(0.95)'; }
             
             setTimeout(() => {
                 activeOrders = activeOrders.filter(o => String(o.id) !== String(id));
                 localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
                 
                 const updates = {}; updates[`active_orders/${id}`] = null; update(ref(db), updates);
-                safeFetchUpdate(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${id}&status=completed&token=${API_TOKEN}`);
-                
                 displayActiveOrders(); updateStats();
+                
+                safeFetchUpdate(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${id}&status=completed&token=${API_TOKEN}`);
             }, 300);
         }
     };
