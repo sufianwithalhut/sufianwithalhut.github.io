@@ -138,7 +138,7 @@
             /* 🗺️ Interactive Map Screen */
             #tab-live.active-tab { overflow: hidden; } 
             .map-wrapper { position: absolute; top: 0; left: 0; width: 100%; height: 60%; z-index: 1; }
-            #adminMap { width: 100%; height: 100%; border: none; background: #e2e8f0; }
+            #adminMap { width: 100%; height: 100%; border: none; background: #262626; /* Dark background to match dark theme map */ }
             
             /* Glass Floating Header Over Map */
             .map-floating-header { position: absolute; top: max(20px, env(safe-area-inset-top)); left: 20px; right: 20px; z-index: 10; display: flex; justify-content: space-between; align-items: center; pointer-events: none; }
@@ -169,14 +169,14 @@
             .nav-item.active { background: var(--primary-orange); color: white; box-shadow: var(--shadow-md); font-weight: 900; }
             
             .map-wrapper { width: 100%; height: 500px; margin-bottom: 30px; }
-            #adminMap { width: 100%; height: 100%; border-radius: 30px; box-shadow: var(--shadow-md); background: #e2e8f0; z-index: 1; border: 5px solid white; }
+            #adminMap { width: 100%; height: 100%; border-radius: 30px; box-shadow: var(--shadow-md); background: #262626; z-index: 1; border: 5px solid white; } /* Dark Map matching */
             .map-floating-header, .map-floating-stats, .sheet-handle { display: none !important; }
             .desktop-stats { display: flex; }
         }
 
-        /* 4️⃣ UI Components (Soft & Minimal) */
-        
-        /* Stats Cards (Desktop) */
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Smooth Stat Cards */
         .stat-compact { background: var(--card-bg); border-radius: 28px; padding: 25px; box-shadow: var(--shadow-sm); display: flex; align-items: center; justify-content: space-between; transition: 0.3s; border: 1px solid rgba(255,255,255,0.8); }
         .stat-compact:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); }
         .stat-compact .icon-box { width: 55px; height: 55px; border-radius: 20px; display: flex; align-items: center; justify-content: center; background: var(--light-orange); }
@@ -244,7 +244,7 @@
         
         /* Action Buttons (Accept, Pause, Delete) */
         .sov-btn { border: none; border-radius: 16px; width: 42px; height: 42px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; }
-        .sov-btn:active { transform: scale(0.9); }
+        .sov-btn:active { transform: scale(0.9); box-shadow: none; }
         .sov-accept { background: #ecfdf5; color: var(--success-color); } 
         .sov-pause { background: #fffbeb; color: var(--warning-color); } 
         .sov-delete { background: #fef2f2; color: var(--danger-color); } 
@@ -664,11 +664,11 @@
             }
         });
 
-        try { renderArchive(); } catch(e) { console.error(e); }
+        try { renderArchive(); } catch(e) { console.error("Archive Error:", e); }
         try { updateSectionBadges('RESTAURANT', data.restaurants); } catch(e) {}
         try { updateSectionBadges('DRIVER', data.drivers); } catch(e) {}
-        try { smartRenderFilteredSection('RESTAURANT', data.restaurants, resDebts, resUnpaidCounts); } catch(e) { console.error(e); }
-        try { smartRenderFilteredSection('DRIVER', data.drivers, driverDebts, null); } catch(e) { console.error(e); }
+        try { smartRenderFilteredSection('RESTAURANT', data.restaurants, resDebts, resUnpaidCounts); } catch(e) { console.error("Res Error:", e); }
+        try { smartRenderFilteredSection('DRIVER', data.drivers, driverDebts, null); } catch(e) { console.error("Driver Error:", e); }
 
         if (map && restaurantMarkersLayer) {
             data.restaurants.slice(1).forEach(r => {
@@ -678,8 +678,8 @@
                     if(!isNaN(lat) && !isNaN(lng)) {
                         if(liveResMarkers[rName]) { liveResMarkers[rName].setLatLng([lat, lng]); } 
                         else {
-                            const resIcon = L.divIcon({ className: 'custom-res-icon', html: `<div style="background-color: var(--text-dark); width: 14px; height: 14px; border-radius: 4px; border: 2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transform: rotate(45deg);"></div>`, iconSize: [14, 14], iconAnchor: [7, 7] });
-                            const marker = L.marker([lat, lng], {icon: resIcon, zIndexOffset: -100}).bindPopup(`<div class="text-center fw-bold" style="font-family:'Cairo';"><span style="color: var(--primary-orange);">المطعم:</span> ${rName}</div>`);
+                            const resIcon = L.divIcon({ className: 'custom-res-icon', html: `<div style="background-color: var(--accent-orange); width: 14px; height: 14px; border-radius: 4px; border: 2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transform: rotate(45deg);"></div>`, iconSize: [14, 14], iconAnchor: [7, 7] });
+                            const marker = L.marker([lat, lng], {icon: resIcon, zIndexOffset: -100}).bindPopup(`<div class="text-center fw-bold" style="font-family:'Cairo';"><span class="text-primary">المطعم:</span> ${rName}</div>`);
                             restaurantMarkersLayer.addLayer(marker); liveResMarkers[rName] = marker;
                         }
                     }
@@ -693,7 +693,7 @@
             listenToFirebaseOrders(); 
             dataRefreshInterval = setInterval(refreshData, 180000);
         } else {
-            if (liveFirebaseOrders.length > 0) { try { smartRenderRadar(liveFirebaseOrders); } catch(e) {} }
+            if (liveFirebaseOrders.length > 0) { try { smartRenderRadar(liveFirebaseOrders); } catch(e) { console.error("Radar Error:", e); } }
         }
     };
 
@@ -733,7 +733,7 @@
 
             document.querySelectorAll('.val-orders').forEach(el => el.innerText = liveFirebaseOrders.length);
             if (globalData) { try { smartRenderRadar(liveFirebaseOrders); } catch(e) {} }
-            updateHeatmap(liveFirebaseOrders); // 🟢 تحديث الـ Heatmap
+            updateHeatmap(liveFirebaseOrders);
         });
     }
 
@@ -745,7 +745,7 @@
             const rData = globalData.restaurants.find(r => r[1] === restName);
             if(rData && rData[6] && rData[7]) {
                 const lat = parseFloat(rData[6]); const lng = parseFloat(rData[7]);
-                if(!isNaN(lat) && !isNaN(lng)) heatPoints.push([lat, lng, 1]); // 1 is intensity
+                if(!isNaN(lat) && !isNaN(lng)) heatPoints.push([lat, lng, 1]); 
             }
         });
         heatLayer.setLatLngs(heatPoints);
@@ -1369,7 +1369,8 @@
         const kirkukLocation = [35.468, 44.392];
         map = L.map('adminMap', { zoomControl: false }).setView(kirkukLocation, 13);
         L.control.zoom({ position: 'topright' }).addTo(map);
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OpenStreetMap & CartoDB', maxZoom: 19 }).addTo(map);
+        // استخدام خريطة داكنة مميزة تتناسب مع البرتقالي
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OpenStreetMap & CartoDB', maxZoom: 19 }).addTo(map);
         
         // Heatmap Orange Gradient
         heatLayer = L.heatLayer([], { radius: 25, blur: 15, maxZoom: 14, gradient: {0.4: '#fed7aa', 0.6: '#fb923c', 0.8: '#f97316', 1.0: '#ea580c'} }).addTo(map);
