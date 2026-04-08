@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 3.1 (نسخة القيادة العليا: إصلاح اختناق الـ Modules وربط القوائم) ---
-        const CURRENT_APP_VERSION = "3.1"; 
+        // --- إصدار 3.2 (إصلاح اللاق + تسريع بناء الرادار) ---
+        const CURRENT_APP_VERSION = "3.2"; 
         if (localStorage.getItem('hut_master_version') !== CURRENT_APP_VERSION) {
             console.log("تحديث الإدارة المكتشف... جاري تفريغ الذاكرة المؤقتة!");
             localStorage.setItem('hut_master_version', CURRENT_APP_VERSION);
@@ -32,7 +32,6 @@
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js" defer></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
     <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js" defer></script>
@@ -146,23 +145,19 @@
         .sov-btn:active { transform: scale(0.9); }
         .sov-accept { background: #eff6ff; color: var(--accent-blue); } .sov-pause { background: #fffbeb; color: #d97706; } .sov-delete { background: #fef2f2; color: #ef4444; } .sov-reset { background: #ecfdf5; color: #10b981; } .sov-call { background: var(--primary-blue); color: white; }
 
+        /* Toast Notifications */
         #toast-container { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 20000; display: flex; flex-direction: column; gap: 10px; width: 90%; max-width: 350px;}
         .toast-msg { background: white; border-right: 5px solid var(--primary-blue); border-radius: 12px; padding: 12px 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 0.85rem; animation: slideDown 0.3s ease-out forwards; }
         .toast-msg.success { border-color: #10b981; } .toast-msg.error { border-color: #ef4444; }
         @keyframes slideDown { from { transform: translateY(-100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
+        /* Emergency Modal */
         #emergencyModal { position: fixed; inset: 0; background: rgba(15,23,42,0.8); z-index: 30000; display: none; align-items: center; justify-content: center; backdrop-filter: blur(5px); }
         .emergency-card { background: white; border-radius: 24px; padding: 30px; width: 90%; max-width: 400px; text-align: center; border-top: 8px solid #ef4444; box-shadow: 0 25px 50px rgba(0,0,0,0.3); animation: pulseAlert 2s infinite; }
         @keyframes pulseAlert { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); } 70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
 
         .perf-dot { position: absolute; top: 12px; left: 12px; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; box-shadow: 0 2px 8px rgba(0,0,0,0.15); color: white; font-weight: 900; font-size: 0.7rem;}
         .perf-green { background-color: #10b981; } .perf-yellow { background-color: #f59e0b; } .perf-red { background-color: #ef4444; } 
-
-        .leaflet-interactive.path-animated { animation: dash 20s linear infinite; }
-        @keyframes dash { to { stroke-dashoffset: -1000; } }
-
-        .marker-pulse { border-radius: 50%; border: 3px solid white; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); animation: pulseMarker 2s infinite; }
-        @keyframes pulseMarker { 0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); } 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }
 
         .btn-loading { opacity: 0.7 !important; pointer-events: none !important; position: relative; color: transparent !important; }
         .btn-loading::after { content: ''; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 16px; height: 16px; border: 2px solid rgba(0,0,0,0.2); border-top-color: #000; border-radius: 50%; animation: spin 1s linear infinite; }
@@ -391,7 +386,8 @@
     let restaurantMarkersLayer = null; 
     let activeDriverMarkers = {}; 
 
-    let globalData = null; 
+    // 🟢 فصل البيانات لسهولة القراءة
+    let globalData = { orders: [], drivers: [], restaurants: [] }; 
     let currentRadarFilter = 'all';
     let currentResSectionFilter = 'all';
     let currentDriverSectionFilter = 'all';
@@ -409,7 +405,6 @@
     let fetchPauseTimeout = null;
     let isEmergencyMuted = false;
 
-    // 🟢 حل اختناق الثروتل: ربط دالة renderData بـ window بشكل صريح
     let renderTimeout = null;
     window.queueRender = function() {
         if (renderTimeout) return;
@@ -498,20 +493,40 @@
         }, 1000); 
     }
 
+    // 🟢 جلب البيانات الباردة (Sheets)
     function fetchColdData() {
         if (document.hidden || fetchPauseTimeout !== null) return;
         fetch(`${API_URL}?action=getGlobalData&token=${API_TOKEN}`)
             .then(res => res.json())
             .then(data => {
-                globalData = data;
+                // دمج البيانات المستلمة
+                globalData.drivers = data.drivers || [];
+                globalData.restaurants = data.restaurants || [];
                 
-                if(document.getElementById('arcRes').options.length === 1 && data.restaurants && data.drivers) {
-                    data.restaurants.slice(1).forEach(r => document.getElementById('arcRes').innerHTML += `<option value="${r[1]}">${r[1]}</option>`);
-                    data.drivers.slice(1).forEach(d => document.getElementById('arcDriver').innerHTML += `<option value="${String(d[2])}">${d[1]}</option>`);
+                // دمج الطلبات مع الحفاظ على الحالات اللحظية (Hot)
+                if (data.orders && data.orders.length > 0) {
+                    const freshOrdersMap = new Map(globalData.orders.map(o => [o[0], o]));
+                    data.orders.forEach(sheetOrder => {
+                        const existingHotOrder = freshOrdersMap.get(sheetOrder[0]);
+                        if (!existingHotOrder) {
+                            freshOrdersMap.set(sheetOrder[0], sheetOrder);
+                        } else {
+                            // إذا كانت حالة الشيت مكتملة/محذوفة نعتمدها، عدا ذلك نفضل Firebase
+                            if (sheetOrder[5] === 'completed' || sheetOrder[5] === 'settled' || sheetOrder[5] === 'deleted') {
+                                freshOrdersMap.set(sheetOrder[0], sheetOrder);
+                            }
+                        }
+                    });
+                    globalData.orders = Array.from(freshOrdersMap.values());
+                }
+                
+                if(document.getElementById('arcRes').options.length === 1 && globalData.restaurants && globalData.drivers) {
+                    globalData.restaurants.slice(1).forEach(r => document.getElementById('arcRes').innerHTML += `<option value="${r[1]}">${r[1]}</option>`);
+                    globalData.drivers.slice(1).forEach(d => document.getElementById('arcDriver').innerHTML += `<option value="${String(d[2])}">${d[1]}</option>`);
                 }
                 
                 if (map && restaurantMarkersLayer && restaurantMarkersLayer.getLayers().length === 0) {
-                    data.restaurants.slice(1).forEach(r => {
+                    globalData.restaurants.slice(1).forEach(r => {
                         if(r[4] === 'active' && r[6] && r[7]) { 
                             const lat = parseFloat(r[6]), lng = parseFloat(r[7]);
                             if(!isNaN(lat) && !isNaN(lng)) {
@@ -527,51 +542,57 @@
             });
     }
 
+    // 🟢 الاستماع لـ Firebase (Hot Data)
     function startHotDataListeners() {
         const locRef = ref(db, 'drivers_locations');
         onValue(locRef, (snapshot) => {
             const locations = snapshot.val();
-            if (locations && globalData && globalData.drivers) {
-                let hasChanges = false;
+            if (locations && globalData.drivers.length > 0) {
                 globalData.drivers.forEach(d => {
                     const phone = String(d[2]);
                     if (locations[phone]) {
                         d[4] = locations[phone].status || d[4]; 
                         d[5] = locations[phone].lat || d[5]; 
                         d[6] = locations[phone].lng || d[6];
-                        hasChanges = true;
                     }
                 });
-                if(hasChanges) { updateMapMarkers(); window.queueRender(); }
+                updateMapMarkers(); window.queueRender();
             }
         });
 
         const ordersRef = ref(db, 'active_orders');
         onValue(ordersRef, (snapshot) => {
             const activeFbOrders = snapshot.val() || {};
-            if (globalData && globalData.orders) {
-                let requiresColdSync = false;
-                let hasChanges = false;
+            
+            // 1. تنظيف الطلبات المحذوفة من Firebase (والتي لا تزال في globalData ولم تحذف في Sheets)
+            // هذا يمنع بقاء الطلبات "المعلقة" إلى الأبد
+            globalData.orders = globalData.orders.filter(o => {
+                if (o[5] === 'completed' || o[5] === 'settled' || o[5] === 'deleted' || o[0] === 'ID') return true; 
+                // إذا كان الطلب نشطاً في الذاكرة لكنه غير موجود في Firebase، نعيد جلبه من Sheets للتأكد
+                return !!activeFbOrders[o[0]]; 
+            });
 
-                Object.values(activeFbOrders).forEach(fbOrder => {
-                    const existingOrder = globalData.orders.find(o => String(o[0]) === String(fbOrder.id));
-                    if (existingOrder) {
-                        existingOrder[5] = fbOrder.status; 
-                        existingOrder[6] = fbOrder.driverPhone || "pending_driver"; 
-                        hasChanges = true;
-                    } else {
-                        globalData.orders.push([fbOrder.id, fbOrder.restaurant, fbOrder.area, "", fbOrder.price, fbOrder.status, fbOrder.driverPhone || "pending_driver", fbOrder.timestamp, fbOrder.photoUrl]);
-                        hasChanges = true;
-                    }
-                });
-                if (requiresColdSync) fetchColdData(); 
-                else if (hasChanges) window.queueRender(); 
-            }
+            // 2. تحديث الطلبات الحية
+            let requiresColdSync = false;
+            Object.values(activeFbOrders).forEach(fbOrder => {
+                const existingOrder = globalData.orders.find(o => String(o[0]) === String(fbOrder.id));
+                if (existingOrder) {
+                    existingOrder[5] = fbOrder.status; 
+                    existingOrder[6] = fbOrder.driverPhone || "pending_driver"; 
+                } else {
+                    globalData.orders.push([fbOrder.id, fbOrder.restaurant, fbOrder.area, "", fbOrder.price, fbOrder.status, fbOrder.driverPhone || "pending_driver", fbOrder.timestamp, fbOrder.photoUrl]);
+                    requiresColdSync = true;
+                }
+            });
+
+            if (requiresColdSync) fetchColdData(); 
+            window.queueRender(); 
         });
     }
 
+    // 🟢 حركة الخريطة الانسيابية
     function updateMapMarkers() {
-        if (!map || !driverClusterGroup || !globalData) return;
+        if (!map || !driverClusterGroup || !globalData.drivers) return;
 
         globalData.drivers.slice(1).forEach(d => {
             const phone = String(d[2]);
@@ -602,9 +623,9 @@
         });
     }
 
-    // 🟢 الدالة الأساسية لرسم الشاشة (مربوطة بـ window)
+    // 🟢 رسم الشاشة
     window.renderDataUI = function() {
-        if (!globalData) return;
+        if (!globalData || !globalData.orders) return;
         const now = Date.now();
 
         globalData.orders.forEach(o => {
@@ -676,7 +697,8 @@
             }
         });
 
-        renderRadar(activeOrdersList); 
+        // تشغيل الرسم للرادار
+        window.renderRadar(activeOrdersList); 
         window.renderArchive();
         
         updateSectionBadges('RESTAURANT', globalData.restaurants);
@@ -835,10 +857,11 @@
         currentRadarFilter = type;
         document.querySelectorAll('.radar-filter-btn').forEach(b => b.classList.remove('active', 'border-danger', 'border-success'));
         btnElement.classList.add('active');
-        renderRadar();
+        window.renderRadar();
     }
 
-    function renderRadar(activeOrdersList = null) {
+    // 🟢 دالة الرادار (مربوطة بـ window)
+    window.renderRadar = function(activeOrdersList = null) {
         if(!globalData) return;
         
         if (!activeOrdersList) {
@@ -934,9 +957,10 @@
 
     function generateSingleCardHTML(o, hasDriver, driverName, driverPhone, activeDriversOptions) {
         const orderId = o[0], restName = o[1], orderArea = o[2], details = o[3], orderPrice = o[4], status = o[5], orderTimeStr = o[7];
-        const orderTimeStrFormat = new Date(orderTimeStr).toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'});
+        const orderDateObj = new Date(orderTimeStr);
+        const orderTimeStrFormat = isNaN(orderDateObj.getTime()) ? '---' : orderDateObj.toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'});
         
-        const diffMins = Math.floor((new Date() - new Date(orderTimeStr)) / 60000);
+        const diffMins = Math.floor((new Date() - orderDateObj) / 60000);
         const sInfo = getStatusInfo(status, hasDriver, orderTimeStr);
 
         let withdrawBtn = '';
