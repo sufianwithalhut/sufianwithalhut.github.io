@@ -166,6 +166,10 @@
         #invoiceModal { position: fixed; inset: 0; background: rgba(15,23,42,0.6); z-index: 20000; display: none; align-items: center; justify-content: center; backdrop-filter: blur(4px); padding: 15px; }
         .invoice-card { background: white; border-radius: 24px; padding: 25px; width: 100%; max-width: 400px; position: relative; }
         .invoice-row { display: flex; justify-content: space-between; margin-bottom: 10px; font-weight: 700; font-size: 0.85rem; }
+        
+        /* تأثير التحديث اللحظي */
+        .flash-update { animation: flashHighlight 1s ease-out; }
+        @keyframes flashHighlight { 0% { background-color: rgba(59, 130, 246, 0.2); } 100% { background-color: transparent; } }
     </style>
 </head>
 <body>
@@ -377,15 +381,14 @@
     let lastPendingCount = 0; 
     let driverPerformanceCache = {};
 
-    let lastRadarHtml = "";
-    let lastResHtml = "";
-    let lastDriverHtml = "";
-    let lastArchiveHtml = "";
+    // 🟢 ذاكرة الـ DOM الذكية (Virtual DOM)
+    let renderedOrdersCache = {}; // يخزن حالة الكارت لتجنب إعادة رسمه
+    let renderedDriverCards = {};
+    let renderedResCards = {};
+    let activeDriversOptionsCache = ''; // قائمة الكباتن للتعيين اليدوي
 
-    // 🟢 مصفوفة الذاكرة اللحظية لحمل بيانات الطلبات القادمة من Firebase بسرعة البرق
     let liveFirebaseOrders = [];
 
-    // ذاكرة الماركرز لتجنب الوميض وتحسين الأداء
     let liveDriverMarkers = {}; 
     let liveResMarkers = {};
 
@@ -393,7 +396,7 @@
     let fetchPauseTimeout = null;
     let isEmergencyMuted = false;
 
-    // 🟢 تهيئة Firebase للتتبع اللحظي (مواقع الكباتن + الرادار)
+    // تهيئة Firebase
     const firebaseConfig = {
         apiKey: "AIzaSyAo1rmqUzieYZU3RIwXOAN87GkpNrp-_Hc",
         authDomain: "sufyan-delivery.firebaseapp.com",
@@ -494,13 +497,11 @@
             audio.volume = 0; audio.play().then(() => { audio.pause(); audio.currentTime = 0; audio.volume = 1; }).catch(e=>{});
 
             startClock(); 
-            refreshData(); // تحميل البيانات الأساسية (الأرشيف، الكباتن، المطاعم) مرة واحدة فقط.
-            
-            // 🛑 إزالة عنق الزجاجة نهائياً (لا يوجد setInterval بعد الآن!)
+            refreshData(); // تحميل اولي فقط
             
             initMap();
-            listenToFirebaseLocations(); // رصد الخريطة اللحظي
-            listenToFirebaseOrders(); // 🟢 رصد الطلبات اللحظي
+            listenToFirebaseLocations(); 
+            listenToFirebaseOrders(); 
         } else {
             masterPassword = ""; 
             showToast("رمز المرور غير صحيح", "error");
@@ -525,7 +526,6 @@
         document.body.appendChild(script);
     }
 
-    // 🟢 العقل الجديد للرادار (المستمع اللحظي Firebase)
     function listenToFirebaseOrders() {
         db.ref('active_orders').on('value', (snapshot) => {
             const ordersObj = snapshot.val();
@@ -536,14 +536,12 @@
 
             if (ordersObj) {
                 Object.values(ordersObj).forEach(o => {
-                    // استخراج التفاصيل من globalData إن وجدت
                     let orderDetails = "طلب توصيل";
                     if(globalData && globalData.orders) {
                         const existingOrder = globalData.orders.find(go => go[0] === o.id);
                         if(existingOrder) orderDetails = existingOrder[3];
                     }
 
-                    // تحويل كائن Firebase إلى مصفوفة ليفهمها الرادار
                     let orderArr = [
                         o.id || '',
                         o.restaurant || '',
@@ -556,7 +554,6 @@
                         o.photoUrl || ''
                     ];
 
-                    // 🟢 الحفاظ على الذاكرة المانعة (لكي لا تومض الواجهة عند ضغط زر)
                     let override = localOverrides.orders[orderArr[0]];
                     if (override) {
                         if (now - override.ts < 120000) {
@@ -569,7 +566,6 @@
 
                     newActiveOrders.push(orderArr);
 
-                    // فحص حالات الطوارئ (تأخير الطلب)
                     if (!orderArr[6] || orderArr[6] === "pending_driver" || orderArr[6] === "manual_pending") {
                         currentPendingCount++;
                         if (orderArr[7]) {
@@ -580,11 +576,9 @@
                 });
             }
 
-            // ترتيب الطلبات من الأحدث للأقدم
             newActiveOrders.sort((a, b) => new Date(b[7]) - new Date(a[7]));
             liveFirebaseOrders = newActiveOrders;
 
-            // تشغيل التنبيهات الصوتية
             if(currentPendingCount > lastPendingCount) {
                 const audio = document.getElementById('adminAlertSound');
                 audio.currentTime = 0; audio.play().catch(e=>{});
@@ -599,15 +593,248 @@
                 if (eModal && eModal.style.display === 'flex') closeEmergency();
             }
 
-            // تحديث الإحصائيات في الشريط العلوي
             document.querySelectorAll('.val-orders').forEach(el => el.innerText = liveFirebaseOrders.length);
 
-            // إعادة رسم الرادار فوراً (أجزاء من الثانية)
             if (globalData) {
-                renderRadar(liveFirebaseOrders);
+                smartRenderRadar(liveFirebaseOrders); // 🟢 استخدام الدالة الذكية الجديدة
             }
         });
     }
+
+    // 🟢 الدالة الذكية لرسم الرادار (لا تمسح الشاشة، بل تحدث المطلوب فقط)
+    function smartRenderRadar(activeOrdersList) {
+        const container = document.getElementById('smartOrdersContainer');
+        
+        // بناء قائمة التعيين اليدوي (تتحدث فقط إذا تغيرت)
+        let newActiveDriversOptions = '<option value="" disabled selected>تعيين يدوي</option>';
+        globalData.drivers.slice(1).forEach(d => {
+            if(d[4] === 'active') {
+                const perf = driverPerformanceCache[String(d[2])] || { class: 'perf-yellow' };
+                let symbol = perf.class === 'perf-green' ? '🟢' : (perf.class === 'perf-red' ? '🔴' : '🟡');
+                newActiveDriversOptions += `<option value="${String(d[2])}">${symbol} ${d[1]}</option>`;
+            }
+        });
+        activeDriversOptionsCache = newActiveDriversOptions;
+
+        // فلترة الرادار
+        if(currentRadarFilter === 'pending') activeOrdersList = activeOrdersList.filter(o => !o[6] || o[6] === "pending_driver");
+        if(currentRadarFilter === 'active') activeOrdersList = activeOrdersList.filter(o => o[6] && o[6] !== "pending_driver");
+
+        if (activeOrdersList.length === 0) {
+            container.innerHTML = '<div class="col-12 text-center p-4 fw-bold text-success small">الرادار نظيف، لا توجد طلبات.</div>';
+            renderedOrdersCache = {}; 
+            return;
+        }
+
+        // مسح رسالة "الرادار نظيف" إذا كانت موجودة
+        if(container.innerHTML.includes("الرادار نظيف")) container.innerHTML = '';
+
+        let groupedOrders = {}; let pendingOrders = [];
+        activeOrdersList.forEach(o => {
+            const driverPhone = o[6];
+            if (driverPhone && driverPhone !== "pending_driver" && driverPhone !== "manual_pending") {
+                if (!groupedOrders[driverPhone]) groupedOrders[driverPhone] = [];
+                groupedOrders[driverPhone].push(o);
+            } else { pendingOrders.push(o); }
+        });
+
+        const getStatusInfo = (status, hasDriver, orderTimeStr) => {
+            const diffSecs = Math.floor((new Date() - new Date(orderTimeStr)) / 1000);
+            if(!hasDriver || status === 'pending_driver' || status === 'manual_pending') {
+                if (hasDriver) { 
+                    if (diffSecs > 60) return { class: "status-overdue", desc: "🚨 الكابتن لا يستجيب", badge: "bg-danger", isRinging: true, overdue: true };
+                    else return { class: "status-ringing", desc: "⏳ جاري الرنين...", badge: "bg-warning text-dark", isRinging: true };
+                }
+                return { class: "status-danger", desc: "🔴 بانتظار كابتن", badge: "bg-danger" };
+            }
+            if(status === 'picked_up' || status === 'في الطريق') return { class: "status-success", desc: "🟢 بالطريق للزبون", badge: "bg-success" };
+            if(status === 'arrived_at_res') return { class: "status-warning", desc: "🟠 في المطعم", badge: "bg-warning text-dark" };
+            if(status === 'accepted' || status === 'heading') return { class: "status-primary", desc: "🔵 متوجه للمطعم", badge: "bg-primary" };
+            return { class: "status-primary", desc: status, badge: "bg-primary" };
+        };
+
+        // تتبع المعرفات الموجودة الآن لحذف ما لم يعد موجوداً
+        let currentOrderIds = new Set();
+
+        // 1. معالجة الطلبات المزدوجة (تُعاد رسمها بالكامل لتعقيدها، لكن يمكن تحسينها لاحقاً)
+        // للتبسيط ولأنها نادرة، سنسمح للطلبات المزدوجة بإنشاء HTML جديد.
+        let doubleOrdersHtml = '';
+        Object.keys(groupedOrders).forEach(driverPhone => {
+            const orders = groupedOrders[driverPhone];
+            const driverName = globalData.drivers.find(d => String(d[2]) === String(driverPhone))?.[1] || 'غير معروف';
+
+            if (orders.length > 1) {
+                orders.forEach(o => currentOrderIds.add(`double-${driverPhone}`));
+                
+                doubleOrdersHtml += `<div class="col-md-6 col-12" id="double-${driverPhone}"><div class="smart-order-card status-purple batch-card flash-update">
+                    <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom border-purple">
+                        <h6 class="fw-black m-0 text-purple" style="font-size: 0.9rem;"><i data-lucide="layers" size="14"></i> مزدوج | ${driverName}</h6>
+                        <button class="btn-track" style="background: #ede9fe; color: #7c3aed;" onclick="trackDriver('${driverPhone}', '${orders[0][1]}')"><i data-lucide="map-pin" size="12"></i> تتبع</button>
+                    </div>`;
+                orders.forEach((o, index) => {
+                    const sInfo = getStatusInfo(o[5], true, o[7]);
+                    doubleOrdersHtml += `
+                    <div class="info-card-inner mb-1 bg-white">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="fw-black text-purple" style="font-size:0.8rem;">#${o[0]}</span>
+                            <span class="badge ${sInfo.badge}" style="font-size:0.65rem;">${sInfo.desc}</span>
+                        </div>
+                        <div class="d-flex justify-content-between small text-muted" style="font-size:0.75rem;">
+                            <span class="fw-bold" style="line-height: 1.3;">${o[1]}</span>
+                            <span class="text-success fw-bold" style="flex-shrink: 0; margin-right: 5px;">${o[4]} د.ع</span>
+                        </div>
+                        <div class="d-flex justify-content-end gap-2 mt-1">
+                            <button class="btn btn-sm text-success p-0" onclick="adminActionOptUI('COMPLETE', 'ORDER', '${o[0]}', this)"><i data-lucide="check-circle" size="16"></i></button>
+                            <button class="btn btn-sm text-danger p-0" onclick="adminActionOptUI('DELETE', 'ORDER', '${o[0]}', this)"><i data-lucide="trash-2" size="16"></i></button>
+                        </div>
+                    </div>`;
+                    if(index < orders.length - 1) doubleOrdersHtml += `<div class="text-center my-1"><i data-lucide="link" size="12" style="color: #a78bfa;"></i></div>`;
+                });
+                doubleOrdersHtml += `</div></div>`;
+            }
+        });
+
+        // إذا كان هناك طلبات مزدوجة، نضيفها أو نحدثها في حاوية خاصة
+        let doubleContainer = document.getElementById('doubleOrdersWrapper');
+        if (!doubleContainer && doubleOrdersHtml) {
+            doubleContainer = document.createElement('div'); doubleContainer.id = 'doubleOrdersWrapper'; doubleContainer.className = 'row g-2 mb-2';
+            container.prepend(doubleContainer);
+        }
+        if (doubleContainer) {
+             if (doubleOrdersHtml) { doubleContainer.innerHTML = doubleOrdersHtml; if (typeof lucide !== 'undefined') lucide.createIcons({root: doubleContainer}); }
+             else { doubleContainer.remove(); }
+        }
+
+        // 2. معالجة الطلبات الفردية (Smart Update)
+        const allSingleOrders = [...pendingOrders];
+        Object.keys(groupedOrders).forEach(phone => { if(groupedOrders[phone].length === 1) allSingleOrders.push(groupedOrders[phone][0]); });
+
+        allSingleOrders.forEach(o => {
+            const orderId = o[0], restName = o[1], orderArea = o[2], orderPrice = o[4], status = o[5], driverPhone = o[6], orderTimeStr = o[7];
+            const hasDriver = (driverPhone && driverPhone !== "pending_driver" && driverPhone !== "manual_pending");
+            const driverName = hasDriver ? (globalData.drivers.find(d => String(d[2]) === String(driverPhone))?.[1] || 'غير معروف') : 'جاري البحث...';
+            const sInfo = getStatusInfo(status, hasDriver, orderTimeStr);
+            const diffMins = Math.floor((new Date() - new Date(orderTimeStr)) / 60000);
+            
+            currentOrderIds.add(orderId);
+
+            // إنشاء حالة الكارت الحالية كنص للمقارنة السريعة
+            const cardStateHash = `${status}-${driverPhone}-${diffMins}`;
+
+            let existingCard = document.getElementById(`wrapper-${orderId}`);
+            
+            if (existingCard) {
+                // الكارت موجود مسبقاً، نفحص إذا كان يحتاج تحديث
+                if (renderedOrdersCache[orderId] !== cardStateHash) {
+                    // تحديث العناصر الداخلية فقط بدلاً من إعادة البناء
+                    const cardInner = existingCard.querySelector('.smart-order-card');
+                    cardInner.className = `smart-order-card ${sInfo.class} flash-update`; // إضافة كلاس لعمل وميض بسيط للتحديث
+                    
+                    // تحديث التاجات
+                    existingCard.querySelector('.status-badge-ui').className = `badge status-badge-ui ${sInfo.badge}`;
+                    existingCard.querySelector('.status-badge-ui').innerText = sInfo.desc;
+                    
+                    // تحديث الكابتن
+                    existingCard.querySelector('.driver-name-ui').innerText = driverName;
+                    
+                    // تحديث أزرار التحكم بالسائق
+                    let controlsHtml = '';
+                    if (sInfo.isRinging && hasDriver) controlsHtml += `<button class="btn btn-sm btn-outline-danger p-1 d-flex align-items-center gap-1 bg-white" style="font-size:0.7rem; border-radius:8px;" onclick="withdrawOrderOptUI('${orderId}', '${driverPhone}', this)"><i data-lucide="user-minus" size="14"></i> سحب</button>`;
+                    let currentOptions = activeDriversOptionsCache;
+                    if (hasDriver && !sInfo.isRinging) {
+                        controlsHtml += `<button class="btn-call-mini call-success text-success" style="width:28px;height:28px; flex-shrink: 0;" onclick="window.open('tel:${driverPhone}')"><i data-lucide="phone" size="12"></i></button>`;
+                        currentOptions = activeDriversOptionsCache.replace('تعيين يدوي', 'إعادة تعيين 🔄');
+                    }
+                    controlsHtml += `<select class="manual-assign-select p-1" style="font-size:0.7rem;" onchange="assignDriverOptUI('${orderId}', this.value, this)">${currentOptions}</select>`;
+                    
+                    const controlsWrapper = existingCard.querySelector('.driver-controls-ui');
+                    if(controlsWrapper.innerHTML !== controlsHtml) {
+                        controlsWrapper.innerHTML = controlsHtml;
+                        if (typeof lucide !== 'undefined') lucide.createIcons({root: controlsWrapper});
+                    }
+
+                    // تحديث التأخير
+                    let delayEl = existingCard.querySelector('.delay-badge');
+                    if (diffMins > 3 && !hasDriver) {
+                        if(delayEl) delayEl.innerText = `${diffMins} دقيقة`;
+                        else cardInner.insertAdjacentHTML('afterbegin', `<div class="delay-badge">${diffMins} دقيقة</div>`);
+                    } else if (delayEl) { delayEl.remove(); }
+
+                    renderedOrdersCache[orderId] = cardStateHash;
+                }
+            } else {
+                // الكارت غير موجود، نقوم ببنائه
+                const orderTimeStrFormat = new Date(orderTimeStr).toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'});
+                
+                let withdrawBtn = '';
+                if (sInfo.isRinging && hasDriver) withdrawBtn = `<button class="btn btn-sm btn-outline-danger p-1 d-flex align-items-center gap-1 bg-white" style="font-size:0.7rem; border-radius:8px;" onclick="withdrawOrderOptUI('${orderId}', '${driverPhone}', this)"><i data-lucide="user-minus" size="14"></i> سحب</button>`;
+                
+                let callBtn = ''; let currentOptions = activeDriversOptionsCache;
+                if (hasDriver && !sInfo.isRinging) {
+                    callBtn = `<button class="btn-call-mini call-success text-success" style="width:28px;height:28px; flex-shrink: 0;" onclick="window.open('tel:${driverPhone}')"><i data-lucide="phone" size="12"></i></button>`;
+                    currentOptions = activeDriversOptionsCache.replace('تعيين يدوي', 'إعادة تعيين 🔄');
+                }
+
+                let driverControls = `
+                    <div class="d-flex gap-1 align-items-center driver-controls-ui">
+                        ${withdrawBtn} ${callBtn}
+                        <select class="manual-assign-select p-1" style="font-size:0.7rem;" onchange="assignDriverOptUI('${orderId}', this.value, this)">${currentOptions}</select>
+                    </div>`;
+
+                const newCardHtml = `
+                <div class="col-md-6 col-12" id="wrapper-${orderId}">
+                    <div class="smart-order-card ${sInfo.class} flash-update" style="padding: 12px;">
+                        ${diffMins > 3 && !hasDriver ? `<div class="delay-badge">${diffMins} دقيقة</div>` : ''}
+                        <div class="d-flex justify-content-between align-items-start mb-2 border-bottom pb-2">
+                            <div>
+                                <h6 class="fw-black m-0" style="color: var(--primary-blue); font-size: 0.9rem;">#${orderId}</h6>
+                                <div class="mt-1 small fw-bold text-muted" style="font-size: 0.7rem;">أُرسل: ${orderTimeStrFormat}</div>
+                            </div>
+                            <div class="d-flex flex-column align-items-end gap-1">
+                                <span class="badge status-badge-ui ${sInfo.badge}" style="font-size: 0.65rem;">${sInfo.desc}</span>
+                                <div class="d-flex gap-1 align-items-center mt-1">
+                                    ${hasDriver ? `<button class="btn-track" onclick="trackDriver('${driverPhone}', '${restName}')"><i data-lucide="map-pin" size="12"></i></button>` : ''}
+                                    <button class="btn btn-sm text-success p-0" onclick="adminActionOptUI('COMPLETE', 'ORDER', '${orderId}', this)"><i data-lucide="check-circle" size="16"></i></button>
+                                    <button class="btn btn-sm text-danger p-0" onclick="adminActionOptUI('DELETE', 'ORDER', '${orderId}', this)"><i data-lucide="trash-2" size="16"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="d-flex flex-column gap-1">
+                            <div class="info-row" style="padding: 6px;">
+                                <span class="text-muted" style="font-size: 0.75rem; flex-shrink: 0; margin-left: 5px;"><i data-lucide="store" class="text-warning" size="12"></i> المطعم:</span> 
+                                <span class="text-dark fw-bold" style="font-size: 0.8rem;">${restName}</span>
+                            </div>
+                            <div class="info-card-inner" style="padding: 8px; margin-top: 4px;">
+                                <div class="d-flex justify-content-between align-items-center mb-1 pb-1 border-bottom border-light">
+                                    <span class="fw-bold text-dark" style="font-size: 0.75rem;"><i data-lucide="map-pin" size="12" class="text-accent"></i> ${orderArea || 'غير محدد'}</span>
+                                    <span class="fw-bold text-success" style="font-size: 0.8rem; flex-shrink: 0; margin-right: 5px;">${orderPrice || 0} د.ع</span>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span class="fw-bold text-primary driver-name-ui" style="font-size: 0.75rem;"><i data-lucide="bike" size="12"></i> ${driverName}</span>
+                                    ${driverControls}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+                
+                container.insertAdjacentHTML('beforeend', newCardHtml);
+                const newlyAdded = document.getElementById(`wrapper-${orderId}`);
+                if (typeof lucide !== 'undefined') lucide.createIcons({root: newlyAdded});
+                renderedOrdersCache[orderId] = cardStateHash;
+            }
+        });
+
+        // 3. حذف الكروت التي لم تعد موجودة في البيانات اللحظية
+        Object.keys(renderedOrdersCache).forEach(cachedId => {
+            if (!currentOrderIds.has(cachedId)) {
+                const staleCard = document.getElementById(`wrapper-${cachedId}`);
+                if (staleCard) staleCard.remove();
+                delete renderedOrdersCache[cachedId];
+            }
+        });
+    }
+
 
     window.renderData = function(data) {
         const oldScript = document.getElementById('data-fetch-script');
@@ -615,7 +842,6 @@
 
         const now = Date.now();
 
-        // 🟢 معالجة الذاكرة المانعة للكباتن والمطاعم فقط هنا (الطلبات تمت معالجتها في المستمع اللحظي)
         data.drivers.forEach(d => {
             let override = localOverrides.drivers[d[2]];
             if (override && (now - override.ts < 120000)) d[4] = override.status;
@@ -668,15 +894,15 @@
         });
 
         if (liveFirebaseOrders.length > 0) {
-            renderRadar(liveFirebaseOrders);
+            smartRenderRadar(liveFirebaseOrders);
         }
         
         renderArchive();
         
         updateSectionBadges('RESTAURANT', data.restaurants);
         updateSectionBadges('DRIVER', data.drivers);
-        renderFilteredSection('RESTAURANT', data.restaurants, resDebts, resUnpaidCounts);
-        renderFilteredSection('DRIVER', data.drivers, driverDebts, null);
+        smartRenderFilteredSection('RESTAURANT', data.restaurants, resDebts, resUnpaidCounts);
+        smartRenderFilteredSection('DRIVER', data.drivers, driverDebts, null);
         
         if (map && driverClusterGroup && restaurantMarkersLayer) {
             data.restaurants.slice(1).forEach(r => {
@@ -799,12 +1025,13 @@
                     }
                 }
             });
-            if(type === 'RESTAURANT') renderFilteredSection('RESTAURANT', globalData.restaurants, resDebts, resUnpaidCounts);
-            else renderFilteredSection('DRIVER', globalData.drivers, driverDebts, null);
+            if(type === 'RESTAURANT') smartRenderFilteredSection('RESTAURANT', globalData.restaurants, resDebts, resUnpaidCounts);
+            else smartRenderFilteredSection('DRIVER', globalData.drivers, driverDebts, null);
         }
     }
 
-    function renderFilteredSection(type, fullList, debtsMap, unpaidCounts) {
+    // 🟢 الدالة الذكية لرسم قوائم الكباتن والمطاعم
+    function smartRenderFilteredSection(type, fullList, debtsMap, unpaidCounts) {
         let filteredList = [];
         const filter = type === 'RESTAURANT' ? currentResSectionFilter : currentDriverSectionFilter;
         
@@ -818,7 +1045,6 @@
             const phone = String(item[2]).toLowerCase();
 
             if (status === 'deleted') return;
-
             if (searchQuery && !name.includes(searchQuery) && !phone.includes(searchQuery)) return;
 
             if (filter === 'all') filteredList.push(item);
@@ -827,43 +1053,63 @@
         });
 
         const containerId = type === 'RESTAURANT' ? 'resListContainer' : 'driverListContainer';
+        const container = document.getElementById(containerId);
         const icon = type === 'RESTAURANT' ? 'store' : 'user';
         const phoneIndex = 2; const mapKeyIndex = type === 'RESTAURANT' ? 1 : 2; 
+        
+        let currentIds = new Set();
+        let cacheObj = type === 'RESTAURANT' ? renderedResCards : renderedDriverCards;
 
-        let html = '';
         if (filteredList.length === 0) {
-            html = `<div class="col-12 text-center py-5 text-muted fw-bold">لا توجد حسابات تطابق هذا الفلتر.</div>`;
-        } else {
-            filteredList.forEach(item => {
-                const name = item[1], phone = item[phoneIndex], status = item[4];
-                const debtAmount = debtsMap[item[mapKeyIndex]] || 0; 
-                let statusBadge = '';
-                if(status === 'active') statusBadge = '<span class="badge bg-success px-2 py-1 rounded-2">نشط</span>';
-                else if(status === 'inactive') statusBadge = '<span class="badge bg-warning px-2 py-1 rounded-2 text-dark">استراحة</span>';
-                else if(status === 'pending' || status === 'waiting') statusBadge = '<span class="badge bg-primary px-2 py-1 rounded-2">جديد</span>';
-                else if(status === 'banned') statusBadge = '<span class="badge bg-danger px-2 py-1 rounded-2">موقوف</span>';
+            container.innerHTML = `<div class="col-12 text-center py-5 text-muted fw-bold">لا توجد حسابات تطابق هذا الفلتر.</div>`;
+            if (type === 'RESTAURANT') renderedResCards = {}; else renderedDriverCards = {};
+            return;
+        }
+        if(container.innerHTML.includes("لا توجد حسابات")) container.innerHTML = '';
 
-                let unpaidBadge = '';
-                if (type === 'RESTAURANT' && unpaidCounts && unpaidCounts[name] > 0) unpaidBadge = `<span class="badge bg-danger rounded-pill ms-1" style="font-size:0.7rem;">${unpaidCounts[name]} طلبات</span>`;
+        filteredList.forEach(item => {
+            const name = item[1], phone = item[phoneIndex], status = item[4];
+            const debtAmount = debtsMap[item[mapKeyIndex]] || 0; 
+            currentIds.add(phone);
 
-                let perfIndicator = '';
-                if (type === 'DRIVER') {
-                    const perf = driverPerformanceCache[String(phone)] || { class: 'perf-yellow', label: 'مستجد' };
-                    perfIndicator = `<span class="perf-dot ${perf.class}" title="معدل السرعة: ${perf.label}"><i data-lucide="zap" size="10"></i></span>`;
+            const cardHash = `${status}-${debtAmount}`;
+
+            let statusBadge = '';
+            if(status === 'active') statusBadge = '<span class="badge bg-success px-2 py-1 rounded-2">نشط</span>';
+            else if(status === 'inactive') statusBadge = '<span class="badge bg-warning px-2 py-1 rounded-2 text-dark">استراحة</span>';
+            else if(status === 'pending' || status === 'waiting') statusBadge = '<span class="badge bg-primary px-2 py-1 rounded-2">جديد</span>';
+            else if(status === 'banned') statusBadge = '<span class="badge bg-danger px-2 py-1 rounded-2">موقوف</span>';
+
+            let unpaidBadge = '';
+            if (type === 'RESTAURANT' && unpaidCounts && unpaidCounts[name] > 0) unpaidBadge = `<span class="badge bg-danger rounded-pill ms-1" style="font-size:0.7rem;">${unpaidCounts[name]} طلبات</span>`;
+
+            let perfIndicator = '';
+            if (type === 'DRIVER') {
+                const perf = driverPerformanceCache[String(phone)] || { class: 'perf-yellow', label: 'مستجد' };
+                perfIndicator = `<span class="perf-dot ${perf.class}" title="معدل السرعة: ${perf.label}"><i data-lucide="zap" size="10"></i></span>`;
+            }
+
+            let existingCard = document.getElementById(`card-${type}-${phone}`);
+            
+            if (existingCard) {
+                if (cacheObj[phone] !== cardHash) {
+                    existingCard.querySelector('.status-badge-container').innerHTML = statusBadge;
+                    existingCard.querySelector('.debt-text').innerHTML = `ديون: ${debtAmount} د.ع ${unpaidBadge}`;
+                    cacheObj[phone] = cardHash;
                 }
-
-                html += `
-                <div class="col-md-6 col-xl-4">
+            } else {
+                const html = `
+                <div class="col-md-6 col-xl-4" id="card-${type}-${phone}">
                     <div class="stat-widget flex-column align-items-stretch" style="padding: 12px;">
                         ${perfIndicator}
                         <div class="d-flex justify-content-between align-items-start mb-2">
                             <div class="bg-light p-2 rounded-3 ms-4"><i data-lucide="${icon}" size="18" style="color: var(--primary-blue);"></i></div>
-                            ${statusBadge}
+                            <div class="status-badge-container">${statusBadge}</div>
                         </div>
                         <h6 class="m-0 fw-black mb-1" style="padding-left: 20px; font-size: 0.95rem; line-height: 1.4;">${name}</h6>
                         <small class="text-muted fw-bold" style="font-size:0.75rem;" dir="ltr">${phone}</small>
                         <div class="mt-2 mb-2 d-inline-flex align-items-center gap-1 bg-danger bg-opacity-10 text-danger px-2 py-1 rounded-pill" style="width: fit-content;">
-                            <span class="small fw-bold" style="font-size: 0.7rem;">ديون: ${debtAmount} د.ع ${unpaidBadge}</span>
+                            <span class="small fw-bold debt-text" style="font-size: 0.7rem;">ديون: ${debtAmount} د.ع ${unpaidBadge}</span>
                         </div>
                         <div class="d-flex justify-content-between align-items-center pt-2 border-top">
                             <div class="d-flex gap-1">
@@ -878,229 +1124,47 @@
                         </div>
                     </div>
                 </div>`;
-            });
-        }
-        
-        const currentHtml = html || `<div class="col-12 text-center py-5 text-muted fw-bold">لا توجد حسابات...</div>`;
-        if (type === 'RESTAURANT') {
-            if (lastResHtml !== currentHtml) { 
-                const container = document.getElementById(containerId);
-                container.innerHTML = currentHtml; 
-                lastResHtml = currentHtml; 
-                if (typeof lucide !== 'undefined') lucide.createIcons({root: container});
+                container.insertAdjacentHTML('beforeend', html);
+                const newlyAdded = document.getElementById(`card-${type}-${phone}`);
+                if (typeof lucide !== 'undefined') lucide.createIcons({root: newlyAdded});
+                cacheObj[phone] = cardHash;
             }
-        } else {
-            if (lastDriverHtml !== currentHtml) { 
-                const container = document.getElementById(containerId);
-                container.innerHTML = currentHtml; 
-                lastDriverHtml = currentHtml; 
-                if (typeof lucide !== 'undefined') lucide.createIcons({root: container});
+        });
+
+        // تنظيف الكروت المفقودة
+        Object.keys(cacheObj).forEach(cachedPhone => {
+            if (!currentIds.has(cachedPhone)) {
+                const stale = document.getElementById(`card-${type}-${cachedPhone}`);
+                if (stale) stale.remove();
+                delete cacheObj[cachedPhone];
             }
-        }
+        });
     }
 
     function filterRadar(type, btnElement) {
         currentRadarFilter = type;
         document.querySelectorAll('.radar-filter-btn').forEach(b => b.classList.remove('active', 'border-danger', 'border-success'));
         btnElement.classList.add('active');
-        renderRadar();
+        if (liveFirebaseOrders.length > 0) smartRenderRadar(liveFirebaseOrders);
     }
 
-    // 🟢 الرادار أصبح يقرأ دائماً من الذاكرة اللحظية
-    function renderRadar(activeOrdersList = null) {
-        if(!globalData) return;
-        
-        if (!activeOrdersList) {
-            activeOrdersList = liveFirebaseOrders;
-        }
-
-        let smartHtml = '';
-        let activeDriversOptions = '<option value="" disabled selected>تعيين يدوي</option>';
-        globalData.drivers.slice(1).forEach(d => {
-            if(d[4] === 'active') {
-                const perf = driverPerformanceCache[String(d[2])] || { class: 'perf-yellow' };
-                let symbol = perf.class === 'perf-green' ? '🟢' : (perf.class === 'perf-red' ? '🔴' : '🟡');
-                activeDriversOptions += `<option value="${String(d[2])}">${symbol} ${d[1]}</option>`;
-            }
-        });
-
-        if(currentRadarFilter === 'pending') activeOrdersList = activeOrdersList.filter(o => !o[6] || o[6] === "pending_driver");
-        if(currentRadarFilter === 'active') activeOrdersList = activeOrdersList.filter(o => o[6] && o[6] !== "pending_driver");
-
-        let groupedOrders = {}; let pendingOrders = [];
-        activeOrdersList.forEach(o => {
-            const driverPhone = o[6];
-            if (driverPhone && driverPhone !== "pending_driver" && driverPhone !== "manual_pending") {
-                if (!groupedOrders[driverPhone]) groupedOrders[driverPhone] = [];
-                groupedOrders[driverPhone].push(o);
-            } else { pendingOrders.push(o); }
-        });
-
-        const getStatusInfo = (status, hasDriver, orderTimeStr) => {
-            const diffSecs = Math.floor((new Date() - new Date(orderTimeStr)) / 1000);
-
-            if(!hasDriver || status === 'pending_driver' || status === 'manual_pending') {
-                if (hasDriver) { 
-                    if (diffSecs > 60) {
-                        return { class: "status-overdue", desc: "🚨 الكابتن لا يستجيب", badge: "bg-danger", isRinging: true, overdue: true };
-                    } else {
-                        return { class: "status-ringing", desc: "⏳ جاري الرنين...", badge: "bg-warning text-dark", isRinging: true };
-                    }
-                }
-                return { class: "status-danger", desc: "🔴 بانتظار كابتن", badge: "bg-danger" };
-            }
-            if(status === 'picked_up' || status === 'في الطريق') return { class: "status-success", desc: "🟢 بالطريق للزبون", badge: "bg-success" };
-            if(status === 'arrived_at_res') return { class: "status-warning", desc: "🟠 في المطعم", badge: "bg-warning text-dark" };
-            if(status === 'accepted' || status === 'heading') return { class: "status-primary", desc: "🔵 متوجه للمطعم", badge: "bg-primary" };
-
-            return { class: "status-primary", desc: status, badge: "bg-primary" };
-        };
-
-        Object.keys(groupedOrders).forEach(driverPhone => {
-            const orders = groupedOrders[driverPhone];
-            const driverName = globalData.drivers.find(d => String(d[2]) === String(driverPhone))?.[1] || 'غير معروف';
-
-            if (orders.length > 1) {
-                smartHtml += `<div class="col-md-6 col-12"><div class="smart-order-card status-purple batch-card">
-                    <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom border-purple">
-                        <h6 class="fw-black m-0 text-purple" style="font-size: 0.9rem;"><i data-lucide="layers" size="14"></i> مزدوج | ${driverName}</h6>
-                        <button class="btn-track" style="background: #ede9fe; color: #7c3aed;" onclick="trackDriver('${driverPhone}', '${orders[0][1]}')"><i data-lucide="map-pin" size="12"></i> تتبع</button>
-                    </div>`;
-                orders.forEach((o, index) => {
-                    const sInfo = getStatusInfo(o[5], true, o[7]);
-                    smartHtml += `
-                    <div class="info-card-inner mb-1 bg-white" id="order-${o[0]}">
-                        <div class="d-flex justify-content-between align-items-center mb-1">
-                            <span class="fw-black text-purple" style="font-size:0.8rem;">#${o[0]}</span>
-                            <span class="badge ${sInfo.badge}" style="font-size:0.65rem;">${sInfo.desc}</span>
-                        </div>
-                        <div class="d-flex justify-content-between small text-muted" style="font-size:0.75rem;">
-                            <span class="fw-bold" style="line-height: 1.3;">${o[1]}</span>
-                            <span class="text-success fw-bold" style="flex-shrink: 0; margin-right: 5px;">${o[4]} د.ع</span>
-                        </div>
-                        <div class="d-flex justify-content-end gap-2 mt-1">
-                            <button class="btn btn-sm text-success p-0" onclick="adminActionOptUI('COMPLETE', 'ORDER', '${o[0]}', this)"><i data-lucide="check-circle" size="16"></i></button>
-                            <button class="btn btn-sm text-danger p-0" onclick="adminActionOptUI('DELETE', 'ORDER', '${o[0]}', this)"><i data-lucide="trash-2" size="16"></i></button>
-                        </div>
-                    </div>`;
-                    if(index < orders.length - 1) smartHtml += `<div class="text-center my-1"><i data-lucide="link" size="12" style="color: #a78bfa;"></i></div>`;
-                });
-                smartHtml += `</div></div>`;
-            } else {
-                smartHtml += generateSingleCardHTML(orders[0], true, driverName, driverPhone, activeDriversOptions);
-            }
-        });
-
-        pendingOrders.forEach(o => { smartHtml += generateSingleCardHTML(o, false, 'جاري البحث...', null, activeDriversOptions); });
-        
-        const currentRadarHtml = smartHtml || '<div class="col-12 text-center p-4 fw-bold text-success small">الرادار نظيف، لا توجد طلبات.</div>';
-        if (lastRadarHtml !== currentRadarHtml) {
-            const container = document.getElementById('smartOrdersContainer');
-            container.innerHTML = currentRadarHtml;
-            lastRadarHtml = currentRadarHtml;
-            if (typeof lucide !== 'undefined') lucide.createIcons({root: container});
-        }
-    }
-
-    function generateSingleCardHTML(o, hasDriver, driverName, driverPhone, activeDriversOptions) {
-        const orderId = o[0], restName = o[1], orderArea = o[2], details = o[3], orderPrice = o[4], status = o[5], orderTimeStr = o[7];
-        const orderTimeStrFormat = new Date(orderTimeStr).toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'});
-        
-        const diffMins = Math.floor((new Date() - new Date(orderTimeStr)) / 60000);
-        
-        const getStatusInfo = (status, hasDriver, orderTimeStr) => {
-            const diffSecs = Math.floor((new Date() - new Date(orderTimeStr)) / 1000);
-            if(!hasDriver || status === 'pending_driver' || status === 'manual_pending') {
-                if (hasDriver) { 
-                    if (diffSecs > 60) return { class: "status-overdue", desc: "🚨 الكابتن لا يستجيب", badge: "bg-danger", isRinging: true, overdue: true };
-                    else return { class: "status-ringing", desc: "⏳ جاري الرنين...", badge: "bg-warning text-dark", isRinging: true };
-                }
-                return { class: "status-danger", desc: "🔴 بانتظار كابتن", badge: "bg-danger" };
-            }
-            if(status === 'picked_up' || status === 'في الطريق') return { class: "status-success", desc: "🟢 بالطريق للزبون", badge: "bg-success" };
-            if(status === 'arrived_at_res') return { class: "status-warning", desc: "🟠 في المطعم", badge: "bg-warning text-dark" };
-            if(status === 'accepted' || status === 'heading') return { class: "status-primary", desc: "🔵 متوجه للمطعم", badge: "bg-primary" };
-            return { class: "status-primary", desc: status, badge: "bg-primary" };
-        };
-
-        const sInfo = getStatusInfo(status, hasDriver, orderTimeStr);
-
-        let withdrawBtn = '';
-        if (sInfo.isRinging && hasDriver) {
-            withdrawBtn = `<button class="btn btn-sm btn-outline-danger p-1 d-flex align-items-center gap-1 bg-white" style="font-size:0.7rem; border-radius:8px;" onclick="withdrawOrderOptUI('${orderId}', '${driverPhone}', this)"><i data-lucide="user-minus" size="14"></i> سحب</button>`;
-        }
-
-        let callBtn = '';
-        let currentOptions = activeDriversOptions;
-
-        if (hasDriver && !sInfo.isRinging) {
-            callBtn = `<button class="btn-call-mini call-success text-success" style="width:28px;height:28px; flex-shrink: 0;" onclick="window.open('tel:${driverPhone}')"><i data-lucide="phone" size="12"></i></button>`;
-            currentOptions = activeDriversOptions.replace('تعيين يدوي', 'إعادة تعيين 🔄');
-        }
-
-        let driverControls = `
-            <div class="d-flex gap-1 align-items-center">
-                ${withdrawBtn}
-                ${callBtn}
-                <select class="manual-assign-select p-1" style="font-size:0.7rem;" onchange="assignDriverOptUI('${orderId}', this.value, this)">${currentOptions}</select>
-            </div>
-        `;
-
-        return `
-        <div class="col-md-6 col-12" id="order-${orderId}">
-            <div class="smart-order-card ${sInfo.class}" style="padding: 12px;">
-                ${diffMins > 3 && !hasDriver ? `<div class="delay-badge">${diffMins} دقيقة</div>` : ''}
-                <div class="d-flex justify-content-between align-items-start mb-2 border-bottom pb-2">
-                    <div>
-                        <h6 class="fw-black m-0" style="color: var(--primary-blue); font-size: 0.9rem;">#${orderId}</h6>
-                        <div class="mt-1 small fw-bold text-muted" style="font-size: 0.7rem;">أُرسل: ${orderTimeStrFormat}</div>
-                    </div>
-                    <div class="d-flex flex-column align-items-end gap-1">
-                        <span class="badge ${sInfo.badge}" style="font-size: 0.65rem;">${sInfo.desc}</span>
-                        <div class="d-flex gap-1 align-items-center mt-1">
-                            ${hasDriver ? `<button class="btn-track" onclick="trackDriver('${driverPhone}', '${restName}')"><i data-lucide="map-pin" size="12"></i></button>` : ''}
-                            <button class="btn btn-sm text-success p-0" onclick="adminActionOptUI('COMPLETE', 'ORDER', '${orderId}', this)"><i data-lucide="check-circle" size="16"></i></button>
-                            <button class="btn btn-sm text-danger p-0" onclick="adminActionOptUI('DELETE', 'ORDER', '${orderId}', this)"><i data-lucide="trash-2" size="16"></i></button>
-                        </div>
-                    </div>
-                </div>
-                <div class="d-flex flex-column gap-1">
-                    <div class="info-row" style="padding: 6px;">
-                        <span class="text-muted" style="font-size: 0.75rem; flex-shrink: 0; margin-left: 5px;"><i data-lucide="store" class="text-warning" size="12"></i> المطعم:</span> 
-                        <span class="text-dark fw-bold" style="font-size: 0.8rem;">${restName}</span>
-                    </div>
-                    <div class="info-card-inner" style="padding: 8px; margin-top: 4px;">
-                        <div class="d-flex justify-content-between align-items-center mb-1 pb-1 border-bottom border-light">
-                            <span class="fw-bold text-dark" style="font-size: 0.75rem;"><i data-lucide="map-pin" size="12" class="text-accent"></i> ${orderArea || 'غير محدد'}</span>
-                            <span class="fw-bold text-success" style="font-size: 0.8rem; flex-shrink: 0; margin-right: 5px;">${orderPrice || 0} د.ع</span>
-                        </div>
-                        <div class="d-flex justify-content-between align-items-center">
-                            <span class="fw-bold text-primary" style="font-size: 0.75rem;"><i data-lucide="bike" size="12"></i> ${driverName}</span>
-                            ${driverControls}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>`;
-    }
-
+    // 🟢 دوال الأزرار غير المتزامنة (Asynchronous Fast Buttons)
     function withdrawOrderOptUI(orderId, driverPhone, element) {
         if(!confirm("هل أنت متأكد من سحب الطلب من هذا الكابتن وإعادته للرادار للبحث عن غيره؟")) return;
-        pauseAutoFetch();
-        element.classList.add('btn-loading');
-        const card = document.getElementById(`order-${orderId}`);
-        if(card) card.style.opacity = '0.5';
+        
+        // إعطاء استجابة بصرية فورية (تغيير زر) ولا نجمد الشاشة
+        const originalHtml = element.innerHTML;
+        element.innerHTML = '<div class="spinner-border spinner-border-sm"></div>';
+        element.disabled = true;
 
         localOverrides.orders[String(orderId)] = { status: 'pending_driver', driverPhone: 'pending_driver', ts: Date.now() };
 
-        const url = `${API_URL}?action=DECLINE_ORDER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}&pass=${masterPassword}`;
-        const script = document.createElement('script'); script.src = `${url}&callback=silentCallback&ts=${Date.now()}`; 
-        
-        script.onload = () => script.remove(); 
-        script.onerror = () => { script.remove(); showToast("فشل الاتصال", "error"); if(card) card.style.opacity = '1'; };
-        setTimeout(() => { if(script.parentNode) script.remove(); }, 15000);
-        
-        document.body.appendChild(script); showToast("تم سحب الطلب وإعادته للرادار", "success");
+        // الاتصال بصمت
+        fetch(`${API_URL}?action=DECLINE_ORDER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}&pass=${masterPassword}`)
+        .then(r => r.json()).then(res => {
+            if(!res.success) { showToast(res.msg || "حدث خطأ", "error"); element.innerHTML = originalHtml; element.disabled = false; }
+            else showToast("تم سحب الطلب", "success");
+        }).catch(e => { showToast("أمر مرسل للخلفية", "success"); });
     }
 
     function trackDriver(driverPhone, restName) {
@@ -1138,42 +1202,34 @@
         }
     }
 
-    function pauseAutoFetch() {
-        if (fetchPauseTimeout) clearTimeout(fetchPauseTimeout);
-        fetchPauseTimeout = setTimeout(() => { fetchPauseTimeout = null; }, 3000);
-    }
-
     function assignDriverOptUI(orderId, driverPhone, element) {
         if(!driverPhone) return;
-        pauseAutoFetch();
-        element.classList.add('btn-loading');
-        const card = document.getElementById(`order-${orderId}`);
-        if(card) card.style.opacity = '0.5';
+        
+        element.disabled = true;
+        const card = document.getElementById(`wrapper-${orderId}`);
+        if(card) { card.style.transition = '0.3s'; card.style.opacity = '0.5'; }
         
         localOverrides.orders[String(orderId)] = { status: 'manual_pending', driverPhone: driverPhone, ts: Date.now() };
 
-        const url = `${API_URL}?action=ASSIGN_DRIVER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}&pass=${masterPassword}`;
-        const script = document.createElement('script'); script.src = `${url}&callback=silentCallback&ts=${Date.now()}`; 
-        
-        script.onload = () => script.remove(); 
-        script.onerror = () => { script.remove(); showToast("فشل الاتصال", "error"); if(card) card.style.opacity = '1'; };
-        setTimeout(() => { if(script.parentNode) script.remove(); }, 15000);
-        
-        document.body.appendChild(script); showToast("تم إرسال التعيين", "success");
+        fetch(`${API_URL}?action=ASSIGN_DRIVER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}&pass=${masterPassword}`)
+        .then(r=>r.json()).then(res=>{
+             if(!res.success) { showToast("خطأ", "error"); if(card) card.style.opacity = '1'; element.disabled = false;}
+             else showToast("تم الإرسال", "success");
+        }).catch(e=>{showToast("تم الإرسال", "success");});
     }
 
     function resetDebtOptUI(type, id, element) {
         if(!confirm(`تأكيد تصفير ديون (${id})؟`)) return;
-        pauseAutoFetch();
-        element.classList.add('btn-loading');
-        const url = `${API_URL}?action=RESET_DEBT&type=${type}&id=${id}&token=${API_TOKEN}&pass=${masterPassword}`;
-        const script = document.createElement('script'); script.src = `${url}&callback=silentCallback&ts=${Date.now()}`; 
         
-        script.onload = () => script.remove(); 
-        script.onerror = () => script.remove();
-        setTimeout(() => { if(script.parentNode) script.remove(); }, 15000);
-        
-        document.body.appendChild(script); showToast("تم تصفير الديون", "success");
+        const original = element.innerHTML;
+        element.innerHTML = '<div class="spinner-border spinner-border-sm"></div>';
+        element.disabled = true;
+
+        fetch(`${API_URL}?action=RESET_DEBT&type=${type}&id=${id}&token=${API_TOKEN}&pass=${masterPassword}`)
+        .then(r=>r.json()).then(res=>{
+            if(res.success) { showToast("تم التصفير", "success"); element.innerHTML = original; element.disabled = false; refreshData();}
+            else { showToast("خطأ", "error"); element.innerHTML = original; element.disabled = false; }
+        }).catch(e=>{showToast("تم إرسال الأمر", "success");});
     }
 
     function adminActionOptUI(cmd, type, id, element) {
@@ -1186,9 +1242,7 @@
             const card = element.closest('.col-md-6') || element.closest('.col-12');
             
             if (card && (cmd === 'DELETE' || (cmd === 'COMPLETE' && type === 'ORDER'))) { 
-                card.style.transition = '0.3s'; 
-                card.style.opacity = '0'; 
-                card.style.transform = 'scale(0.95)';
+                card.style.transition = '0.3s'; card.style.opacity = '0'; card.style.transform = 'scale(0.95)';
                 setTimeout(() => card.style.display = 'none', 300); 
                 
                 if (type === 'ORDER') localOverrides.orders[String(id)] = { status: newStatus, ts: Date.now() };
@@ -1201,22 +1255,16 @@
              if (type === 'DRIVER') localOverrides.drivers[String(id)] = { status: newStatus, ts: Date.now() };
         }
         
-        pauseAutoFetch();
-        element.classList.add('btn-loading'); 
+        const original = element.innerHTML;
+        element.innerHTML = '<div class="spinner-border spinner-border-sm text-white"></div>';
+        element.disabled = true;
 
-        const script = document.createElement('script'); 
-        script.src = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${id}&status=${newStatus}&token=${API_TOKEN}&pass=${masterPassword}&callback=silentCallback&ts=${Date.now()}`; 
-        
-        script.onload = () => script.remove(); 
-        script.onerror = () => script.remove();
-        setTimeout(() => { if(script.parentNode) script.remove(); }, 15000);
-        
-        document.body.appendChild(script); showToast("تم إرسال الأمر", "success");
+        fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${id}&status=${newStatus}&token=${API_TOKEN}&pass=${masterPassword}`)
+        .then(r=>r.json()).then(res=>{
+             if(!res.success) { showToast("خطأ", "error"); element.innerHTML = original; element.disabled = false;}
+             else showToast("تم التنفيذ", "success");
+        }).catch(e=>{showToast("تم إرسال الأمر", "success");});
     }
-
-    window.silentCallback = function(response) {
-        if(!response.success) { showToast("خطأ: " + (response.msg || response.error), "error"); refreshData(); }
-    };
 
     function renderArchive() {
         if(!globalData) return;
