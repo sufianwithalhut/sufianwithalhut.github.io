@@ -1,9 +1,9 @@
- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 2.8 - الدخول الآمن والربط الذكي) ---
-        const CURRENT_APP_VERSION = "2.8"; 
+        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 2.81 - الدخول الآمن والمحصن) ---
+        const CURRENT_APP_VERSION = "2.81"; 
         if (localStorage.getItem('hut_res_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة مكتشفة... جاري التحديث الإجباري لتسريع النظام!");
             localStorage.setItem('hut_res_app_version', CURRENT_APP_VERSION);
@@ -404,7 +404,7 @@
 </div>
 
 <script type="module">
-    // 🟢 1. تضمين Firebase 
+    // 🟢 1. تضمين Firebase والإعدادات المركزية
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getDatabase, ref, onValue, update, set } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
@@ -418,13 +418,16 @@
       apiKey: "AIzaSyAo1rmqUzieYZU3RIwXOAN87GkpNrp-_Hc",
       authDomain: "sufyan-delivery.firebaseapp.com",
       databaseURL: "https://sufyan-delivery-default-rtdb.europe-west1.firebasedatabase.app",
-      projectId: "sufyan-delivery"
+      projectId: "sufyan-delivery",
+      storageBucket: "sufyan-delivery.firebasestorage.app",
+      messagingSenderId: "941542380637",
+      appId: "1:941542380637:web:9623fa6e627817ffeba9b4"
     };
 
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
     
-    // متغيرات الجلسة
+    // متغيرات الجلسة (Untouched Logic)
     let currentResName = "";
     let isRegistering = false;
     let currentOrderMode = 'manual';
@@ -458,7 +461,22 @@
         if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') event.preventDefault();
     });
 
-    /* --- دوال التسجيل والخريطة --- */
+    // 🟢 ميزة يوم الجمعة مع الإيموجيز
+    function checkFriday() {
+        const today = new Date();
+        if (today.getDay() === 5) {
+            const lastMsg = localStorage.getItem('hut_friday_last');
+            const todayStr = today.toISOString().split('T')[0];
+            if (lastMsg !== todayStr) {
+                setTimeout(() => {
+                    showGlobalToast("جمعة مباركة طيبة 🕌✨<br>لا تنسوا ذكر الله والصلاة على النبي ﷺ 📿🤲<br>رزقكم الله من واسع فضله 💙", "success");
+                    localStorage.setItem('hut_friday_last', todayStr);
+                }, 3000);
+            }
+        }
+    }
+
+    /* --- دوال التسجيل والخريطة (لا تلاعب بها) --- */
     window.initPickerMap = function() {
         if (!document.getElementById('pickerMap')) return;
         if(pickerMap) { setTimeout(() => { pickerMap.invalidateSize(); }, 500); return; }
@@ -699,41 +717,56 @@
         window.saveDraft(); 
     }
 
-    // دالة الدخول اليدوي (للمستخدم الجديد أو عند فقدان الجلسة)
+    // 🟢 دالة الدخول اليدوي المحصنة ضد الضغط المزدوج
+    let isAuthenticating = false;
     window.manualAuthAction = function() {
-        let rawPhone = document.getElementById('checkPhone').value.trim();
-        if(!rawPhone) return window.showGlobalToast("يرجى إدخال رقم الهاتف أولاً", "error");
-        let phone = rawPhone.startsWith('0') ? rawPhone.substring(1) : rawPhone;
+        if(isAuthenticating) return; // منع الضغط المزدوج
+        
+        let rawPhone = document.getElementById('checkPhone').value;
+        // تنظيف الرقم من أي شيء غير الأرقام
+        let cleanPhone = rawPhone.replace(/\D/g, ''); 
+        
+        if(!cleanPhone) return window.showGlobalToast("يرجى إدخال رقم الهاتف أولاً", "error");
+        if(cleanPhone.startsWith('0')) cleanPhone = cleanPhone.substring(1);
 
         const btn = document.getElementById('mainAuthBtn');
         const origBtnText = btn.innerHTML;
         btn.innerHTML = `<div class="spinner-border spinner-border-sm text-white"></div>`;
         btn.disabled = true;
+        isAuthenticating = true;
 
         if (isRegistering) {
+            // التحقق من الإنترنت قبل الإرسال
+            if(!navigator.onLine) {
+                btn.innerHTML = origBtnText; btn.disabled = false; isAuthenticating = false;
+                return window.showGlobalToast("أنت غير متصل بالإنترنت.", "error");
+            }
+            
             const name = document.getElementById('regName').value.trim();
             const area = document.getElementById('regArea').value.trim();
             const comm = document.getElementById('regComm').value.trim();
             const pay = document.getElementById('regPay').value;
             const rawPriceListText = document.getElementById('regPriceList').value;
 
-            if(!name || !area || !comm) { btn.innerHTML = origBtnText; btn.disabled = false; return window.showGlobalToast("الرجاء ملء جميع الحقول.", "error");}
-            if(Math.abs(regLat - 35.468) < 0.001 && Math.abs(regLng - 44.392) < 0.001) { btn.innerHTML = origBtnText; btn.disabled = false; return window.showGlobalToast("حدد موقع مطعمك على الخريطة أولاً.", "error");}
+            if(!name || !area || !comm) { btn.innerHTML = origBtnText; btn.disabled = false; isAuthenticating = false; return window.showGlobalToast("الرجاء ملء جميع الحقول.", "error");}
+            if(Math.abs(regLat - 35.468) < 0.001 && Math.abs(regLng - 44.392) < 0.001) { btn.innerHTML = origBtnText; btn.disabled = false; isAuthenticating = false; return window.showGlobalToast("حدد موقع مطعمك على الخريطة أولاً.", "error");}
             
             const packedPriceList = parseCustomPriceList(rawPriceListText);
-            sendRegistration(name, phone, area, comm, pay, regLat, regLng, packedPriceList, btn, origBtnText);
+            sendRegistration(name, cleanPhone, area, comm, pay, regLat, regLng, packedPriceList, btn, origBtnText);
             return;
         }
 
-        fetch(`${API_URL}?action=checkRes&phone=${phone}&token=${API_TOKEN}`)
+        fetch(`${API_URL}?action=checkRes&phone=${cleanPhone}&token=${API_TOKEN}`)
             .then(r => r.json())
             .then(data => {
+                isAuthenticating = false;
                 btn.innerHTML = origBtnText; btn.disabled = false;
-                handleLogin(data, phone);
+                handleLogin(data, cleanPhone);
             })
             .catch(err => { 
+                isAuthenticating = false;
                 btn.innerHTML = origBtnText; btn.disabled = false;
-                window.showGlobalToast("خطأ في الاتصال، حاول مجدداً.", "error"); 
+                window.showGlobalToast("خطأ في الاتصال، تحقق من الإنترنت وحاول مجدداً.", "error"); 
             });
     }
 
@@ -741,10 +774,12 @@
         const payload = { action: 'RESTAURANT_REG', token: API_TOKEN, name: name, phone: phone, area: area, comm: comm, pay: pay, lat: lat, lng: lng, priceList: priceListStr };
         fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) })
         .then(() => {
+            isAuthenticating = false;
             btn.innerHTML = origBtnText; btn.disabled = false;
             const formattedPhone = phone.startsWith('0') ? phone : '0' + phone;
             localStorage.setItem('hut_res_phone', formattedPhone); localStorage.setItem('hut_res_pending', formattedPhone); showWaitingRoom();
         }).catch(() => { 
+            isAuthenticating = false;
             btn.innerHTML = origBtnText; btn.disabled = false;
             window.showGlobalToast("حدث خطأ أثناء الإرسال.", "error"); 
         });
@@ -813,6 +848,7 @@
         document.getElementById('resTitle').innerText = currentResName; 
         if (typeof lucide !== 'undefined') lucide.createIcons();
         window.buildCustomAreaDropdown(); restoreDraft(); 
+        checkFriday(); // نداء رسالة الجمعة هنا
         
         fetchColdData(); 
         startHotDataListeners(); 
@@ -832,11 +868,9 @@
     }
 
     function renderDashboardStats(data) {
-        // حماية متقدمة: إذا لم يجد المطعم، لا يفعل شيئاً (ربما خطأ في جلب البيانات)
         const resInfo = data.restaurants.find(r => r[1] === currentResName);
         if(!resInfo) return; 
 
-        // حماية 2: الطرد يتم فقط إذا كانت الحالة صريحة بالحظر أو الحذف
         if(resInfo[4] === 'banned' || resInfo[4] === 'deleted') {
              alert("⚠️ تم إيقاف أو حذف الحساب."); localStorage.clear(); sessionStorage.clear(); location.reload(); return; 
         }
