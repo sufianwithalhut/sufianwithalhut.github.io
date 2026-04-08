@@ -578,7 +578,7 @@
             }
         });
 
-        // 🟢 صمامات الأمان - محاصرة الأخطاء
+        // 🟢 صمامات الأمان وتفعيل الـ (Optimistic UI) 
         try { renderArchive(); } catch(e) { console.error("Archive Error:", e); }
         try { updateSectionBadges('RESTAURANT', data.restaurants); } catch(e) {}
         try { updateSectionBadges('DRIVER', data.drivers); } catch(e) {}
@@ -981,7 +981,7 @@
         }
     }
 
-    // 🟢 2. المعالجة الآمنة للـ IDs والأيقونات (The Bulletproof Fix)
+    // 🟢 2. المعالجة الآمنة للـ IDs والأيقونات
     function smartRenderFilteredSection(type, fullList, debtsMap, unpaidCounts) {
         let filteredList = [];
         const filter = type === 'RESTAURANT' ? currentResSectionFilter : currentDriverSectionFilter;
@@ -1022,7 +1022,7 @@
             const name = item[1], phone = item[phoneIndex], status = item[4];
             const debtAmount = debtsMap[item[mapKeyIndex]] || 0; 
             
-            // 🟢 تعقيم صارم لرقم الهاتف لاستخدامه كـ ID آمن جداً
+            // تعقيم صارم لرقم الهاتف لاستخدامه كـ ID آمن جداً
             const safePhoneId = String(phone).replace(/[^a-zA-Z0-9]/g, '');
             currentIds.add(safePhoneId);
 
@@ -1080,7 +1080,6 @@
                 </div>`;
                 container.insertAdjacentHTML('beforeend', html);
                 
-                // 🟢 استدعاء آمن لمكتبة الأيقونات
                 const newlyAdded = document.getElementById(`card-${type}-${safePhoneId}`);
                 if (newlyAdded && typeof lucide !== 'undefined') {
                     lucide.createIcons({root: newlyAdded});
@@ -1186,6 +1185,7 @@
         }).catch(e=>{showToast("تم إرسال الأمر", "success");});
     }
 
+    // 🟢 2. جعل أزرار الإيقاف/التفعيل لحظية (Optimistic UI)
     function adminActionOptUI(cmd, type, id, element) {
         const statusMap = { 'ACCEPT': 'active', 'PAUSE': 'inactive', 'DELETE': 'deleted', 'COMPLETE': 'completed' };
         let newStatus = statusMap[cmd];
@@ -1199,28 +1199,87 @@
                 card.style.transition = '0.3s'; card.style.opacity = '0'; card.style.transform = 'scale(0.95)';
                 setTimeout(() => card.style.display = 'none', 300); 
                 
+                // تحديث الذاكرة المانعة
                 if (type === 'ORDER') localOverrides.orders[String(id)] = { status: newStatus, ts: Date.now() };
                 if (type === 'RESTAURANT') localOverrides.restaurants[String(id)] = { status: newStatus, ts: Date.now() };
                 if (type === 'DRIVER') localOverrides.drivers[String(id)] = { status: newStatus, ts: Date.now() };
             }
         } else {
+             // 🟢 التحديث اللحظي للواجهة (Optimistic UI) قبل رد السيرفر
              if (type === 'ORDER') localOverrides.orders[String(id)] = { status: newStatus, ts: Date.now() };
-             if (type === 'RESTAURANT') localOverrides.restaurants[String(id)] = { status: newStatus, ts: Date.now() };
-             if (type === 'DRIVER') localOverrides.drivers[String(id)] = { status: newStatus, ts: Date.now() };
+             if (type === 'RESTAURANT') {
+                 localOverrides.restaurants[String(id)] = { status: newStatus, ts: Date.now() };
+                 // تحديث globalData فوراً لتحديث القائمة
+                 let resItem = globalData.restaurants.find(r => String(r[2]) === String(id));
+                 if(resItem) resItem[4] = newStatus;
+                 // إعادة رسم القائمة فوراً
+                 let resDebts = {}; let resUnpaidCounts = {};
+                 globalData.restaurants.slice(1).forEach(r => { resDebts[r[1]] = 0; resUnpaidCounts[r[1]] = 0; });
+                 globalData.orders.slice(1).forEach(o => {
+                     if (o[5] === 'completed' || o[5] === 'مكتمل') {
+                         const rData = globalData.restaurants.find(r => r[1] === o[1]);
+                         if (rData) {
+                             const comm = parseFloat(rData[5]) || 0; 
+                             if (resUnpaidCounts[o[1]] !== undefined) resUnpaidCounts[o[1]]++; 
+                             if (String(rData[8]).includes('مناصفة')) { resDebts[o[1]] += (comm / 2); } 
+                             else { resDebts[o[1]] += comm; }
+                         }
+                     }
+                 });
+                 smartRenderFilteredSection('RESTAURANT', globalData.restaurants, resDebts, resUnpaidCounts);
+                 updateSectionBadges('RESTAURANT', globalData.restaurants);
+             }
+             if (type === 'DRIVER') {
+                 localOverrides.drivers[String(id)] = { status: newStatus, ts: Date.now() };
+                 // تحديث globalData فوراً لتحديث القائمة
+                 let drvItem = globalData.drivers.find(d => String(d[2]) === String(id));
+                 if(drvItem) drvItem[4] = newStatus;
+                 // إعادة رسم القائمة فوراً
+                 let driverDebts = {};
+                 globalData.drivers.slice(1).forEach(d => { driverDebts[String(d[2])] = 0; });
+                 globalData.orders.slice(1).forEach(o => {
+                     if (o[5] === 'completed' || o[5] === 'مكتمل') {
+                         const rData = globalData.restaurants.find(r => r[1] === o[1]);
+                         if (rData) {
+                             const comm = parseFloat(rData[5]) || 0; 
+                             if (String(rData[8]).includes('مناصفة')) { driverDebts[String(o[6])] += (comm / 2); } 
+                         }
+                     }
+                 });
+                 smartRenderFilteredSection('DRIVER', globalData.drivers, driverDebts, null);
+                 updateSectionBadges('DRIVER', globalData.drivers);
+             }
         }
         
+        // إظهار تحميل لحظي قصير للإشعار فقط
         const original = element.innerHTML;
         element.innerHTML = '<div class="spinner-border spinner-border-sm text-white"></div>';
         element.disabled = true;
 
         fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${id}&status=${newStatus}&token=${API_TOKEN}&pass=${masterPassword}`)
         .then(r=>r.json()).then(res=>{
-             if(!res.success) { showToast("خطأ", "error"); element.innerHTML = original; element.disabled = false;}
-             else showToast("تم التنفيذ", "success");
-        }).catch(e=>{showToast("تم إرسال الأمر", "success");});
+             if(!res.success) { 
+                 showToast("خطأ", "error"); 
+                 // تراجع عن التحديث اللحظي إذا فشل السيرفر (معقدة قليلاً، الأفضل إعادة جلب البيانات)
+                 refreshData(); 
+             } else {
+                 showToast("تم التنفيذ", "success");
+                 // إعادة الزر لشكله الطبيعي إذا لم يتم حذف الكارت
+                 if(document.body.contains(element)) {
+                     element.innerHTML = original;
+                     element.disabled = false;
+                 }
+             }
+        }).catch(e=>{
+            showToast("تم إرسال الأمر بصمت", "success");
+            if(document.body.contains(element)) {
+                element.innerHTML = original;
+                element.disabled = false;
+            }
+        });
     }
 
-    // 🟢 3. الأرشيف محمي الآن ويعمل بشكل مستقل
+    // 🟢 1. معالجة علامة الاقتباس المفردة لمنع تعطل الجدول (HTML Injection)
     function renderArchive() {
         if(!globalData) return;
         const search = document.getElementById('arcSearch').value.trim().toLowerCase();
@@ -1261,8 +1320,11 @@
                     displayedCount++;
                     const dData = globalData.drivers.find(d => String(d[2]) === String(driverPhone));
                     let driverName = dData ? dData[1] : driverPhone;
+                    
                     const orderDataObj = { id: orderId, date: orderDateFormatted, res: restName, driver: driverName, details: details, price: price, comm: comm, payType: payType, isSettled: isSettled };
-                    const orderDataStr = encodeURIComponent(JSON.stringify(orderDataObj));
+                    // 🟢 تعقيم علامات الاقتباس
+                    const orderDataStr = encodeURIComponent(JSON.stringify(orderDataObj)).replace(/'/g, "%27");
+                    
                     archiveHtml += `<tr onclick="openInvoice('${orderDataStr}')" style="cursor:pointer;">
                         <td class="fw-bold text-nowrap text-primary" style="font-size:0.8rem;">${orderId || '-'}</td>
                         <td class="small fw-bold text-muted text-nowrap">${orderDateISO || '-'}</td>
