@@ -361,7 +361,7 @@
 <script>
     if (typeof lucide !== 'undefined') lucide.createIcons();
     
-    // 🟢 تم التحديث للرابط الدقيق لنسخة V25
+    // 🟢 السيرفر الأساسي الماسي V25
     const API_URL = "https://script.google.com/macros/s/AKfycbzCGEQDmWp5su19c911j1TUxL65t1Y63-LhuXLrq0Z1Qc9sLG9f__4GQa0pN2k5MErw/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
@@ -382,7 +382,10 @@
     let lastDriverHtml = "";
     let lastArchiveHtml = "";
 
-    // 🟢 ذاكرة الماركرز لتجنب الوميض وتحسين الأداء
+    // 🟢 مصفوفة الذاكرة اللحظية لحمل بيانات الطلبات القادمة من Firebase بسرعة البرق
+    let liveFirebaseOrders = [];
+
+    // ذاكرة الماركرز لتجنب الوميض وتحسين الأداء
     let liveDriverMarkers = {}; 
     let liveResMarkers = {};
 
@@ -390,7 +393,7 @@
     let fetchPauseTimeout = null;
     let isEmergencyMuted = false;
 
-    // 🟢 تهيئة Firebase للتتبع اللحظي (كما طلبته)
+    // 🟢 تهيئة Firebase للتتبع اللحظي (مواقع الكباتن + الرادار)
     const firebaseConfig = {
         apiKey: "AIzaSyAo1rmqUzieYZU3RIwXOAN87GkpNrp-_Hc",
         authDomain: "sufyan-delivery.firebaseapp.com",
@@ -490,9 +493,14 @@
             const audio = document.getElementById('adminAlertSound');
             audio.volume = 0; audio.play().then(() => { audio.pause(); audio.currentTime = 0; audio.volume = 1; }).catch(e=>{});
 
-            startClock(); refreshData(); setInterval(refreshData, 15000);
+            startClock(); 
+            refreshData(); // تحميل البيانات الأساسية (الأرشيف، الكباتن، المطاعم) مرة واحدة فقط.
+            
+            // 🛑 إزالة عنق الزجاجة نهائياً (لا يوجد setInterval بعد الآن!)
+            
             initMap();
-            listenToFirebaseLocations(); // 🟢 تفعيل الرصد اللحظي
+            listenToFirebaseLocations(); // رصد الخريطة اللحظي
+            listenToFirebaseOrders(); // 🟢 رصد الطلبات اللحظي
         } else {
             masterPassword = ""; 
             showToast("رمز المرور غير صحيح", "error");
@@ -507,9 +515,7 @@
     }, 1000); }
 
     function refreshData() {
-        if (document.hidden) return; 
         if (fetchPauseTimeout !== null) return;
-
         const oldScript = document.getElementById('data-fetch-script');
         if (oldScript) oldScript.remove(); 
         
@@ -519,22 +525,97 @@
         document.body.appendChild(script);
     }
 
+    // 🟢 العقل الجديد للرادار (المستمع اللحظي Firebase)
+    function listenToFirebaseOrders() {
+        db.ref('active_orders').on('value', (snapshot) => {
+            const ordersObj = snapshot.val();
+            let newActiveOrders = [];
+            let currentPendingCount = 0;
+            let hasEmergency = false;
+            const now = Date.now();
+
+            if (ordersObj) {
+                Object.values(ordersObj).forEach(o => {
+                    // استخراج التفاصيل من globalData إن وجدت
+                    let orderDetails = "طلب توصيل";
+                    if(globalData && globalData.orders) {
+                        const existingOrder = globalData.orders.find(go => go[0] === o.id);
+                        if(existingOrder) orderDetails = existingOrder[3];
+                    }
+
+                    // تحويل كائن Firebase إلى مصفوفة ليفهمها الرادار
+                    let orderArr = [
+                        o.id || '',
+                        o.restaurant || '',
+                        o.area || 'غير محدد',
+                        orderDetails,
+                        o.price || 0,
+                        o.status || 'pending',
+                        o.driverPhone || '',
+                        o.last_update || o.timestamp || '',
+                        o.photoUrl || ''
+                    ];
+
+                    // 🟢 الحفاظ على الذاكرة المانعة (لكي لا تومض الواجهة عند ضغط زر)
+                    let override = localOverrides.orders[orderArr[0]];
+                    if (override) {
+                        if (now - override.ts < 120000) {
+                            orderArr[5] = override.status || orderArr[5];
+                            if (override.driverPhone) orderArr[6] = override.driverPhone;
+                        } else {
+                            delete localOverrides.orders[orderArr[0]];
+                        }
+                    }
+
+                    newActiveOrders.push(orderArr);
+
+                    // فحص حالات الطوارئ (تأخير الطلب)
+                    if (!orderArr[6] || orderArr[6] === "pending_driver" || orderArr[6] === "manual_pending") {
+                        currentPendingCount++;
+                        if (orderArr[7]) {
+                            const orderTime = new Date(orderArr[7]);
+                            if ((new Date() - orderTime) / 60000 >= 3) hasEmergency = true;
+                        }
+                    }
+                });
+            }
+
+            // ترتيب الطلبات من الأحدث للأقدم
+            newActiveOrders.sort((a, b) => new Date(b[7]) - new Date(a[7]));
+            liveFirebaseOrders = newActiveOrders;
+
+            // تشغيل التنبيهات الصوتية
+            if(currentPendingCount > lastPendingCount) {
+                const audio = document.getElementById('adminAlertSound');
+                audio.currentTime = 0; audio.play().catch(e=>{});
+            }
+            lastPendingCount = currentPendingCount;
+
+            if (hasEmergency) {
+                if (!isEmergencyMuted) triggerEmergency();
+            } else {
+                isEmergencyMuted = false;
+                const eModal = document.getElementById('emergencyModal');
+                if (eModal && eModal.style.display === 'flex') closeEmergency();
+            }
+
+            // تحديث الإحصائيات في الشريط العلوي
+            document.querySelectorAll('.val-orders').forEach(el => el.innerText = liveFirebaseOrders.length);
+
+            // إعادة رسم الرادار فوراً (أجزاء من الثانية)
+            if (globalData) {
+                renderRadar(liveFirebaseOrders);
+            }
+        });
+    }
+
     window.renderData = function(data) {
         const oldScript = document.getElementById('data-fetch-script');
         if (oldScript) oldScript.remove(); 
 
         const now = Date.now();
 
-        data.orders.forEach(o => {
-            let override = localOverrides.orders[o[0]];
-            if (override) {
-                if (now - override.ts < 120000) { 
-                    o[5] = override.status || o[5];
-                    if (override.driverPhone) o[6] = override.driverPhone;
-                } else { delete localOverrides.orders[o[0]]; }
-            }
-        });
-
+        // 🟢 معالجة الذاكرة المانعة للكباتن والمطاعم فقط هنا (الطلبات تمت معالجتها في المستمع اللحظي)
         data.drivers.forEach(d => {
             let override = localOverrides.drivers[d[2]];
             if (override && (now - override.ts < 120000)) d[4] = override.status;
@@ -554,40 +635,9 @@
             data.drivers.slice(1).forEach(d => document.getElementById('arcDriver').innerHTML += `<option value="${String(d[2])}">${d[1]}</option>`);
         }
 
-        const activeOrdersList = data.orders.slice(1).filter(o => 
-            o[5] !== 'completed' && o[5] !== 'مكتمل' && o[5] !== 'settled' && o[5] !== 'deleted'
-        );
-
-        let currentPendingCount = 0;
-        let hasEmergency = false;
-
-        activeOrdersList.forEach(o => {
-            if (!o[6] || o[6] === "pending_driver") {
-                currentPendingCount++;
-                const orderTime = new Date(o[7]);
-                if ((new Date() - orderTime) / 60000 >= 3) hasEmergency = true; 
-            }
-        });
-
-        if(currentPendingCount > lastPendingCount) {
-            const audio = document.getElementById('adminAlertSound');
-            audio.currentTime = 0; audio.play().catch(e=>{});
-        }
-        lastPendingCount = currentPendingCount;
-
-        if (hasEmergency) {
-            if (!isEmergencyMuted) triggerEmergency();
-        } else {
-            isEmergencyMuted = false; 
-            const eModal = document.getElementById('emergencyModal');
-            if (eModal && eModal.style.display === 'flex') closeEmergency();
-        }
-
-        const countOrders = activeOrdersList.length;
         const countDrivers = data.drivers.filter(d => d[4] === 'active').length;
         const countRes = data.restaurants.filter(r => r[4] === 'active').length;
         
-        document.querySelectorAll('.val-orders').forEach(el => el.innerText = countOrders);
         document.querySelectorAll('.val-drivers').forEach(el => el.innerText = countDrivers);
         document.querySelectorAll('.val-res').forEach(el => el.innerText = countRes);
 
@@ -617,7 +667,10 @@
             }
         });
 
-        renderRadar(activeOrdersList); 
+        if (liveFirebaseOrders.length > 0) {
+            renderRadar(liveFirebaseOrders);
+        }
+        
         renderArchive();
         
         updateSectionBadges('RESTAURANT', data.restaurants);
@@ -625,7 +678,6 @@
         renderFilteredSection('RESTAURANT', data.restaurants, resDebts, resUnpaidCounts);
         renderFilteredSection('DRIVER', data.drivers, driverDebts, null);
         
-        // 🟢 تحديث الخريطة بدون وميض (Anti-Flicker)
         if (map && driverClusterGroup && restaurantMarkersLayer) {
             data.restaurants.slice(1).forEach(r => {
                 const rName = r[1];
@@ -684,7 +736,6 @@
         }
     };
 
-    // 🟢 الاستماع اللحظي لمواقع الكباتن عبر Firebase
     function listenToFirebaseLocations() {
         db.ref('drivers_locations').on('value', (snapshot) => {
             const locs = snapshot.val();
@@ -694,7 +745,7 @@
                     const lat = parseFloat(locs[phone].lat);
                     const lng = parseFloat(locs[phone].lng);
                     if(!isNaN(lat) && !isNaN(lng)) {
-                        liveDriverMarkers[phone].setLatLng([lat, lng]); // حركة سلسة ولحظية
+                        liveDriverMarkers[phone].setLatLng([lat, lng]); 
                     }
                 }
             });
@@ -855,13 +906,12 @@
         renderRadar();
     }
 
+    // 🟢 الرادار أصبح يقرأ دائماً من الذاكرة اللحظية
     function renderRadar(activeOrdersList = null) {
         if(!globalData) return;
         
         if (!activeOrdersList) {
-            activeOrdersList = globalData.orders.slice(1).filter(o => 
-                o[5] !== 'completed' && o[5] !== 'مكتمل' && o[5] !== 'settled' && o[5] !== 'deleted'
-            );
+            activeOrdersList = liveFirebaseOrders;
         }
 
         let smartHtml = '';
@@ -1061,7 +1111,6 @@
         if(driver && driver[5] && driver[6]) {
             let dLat = parseFloat(driver[5]); let dLng = parseFloat(driver[6]);
             
-            // قراءة أحدث إحداثية من التتبع اللحظي إن وجدت
             if(liveDriverMarkers[String(driverPhone)]) {
                 const pos = liveDriverMarkers[String(driverPhone)].getLatLng();
                 dLat = pos.lat; dLng = pos.lng;
