@@ -1,407 +1,397 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-    <script>
-        // --- الإصدار 8.0 (Apex Edition: The Perfect Hybrid Engine) ---
-        const CURRENT_APP_VERSION = "8.0"; 
-        if (localStorage.getItem('hut_master_version') !== CURRENT_APP_VERSION) {
-            console.log("تحديث الإدارة المكتشف... جاري تفريغ الذاكرة المؤقتة!");
-            localStorage.setItem('hut_master_version', CURRENT_APP_VERSION);
-            if ('caches' in window) { caches.keys().then(names => { names.forEach(name => caches.delete(name)); }); }
-            if ('serviceWorker' in navigator) { navigator.serviceWorker.getRegistrations().then(regs => { regs.forEach(r => r.unregister()); }); }
-            window.location.reload(true);
-        }
-    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="theme-color" content="#060d1a">
+    
+    <title>مكتب سفيان | الإدارة العليا</title>
+    
+    <meta name="theme-color" content="#ffffff">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>سفيان | مركز القيادة</title>
+    <meta name="apple-mobile-web-app-title" content="إدارة الحوت">
+    <meta name="mobile-web-app-capable" content="yes">
+    
+    <link rel="apple-touch-icon" href="master-logo.png">
+    <link rel="manifest" href="manifest_master.json">
 
-    <link rel="manifest" href="data:application/json,%7B%22name%22%3A%22%D8%B3%D9%81%D9%8A%D8%A7%D9%86%22%2C%22short_name%22%3A%22%D8%B3%D9%81%D9%8A%D8%A7%D9%86%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23060d1a%22%2C%22theme_color%22%3A%22%23060d1a%22%7D">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest" defer></script>
     
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-    
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
-    
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js" defer></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
+    <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js" defer></script>
+
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
 
     <style>
-        /* ============================================================
-           SUFYAN COMMAND CENTER — CYBER DARK GLASSMORPHISM
-           Kirkuk, Iraq — Production Grade v8.0
-        ============================================================ */
-        :root {
-            /* Core Palette */
-            --bg-void: #060d1a; --bg-deep: #0a1628; --bg-surface: #0f1f38;
-            --bg-glass: rgba(15, 31, 56, 0.75); --bg-glass-light: rgba(255,255,255,0.04);
-            /* Neon Accents */
-            --neon-blue: #3b9eff; --neon-cyan: #00d4ff; --neon-green: #00ff88;
-            --neon-amber: #ffb800; --neon-red: #ff3b5c; --neon-purple: #a855f7;
-            /* Glow */
-            --glow-blue: 0 0 20px rgba(59,158,255,0.5); --glow-green: 0 0 20px rgba(0,255,136,0.5); --glow-red: 0 0 20px rgba(255,59,92,0.5);
-            /* Borders & Shadows */
-            --border-subtle: rgba(255,255,255,0.07); --border-glow: rgba(59,158,255,0.3);
-            --shadow-deep: 0 25px 50px -10px rgba(0,0,0,0.8); --shadow-card: 0 8px 32px -8px rgba(0,0,0,0.6);
-            /* Layout */
-            --sidebar-w: 260px; --header-h: 64px; --bottom-nav-h: 68px;
-            --radius-xl: 20px; --radius-lg: 16px; --radius-md: 12px;
-            /* Typography */
-            --font-main: 'Cairo', sans-serif; --font-mono: 'JetBrains Mono', monospace;
+        :root { --sidebar-width: 280px; --primary-blue: #1e3a8a; --accent-blue: #3b82f6; --bg-light: #f8fafc; --card-bg: #ffffff; --text-main: #0f172a; --bottom-nav-height: 70px; }
+        
+        html, body { height: 100%; overflow: hidden; overscroll-behavior: none; background-color: var(--bg-light); font-family: 'Cairo', sans-serif; color: var(--text-main); -webkit-tap-highlight-color: transparent; }
+        
+        #authOverlay { position: fixed; inset: 0; background: linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%); z-index: 10000; display: flex; align-items: center; justify-content: center; }
+        .auth-card { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-radius: 30px; padding: 40px; width: 90%; max-width: 420px; box-shadow: 0 25px 50px rgba(0,0,0,0.3); text-align: center; }
+        
+        #mainDashboard { display: flex; height: 100%; width: 100%; overflow: hidden; }
+        
+        .bottom-nav { display: none; }
+        
+        .admin-tab { display: none; animation: fadeIn 0.3s; }
+        .admin-tab.active-tab { display: block; }
+        
+        @media (max-width: 768px) {
+            .sidebar { display: none !important; }
+            .desktop-header { display: none !important; }
+            .main-content { margin-right: 0 !important; padding: 0 !important; width: 100%; height: 100%; position: relative; }
+            
+            .bottom-nav { display: flex; position: absolute; bottom: 0; left: 0; width: 100%; height: var(--bottom-nav-height); background: white; justify-content: space-around; align-items: center; z-index: 9999; box-shadow: 0 -5px 20px rgba(0,0,0,0.05); padding-bottom: env(safe-area-inset-bottom); border-top: 1px solid #f1f5f9; }
+            .b-nav-item { display: flex; flex-direction: column; align-items: center; gap: 4px; color: #94a3b8; font-size: 0.75rem; font-weight: 800; width: 25%; transition: 0.2s; cursor: pointer; padding: 10px 0; }
+            .b-nav-item.active { color: var(--primary-blue); }
+            .b-nav-item.active i { color: var(--accent-blue); transform: translateY(-3px); }
+            
+            .admin-tab { position: absolute; inset: 0; bottom: var(--bottom-nav-height); overflow-y: auto; background: var(--bg-light); z-index: 5; }
+            #tab-live.active-tab { overflow: hidden; } 
+            
+            .map-wrapper { position: absolute; top: 0; left: 0; width: 100%; height: 55%; z-index: 1; }
+            #adminMap { width: 100%; height: 100%; border: none; border-radius: 0; border-bottom: 2px solid #e2e8f0; }
+            
+            .bottom-sheet { position: absolute; top: 55%; left: 0; width: 100%; height: 45%; background: white; border-radius: 30px 30px 0 0; z-index: 10; display: flex; flex-direction: column; box-shadow: 0 -10px 30px rgba(0,0,0,0.1); }
+            .sheet-handle { width: 40px; height: 5px; background: #cbd5e1; border-radius: 10px; margin: 15px auto; flex-shrink: 0; }
+            .sheet-content { overflow-y: auto; padding: 0 20px 20px 20px; flex: 1; }
+            
+            .map-floating-header { position: absolute; top: max(15px, env(safe-area-inset-top)); left: 15px; right: 15px; z-index: 10; display: flex; justify-content: space-between; align-items: center; pointer-events: none; }
+            .map-floating-header > * { pointer-events: auto; }
+            .map-floating-stats { position: absolute; top: calc(max(15px, env(safe-area-inset-top)) + 55px); right: 15px; z-index: 10; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+            .m-stat { background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); padding: 8px 15px; border-radius: 20px; font-weight: 900; font-size: 1rem; box-shadow: 0 5px 15px rgba(0,0,0,0.1); display: flex; align-items: center; gap: 8px; pointer-events: auto; border: 1px solid rgba(255,255,255,0.5); }
+            
+            .desktop-stats { display: none !important; }
+            .tab-inner-padding { padding: 20px; padding-top: max(20px, env(safe-area-inset-top)); }
         }
 
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        html { height: 100%; }
-        body { font-family: var(--font-main); background: var(--bg-void); color: #e2eaf5; height: 100%; overflow: hidden; -webkit-tap-highlight-color: transparent; position: relative; }
+        @media (min-width: 769px) {
+            .sidebar { width: var(--sidebar-width); background: var(--primary-blue); height: 100vh; position: fixed; right: 0; top: 0; color: white; padding: 30px 20px; z-index: 1005; box-shadow: -5px 0 25px rgba(0,0,0,0.05); }
+            .main-content { margin-right: var(--sidebar-width); padding: 30px; height: 100vh; overflow-y: auto; position: relative; width: calc(100% - var(--sidebar-width)); }
+            .nav-item { display: flex; align-items: center; gap: 15px; padding: 14px 20px; color: #cbd5e1; text-decoration: none; border-radius: 16px; margin-bottom: 8px; cursor: pointer; transition: 0.3s; font-weight: 600; }
+            .nav-item:hover { background: rgba(255,255,255,0.05); color: white; transform: translateX(-5px); }
+            .nav-item.active { background: white; color: var(--primary-blue); box-shadow: 0 10px 20px rgba(0,0,0,0.1); font-weight: 900; }
+            
+            .map-wrapper { width: 100%; height: 450px; margin-bottom: 20px; }
+            #adminMap { width: 100%; height: 100%; border-radius: 24px; border: 6px solid white; box-shadow: 0 10px 30px rgba(0,0,0,0.06); background: #e2e8f0; z-index: 1; }
+            .map-floating-header, .map-floating-stats { display: none !important; }
+            .sheet-handle { display: none; }
+            .desktop-stats { display: flex; }
+        }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .stat-compact { background: var(--card-bg); border-radius: 20px; padding: 15px 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.02); border: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; }
+        .stat-compact .icon-box { width: 45px; height: 45px; border-radius: 14px; display: flex; align-items: center; justify-content: center; }
+        .stat-compact h3 { margin: 0; font-weight: 900; font-size: 1.5rem; }
+        .stat-compact p { margin: 0; font-weight: 700; font-size: 0.8rem; color: #64748b; }
+
+        .stat-widget { background: var(--card-bg); border-radius: 24px; padding: 25px; box-shadow: 0 4px 20px rgba(0,0,0,0.03); border: 1px solid #e2e8f0; height: 100%; }
         
-        /* Animated grid background */
-        body::before { content: ''; position: fixed; inset: 0; z-index: 0; background-image: linear-gradient(rgba(59,158,255,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(59,158,255,0.04) 1px, transparent 1px); background-size: 40px 40px; pointer-events: none; }
-        body::after { content: ''; position: fixed; inset: 0; z-index: 0; background: radial-gradient(ellipse 80% 60% at 20% 10%, rgba(59,158,255,0.08) 0%, transparent 60%), radial-gradient(ellipse 60% 50% at 80% 80%, rgba(0,212,255,0.05) 0%, transparent 60%); pointer-events: none; }
-
-        /* ── Scrollbars ── */
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: var(--border-glow); }
-
-        /* ── Utility Classes ── */
-        .text-neon-blue { color: var(--neon-blue); } .text-neon-green { color: var(--neon-green); }
-        .text-neon-red { color: var(--neon-red); } .text-neon-amber { color: var(--neon-amber); }
-        .text-neon-purple { color: var(--neon-purple); } .text-secondary { color: #4a6fa5; }
-        .text-mono { font-family: var(--font-mono); } .fw-black { font-weight: 900; } .fw-bold { font-weight: 700; }
-        .hidden-section { display: none !important; }
-
-        /* ── Auth Overlay ── */
-        #authOverlay { position: fixed; inset: 0; z-index: 99999; background: rgba(6,13,26,0.97); backdrop-filter: blur(16px); display: flex; align-items: center; justify-content: center; }
-        .auth-box { background: var(--bg-glass); backdrop-filter: blur(20px); border: 1px solid var(--border-glow); border-radius: 28px; padding: 48px 40px; width: 90%; max-width: 400px; text-align: center; box-shadow: var(--shadow-deep), var(--glow-blue); animation: authAppear 0.6s cubic-bezier(.23,1,.32,1) both; }
-        @keyframes authAppear { from { opacity:0; transform: scale(0.9) translateY(20px); } to { opacity:1; transform: scale(1) translateY(0); } }
-        .auth-logo { width: 72px; height: 72px; background: linear-gradient(135deg, var(--neon-blue), var(--neon-cyan)); border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px; box-shadow: var(--glow-blue); color: white; }
-        .auth-box h2 { font-size: 1.8rem; font-weight: 900; background: linear-gradient(135deg, #fff, var(--neon-cyan)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 6px; }
-        .auth-box p { color: #64748b; font-size: 0.9rem; margin-bottom: 32px; }
-        .auth-input { width: 100%; background: rgba(0,0,0,0.4); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 14px 20px; color: white; font-family: var(--font-mono); font-size: 1rem; text-align: center; letter-spacing: 4px; outline: none; transition: border-color 0.2s, box-shadow 0.2s; }
-        .auth-input:focus { border-color: var(--neon-blue); box-shadow: var(--glow-blue); }
-        .auth-btn { width: 100%; margin-top: 16px; padding: 14px; background: linear-gradient(135deg, var(--neon-blue), var(--neon-cyan)); border: none; border-radius: var(--radius-md); color: #fff; font-family: var(--font-main); font-size: 1rem; font-weight: 700; cursor: pointer; transition: transform 0.15s, box-shadow 0.2s; }
-        .auth-btn:hover { transform: translateY(-2px); box-shadow: var(--glow-blue); } .auth-btn:active { transform: translateY(0); }
-        .auth-btn:disabled { filter: grayscale(1); opacity: 0.7; cursor: not-allowed; }
-
-        /* ── Main Layout ── */
-        #mainDashboard { display: none; height: 100vh; position: relative; z-index: 1; }
-
-        /* ── Sidebar ── */
-        .sidebar { position: fixed; right: 0; top: 0; width: var(--sidebar-w); height: 100vh; z-index: 1000; background: rgba(8,16,32,0.92); backdrop-filter: blur(20px); border-left: 1px solid var(--border-subtle); padding: 24px 16px; display: flex; flex-direction: column; overflow-y: auto; }
-        .sidebar-brand { display: flex; align-items: center; gap: 12px; padding: 8px 12px 28px; border-bottom: 1px solid var(--border-subtle); margin-bottom: 16px; }
-        .brand-icon { width: 44px; height: 44px; background: linear-gradient(135deg, var(--neon-blue), var(--neon-cyan)); border-radius: 12px; display: flex; align-items: center; justify-content: center; box-shadow: var(--glow-blue); flex-shrink: 0; color: white;}
-        .brand-text h4 { font-size: 1.1rem; font-weight: 900; color: white; line-height: 1.1; }
-        .brand-text span { font-size: 0.7rem; color: #4a6fa5; font-family: var(--font-mono); }
-        .nav-group-label { font-size: 0.65rem; font-weight: 700; color: #334466; letter-spacing: 2px; text-transform: uppercase; padding: 8px 12px 4px; margin-top: 8px; }
-        .nav-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: var(--radius-lg); color: #4a6fa5; cursor: pointer; transition: all 0.2s; font-weight: 600; font-size: 0.9rem; border: 1px solid transparent; margin-bottom: 4px; user-select: none; }
-        .nav-item:hover { background: var(--bg-glass-light); color: #8ab8e8; border-color: var(--border-subtle); }
-        .nav-item.active { background: rgba(59,158,255,0.12); color: var(--neon-cyan); border-color: rgba(59,158,255,0.35); box-shadow: 0 4px 20px -8px rgba(59,158,255,0.4); }
-        .nav-item .nav-badge { margin-right: auto; background: var(--neon-red); color: white; font-size: 0.65rem; font-weight: 700; padding: 2px 7px; border-radius: 20px; min-width: 22px; text-align: center; animation: pulseBadge 2s infinite; }
-        @keyframes pulseBadge { 0%,100% { box-shadow: 0 0 0 0 rgba(255,59,92,0.4); } 50% { box-shadow: 0 0 0 6px rgba(255,59,92,0); } }
-        .sidebar-footer { margin-top: auto; padding-top: 16px; border-top: 1px solid var(--border-subtle); }
-        .live-status { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: rgba(0,255,136,0.08); border: 1px solid rgba(0,255,136,0.2); border-radius: var(--radius-md); font-size: 0.75rem; font-weight: 700; color: var(--neon-green); }
-
-        /* ── Main Content ── */
-        .main-content { margin-right: var(--sidebar-w); height: 100vh; overflow: hidden; position: relative; display: flex; flex-direction: column; }
+        .radar-filter-btn { background: white; border: 1px solid #e2e8f0; padding: 8px 16px; border-radius: 12px; font-weight: 700; color: #64748b; cursor: pointer; transition: 0.2s; font-size: 0.85rem;}
+        .radar-filter-btn.active { background: var(--primary-blue); color: white; border-color: var(--primary-blue); }
         
-        /* ── Top Bar ── */
-        .top-bar { height: var(--header-h); background: rgba(8,16,32,0.8); backdrop-filter: blur(16px); border-bottom: 1px solid var(--border-subtle); padding: 0 28px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; z-index: 100; }
-        .top-bar-title { font-size: 1.05rem; font-weight: 900; color: white; }
-        .top-bar-sub { font-size: 0.7rem; color: #4a6fa5; font-family: var(--font-mono); }
-        .top-bar-actions { display: flex; align-items: center; gap: 12px; }
-        .pulse-live { display: flex; align-items: center; gap: 6px; font-size: 0.72rem; font-weight: 700; color: var(--neon-green); background: rgba(0,255,136,0.08); border: 1px solid rgba(0,255,136,0.2); padding: 5px 12px; border-radius: 20px; }
-        .pulse-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--neon-green); box-shadow: var(--glow-green); animation: pulse-glow 1.4s ease-in-out infinite; }
-        @keyframes pulse-glow { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.4); opacity: 0.7; } }
-        .icon-btn { width: 38px; height: 38px; background: var(--bg-glass-light); border: 1px solid var(--border-subtle); border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #64748b; transition: all 0.2s; flex-shrink: 0;}
-        .icon-btn:hover { color: var(--neon-blue); border-color: var(--border-glow); }
-
-        /* ── Tab Panes ── */
-        .tab-panes { flex: 1; overflow: hidden; position: relative; }
-        .tab-pane { position: absolute; inset: 0; overflow-y: auto; padding: 24px 28px; opacity: 0; pointer-events: none; transform: translateY(10px); transition: opacity 0.25s ease, transform 0.25s ease; }
-        .tab-pane.active { opacity: 1; pointer-events: all; transform: translateY(0); }
-
-        /* ── Stats Grid ── */
-        .stats-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 20px; }
-        .stat-card { background: var(--bg-glass); backdrop-filter: blur(12px); border: 1px solid var(--border-subtle); border-radius: var(--radius-xl); padding: 16px 18px; transition: transform 0.2s, box-shadow 0.2s; position: relative; overflow: hidden; }
-        .stat-card::before { content: ''; position: absolute; top: 0; right: 0; width: 60%; height: 2px; background: var(--accent-color, var(--neon-blue)); opacity: 0.6; }
-        .stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-card); }
-        .stat-label { font-size: 0.7rem; color: #4a6fa5; font-weight: 600; margin-bottom: 6px; }
-        .stat-value { font-size: 1.8rem; font-weight: 900; font-family: var(--font-mono); line-height: 1; }
-        .stat-trend { font-size: 0.68rem; margin-top: 4px; color: #4a6fa5; }
-
-        /* ── Live Layout (Radar + Map) ── */
-        .live-layout { display: grid; grid-template-columns: 380px 1fr; gap: 16px; height: calc(100vh - var(--header-h) - 160px); }
+        .smart-order-card { background: var(--card-bg); border-radius: 20px; padding: 15px; margin-bottom: 15px; border: 1px solid #e2e8f0; border-right: 5px solid #94a3b8; box-shadow: 0 4px 15px rgba(0,0,0,0.02); position: relative; transition: 0.3s; }
+        .status-danger { border-right-color: #ef4444; } .status-warning { border-right-color: #f59e0b; } .status-success { border-right-color: #10b981; } .status-primary { border-right-color: #3b82f6; }
+        .status-purple { border-right-color: #8b5cf6 !important; } .bg-purple { background-color: #8b5cf6 !important; } .text-purple { color: #8b5cf6 !important; } .border-purple { border-color: #e9d5ff !important; } .batch-card { background-color: #faf5ff !important; }
         
-        .radar-panel { background: var(--bg-glass); backdrop-filter: blur(12px); border: 1px solid var(--border-subtle); border-radius: var(--radius-xl); display: flex; flex-direction: column; overflow: hidden; }
-        .panel-header { padding: 14px 18px; border-bottom: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
-        .panel-title { font-size: 0.85rem; font-weight: 700; color: white; display: flex; align-items: center; gap: 8px; }
-        .filter-chips { display: flex; gap: 6px; padding: 8px 14px; overflow-x: auto; border-bottom: 1px solid var(--border-subtle); flex-shrink: 0; }
-        .filter-chips::-webkit-scrollbar { height: 0; }
-        .chip { padding: 4px 14px; border-radius: 20px; font-size: 0.72rem; font-weight: 700; white-space: nowrap; cursor: pointer; border: 1px solid var(--border-subtle); color: #4a6fa5; background: transparent; transition: all 0.2s; }
-        .chip.active { background: rgba(59,158,255,0.15); color: var(--neon-cyan); border-color: rgba(59,158,255,0.4); }
-        .orders-list { flex: 1; overflow-y: auto; padding: 10px; }
+        .status-ringing { border-right-color: #f59e0b; background: linear-gradient(90deg, rgba(245, 158, 11, 0.05) 0%, transparent 100%); animation: flashOrange 2s infinite; }
+        @keyframes flashOrange { 0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(245, 158, 11, 0); } 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); } }
 
-        /* ── Order Card ── */
-        .order-card { background: rgba(10,20,40,0.7); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 12px 14px 10px; margin-bottom: 8px; border-right: 4px solid; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s, border-color 0.3s; animation: slideIn 0.3s cubic-bezier(.23,1,.32,1) both; position: relative; overflow: hidden; }
-        @keyframes slideIn { from { opacity:0; transform: translateX(-12px); } to { opacity:1; transform: translateX(0); } }
-        .order-card:hover { transform: translateY(-1px); box-shadow: var(--shadow-card); }
-        .order-card.new-flash { animation: newFlash 0.8s ease-out, slideIn 0.3s cubic-bezier(.23,1,.32,1) both; }
-        @keyframes newFlash { 0% { background: rgba(59,158,255,0.25); } 100% { background: rgba(10,20,40,0.7); } }
-        
-        .order-card.status-pending { border-right-color: var(--neon-amber); } .order-card.status-active { border-right-color: var(--neon-blue); } .order-card.status-done { border-right-color: var(--neon-green); } .order-card.status-cancel { border-right-color: var(--neon-red); opacity: 0.7; } .order-card.status-delay { border-right-color: var(--neon-purple); }
-        
-        .card-row1 { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
-        .order-id { font-family: var(--font-mono); font-size: 0.72rem; color: var(--neon-blue); font-weight: 700; }
-        .order-status-badge { font-size: 0.64rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; }
-        .badge-pending { background: rgba(255,184,0,0.15); color: var(--neon-amber); } .badge-active { background: rgba(59,158,255,0.15); color: var(--neon-blue); } .badge-done { background: rgba(0,255,136,0.12); color: var(--neon-green); } .badge-cancel { background: rgba(255,59,92,0.12); color: var(--neon-red); } .badge-delay { background: rgba(168,85,247,0.12); color: var(--neon-purple); }
-        
-        .order-restaurant { font-weight: 700; font-size: 0.85rem; color: white; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 70%; }
-        .order-meta { display: flex; gap: 10px; font-size: 0.72rem; color: #4a6fa5; margin-top: 4px; }
-        .order-meta span { display: flex; align-items: center; gap: 3px; }
-        
-        .order-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-subtle); font-size: 0.72rem; }
-        .driver-pill { background: rgba(59,158,255,0.1); border: 1px solid rgba(59,158,255,0.2); color: var(--neon-blue); padding: 2px 10px; border-radius: 20px; font-weight: 700; }
-        .timer-pill { font-family: var(--font-mono); font-weight: 700; }
-        .timer-warn { color: var(--neon-amber); animation: warnPulse 1s infinite; } .timer-crit { color: var(--neon-red); animation: warnPulse 0.5s infinite; }
-        @keyframes warnPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .status-overdue { border-right-color: #ef4444; background: linear-gradient(90deg, rgba(239, 68, 68, 0.08) 0%, transparent 100%); animation: flashRed 1s infinite; }
+        @keyframes flashRed { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6); } 70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
 
-        /* ── Map Panel ── */
-        .map-panel { background: var(--bg-glass); border: 1px solid var(--border-subtle); border-radius: var(--radius-xl); overflow: hidden; position: relative; }
-        #adminMap { width: 100%; height: 100%; background: #0a1628; }
-        .map-overlay-controls { position: absolute; top: 12px; left: 12px; z-index: 500; display: flex; flex-direction: column; gap: 6px; }
-        .map-ctrl-btn { width: 36px; height: 36px; background: rgba(10,20,40,0.9); border: 1px solid var(--border-subtle); border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #64748b; transition: all 0.2s; backdrop-filter: blur(8px); }
-        .map-ctrl-btn:hover { color: var(--neon-blue); border-color: var(--border-glow); }
-        .map-ctrl-btn.active { color: var(--neon-cyan); border-color: var(--neon-cyan); background: rgba(59,158,255,0.12); }
-
-        /* ── Archive / Common Table ── */
-        .archive-filters { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; align-items: center; }
-        .search-input { flex: 1; min-width: 200px; background: var(--bg-glass); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 10px 16px; color: white; font-family: var(--font-main); font-size: 0.85rem; outline: none; transition: border-color 0.2s, box-shadow 0.2s; }
-        .search-input:focus { border-color: var(--neon-blue); box-shadow: var(--glow-blue); } .search-input::placeholder { color: #334466; }
-        .select-filter { background: var(--bg-glass); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 10px 14px; color: #94a3b8; font-family: var(--font-main); font-size: 0.82rem; outline: none; cursor: pointer; }
-        .data-table-wrapper { background: var(--bg-glass); border: 1px solid var(--border-subtle); border-radius: var(--radius-xl); overflow: hidden; }
-        .data-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
-        .data-table thead tr { border-bottom: 1px solid var(--border-subtle); background: rgba(0,0,0,0.2); }
-        .data-table th { padding: 12px 16px; color: #4a6fa5; font-weight: 700; font-size: 0.72rem; text-align: right; letter-spacing: 0.5px; }
-        .data-table tbody tr { border-bottom: 1px solid rgba(255,255,255,0.03); transition: background 0.15s; cursor: pointer; }
-        .data-table tbody tr:hover { background: rgba(59,158,255,0.05); } .data-table td { padding: 11px 16px; }
-
-        /* ── Common Grid (Drivers/Restaurants) ── */
-        .grid-layout { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
-        .entity-card { background: var(--bg-glass); border: 1px solid var(--border-subtle); border-radius: var(--radius-xl); padding: 20px; transition: transform 0.2s, box-shadow 0.2s; position: relative; overflow: hidden; }
-        .entity-card::before { content: ''; position: absolute; inset: 0; background: linear-gradient(135deg, rgba(59,158,255,0.04), transparent); pointer-events: none; }
-        .entity-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-card); }
+        .delay-badge { position: absolute; top: -10px; right: 15px; background: #ef4444; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.7rem; font-weight: 900; animation: pulse 2s infinite; box-shadow: 0 4px 10px rgba(239, 68, 68, 0.4); }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
         
-        .entity-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 12px; }
-        .entity-avatar { width: 48px; height: 48px; border-radius: 14px; background: linear-gradient(135deg, var(--neon-blue), var(--neon-cyan)); display: flex; align-items: center; justify-content: center; font-size: 1.4rem; box-shadow: var(--glow-blue); color:white; }
-        .entity-status { font-size: 0.7rem; font-weight: 700; padding: 4px 10px; border-radius: 20px; background: rgba(0,0,0,0.3); border: 1px solid; }
+        .info-row { display: flex; justify-content: space-between; align-items: center; background: #f8fafc; padding: 8px 12px; border-radius: 12px; margin-bottom: 6px; border: 1px solid #f1f5f9; font-weight: 600; font-size: 0.85rem; }
+        .info-card-inner { background: #f1f5f9; padding: 12px; border-radius: 12px; margin-top: 8px; border: 1px dashed #cbd5e1; }
         
-        .entity-name { font-weight: 900; font-size: 1rem; color: white; margin-bottom: 2px;}
-        .entity-sub { font-size: 0.75rem; color: #4a6fa5; font-family: var(--font-mono); margin-bottom: 12px;}
+        .btn-call-mini { background: white; border: 1px solid #e2e8f0; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; box-shadow: 0 2px 5px rgba(0,0,0,0.05); flex-shrink: 0;}
+        .btn-call-mini:active { transform: scale(0.9); }
+        .btn-call-mini.call-primary { color: var(--primary-blue); border-color: #bfdbfe; background: #eff6ff;}
+        .btn-call-mini.call-warning { color: #d97706; border-color: #fde68a; background: #fffbeb;}
+        .btn-call-mini.call-success { color: #059669; border-color: #a7f3d0; background: #ecfdf5;}
         
-        .entity-stats { display: flex; gap: 8px; margin-bottom: 16px; }
-        .e-stat { flex: 1; background: rgba(0,0,0,0.3); border-radius: 10px; padding: 8px; text-align: center; }
-        .e-stat-val { font-family: var(--font-mono); font-weight: 700; font-size: 0.95rem; }
-        .e-stat-lbl { font-size: 0.62rem; color: #4a6fa5; margin-top: 2px; }
-        
-        .entity-actions { display: flex; justify-content: space-between; padding-top: 12px; border-top: 1px solid var(--border-subtle); }
-        .action-group { display: flex; gap: 8px; }
-        .action-btn { width: 32px; height: 32px; border-radius: 8px; border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; background: var(--bg-glass-light); border: 1px solid var(--border-subtle); }
-        .action-btn:hover { transform: scale(1.05); } .action-btn:active { transform: scale(0.95); }
-        .btn-accept { color: var(--neon-green); } .btn-accept:hover { border-color: var(--neon-green); background: rgba(0,255,136,0.1); }
-        .btn-ban { color: var(--neon-red); } .btn-ban:hover { border-color: var(--neon-red); background: rgba(255,59,92,0.1); }
-        .btn-reset { color: var(--neon-amber); } .btn-reset:hover { border-color: var(--neon-amber); background: rgba(255,184,0,0.1); }
-        .btn-call { color: var(--neon-blue); } .btn-call:hover { border-color: var(--neon-blue); background: rgba(59,158,255,0.1); }
+        .btn-track { background: #eff6ff; color: #3b82f6; border: 1px solid #bfdbfe; border-radius: 10px; padding: 5px 10px; font-size: 0.75rem; font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 4px; }
+        .manual-assign-select { border: 1px solid #cbd5e1; border-radius: 8px; padding: 4px; font-size: 0.8rem; font-weight: 700; max-width: 110px; background: white; outline: none; }
 
-        /* ── Toasts ── */
-        #toast-container { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 999999; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
-        .toast { padding: 12px 20px; border-radius: var(--radius-md); backdrop-filter: blur(20px); border: 1px solid; font-size: 0.82rem; font-weight: 700; white-space: nowrap; animation: toastIn 0.3s cubic-bezier(.23,1,.32,1) both; pointer-events: all; display: flex; align-items: center; gap: 10px;}
-        @keyframes toastIn { from { opacity:0; transform: translateY(-10px) scale(0.95); } to { opacity:1; transform: translateY(0) scale(1); } }
-        .toast-success { background: rgba(0,255,136,0.1); border-color: rgba(0,255,136,0.3); color: var(--neon-green); }
-        .toast-error { background: rgba(255,59,92,0.1); border-color: rgba(255,59,92,0.3); color: var(--neon-red); }
-        .toast-info { background: rgba(59,158,255,0.1); border-color: rgba(59,158,255,0.3); color: var(--neon-blue); }
+        .filter-btn-group { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 10px; margin-bottom: 10px; }
+        .filter-btn-group::-webkit-scrollbar { height: 0; }
+        .filter-btn { background: white; border: 1px solid #e2e8f0; padding: 8px 16px; border-radius: 12px; font-weight: 700; color: #64748b; cursor: pointer; font-size: 0.9rem; white-space: nowrap;}
+        .filter-btn.active { background: var(--primary-blue); color: white; border-color: var(--primary-blue); }
+        .filter-btn .badge-count { background: #e2e8f0; color: var(--primary-blue); padding: 2px 6px; border-radius: 8px; margin-right: 5px; font-size: 0.75rem; }
+        .filter-btn.active .badge-count { background: rgba(255,255,255,0.2); color: white; }
+
+        .archive-toolbar { background: white; border-radius: 16px; padding: 15px; border: 1px solid #e2e8f0; margin-bottom: 15px; }
+        .analytics-bar { background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); color: white; border-radius: 15px; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
         
-        .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; text-align: center; color: #4a6fa5; grid-column: 1/-1; }
-        .empty-state i { margin-bottom: 16px; opacity: 0.5; color: var(--neon-blue); }
-        .empty-state h4 { font-weight: 700; color: #64748b; margin-bottom: 6px; }
+        .sov-btn { border: none; border-radius: 10px; width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s;}
+        .sov-btn:active { transform: scale(0.9); }
+        .sov-accept { background: #eff6ff; color: var(--accent-blue); } .sov-pause { background: #fffbeb; color: #d97706; } .sov-delete { background: #fef2f2; color: #ef4444; } .sov-reset { background: #ecfdf5; color: #10b981; } .sov-call { background: var(--primary-blue); color: white; }
 
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .spinner { width: 24px; height: 24px; border: 3px solid rgba(59,158,255,0.2); border-top-color: var(--neon-blue); border-radius: 50%; animation: spin 0.8s linear infinite; display: inline-block; }
+        /* Toast Notifications */
+        #toast-container { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 20000; display: flex; flex-direction: column; gap: 10px; width: 90%; max-width: 350px;}
+        .toast-msg { background: white; border-right: 5px solid var(--primary-blue); border-radius: 12px; padding: 12px 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 0.85rem; animation: slideDown 0.3s ease-out forwards; }
+        .toast-msg.success { border-color: #10b981; } .toast-msg.error { border-color: #ef4444; }
+        @keyframes slideDown { from { transform: translateY(-100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
-        .conn-banner { position: fixed; bottom: 20px; right: calc(var(--sidebar-w) + 20px); z-index: 9000; background: rgba(255,59,92,0.15); border: 1px solid rgba(255,59,92,0.4); border-radius: var(--radius-md); padding: 10px 18px; font-size: 0.8rem; font-weight: 700; color: var(--neon-red); display: none; align-items: center; gap: 8px; backdrop-filter: blur(12px); animation: slideIn 0.3s ease; }
+        /* Emergency Modal */
+        #emergencyModal { position: fixed; inset: 0; background: rgba(15,23,42,0.8); z-index: 30000; display: none; align-items: center; justify-content: center; backdrop-filter: blur(5px); }
+        .emergency-card { background: white; border-radius: 24px; padding: 30px; width: 90%; max-width: 400px; text-align: center; border-top: 8px solid #ef4444; box-shadow: 0 25px 50px rgba(0,0,0,0.3); animation: pulseAlert 2s infinite; }
+        @keyframes pulseAlert { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); } 70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+
+        /* Driver Performance Dots */
+        .perf-dot { position: absolute; top: 12px; left: 12px; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; box-shadow: 0 2px 8px rgba(0,0,0,0.15); color: white; font-weight: 900; font-size: 0.7rem;}
+        .perf-green { background-color: #10b981; } .perf-yellow { background-color: #f59e0b; } .perf-red { background-color: #ef4444; } 
+
+        .leaflet-interactive.path-animated { animation: dash 20s linear infinite; }
+        @keyframes dash { to { stroke-dashoffset: -1000; } }
+
+        .marker-pulse { border-radius: 50%; border: 3px solid white; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); animation: pulseMarker 2s infinite; }
+        @keyframes pulseMarker { 0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); } 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }
+
+        .btn-loading { opacity: 0.7 !important; pointer-events: none !important; position: relative; color: transparent !important; }
+        .btn-loading::after { content: ''; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 16px; height: 16px; border: 2px solid rgba(0,0,0,0.2); border-top-color: #000; border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { 100% { transform: translate(-50%, -50%) rotate(360deg); } }
         
-        /* ── Modal ── */
-        .modal-overlay { position: fixed; inset: 0; z-index: 99000; background: rgba(0,0,0,0.6); backdrop-filter: blur(8px); display: none; align-items: center; justify-content: center; }
-        .modal-overlay.open { display: flex; }
-        .modal-box { background: #0d1e38; border: 1px solid var(--border-glow); border-radius: 24px; padding: 32px; width: 90%; max-width: 450px; max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-deep), var(--glow-blue); animation: authAppear 0.3s cubic-bezier(.23,1,.32,1) both; }
-        .modal-title { font-size: 1.1rem; font-weight: 900; color: white; margin-bottom: 20px; }
-        .info-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border-subtle); font-size: 0.83rem; } .info-row:last-child { border-bottom: none; }
-        .info-label { color: #4a6fa5; font-weight: 600; } .info-value { color: white; font-weight: 700; }
-
-        /* Leaflet Overrides */
-        .leaflet-container { background: #090f1e !important; } .leaflet-tile { filter: brightness(0.9) saturate(0.8) hue-rotate(200deg); }
-        .leaflet-popup-content-wrapper { background: #0d1e38 !important; border: 1px solid var(--border-glow) !important; border-radius: 16px !important; color: white !important; box-shadow: var(--shadow-deep) !important; }
-        .leaflet-popup-tip { background: #0d1e38 !important; }
-        .leaflet-marker-icon { transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
-
-        /* Responsive */
-        @media (max-width: 1200px) { .stats-grid { grid-template-columns: repeat(3, 1fr); } .live-layout { grid-template-columns: 340px 1fr; } }
-        @media (max-width: 900px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } .live-layout { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; } }
-        @media (max-width: 768px) { .sidebar { display: none !important; } .main-content { margin-right: 0 !important; } .bottom-nav { display: flex !important; } .tab-pane { padding: 16px; padding-bottom: calc(var(--bottom-nav-h) + 16px); } .stats-grid { grid-template-columns: repeat(2, 1fr); } .conn-banner { right: 20px; } }
-        
-        .bottom-nav { display: none; position: fixed; bottom: 0; left: 0; right: 0; height: var(--bottom-nav-h); z-index: 1000; background: rgba(8,16,32,0.95); backdrop-filter: blur(20px); border-top: 1px solid var(--border-subtle); padding: 8px 20px; justify-content: space-around; align-items: center; }
-        .b-nav-item { display: flex; flex-direction: column; align-items: center; gap: 3px; color: #334466; cursor: pointer; padding: 6px 12px; border-radius: var(--radius-md); transition: color 0.2s; font-size: 0.65rem; font-weight: 700; }
-        .b-nav-item.active { color: var(--neon-cyan); }
+        #invoiceModal { position: fixed; inset: 0; background: rgba(15,23,42,0.6); z-index: 20000; display: none; align-items: center; justify-content: center; backdrop-filter: blur(4px); padding: 15px; }
+        .invoice-card { background: white; border-radius: 24px; padding: 25px; width: 100%; max-width: 400px; position: relative; }
+        .invoice-row { display: flex; justify-content: space-between; margin-bottom: 10px; font-weight: 700; font-size: 0.85rem; }
     </style>
 </head>
 <body>
 
 <div id="toast-container"></div>
-<div class="conn-banner" id="connBanner"><span>●</span> انقطع الاتصال — جاري إعادة الاتصال...</div>
+
+<audio id="adminAlertSound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" preload="auto"></audio>
+<audio id="emergencySound" src="https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg" preload="auto" loop></audio>
+
+<div id="emergencyModal">
+    <div class="emergency-card">
+        <i data-lucide="alert-triangle" size="60" color="#ef4444" class="mb-3"></i>
+        <h3 class="fw-black text-danger">نداء سيادي!</h3>
+        <p class="text-muted fw-bold mb-4">يوجد طلب معلق لفترة طويلة جداً ويحتاج لتدخل يدوي للتعيين.</p>
+        <button class="btn btn-danger w-100 fw-bold rounded-pill py-2" onclick="closeEmergency()">حسناً، سأتدخل الآن</button>
+    </div>
+</div>
 
 <div id="authOverlay">
-    <div class="auth-box">
-        <div class="auth-logo"><i data-lucide="satellite" size="36"></i></div>
-        <h2>سفيان</h2>
-        <p>مركز القيادة — كركوك</p>
-        <input type="password" id="masterPass" class="auth-input" placeholder="••••••••" autocomplete="off" onkeydown="if(event.key==='Enter') checkAuth()">
-        <button class="auth-btn" id="authBtn" onclick="checkAuth()">دخول آمن</button>
-        <p style="font-size:0.7rem;color:#334466;margin-top:16px;font-family:var(--font-mono);">HUT_SECURE_99</p>
+    <div class="auth-card">
+        <div class="mb-4 d-inline-block bg-light p-4 rounded-circle shadow-sm">
+            <i data-lucide="building-2" size="50" color="#1e3a8a"></i>
+        </div>
+        <h3 class="fw-black text-dark mb-1">مكتب سفيان</h3>
+        <p class="text-muted small fw-bold mb-4">بالتعاون مع نظام الحوت</p>
+        <input type="password" id="masterPass" class="form-control form-control-lg text-center mb-4 shadow-none bg-light border-0 py-3 rounded-4" placeholder="رمز المرور الآمن" autocomplete="off" onkeypress="if(event.key === 'Enter') checkAuth()">
+        <button class="btn w-100 py-3 fw-bold rounded-4 text-white" style="background: var(--primary-blue);" onclick="checkAuth()">تسجيل الدخول</button>
     </div>
 </div>
 
-<div id="mainDashboard">
-    <aside class="sidebar">
-        <div class="sidebar-brand">
-            <div class="brand-icon"><i data-lucide="shield-check" size="24"></i></div>
-            <div class="brand-text"><h4>سفيان</h4><span>KIRKUK OPS CENTER</span></div>
+<div class="d-none" id="mainDashboard">
+    <aside class="sidebar" id="sidebar">
+        <div class="d-flex align-items-start justify-content-between mb-5">
+            <div class="d-flex flex-column">
+                <div class="d-flex align-items-center gap-3 mb-1">
+                    <div class="bg-white p-2 rounded-3 shadow-sm"><i data-lucide="building-2" color="#1e3a8a" size="24"></i></div>
+                    <h4 class="m-0 fw-black text-white">مكتب سفيان</h4>
+                </div>
+                <small class="text-white-50 fw-bold" style="font-size: 0.8rem; padding-right: 50px;">بالتعاون مع نظام الحوت</small>
+            </div>
         </div>
-        <div class="nav-group-label">التشغيل</div>
-        <div class="nav-item active" data-tab="live" onclick="switchTab('live')">
-            <i data-lucide="crosshair" size="18"></i> الرادار الحي <span class="nav-badge" id="radar-badge">0</span>
-        </div>
-        <div class="nav-item" data-tab="archive" onclick="switchTab('archive')">
-            <i data-lucide="server" size="18"></i> الأرشيف الكامل
-        </div>
-        <div class="nav-group-label">الكيانات</div>
-        <div class="nav-item" data-tab="restaurants" onclick="switchTab('restaurants')">
-            <i data-lucide="store" size="18"></i> المطاعم
-        </div>
-        <div class="nav-item" data-tab="drivers" onclick="switchTab('drivers')">
-            <i data-lucide="users" size="18"></i> الكباتن
-        </div>
-        <div class="sidebar-footer">
-            <div class="live-status"><div class="pulse-dot"></div><span id="sidebarStatus">متصل — Firebase</span></div>
-            <div style="text-align:center;margin-top:10px;font-size:0.65rem;color:#1e3a5f;font-family:var(--font-mono);" id="lastUpdateTime">آخر تحديث: --</div>
-        </div>
+        <nav>
+            <div class="nav-item active desktop-nav-link" onclick="showTab(event, 'live')"><i data-lucide="layout-dashboard"></i> <span>الرصد الميداني</span></div>
+            <div class="nav-item desktop-nav-link" onclick="showTab(event, 'orders')"><i data-lucide="database"></i> <span>الأرشيف المركزي</span></div>
+            <div class="nav-item desktop-nav-link" onclick="showTab(event, 'restaurants')"><i data-lucide="store"></i> <span>إدارة الشركاء</span></div>
+            <div class="nav-item desktop-nav-link" onclick="showTab(event, 'drivers')"><i data-lucide="users"></i> <span>إدارة الأسطول</span></div>
+        </nav>
     </aside>
 
-    <div class="main-content">
-        <div class="top-bar">
-            <div><div class="top-bar-title" id="topBarTitle">الرادار الحي</div><div class="top-bar-sub" id="topBarSub">REAL-TIME OPERATIONS</div></div>
-            <div class="top-bar-actions">
-                <div class="pulse-live"><div class="pulse-dot"></div><span id="liveCount">0 طلب نشط</span></div>
-                <div class="icon-btn" onclick="refreshAll()" title="تحديث"><i data-lucide="refresh-cw" size="16"></i></div>
-                <div class="icon-btn" onclick="toggleSound()" id="soundBtn" title="الصوت"><i data-lucide="volume-2" size="16" id="soundIcon"></i></div>
+    <main class="main-content">
+        <header class="d-flex justify-content-between align-items-center mb-4 desktop-header">
+            <div>
+                <h2 class="fw-black m-0" style="color: var(--primary-blue);">الإدارة المركزية</h2>
+                <p class="text-muted m-0 fw-bold">الرصد المباشر لمدينة كركوك</p>
+            </div>
+            <div id="liveTimeDesk" class="bg-white px-3 py-2 rounded-pill shadow-sm fw-bold border text-primary">00:00</div>
+        </header>
+
+        <div id="tab-live" class="admin-tab active-tab">
+            
+            <div class="row g-3 mb-3 desktop-stats">
+                <div class="col-4"><div class="stat-compact"><div><p>الطلبات النشطة</p><h3 class="text-primary val-orders">0</h3></div><div class="icon-box bg-primary bg-opacity-10"><i data-lucide="package" class="text-primary"></i></div></div></div>
+                <div class="col-4"><div class="stat-compact"><div><p>كباتن بالميدان</p><h3 class="text-success val-drivers">0</h3></div><div class="icon-box bg-success bg-opacity-10"><i data-lucide="truck" class="text-success"></i></div></div></div>
+                <div class="col-4"><div class="stat-compact"><div><p>مطاعم متصلة</p><h3 class="text-warning val-res">0</h3></div><div class="icon-box bg-warning bg-opacity-10"><i data-lucide="store" class="text-warning"></i></div></div></div>
+            </div>
+
+            <div class="map-floating-header">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="bg-white p-1 rounded-circle shadow-sm" style="width: 32px; height: 32px; display:flex; align-items:center; justify-content:center;"><i data-lucide="building-2" size="20" color="#1e3a8a"></i></div>
+                    <h5 class="m-0 fw-black text-primary" style="text-shadow: 0 0 10px white, 0 0 5px white;">مكتب سفيان</h5>
+                </div>
+                <div id="liveTimeMob" class="bg-white px-3 py-1 rounded-pill shadow-sm fw-bold text-primary small border">00:00</div>
+            </div>
+
+            <div class="map-floating-stats">
+                <div class="m-stat text-primary"><i data-lucide="package" size="18"></i> <span class="val-orders">0</span></div>
+                <div class="m-stat text-success"><i data-lucide="truck" size="18"></i> <span class="val-drivers">0</span></div>
+                <div class="m-stat text-warning"><i data-lucide="store" size="18"></i> <span class="val-res">0</span></div>
+            </div>
+
+            <div class="map-wrapper">
+                <div id="adminMap"></div>
+            </div>
+            
+            <div class="bottom-sheet">
+                <div class="sheet-handle"></div>
+                <div class="sheet-content">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="fw-black m-0" style="color: var(--primary-blue);"><i data-lucide="activity" class="text-danger me-1" size="18"></i> الرادار الميداني</h6>
+                    </div>
+                    <div class="d-flex gap-2 w-100 mb-3" id="radarFilters">
+                        <button class="radar-filter-btn active flex-grow-1" onclick="filterRadar('all', this)">الكل</button>
+                        <button class="radar-filter-btn text-danger border-danger bg-danger bg-opacity-10 flex-grow-1" onclick="filterRadar('pending', this)">معلق</button>
+                        <button class="radar-filter-btn text-success border-success bg-success bg-opacity-10 flex-grow-1" onclick="filterRadar('active', this)">مُسند</button>
+                    </div>
+                    <div class="row g-2" id="smartOrdersContainer"><div class="text-center p-4 text-muted fw-bold small">جاري جلب الإشارات...</div></div>
+                </div>
             </div>
         </div>
 
-        <div class="tab-panes">
-            <div id="tab-live" class="tab-pane active">
-                <div class="stats-grid" id="statsGrid">
-                    <div class="stat-card" style="--accent-color:var(--neon-blue)"><div class="stat-label">إجمالي اليوم</div><div class="stat-value text-neon-blue" id="stat-total">0</div><div class="stat-trend">📦 الطلبات الكلية</div></div>
-                    <div class="stat-card" style="--accent-color:var(--neon-amber)"><div class="stat-label">قيد التنفيذ</div><div class="stat-value text-neon-amber" id="stat-active">0</div><div class="stat-trend">⚡ نشط الآن</div></div>
-                    <div class="stat-card" style="--accent-color:var(--neon-green)"><div class="stat-label">مكتمل</div><div class="stat-value text-neon-green" id="stat-done">0</div><div class="stat-trend">✅ تم التوصيل</div></div>
-                    <div class="stat-card" style="--accent-color:var(--neon-red)"><div class="stat-label">ملغى</div><div class="stat-value text-neon-red" id="stat-cancel">0</div><div class="stat-trend">❌ إلغاء</div></div>
-                    <div class="stat-card" style="--accent-color:var(--neon-purple)"><div class="stat-label">كباتن نشطون</div><div class="stat-value text-neon-purple" id="stat-drivers">0</div><div class="stat-trend">🏍 متاح</div></div>
-                </div>
-
-                <div class="live-layout">
-                    <div class="radar-panel">
-                        <div class="panel-header">
-                            <div class="panel-title"><div class="pulse-dot" style="width:8px;height:8px"></div> رادار الطلبات</div>
-                            <div style="font-size:0.7rem;color:#4a6fa5;" id="radarCount">0</div>
-                        </div>
-                        <div class="filter-chips">
-                            <div class="chip active" onclick="filterRadar('all',this)">الكل</div>
-                            <div class="chip" onclick="filterRadar('pending',this)">⏳ جديد</div>
-                            <div class="chip" onclick="filterRadar('active',this)">⚡ نشط</div>
-                            <div class="chip" onclick="filterRadar('delay',this)">⚠️ متأخر</div>
-                        </div>
-                        <div class="orders-list" id="radarList">
-                            <div class="empty-state"><div class="spinner"></div><h4 class="mt-3">جاري المزامنة...</h4></div>
-                        </div>
-                    </div>
-
-                    <div class="map-panel">
-                        <div id="adminMap"></div>
-                        <div class="map-overlay-controls">
-                            <div class="map-ctrl-btn active" id="mapLayerBtn" onclick="toggleMapLayer()" title="تغيير الخريطة"><i data-lucide="layers" size="16"></i></div>
-                            <div class="map-ctrl-btn" id="heatmapBtn" onclick="toggleHeatmap()" title="الخريطة الحرارية"><i data-lucide="flame" size="16"></i></div>
-                            <div class="map-ctrl-btn active" id="trailBtn" onclick="toggleTrails()" title="مسارات الكباتن"><i data-lucide="git-commit" size="16"></i></div>
-                        </div>
-                    </div>
+        <div id="tab-orders" class="admin-tab tab-inner-padding">
+            <h4 class="fw-black mb-3 text-primary d-md-none">الأرشيف المركزي</h4>
+            <div class="archive-toolbar">
+                <div class="row g-2">
+                    <div class="col-12 col-md-3"><input type="text" id="arcSearch" class="form-control form-control-sm" placeholder="بحث برقم الطلب..." oninput="renderArchive()"></div>
+                    <div class="col-6 col-md-2"><select id="arcRes" class="form-select form-select-sm" onchange="renderArchive()"><option value="">كل المطاعم</option></select></div>
+                    <div class="col-6 col-md-2"><select id="arcDriver" class="form-select form-select-sm" onchange="renderArchive()"><option value="">كل الكباتن</option></select></div>
+                    <div class="col-6 col-md-2"><input type="date" id="arcDateFrom" class="form-control form-control-sm" onchange="renderArchive()"></div>
+                    <div class="col-6 col-md-2"><input type="date" id="arcDateTo" class="form-control form-control-sm" onchange="renderArchive()"></div>
+                    <div class="col-12 col-md-1"><button class="btn btn-success btn-sm w-100 fw-bold d-flex align-items-center justify-content-center gap-1" onclick="exportExcel()"><i data-lucide="download" size="16"></i></button></div>
                 </div>
             </div>
-
-            <div id="tab-archive" class="tab-pane">
-                <div class="archive-filters">
-                    <input type="text" id="archiveSearch" class="search-input" placeholder="🔍 بحث في الأرشيف..." oninput="window.appState.ui.search = this.value; renderArchive();">
-                    <div class="icon-btn" onclick="exportArchive()" title="تصدير CSV"><i data-lucide="download" size="16"></i></div>
-                </div>
-                <div class="data-table-wrapper">
-                    <table class="data-table">
-                        <thead><tr><th>#</th><th>رقم الطلب</th><th>المطعم</th><th>الكابتن</th><th>الحالة</th><th>السعر</th><th>الوقت</th><th>المنطقة</th></tr></thead>
-                        <tbody id="archiveTableBody"><tr><td colspan="8" style="text-align:center;padding:40px;"><div class="spinner"></div></td></tr></tbody>
-                    </table>
-                </div>
+            <div class="analytics-bar">
+                <div><span class="opacity-75 small">عدد الطلبات:</span> <h4 class="fw-black m-0" id="arcTotalCount">0</h4></div>
+                <div class="text-end"><span class="opacity-75 small">العمولات المستحقة:</span> <h4 class="fw-black m-0" id="arcTotalComm">0 <span class="fs-6">د.ع</span></h4></div>
             </div>
-
-            <div id="tab-restaurants" class="tab-pane">
-                <div class="archive-filters"><input type="text" id="resSearch" class="search-input" placeholder="🔍 بحث في المطاعم..." oninput="window.appState.ui.searchRes = this.value; renderRestaurants();"></div>
-                <div class="grid-layout" id="restaurantsGrid"></div>
-            </div>
-
-            <div id="tab-drivers" class="tab-pane">
-                <div class="archive-filters"><input type="text" id="driverSearch" class="search-input" placeholder="🔍 بحث في الكباتن..." oninput="window.appState.ui.searchDriver = this.value; renderDrivers();"></div>
-                <div class="grid-layout" id="driversGrid"></div>
+            <div class="stat-widget table-responsive p-0">
+                <table class="table table-hover align-middle m-0" id="archiveTable" style="min-width: 600px;">
+                    <thead class="bg-light"><tr style="color: var(--primary-blue);"><th>ID الطلب</th><th>التاريخ</th><th>المطعم</th><th>الكابتن</th><th>الحالة</th></tr></thead>
+                    <tbody id="ordersTableBody"></tbody>
+                </table>
             </div>
         </div>
-    </div>
+        
+        <div id="tab-restaurants" class="admin-tab tab-inner-padding">
+            <h4 class="fw-black mb-3 text-primary d-md-none">إدارة الشركاء</h4>
+            <div class="mb-3">
+                <input type="text" id="searchResInput" class="form-control rounded-pill px-4 py-2 fw-bold" placeholder="🔍 بحث عن مطعم أو رقم هاتف..." oninput="triggerSearch('RESTAURANT')">
+            </div>
+            <div class="filter-btn-group" id="resFiltersGroup">
+                <button class="filter-btn active" onclick="applySectionFilter('RESTAURANT', 'all', this)">الكل <span class="badge-count" id="badge-res-all">0</span></button>
+                <button class="filter-btn" onclick="applySectionFilter('RESTAURANT', 'pending', this)">طلبات <span class="badge-count" id="badge-res-pending">0</span></button>
+                <button class="filter-btn" onclick="applySectionFilter('RESTAURANT', 'active', this)">مفعل <span class="badge-count" id="badge-res-active">0</span></button>
+                <button class="filter-btn" onclick="applySectionFilter('RESTAURANT', 'inactive', this)">غير نشط <span class="badge-count" id="badge-res-inactive">0</span></button>
+                <button class="filter-btn" onclick="applySectionFilter('RESTAURANT', 'banned', this)">موقوف <span class="badge-count" id="badge-res-banned">0</span></button>
+            </div>
+            <div class="row g-2" id="resListContainer"></div>
+        </div>
 
-    <nav class="bottom-nav">
-        <div class="b-nav-item active" data-tab="live" onclick="switchTab('live')"><i data-lucide="crosshair" size="20"></i>الرادار</div>
-        <div class="b-nav-item" data-tab="archive" onclick="switchTab('archive')"><i data-lucide="server" size="20"></i>الأرشيف</div>
-        <div class="b-nav-item" data-tab="restaurants" onclick="switchTab('restaurants')"><i data-lucide="store" size="20"></i>المطاعم</div>
-        <div class="b-nav-item" data-tab="drivers" onclick="switchTab('drivers')"><i data-lucide="users" size="20"></i>الكباتن</div>
-    </nav>
+        <div id="tab-drivers" class="admin-tab tab-inner-padding">
+            <h4 class="fw-black mb-3 text-primary d-md-none">إدارة الأسطول</h4>
+            <div class="mb-3">
+                <input type="text" id="searchDriverInput" class="form-control rounded-pill px-4 py-2 fw-bold" placeholder="🔍 بحث عن كابتن أو رقم هاتف..." oninput="triggerSearch('DRIVER')">
+            </div>
+            <div class="filter-btn-group" id="driverFiltersGroup">
+                <button class="filter-btn active" onclick="applySectionFilter('DRIVER', 'all', this)">الكل <span class="badge-count" id="badge-driver-all">0</span></button>
+                <button class="filter-btn" onclick="applySectionFilter('DRIVER', 'pending', this)">طلبات <span class="badge-count" id="badge-driver-pending">0</span></button>
+                <button class="filter-btn" onclick="applySectionFilter('DRIVER', 'active', this)">بالميدان <span class="badge-count" id="badge-driver-active">0</span></button>
+                <button class="filter-btn" onclick="applySectionFilter('DRIVER', 'inactive', this)">استراحة <span class="badge-count" id="badge-driver-inactive">0</span></button>
+                <button class="filter-btn" onclick="applySectionFilter('DRIVER', 'banned', this)">موقوف <span class="badge-count" id="badge-driver-banned">0</span></button>
+            </div>
+            <div class="row g-2" id="driverListContainer"></div>
+        </div>
+        
+        <nav class="bottom-nav">
+            <div class="b-nav-item mobile-nav-link active" onclick="showTab(event, 'live')">
+                <i data-lucide="map" size="22"></i><span>الميدان</span>
+            </div>
+            <div class="b-nav-item mobile-nav-link" onclick="showTab(event, 'orders')">
+                <i data-lucide="file-text" size="22"></i><span>الأرشيف</span>
+            </div>
+            <div class="b-nav-item mobile-nav-link" onclick="showTab(event, 'restaurants')">
+                <i data-lucide="store" size="22"></i><span>المطاعم</span>
+            </div>
+            <div class="b-nav-item mobile-nav-link" onclick="showTab(event, 'drivers')">
+                <i data-lucide="users" size="22"></i><span>الأسطول</span>
+            </div>
+        </nav>
+
+    </main>
 </div>
 
-<div class="modal-overlay" id="orderModal">
-    <div class="modal-box">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
-            <div class="modal-title" id="modalTitle">تفاصيل الطلب</div>
-            <div class="icon-btn" onclick="closeModal('orderModal')"><i data-lucide="x" size="18"></i></div>
+<div id="invoiceModal" onclick="closeInvoice(event)">
+    <div class="invoice-card" onclick="event.stopPropagation()">
+        <button class="btn btn-sm btn-light rounded-circle position-absolute" style="top:15px; left:15px;" onclick="closeInvoice()"><i data-lucide="x" size="20"></i></button>
+        <div class="invoice-header text-center mb-4">
+            <div class="bg-primary bg-opacity-10 d-inline-block p-3 rounded-circle mb-2"><i data-lucide="receipt" class="text-primary" size="30"></i></div>
+            <h4 class="fw-black m-0 text-dark">فاتورة الطلب</h4>
+            <p class="text-muted fw-bold mb-0" id="invOrderId">#HUT-0000</p>
         </div>
-        <div id="modalBody"></div>
-        <button class="auth-btn mt-4" onclick="closeModal('orderModal')">إغلاق</button>
+        <div class="invoice-row"><span>تاريخ ووقت الطلب:</span> <span id="invDate">---</span></div>
+        <div class="invoice-row"><span>المطعم الشريك:</span> <span class="text-warning" id="invRes">---</span></div>
+        <div class="invoice-row"><span>الكابتن المنفذ:</span> <span class="text-success" id="invDriver">---</span></div>
+        <div class="invoice-row"><span>تفاصيل الزبون:</span> <span id="invCust" style="text-align: left;">---</span></div>
+        <div class="invoice-row"><span>سعر الطلب:</span> <span id="invPrice">---</span></div>
+        <hr class="my-3 opacity-25">
+        <div class="invoice-row"><span>العمولة المفروضة:</span> <span id="invComm">---</span></div>
+        <div class="invoice-row"><span>نظام الدفع:</span> <span id="invPayType">---</span></div>
+        <div class="invoice-row"><span>حالة المحاسبة:</span> <span id="invStatus">---</span></div>
     </div>
 </div>
 
-<script type="module">
-    /* ================================================================
-       SUFYAN COMMAND CENTER — APEX ENGINE v8.0
-       Architecture: Single Source of Truth + Virtual DOM Diffing
-       Network: Deep Merge JSONP & Firebase Realtime
-    ================================================================ */
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getDatabase, ref, onValue, off } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+<script>
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    
+    // 🟢 تم التحديث للرابط الدقيق لنسخة V25
+    const API_URL = "https://script.google.com/macros/s/AKfycbzCGEQDmWp5su19c911j1TUxL65t1Y63-LhuXLrq0Z1Qc9sLG9f__4GQa0pN2k5MErw/exec";
+    const API_TOKEN = "HUT_SECURE_99";
+    
+    let map, heatLayer, driverClusterGroup, trackPolyline = null;
+    let restaurantMarkersLayer = null; 
+    let globalData = null; 
+    let currentRadarFilter = 'all';
+    
+    let currentResSectionFilter = 'all';
+    let currentDriverSectionFilter = 'all';
+    
+    let masterPassword = ""; 
+    let lastPendingCount = 0; 
+    let driverPerformanceCache = {};
 
-    const FIREBASE_CONFIG = {
+    let lastRadarHtml = "";
+    let lastResHtml = "";
+    let lastDriverHtml = "";
+    let lastArchiveHtml = "";
+
+    // 🟢 ذاكرة الماركرز لتجنب الوميض وتحسين الأداء
+    let liveDriverMarkers = {}; 
+    let liveResMarkers = {};
+
+    let localOverrides = { orders: {}, drivers: {}, restaurants: {} };
+    let fetchPauseTimeout = null;
+    let isEmergencyMuted = false;
+
+    // 🟢 تهيئة Firebase للتتبع اللحظي (كما طلبته)
+    const firebaseConfig = {
         apiKey: "AIzaSyAo1rmqUzieYZU3RIwXOAN87GkpNrp-_Hc",
         authDomain: "sufyan-delivery.firebaseapp.com",
         databaseURL: "https://sufyan-delivery-default-rtdb.europe-west1.firebasedatabase.app",
@@ -410,585 +400,889 @@
         messagingSenderId: "941542380637",
         appId: "1:941542380637:web:9623fa6e627817ffeba9b4"
     };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
 
-    const TOKEN = "HUT_SECURE_99";
-    const KIRKUK_CENTER = [35.4681, 44.3922];
-    const SHEETS_URL = "https://script.google.com/macros/s/AKfycbzCGEQDmWp5su19c911j1TUxL65t1Y63-LhuXLrq0Z1Qc9sLG9f__4GQa0pN2k5MErw/exec";
-    
-    // 🟢 The Ultimate State Object (Dictionary based for O(1) lookups)
-    window.appState = {
-        orders: {}, // id -> order object
-        drivers: {}, // phone -> driver object
-        restaurants: {}, // name -> restaurant object
-        driverPaths: {}, // phone -> [{lat, lng, ts}]
-        ui: { 
-            radarFilter: "all", activeTab: "live", soundEnabled: true, 
-            heatmapOn: false, trailsOn: true, darkTileLayer: true,
-            search: "", searchRes: "", searchDriver: ""
-        },
-        meta: { lastUpdate: null, isOnline: true, fbConnected: false, pass: "" }
-    };
-
-    // Subscriptions to avoid blind updates
-    const _subs = new Map();
-    function subscribe(comp, fn) { if(!_subs.has(comp)) _subs.set(comp, new Set()); _subs.get(comp).add(fn); }
-    function emit(comp) { const fns = _subs.get(comp); if(fns) fns.forEach(fn => { try { fn(); } catch(e) { console.error(`Emit Error [${comp}]:`, e); } }); }
-
-    // Sound Engine
-    let audioCtx = null;
-    function initAudio() { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {} }
-    function playTone(freq, dur, type = "sine", vol = 0.3) {
-        if (!appState.ui.soundEnabled || !audioCtx) return;
-        try {
-            const osc = audioCtx.createOscillator(); const gainN = audioCtx.createGain();
-            osc.connect(gainN); gainN.connect(audioCtx.destination);
-            osc.type = type; osc.frequency.value = freq;
-            gainN.gain.setValueAtTime(vol, audioCtx.currentTime);
-            gainN.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
-            osc.start(); osc.stop(audioCtx.currentTime + dur);
-        } catch(e) {}
+    function showToast(msg, type = 'success') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        toast.className = `toast-msg ${type}`;
+        const icon = type === 'success' ? '<i data-lucide="check-circle" color="#10b981"></i>' : '<i data-lucide="alert-circle" color="#ef4444"></i>';
+        toast.innerHTML = `${icon} <span style="flex:1;">${msg}</span>`;
+        container.appendChild(toast);
+        if (typeof lucide !== 'undefined') lucide.createIcons({root: toast});
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
     }
-    const SOUNDS = {
-        newOrder: () => { playTone(880, 0.1); setTimeout(() => playTone(1100, 0.15), 120); },
-        delay: () => { playTone(440, 0.3, "sawtooth", 0.2); },
-        connected: () => { playTone(660, 0.1); setTimeout(() => playTone(880, 0.1), 120); setTimeout(() => playTone(1100, 0.2), 240); }
-    };
 
-    window.toggleSound = function() {
-        appState.ui.soundEnabled = !appState.ui.soundEnabled;
-        const icon = document.getElementById("soundIcon");
-        if (icon) { icon.setAttribute("data-lucide", appState.ui.soundEnabled ? "volume-2" : "volume-x"); lucide.createIcons({root: icon.parentNode}); }
-        document.getElementById("soundBtn").style.color = appState.ui.soundEnabled ? "" : "#64748b";
-        showToast(appState.ui.soundEnabled ? "الصوت مفعّل" : "الصوت موقف", "info");
-    };
+    function triggerEmergency() {
+        const modal = document.getElementById('emergencyModal');
+        if (modal.style.display !== 'flex') {
+            modal.style.display = 'flex';
+            const audio = document.getElementById('emergencySound');
+            audio.currentTime = 0; audio.play().catch(e=>{});
+        }
+    }
 
-    window.showToast = function(msg, type = "info") {
-        const container = document.getElementById("toast-container"); if (!container) return;
-        const toast = document.createElement("div"); toast.className = `toast toast-${type}`;
-        const iconName = type === 'success' ? 'check-circle' : type === 'error' ? 'alert-circle' : 'info';
-        toast.innerHTML = `<i data-lucide="${iconName}"></i> <span>${msg}</span>`;
-        container.appendChild(toast); lucide.createIcons({root: toast});
-        setTimeout(() => { toast.style.animation = "toastOut 0.3s ease forwards"; setTimeout(() => toast.remove(), 300); }, 3000);
-    };
+    function closeEmergency() {
+        document.getElementById('emergencyModal').style.display = 'none';
+        document.getElementById('emergencySound').pause();
+        isEmergencyMuted = true;
+    }
 
-    // ── AUTH ──
-    window.checkAuth = function() {
-        const pass = document.getElementById("masterPass")?.value?.trim();
-        if (!pass) return alert("أدخل رمز المرور");
-        appState.meta.pass = encodeURIComponent(pass);
-        const btn = document.getElementById('authBtn'); btn.innerHTML = 'جاري التحقق...'; btn.disabled = true;
+    function calculateDriverPerformanceBySpeed(ordersData, driverPhone) {
+        const today = new Date();
+        const currentMonth = today.getMonth();
+        const currentYear = today.getFullYear();
+        let deliveryTimes = []; 
+        for (let i = ordersData.length - 1; i >= 1; i--) {
+            const o = ordersData[i];
+            const orderDateStr = o[7];
+            if (!orderDateStr) continue;
+            const orderDate = new Date(orderDateStr);
+            if (orderDate.getMonth() === currentMonth && orderDate.getFullYear() === currentYear && o[6] === driverPhone && (o[5] === 'completed' || o[5] === 'مكتمل' || o[5] === 'settled')) {
+                deliveryTimes.push(1); 
+                if(deliveryTimes.length >= 10) break; 
+            }
+        }
+        const count = deliveryTimes.length;
+        if (count >= 10) return { class: 'perf-green', label: 'ممتاز' };
+        if (count > 0) return { class: 'perf-yellow', label: 'نشط' };
+        return { class: 'perf-red', label: 'جديد/متأخر' };
+    }
 
-        const cb = `authCb_${Date.now()}`;
-        window[cb] = function(res) {
-            btn.innerHTML = 'دخول آمن'; btn.disabled = false; delete window[cb];
-            if(res.success) {
-                document.getElementById('authOverlay').style.display = 'none';
-                document.getElementById('mainDashboard').style.display = 'flex';
-                initAudio(); initMap(); initApp();
-            } else { appState.meta.pass = ""; showToast("رمز خاطئ", "error"); }
-        };
+    function checkAuth() {
+        const pass = document.getElementById('masterPass').value.trim();
+        if(!pass) return alert("الرجاء إدخال رمز المرور");
+        masterPassword = encodeURIComponent(pass); 
+        const btn = document.querySelector('.auth-card button');
+        btn.innerHTML = 'جاري التحقق...';
+        btn.disabled = true;
+
         const script = document.createElement('script');
-        script.src = `${SHEETS_URL}?action=VERIFY_MASTER_PASS&pass=${appState.meta.pass}&token=${TOKEN}&callback=${cb}&ts=${Date.now()}`;
-        script.onerror = () => { btn.innerHTML = 'دخول آمن'; btn.disabled = false; delete window[cb]; showToast("خطأ اتصال", "error"); };
+        script.id = 'auth-script';
+        script.src = `${API_URL}?action=VERIFY_MASTER_PASS&pass=${masterPassword}&token=${API_TOKEN}&callback=authResult&ts=${Date.now()}`;
         document.body.appendChild(script);
-    };
-
-    // ── MAIN INIT ──
-    function initApp() {
-        // Tie rendering to state changes
-        subscribe("radar", renderRadar);
-        subscribe("archive", renderArchive);
-        subscribe("restaurants", renderRestaurants);
-        subscribe("drivers", renderDrivers);
-        subscribe("stats", renderStats);
-        subscribe("map_drivers", renderDriverMarkers);
-
-        fetchColdData();
-        startFirebase();
-        setInterval(fetchColdData, 120000); // 2 Mins Cold Sync
-
-        // Clock
-        setInterval(() => {
-            const timeStr = new Date().toLocaleTimeString('ar-EG', {hour: '2-digit', minute:'2-digit'});
-            document.getElementById('liveTimeDesk').innerText = timeStr; 
-            document.getElementById('liveTimeMob').innerText = timeStr; 
-            if(appState.meta.lastUpdate) document.getElementById("lastUpdateTime").textContent = `آخر تحديث: منذ ${Math.round((Date.now() - appState.meta.lastUpdate)/1000)}ث`;
-        }, 1000);
+        
+        setTimeout(() => {
+            if(btn.disabled) {
+                btn.innerHTML = 'تسجيل الدخول';
+                btn.disabled = false;
+                showToast("⏳ تأخر السيرفر، تحقق من الإنترنت", "error");
+            }
+        }, 12000);
     }
 
-    // ── DATA ENGINE (The Core Fix) ──
-    function fetchColdData() {
-        if (!appState.meta.isOnline) return;
-        const cb = `coldCb_${Date.now()}`;
-        window[cb] = function(data) {
-            delete window[cb];
-            if (!data) return;
+    window.authResult = function(response) {
+        const oldScript = document.getElementById('auth-script');
+        if (oldScript) oldScript.remove();
+        
+        const btn = document.querySelector('.auth-card button');
+        btn.innerHTML = 'تسجيل الدخول';
+        btn.disabled = false;
 
-            // Parse Drivers Safely (Array to Object)
-            if(data.drivers && data.drivers.length > 1) {
-                data.drivers.slice(1).forEach(d => {
-                    if(!d || !d[2]) return;
-                    const phone = String(d[2]);
-                    if(!appState.drivers[phone]) appState.drivers[phone] = { phone: phone };
-                    appState.drivers[phone].name = d[1];
-                    appState.drivers[phone].ordersCount = parseInt(d[7]) || 0;
-                    // Don't overwrite hot location data if exists
-                    if(!appState.drivers[phone].lat && d[5]) { appState.drivers[phone].lat = parseFloat(d[5]); appState.drivers[phone].lng = parseFloat(d[6]); }
-                    if(!appState.drivers[phone].status && d[4]) appState.drivers[phone].status = d[4];
-                });
+        if(response.success) {
+            document.getElementById('authOverlay').style.display = 'none';
+            document.getElementById('mainDashboard').classList.remove('d-none');
+            
+            const audio = document.getElementById('adminAlertSound');
+            audio.volume = 0; audio.play().then(() => { audio.pause(); audio.currentTime = 0; audio.volume = 1; }).catch(e=>{});
+
+            startClock(); refreshData(); setInterval(refreshData, 15000);
+            initMap();
+            listenToFirebaseLocations(); // 🟢 تفعيل الرصد اللحظي
+        } else {
+            masterPassword = ""; 
+            showToast("رمز المرور غير صحيح", "error");
+        }
+    };
+
+    function startClock() { setInterval(() => { 
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString('ar-EG', {hour: '2-digit', minute:'2-digit'});
+        document.getElementById('liveTimeDesk').innerText = timeStr; 
+        document.getElementById('liveTimeMob').innerText = timeStr; 
+    }, 1000); }
+
+    function refreshData() {
+        if (document.hidden) return; 
+        if (fetchPauseTimeout !== null) return;
+
+        const oldScript = document.getElementById('data-fetch-script');
+        if (oldScript) oldScript.remove(); 
+        
+        const script = document.createElement('script');
+        script.id = 'data-fetch-script';
+        script.src = `${API_URL}?action=getGlobalData&token=${API_TOKEN}&callback=renderData&ts=${Date.now()}`;
+        document.body.appendChild(script);
+    }
+
+    window.renderData = function(data) {
+        const oldScript = document.getElementById('data-fetch-script');
+        if (oldScript) oldScript.remove(); 
+
+        const now = Date.now();
+
+        data.orders.forEach(o => {
+            let override = localOverrides.orders[o[0]];
+            if (override) {
+                if (now - override.ts < 120000) { 
+                    o[5] = override.status || o[5];
+                    if (override.driverPhone) o[6] = override.driverPhone;
+                } else { delete localOverrides.orders[o[0]]; }
             }
+        });
 
-            // Parse Restaurants Safely
-            if(data.restaurants && data.restaurants.length > 1) {
-                data.restaurants.slice(1).forEach(r => {
-                    if(!r || !r[1]) return;
-                    const name = String(r[1]);
-                    if(!appState.restaurants[name]) appState.restaurants[name] = { name: name };
-                    appState.restaurants[name].phone = r[2]; appState.restaurants[name].area = r[3]; appState.restaurants[name].status = r[4];
-                    appState.restaurants[name].comm = parseFloat(r[5])||0; appState.restaurants[name].lat = parseFloat(r[6]); appState.restaurants[name].lng = parseFloat(r[7]);
-                    appState.restaurants[name].payType = r[8];
-                });
+        data.drivers.forEach(d => {
+            let override = localOverrides.drivers[d[2]];
+            if (override && (now - override.ts < 120000)) d[4] = override.status;
+            else if (override) delete localOverrides.drivers[d[2]];
+        });
+
+        data.restaurants.forEach(r => {
+            let override = localOverrides.restaurants[r[2]]; 
+            if (override && (now - override.ts < 120000)) r[4] = override.status;
+            else if (override) delete localOverrides.restaurants[r[2]];
+        });
+
+        globalData = data; 
+        
+        if(document.getElementById('arcRes').options.length === 1) {
+            data.restaurants.slice(1).forEach(r => document.getElementById('arcRes').innerHTML += `<option value="${r[1]}">${r[1]}</option>`);
+            data.drivers.slice(1).forEach(d => document.getElementById('arcDriver').innerHTML += `<option value="${String(d[2])}">${d[1]}</option>`);
+        }
+
+        const activeOrdersList = data.orders.slice(1).filter(o => 
+            o[5] !== 'completed' && o[5] !== 'مكتمل' && o[5] !== 'settled' && o[5] !== 'deleted'
+        );
+
+        let currentPendingCount = 0;
+        let hasEmergency = false;
+
+        activeOrdersList.forEach(o => {
+            if (!o[6] || o[6] === "pending_driver") {
+                currentPendingCount++;
+                const orderTime = new Date(o[7]);
+                if ((new Date() - orderTime) / 60000 >= 3) hasEmergency = true; 
             }
+        });
 
-            // Parse Orders Safely
-            if(data.orders && data.orders.length > 1) {
-                data.orders.slice(1).forEach(o => {
-                    if(!o || !o[0]) return;
-                    const id = o[0];
-                    // Only add if not exists, or if it's completed (Sheets is truth for completed)
-                    if(!appState.orders[id] || o[5] === 'completed' || o[5] === 'settled' || o[5] === 'deleted') {
-                        appState.orders[id] = { id: id, restaurant: o[1], area: o[2], details: o[3], price: o[4], status: o[5], driverPhone: o[6], timestamp: o[7]?new Date(o[7]).getTime():Date.now() };
+        if(currentPendingCount > lastPendingCount) {
+            const audio = document.getElementById('adminAlertSound');
+            audio.currentTime = 0; audio.play().catch(e=>{});
+        }
+        lastPendingCount = currentPendingCount;
+
+        if (hasEmergency) {
+            if (!isEmergencyMuted) triggerEmergency();
+        } else {
+            isEmergencyMuted = false; 
+            const eModal = document.getElementById('emergencyModal');
+            if (eModal && eModal.style.display === 'flex') closeEmergency();
+        }
+
+        const countOrders = activeOrdersList.length;
+        const countDrivers = data.drivers.filter(d => d[4] === 'active').length;
+        const countRes = data.restaurants.filter(r => r[4] === 'active').length;
+        
+        document.querySelectorAll('.val-orders').forEach(el => el.innerText = countOrders);
+        document.querySelectorAll('.val-drivers').forEach(el => el.innerText = countDrivers);
+        document.querySelectorAll('.val-res').forEach(el => el.innerText = countRes);
+
+        let resDebts = {}; let resUnpaidCounts = {}; let driverDebts = {};
+        data.restaurants.slice(1).forEach(r => { resDebts[r[1]] = 0; resUnpaidCounts[r[1]] = 0; }); 
+        
+        data.drivers.slice(1).forEach(d => {
+            driverDebts[String(d[2])] = 0;
+            driverPerformanceCache[String(d[2])] = calculateDriverPerformanceBySpeed(data.orders, String(d[2]));
+        }); 
+        
+        data.orders.slice(1).forEach(o => {
+            const status = o[5];
+            if (status === 'completed' || status === 'مكتمل') {
+                const rName = o[1]; const dPhone = String(o[6]);
+                const rData = data.restaurants.find(r => r[1] === rName);
+                if (rData) {
+                    const comm = parseFloat(rData[5]) || 0; const payType = String(rData[8]); 
+                    if (resUnpaidCounts[rName] !== undefined) resUnpaidCounts[rName]++; 
+                    if (payType.includes('مناصفة')) {
+                        if (resDebts[rName] !== undefined) resDebts[rName] += (comm / 2);
+                        if (driverDebts[dPhone] !== undefined) driverDebts[dPhone] += (comm / 2);
+                    } else {
+                        if (resDebts[rName] !== undefined) resDebts[rName] += comm;
                     }
-                });
+                }
             }
+        });
 
-            appState.meta.lastUpdate = Date.now();
-            triggerFullRender();
-            if(!appState.meta.fbConnected && mapInstance && restaurantMarkersLayer && restaurantMarkersLayer.getLayers().length === 0) renderResMarkers();
-        };
+        renderRadar(activeOrdersList); 
+        renderArchive();
+        
+        updateSectionBadges('RESTAURANT', data.restaurants);
+        updateSectionBadges('DRIVER', data.drivers);
+        renderFilteredSection('RESTAURANT', data.restaurants, resDebts, resUnpaidCounts);
+        renderFilteredSection('DRIVER', data.drivers, driverDebts, null);
+        
+        // 🟢 تحديث الخريطة بدون وميض (Anti-Flicker)
+        if (map && driverClusterGroup && restaurantMarkersLayer) {
+            data.restaurants.slice(1).forEach(r => {
+                const rName = r[1];
+                if(r[4] === 'active' && r[6] && r[7]) { 
+                    const lat = parseFloat(r[6]), lng = parseFloat(r[7]);
+                    if(!isNaN(lat) && !isNaN(lng)) {
+                        if(liveResMarkers[rName]) {
+                            liveResMarkers[rName].setLatLng([lat, lng]);
+                        } else {
+                            const resIcon = L.divIcon({
+                                className: 'custom-res-icon',
+                                html: `<div style="background-color: #f97316; width: 12px; height: 12px; border-radius: 3px; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.4); transform: rotate(45deg);"></div>`,
+                                iconSize: [12, 12], iconAnchor: [6, 6]
+                            });
+                            const marker = L.marker([lat, lng], {icon: resIcon, zIndexOffset: -100})
+                                .bindPopup(`<div class="text-center fw-bold" style="font-family:'Cairo';"><span class="text-warning">المطعم:</span> ${rName}</div>`);
+                            restaurantMarkersLayer.addLayer(marker);
+                            liveResMarkers[rName] = marker;
+                        }
+                    }
+                } else if(liveResMarkers[rName]) {
+                    restaurantMarkersLayer.removeLayer(liveResMarkers[rName]);
+                    delete liveResMarkers[rName];
+                }
+            });
 
-        const script = document.createElement("script");
-        script.src = `${SHEETS_URL}?action=getGlobalData&token=${TOKEN}&callback=${cb}&ts=${Date.now()}`;
-        script.onerror = () => { delete window[cb]; };
-        document.body.appendChild(script);
-    }
+            data.drivers.slice(1).forEach(d => {
+                const phone = String(d[2]);
+                if(d[4] === 'active' && d[5] && d[6]) { 
+                    const lat = parseFloat(d[5]), lng = parseFloat(d[6]);
+                    if(!isNaN(lat) && !isNaN(lng)) {
+                        if(liveDriverMarkers[phone]) {
+                            liveDriverMarkers[phone].setLatLng([lat, lng]);
+                        } else {
+                            const perf = driverPerformanceCache[phone] || { class: 'perf-yellow' };
+                            let colorHex = '#f59e0b', pulseClass = '';
+                            if(perf.class === 'perf-green') { colorHex = '#10b981'; pulseClass = 'marker-pulse'; }
+                            if(perf.class === 'perf-red') colorHex = '#ef4444';
 
-    function startFirebase() {
-        const fbApp = initializeApp(FIREBASE_CONFIG);
-        const fbDb = getDatabase(fbApp);
+                            const driverIcon = L.divIcon({
+                                className: 'custom-div-icon',
+                                html: `<div class="${pulseClass}" style="background-color: ${colorHex}; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>`,
+                                iconSize: [16, 16], iconAnchor: [8, 8]
+                            });
+                            const marker = L.marker([lat, lng], {icon: driverIcon, zIndexOffset: 100})
+                                .bindPopup(`<div class="text-center fw-bold" style="font-family:'Cairo';"><span style="color:${colorHex}">الكابتن:</span> ${d[1]}<br><span class="text-primary">هاتف:</span> ${phone}</div>`);
+                            driverClusterGroup.addLayer(marker); 
+                            liveDriverMarkers[phone] = marker;
+                        }
+                    }
+                } else if(liveDriverMarkers[phone]) {
+                    driverClusterGroup.removeLayer(liveDriverMarkers[phone]);
+                    delete liveDriverMarkers[phone];
+                }
+            });
+        }
+    };
 
-        // Drivers Hot Data
-        onValue(ref(fbDb, "drivers_locations"), snap => {
-            const locs = snap.val() || {};
-            let changed = false;
+    // 🟢 الاستماع اللحظي لمواقع الكباتن عبر Firebase
+    function listenToFirebaseLocations() {
+        db.ref('drivers_locations').on('value', (snapshot) => {
+            const locs = snapshot.val();
+            if(!locs) return;
             Object.keys(locs).forEach(phone => {
-                if(!appState.drivers[phone]) appState.drivers[phone] = { phone: phone, name: "كابتن "+phone };
-                appState.drivers[phone].lat = locs[phone].lat; appState.drivers[phone].lng = locs[phone].lng; appState.drivers[phone].status = locs[phone].status;
-                if(locs[phone].last_update) appState.drivers[phone].lastSeen = new Date(locs[phone].last_update).getTime();
-                
-                // Trail Logic
-                if (locs[phone].lat && locs[phone].lng) {
-                    if (!appState.driverPaths[phone]) appState.driverPaths[phone] = [];
-                    appState.driverPaths[phone].push({ lat: locs[phone].lat, lng: locs[phone].lng, ts: Date.now() });
-                    appState.driverPaths[phone] = appState.driverPaths[phone].filter(p => Date.now() - p.ts < 300000);
-                }
-                changed = true;
-            });
-            if(changed) { emit("map_drivers"); emit("stats"); emit("drivers"); }
-        });
-
-        // Orders Hot Data
-        onValue(ref(fbDb, "active_orders"), snap => {
-            const hotOrders = snap.val() || {};
-            appState.meta.fbConnected = true;
-            document.getElementById("connBanner").style.display = "none";
-            document.getElementById("sidebarStatus").textContent = "متصل — Firebase";
-            document.getElementById("sidebarStatus").style.color = "var(--neon-green)";
-
-            // 1. Clean missing hot orders (if they are still active in memory)
-            Object.keys(appState.orders).forEach(id => {
-                const o = appState.orders[id];
-                if (!hotOrders[id] && o.status !== 'completed' && o.status !== 'settled' && o.status !== 'deleted' && o.status !== 'done' && o.status !== 'cancel') {
-                    delete appState.orders[id]; // It was removed from FB, remove from memory
+                if(liveDriverMarkers[phone]) {
+                    const lat = parseFloat(locs[phone].lat);
+                    const lng = parseFloat(locs[phone].lng);
+                    if(!isNaN(lat) && !isNaN(lng)) {
+                        liveDriverMarkers[phone].setLatLng([lat, lng]); // حركة سلسة ولحظية
+                    }
                 }
             });
-
-            // 2. Merge Hot Orders
-            let newlyRinging = false;
-            Object.values(hotOrders).forEach(ho => {
-                if(!appState.orders[ho.id]) {
-                    newlyRinging = true;
-                    appState.orders[ho.id] = { id: ho.id, restaurant: ho.restaurant, area: ho.area, price: ho.price, status: ho.status, driverPhone: ho.driverPhone || "pending_driver", timestamp: ho.timestamp?new Date(ho.timestamp).getTime():Date.now(), photoUrl: ho.photoUrl };
-                } else {
-                    appState.orders[ho.id].status = ho.status;
-                    appState.orders[ho.id].driverPhone = ho.driverPhone || "pending_driver";
-                }
-            });
-
-            if(newlyRinging) SOUNDS.newOrder();
-            appState.meta.lastUpdate = Date.now();
-            emit("radar"); emit("archive"); emit("stats");
         });
     }
 
-    // A central function to fire all renders safely
-    let renderTmr = null;
-    function triggerFullRender() {
-        if(renderTmr) return;
-        renderTmr = requestAnimationFrame(() => {
-            emit("stats"); emit("radar"); emit("archive"); emit("restaurants"); emit("drivers"); emit("map_drivers");
-            renderTmr = null;
+    function updateSectionBadges(type, list) {
+        const prefix = type === 'RESTAURANT' ? 'res' : 'driver';
+        const counts = { all: 0, pending: 0, active: 0, inactive: 0, banned: 0 };
+        list.slice(1).forEach(item => {
+            const status = item[4];
+            if (status !== 'deleted') counts.all++;
+            if (status === 'pending' || status === 'waiting') counts.pending++;
+            if (status === 'active') counts.active++;
+            if (status === 'inactive') counts.inactive++;
+            if (status === 'banned') counts.banned++;
         });
+        document.getElementById(`badge-${prefix}-all`).innerText = counts.all;
+        document.getElementById(`badge-${prefix}-pending`).innerText = counts.pending;
+        document.getElementById(`badge-${prefix}-active`).innerText = counts.active;
+        document.getElementById(`badge-${prefix}-inactive`).innerText = counts.inactive;
+        document.getElementById(`badge-${prefix}-banned`).innerText = counts.banned;
     }
 
-    /* ── MAP ENGINE (Marker Diffing for Zero Lag) ── */
-    let currentTileLayer = null;
-    function initMap() {
-        if (mapInstance) return;
-        mapInstance = L.map("adminMap", { center: KIRKUK_CENTER, zoom: 13, zoomControl: false, attributionControl: false });
-        L.control.zoom({ position: "bottomleft" }).addTo(mapInstance);
-        currentTileLayer = L.tileLayer(TILE_LAYERS.dark.url, { maxZoom: 19 }).addTo(mapInstance);
+    function triggerSearch(type) {
+        const group = type === 'RESTAURANT' ? document.getElementById('resFiltersGroup') : document.getElementById('driverFiltersGroup');
+        const activeBtn = group.querySelector('.active');
+        const filter = type === 'RESTAURANT' ? currentResSectionFilter : currentDriverSectionFilter;
+        applySectionFilter(type, filter, activeBtn);
+    }
+
+    function applySectionFilter(type, filter, btnElement) {
+        if(type === 'RESTAURANT') currentResSectionFilter = filter;
+        else currentDriverSectionFilter = filter;
+        const group = btnElement.closest('.filter-btn-group');
+        group.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btnElement.classList.add('active');
+
+        if (globalData) {
+            let resDebts = {}; let resUnpaidCounts = {}; let driverDebts = {};
+            globalData.restaurants.slice(1).forEach(r => { resDebts[r[1]] = 0; resUnpaidCounts[r[1]] = 0; }); 
+            globalData.drivers.slice(1).forEach(d => { driverDebts[String(d[2])] = 0; }); 
+            globalData.orders.slice(1).forEach(o => {
+                if (o[5] === 'completed' || o[5] === 'مكتمل') {
+                    const rData = globalData.restaurants.find(r => r[1] === o[1]);
+                    if (rData) {
+                        const comm = parseFloat(rData[5]) || 0; 
+                        if (resUnpaidCounts[o[1]] !== undefined) resUnpaidCounts[o[1]]++; 
+                        if (String(rData[8]).includes('مناصفة')) { resDebts[o[1]] += (comm / 2); driverDebts[String(o[6])] += (comm / 2); } 
+                        else { resDebts[o[1]] += comm; }
+                    }
+                }
+            });
+            if(type === 'RESTAURANT') renderFilteredSection('RESTAURANT', globalData.restaurants, resDebts, resUnpaidCounts);
+            else renderFilteredSection('DRIVER', globalData.drivers, driverDebts, null);
+        }
+    }
+
+    function renderFilteredSection(type, fullList, debtsMap, unpaidCounts) {
+        let filteredList = [];
+        const filter = type === 'RESTAURANT' ? currentResSectionFilter : currentDriverSectionFilter;
         
-        driverClusterGroup = L.markerClusterGroup({
-            iconCreateFunction: function(cluster) { return L.divIcon({ html: `<div style="background:var(--neon-blue); color:white; width:35px; height:35px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:900; border:2px solid white; box-shadow:var(--glow-blue);">${cluster.getChildCount()}</div>`, className: '', iconSize: L.point(35, 35) }); },
-            maxClusterRadius: 40 
-        }).addTo(mapInstance);
-    }
+        const searchQuery = type === 'RESTAURANT' ? 
+            (document.getElementById('searchResInput') ? document.getElementById('searchResInput').value.trim().toLowerCase() : '') : 
+            (document.getElementById('searchDriverInput') ? document.getElementById('searchDriverInput').value.trim().toLowerCase() : '');
 
-    function renderResMarkers() {
-        if (!mapInstance || !appState.restaurants) return;
-        if(!restaurantMarkersLayer) restaurantMarkersLayer = L.layerGroup().addTo(mapInstance);
-        restaurantMarkersLayer.clearLayers();
-        Object.values(appState.restaurants).forEach(r => {
-            if(r.status === 'active' && r.lat && r.lng) {
-                const icon = L.divIcon({ className: '', html: `<div style="background:var(--neon-amber); width:12px; height:12px; border-radius:3px; border:2px solid white; box-shadow:0 2px 4px rgba(0,0,0,0.4); transform:rotate(45deg);"></div>`, iconSize: [12,12], iconAnchor: [6,6] });
-                L.marker([r.lat, r.lng], {icon, zIndexOffset:-100}).bindPopup(`<div style="font-family:var(--font-main);font-weight:bold;color:white;background:var(--bg-deep);padding:5px;border-radius:8px;">${r.name}</div>`).addTo(restaurantMarkersLayer);
+        fullList.slice(1).forEach(item => {
+            const status = item[4];
+            const name = String(item[1]).toLowerCase();
+            const phone = String(item[2]).toLowerCase();
+
+            if (status === 'deleted') return;
+
+            if (searchQuery && !name.includes(searchQuery) && !phone.includes(searchQuery)) return;
+
+            if (filter === 'all') filteredList.push(item);
+            else if (filter === 'pending' && (status === 'pending' || status === 'waiting')) filteredList.push(item);
+            else if (filter === status) filteredList.push(item);
+        });
+
+        const containerId = type === 'RESTAURANT' ? 'resListContainer' : 'driverListContainer';
+        const icon = type === 'RESTAURANT' ? 'store' : 'user';
+        const phoneIndex = 2; const mapKeyIndex = type === 'RESTAURANT' ? 1 : 2; 
+
+        let html = '';
+        if (filteredList.length === 0) {
+            html = `<div class="col-12 text-center py-5 text-muted fw-bold">لا توجد حسابات تطابق هذا الفلتر.</div>`;
+        } else {
+            filteredList.forEach(item => {
+                const name = item[1], phone = item[phoneIndex], status = item[4];
+                const debtAmount = debtsMap[item[mapKeyIndex]] || 0; 
+                let statusBadge = '';
+                if(status === 'active') statusBadge = '<span class="badge bg-success px-2 py-1 rounded-2">نشط</span>';
+                else if(status === 'inactive') statusBadge = '<span class="badge bg-warning px-2 py-1 rounded-2 text-dark">استراحة</span>';
+                else if(status === 'pending' || status === 'waiting') statusBadge = '<span class="badge bg-primary px-2 py-1 rounded-2">جديد</span>';
+                else if(status === 'banned') statusBadge = '<span class="badge bg-danger px-2 py-1 rounded-2">موقوف</span>';
+
+                let unpaidBadge = '';
+                if (type === 'RESTAURANT' && unpaidCounts && unpaidCounts[name] > 0) unpaidBadge = `<span class="badge bg-danger rounded-pill ms-1" style="font-size:0.7rem;">${unpaidCounts[name]} طلبات</span>`;
+
+                let perfIndicator = '';
+                if (type === 'DRIVER') {
+                    const perf = driverPerformanceCache[String(phone)] || { class: 'perf-yellow', label: 'مستجد' };
+                    perfIndicator = `<span class="perf-dot ${perf.class}" title="معدل السرعة: ${perf.label}"><i data-lucide="zap" size="10"></i></span>`;
+                }
+
+                html += `
+                <div class="col-md-6 col-xl-4">
+                    <div class="stat-widget flex-column align-items-stretch" style="padding: 12px;">
+                        ${perfIndicator}
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <div class="bg-light p-2 rounded-3 ms-4"><i data-lucide="${icon}" size="18" style="color: var(--primary-blue);"></i></div>
+                            ${statusBadge}
+                        </div>
+                        <h6 class="m-0 fw-black mb-1" style="padding-left: 20px; font-size: 0.95rem; line-height: 1.4;">${name}</h6>
+                        <small class="text-muted fw-bold" style="font-size:0.75rem;" dir="ltr">${phone}</small>
+                        <div class="mt-2 mb-2 d-inline-flex align-items-center gap-1 bg-danger bg-opacity-10 text-danger px-2 py-1 rounded-pill" style="width: fit-content;">
+                            <span class="small fw-bold" style="font-size: 0.7rem;">ديون: ${debtAmount} د.ع ${unpaidBadge}</span>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center pt-2 border-top">
+                            <div class="d-flex gap-1">
+                                <button class="sov-btn sov-accept" onclick="adminActionOptUI('ACCEPT', '${type}', '${phone}', this)"><i data-lucide="check" size="14"></i></button>
+                                <button class="sov-btn sov-pause" onclick="adminActionOptUI('PAUSE', '${type}', '${phone}', this)"><i data-lucide="pause" size="14"></i></button>
+                                <button class="sov-btn sov-delete" onclick="adminActionOptUI('DELETE', '${type}', '${phone}', this)"><i data-lucide="ban" size="14"></i></button>
+                            </div>
+                            <div class="d-flex gap-1">
+                                <button class="sov-btn sov-reset" onclick="resetDebtOptUI('${type}', '${phone}', this)"><i data-lucide="banknote" size="14"></i></button>
+                                <button class="sov-btn sov-call shadow-sm" onclick="window.open('tel:${phone}')"><i data-lucide="phone-call" size="14"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+            });
+        }
+        
+        const currentHtml = html || `<div class="col-12 text-center py-5 text-muted fw-bold">لا توجد حسابات...</div>`;
+        if (type === 'RESTAURANT') {
+            if (lastResHtml !== currentHtml) { 
+                const container = document.getElementById(containerId);
+                container.innerHTML = currentHtml; 
+                lastResHtml = currentHtml; 
+                if (typeof lucide !== 'undefined') lucide.createIcons({root: container});
             }
-        });
-    }
-
-    function renderDriverMarkers() {
-        if(!mapInstance || !driverClusterGroup) return;
-        const currentPhones = new Set(Object.keys(appState.drivers));
-        
-        // Remove offline
-        for (const phone of Object.keys(activeDriverMarkers)) {
-            if (!currentPhones.has(phone) || appState.drivers[phone].status !== 'active') {
-                driverClusterGroup.removeLayer(activeDriverMarkers[phone]);
-                delete activeDriverMarkers[phone];
-                if(driverTrails[phone]) { mapInstance.removeLayer(driverTrails[phone]); delete driverTrails[phone]; }
+        } else {
+            if (lastDriverHtml !== currentHtml) { 
+                const container = document.getElementById(containerId);
+                container.innerHTML = currentHtml; 
+                lastDriverHtml = currentHtml; 
+                if (typeof lucide !== 'undefined') lucide.createIcons({root: container});
             }
         }
-
-        // Update/Add
-        Object.values(appState.drivers).forEach(d => {
-            if (d.status === 'active' && d.lat && d.lng) {
-                const latlng = [d.lat, d.lng];
-                const secs = d.lastSeen ? (Date.now() - d.lastSeen) / 1000 : 0;
-                const color = secs < 60 ? "var(--neon-green)" : secs < 180 ? "var(--neon-amber)" : "var(--neon-red)";
-                
-                if (activeDriverMarkers[d.phone]) {
-                    // Smooth move
-                    activeDriverMarkers[d.phone].setLatLng(latlng);
-                    // Update pulse color dynamically
-                    const el = activeDriverMarkers[d.phone].getElement();
-                    if(el) { const dot = el.querySelector('.pulse-dot'); if(dot) { dot.style.background = color; dot.style.boxShadow = `0 0 10px ${color}`; } }
-                } else {
-                    const icon = L.divIcon({ className: '', html: `<div style="position:relative;width:20px;height:20px;"><div class="pulse-dot" style="background:${color}; width:16px; height:16px; border:2px solid white; box-shadow:0 0 10px ${color}; position:absolute; top:2px; left:2px; z-index:2;"></div><div style="position:absolute; inset:-4px; border:2px solid ${color}; border-radius:50%; opacity:0.5; animation:markerPulse 2s infinite;"></div></div>`, iconSize:[20,20], iconAnchor:[10,10] });
-                    activeDriverMarkers[d.phone] = L.marker(latlng, {icon, zIndexOffset:100}).bindPopup(`<div style="font-family:var(--font-main);font-weight:bold;color:white;background:var(--bg-deep);padding:5px;border-radius:8px;">${d.name || d.phone}</div>`);
-                    driverClusterGroup.addLayer(activeDriverMarkers[d.phone]);
-                }
-
-                // Trails
-                if(appState.ui.trailsOn && appState.driverPaths[d.phone] && appState.driverPaths[d.phone].length > 1) {
-                    const pts = appState.driverPaths[d.phone].map(p=>[p.lat, p.lng]);
-                    if(driverTrails[d.phone]) driverTrails[d.phone].setLatLngs(pts);
-                    else driverTrails[d.phone] = L.polyline(pts, {color: "rgba(59,158,255,0.3)", weight: 3, dashArray: "4 4"}).addTo(mapInstance);
-                }
-            }
-        });
     }
 
-    window.toggleMapLayer = function() {
-        appState.ui.darkTileLayer = !appState.ui.darkTileLayer;
-        if (currentTileLayer) mapInstance.removeLayer(currentTileLayer);
-        currentTileLayer = L.tileLayer(appState.ui.darkTileLayer ? TILE_LAYERS.dark.url : TILE_LAYERS.light.url, { maxZoom: 19 }).addTo(mapInstance);
-        document.getElementById("mapLayerBtn").classList.toggle("active", appState.ui.darkTileLayer);
-    };
-
-    window.toggleHeatmap = function() {
-        appState.ui.heatmapOn = !appState.ui.heatmapOn;
-        document.getElementById("heatmapBtn").classList.toggle("active", appState.ui.heatmapOn);
-        if (appState.ui.heatmapOn) {
-            const points = Object.values(appState.orders).filter(o => o.lat && o.lng).map(o => [o.lat, o.lng, 1]);
-            if (points.length && window.L.heatLayer) heatmapLayer = L.heatLayer(points, { radius: 25, blur: 20, maxZoom: 14 }).addTo(mapInstance);
-        } else { if (heatmapLayer) mapInstance.removeLayer(heatmapLayer); heatmapLayer = null; }
-    };
-
-    window.toggleTrails = function() {
-        appState.ui.trailsOn = !appState.ui.trailsOn;
-        document.getElementById("trailBtn").classList.toggle("active", appState.ui.trailsOn);
-        if (!appState.ui.trailsOn) { Object.values(driverTrails).forEach(t => mapInstance.removeLayer(t)); driverTrails = {}; } else { renderDriverMarkers(); }
-    };
-
-    window.trackDriver = function(phone, restName) {
-        if(!mapInstance) return;
-        const driver = appState.drivers[phone];
-        if(driver && driver.lat && driver.lng) {
-            mapInstance.flyTo([driver.lat, driver.lng], 16);
-            showToast(`تتبع: ${driver.name}`, "info");
-        } else { showToast("لا يوجد GPS حالياً", "error"); }
-    };
-
-    /* ── UI RENDERERS (DocumentFragment for Zero Lag) ── */
-    function renderStats() {
-        const orders = Object.values(appState.orders);
-        const total = orders.filter(o => o.status === 'completed' || o.status === 'settled' || o.status === 'deleted').length; // Count from archive
-        const active = orders.filter(o => o.status !== 'completed' && o.status !== 'settled' && o.status !== 'deleted').length; // Active in radar
-        const done = orders.filter(o => o.status === "completed" || o.status === 'settled').length;
-        const cancel = orders.filter(o => o.status === "deleted").length;
-        const drivers = Object.values(appState.drivers).filter(d => d.status === "active").length;
-
-        document.getElementById("stat-total").textContent = total + active;
-        document.getElementById("stat-active").textContent = active;
-        document.getElementById("stat-done").textContent = done;
-        document.getElementById("stat-cancel").textContent = cancel;
-        document.getElementById("stat-drivers").textContent = drivers;
-        document.getElementById("liveCount").textContent = `${active} طلب نشط`;
-        
-        // Mobile simple stats
-        document.querySelectorAll('.val-orders').forEach(el => el.innerText = active);
-        document.querySelectorAll('.val-drivers').forEach(el => el.innerText = drivers);
-        document.querySelectorAll('.val-res').forEach(el => el.innerText = Object.values(appState.restaurants).filter(r=>r.status==='active').length);
+    function filterRadar(type, btnElement) {
+        currentRadarFilter = type;
+        document.querySelectorAll('.radar-filter-btn').forEach(b => b.classList.remove('active', 'border-danger', 'border-success'));
+        btnElement.classList.add('active');
+        renderRadar();
     }
 
-    window.filterRadar = function(filter, el) {
-        appState.ui.radarFilter = filter;
-        if(el) { document.querySelectorAll("#radarFilters .chip").forEach(c => c.classList.remove("active")); el.classList.add("active"); }
-        emit("radar");
-    };
-
-    function renderRadar() {
-        if(appState.ui.activeTab !== 'live') return;
-        const container = document.getElementById("radarList"); if (!container) return;
-        const filter = appState.ui.radarFilter;
+    function renderRadar(activeOrdersList = null) {
+        if(!globalData) return;
         
-        let activeOrdersList = Object.values(appState.orders).filter(o => o.status !== 'completed' && o.status !== 'مكتمل' && o.status !== 'settled' && o.status !== 'deleted' && o.status !== 'done' && o.status !== 'cancel');
-        
-        if (filter === "pending") activeOrdersList = activeOrdersList.filter(o => !o.driverPhone || o.driverPhone === "pending_driver");
-        if (filter === "active") activeOrdersList = activeOrdersList.filter(o => o.driverPhone && o.driverPhone !== "pending_driver");
-        if (filter === "delay") activeOrdersList = activeOrdersList.filter(o => o.timestamp && (Date.now()-o.timestamp)/60000 > 30);
-
-        activeOrdersList.sort((a,b) => (b.timestamp||0) - (a.timestamp||0));
-        document.getElementById("radarCount").textContent = activeOrdersList.length;
-        
-        const badgePending = activeOrdersList.filter(o => !o.driverPhone || o.driverPhone === "pending_driver").length;
-        document.getElementById("radar-badge").textContent = badgePending;
-        if(badgePending > 0) document.getElementById("radar-badge").style.display = 'inline-block'; else document.getElementById("radar-badge").style.display = 'none';
-
-        if (activeOrdersList.length === 0) {
-            container.innerHTML = `<div class="empty-state"><i data-lucide="radar" size="40"></i><h4>الرادار نظيف</h4><p>لا توجد طلبات تطابق الفلتر</p></div>`;
-            lucide.createIcons({root: container}); return;
+        if (!activeOrdersList) {
+            activeOrdersList = globalData.orders.slice(1).filter(o => 
+                o[5] !== 'completed' && o[5] !== 'مكتمل' && o[5] !== 'settled' && o[5] !== 'deleted'
+            );
         }
 
-        let driverOptions = '<option value="" disabled selected>إسناد 🔄</option>';
-        Object.values(appState.drivers).filter(d=>d.status==='active').forEach(d => { driverOptions += `<option value="${d.phone}">🟢 ${d.name}</option>`; });
+        let smartHtml = '';
+        let activeDriversOptions = '<option value="" disabled selected>تعيين يدوي</option>';
+        globalData.drivers.slice(1).forEach(d => {
+            if(d[4] === 'active') {
+                const perf = driverPerformanceCache[String(d[2])] || { class: 'perf-yellow' };
+                let symbol = perf.class === 'perf-green' ? '🟢' : (perf.class === 'perf-red' ? '🔴' : '🟡');
+                activeDriversOptions += `<option value="${String(d[2])}">${symbol} ${d[1]}</option>`;
+            }
+        });
 
-        // Group by driver for double orders
+        if(currentRadarFilter === 'pending') activeOrdersList = activeOrdersList.filter(o => !o[6] || o[6] === "pending_driver");
+        if(currentRadarFilter === 'active') activeOrdersList = activeOrdersList.filter(o => o[6] && o[6] !== "pending_driver");
+
         let groupedOrders = {}; let pendingOrders = [];
         activeOrdersList.forEach(o => {
-            if (o.driverPhone && o.driverPhone !== "pending_driver" && o.driverPhone !== "manual_pending") {
-                if (!groupedOrders[o.driverPhone]) groupedOrders[o.driverPhone] = [];
-                groupedOrders[o.driverPhone].push(o);
+            const driverPhone = o[6];
+            if (driverPhone && driverPhone !== "pending_driver" && driverPhone !== "manual_pending") {
+                if (!groupedOrders[driverPhone]) groupedOrders[driverPhone] = [];
+                groupedOrders[driverPhone].push(o);
             } else { pendingOrders.push(o); }
         });
 
-        const frag = document.createDocumentFragment();
+        const getStatusInfo = (status, hasDriver, orderTimeStr) => {
+            const diffSecs = Math.floor((new Date() - new Date(orderTimeStr)) / 1000);
 
-        const buildCard = (o, hasDriver, dName, dPhone) => {
-            const isDelayed = o.timestamp && (Date.now()-o.timestamp)/60000 > 20;
-            const statusClass = isDelayed && !hasDriver ? 'status-overdue' : o.status === 'picked_up' ? 'status-done' : o.status === 'arrived_at_res' ? 'status-pending' : 'status-active';
-            const badgeClass = statusClass.replace('status-', 'badge-');
-            const statusName = !hasDriver ? '🔴 بانتظار كابتن' : o.status === 'heading' ? '🔵 متوجه' : o.status === 'arrived_at_res' ? '🟠 بالمطعم' : o.status === 'picked_up' ? '🟢 بالطريق' : o.status;
-            const mins = o.timestamp ? Math.round((Date.now()-o.timestamp)/60000) : 0;
-            const timerClass = mins > 45 ? "timer-crit" : mins > 20 ? "timer-warn" : "text-neon-blue";
+            if(!hasDriver || status === 'pending_driver' || status === 'manual_pending') {
+                if (hasDriver) { 
+                    if (diffSecs > 60) {
+                        return { class: "status-overdue", desc: "🚨 الكابتن لا يستجيب", badge: "bg-danger", isRinging: true, overdue: true };
+                    } else {
+                        return { class: "status-ringing", desc: "⏳ جاري الرنين...", badge: "bg-warning text-dark", isRinging: true };
+                    }
+                }
+                return { class: "status-danger", desc: "🔴 بانتظار كابتن", badge: "bg-danger" };
+            }
+            if(status === 'picked_up' || status === 'في الطريق') return { class: "status-success", desc: "🟢 بالطريق للزبون", badge: "bg-success" };
+            if(status === 'arrived_at_res') return { class: "status-warning", desc: "🟠 في المطعم", badge: "bg-warning text-dark" };
+            if(status === 'accepted' || status === 'heading') return { class: "status-primary", desc: "🔵 متوجه للمطعم", badge: "bg-primary" };
 
-            const el = document.createElement('div');
-            el.className = `order-card ${statusClass}`;
-            el.innerHTML = `
-                ${isDelayed && !hasDriver ? `<div class="delay-badge">${mins} دقيقة</div>` : ''}
-                <div class="card-row1">
-                    <span class="order-id" onclick="openOrderModal('${o.id}')">#${o.id}</span>
-                    <span class="order-status-badge ${badgeClass}">${statusName}</span>
-                </div>
-                <div class="order-restaurant">${o.restaurant}</div>
-                <div class="order-meta"><span>📍 ${o.area}</span> <span>💰 ${o.price} د</span></div>
-                <div class="order-footer">
-                    <div style="display:flex;align-items:center;gap:4px">
-                        <span class="driver-pill" style="font-size:0.6rem">🏍 ${dName}</span>
-                        ${hasDriver ? `<button class="icon-btn" style="width:22px;height:22px;color:var(--neon-green)" onclick="window.open('tel:${dPhone}')"><i data-lucide="phone" size="10"></i></button>` : ''}
-                    </div>
-                    <div style="display:flex;align-items:center;gap:4px">
-                        ${hasDriver ? `<button class="icon-btn" style="width:22px;height:22px;color:var(--neon-red)" onclick="adminAction('DECLINE', 'ORDER', '${o.id}')" title="سحب"><i data-lucide="user-minus" size="10"></i></button>` : ''}
-                        <select class="auth-input" style="padding:0 4px;font-size:0.6rem;width:70px;border-radius:6px;margin:0;height:22px;" onchange="adminAction('ASSIGN', 'ORDER', '${o.id}', this.value)">${driverOptions}</select>
-                        <button class="icon-btn" style="width:22px;height:22px;color:var(--neon-green)" onclick="adminAction('COMPLETE', 'ORDER', '${o.id}')"><i data-lucide="check" size="10"></i></button>
-                    </div>
-                </div>`;
-            return el;
+            return { class: "status-primary", desc: status, badge: "bg-primary" };
         };
 
-        Object.keys(groupedOrders).forEach(phone => {
-            const driverOrders = groupedOrders[phone];
-            const dName = appState.drivers[phone] ? appState.drivers[phone].name : 'مجهول';
-            if (driverOrders.length > 1) {
-                const wrap = document.createElement('div');
-                wrap.className = "order-card status-purple batch-card";
-                wrap.innerHTML = `<div class="card-row1 border-bottom border-purple pb-2 mb-2"><span class="order-id text-purple"><i data-lucide="layers" size="12"></i> مزدوج | ${dName}</span><button class="icon-btn" style="width:22px;height:22px;color:var(--neon-purple)" onclick="trackDriver('${phone}','${driverOrders[0].restaurant}')"><i data-lucide="map-pin" size="10"></i></button></div>`;
-                driverOrders.forEach((o, i) => { 
-                    const sub = buildCard(o, true, dName, phone); 
-                    sub.style.border = 'none'; sub.style.background = 'rgba(255,255,255,0.5)'; sub.style.boxShadow = 'none'; sub.style.padding = '8px';
-                    wrap.appendChild(sub); 
-                    if(i < driverOrders.length -1) { const div = document.createElement('div'); div.innerHTML = `<div class="text-center my-1"><i data-lucide="link" size="12" style="color:var(--neon-purple)"></i></div>`; wrap.appendChild(div); }
+        Object.keys(groupedOrders).forEach(driverPhone => {
+            const orders = groupedOrders[driverPhone];
+            const driverName = globalData.drivers.find(d => String(d[2]) === String(driverPhone))?.[1] || 'غير معروف';
+
+            if (orders.length > 1) {
+                smartHtml += `<div class="col-md-6 col-12"><div class="smart-order-card status-purple batch-card">
+                    <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom border-purple">
+                        <h6 class="fw-black m-0 text-purple" style="font-size: 0.9rem;"><i data-lucide="layers" size="14"></i> مزدوج | ${driverName}</h6>
+                        <button class="btn-track" style="background: #ede9fe; color: #7c3aed;" onclick="trackDriver('${driverPhone}', '${orders[0][1]}')"><i data-lucide="map-pin" size="12"></i> تتبع</button>
+                    </div>`;
+                orders.forEach((o, index) => {
+                    const sInfo = getStatusInfo(o[5], true, o[7]);
+                    smartHtml += `
+                    <div class="info-card-inner mb-1 bg-white" id="order-${o[0]}">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="fw-black text-purple" style="font-size:0.8rem;">#${o[0]}</span>
+                            <span class="badge ${sInfo.badge}" style="font-size:0.65rem;">${sInfo.desc}</span>
+                        </div>
+                        <div class="d-flex justify-content-between small text-muted" style="font-size:0.75rem;">
+                            <span class="fw-bold" style="line-height: 1.3;">${o[1]}</span>
+                            <span class="text-success fw-bold" style="flex-shrink: 0; margin-right: 5px;">${o[4]} د.ع</span>
+                        </div>
+                        <div class="d-flex justify-content-end gap-2 mt-1">
+                            <button class="btn btn-sm text-success p-0" onclick="adminActionOptUI('COMPLETE', 'ORDER', '${o[0]}', this)"><i data-lucide="check-circle" size="16"></i></button>
+                            <button class="btn btn-sm text-danger p-0" onclick="adminActionOptUI('DELETE', 'ORDER', '${o[0]}', this)"><i data-lucide="trash-2" size="16"></i></button>
+                        </div>
+                    </div>`;
+                    if(index < orders.length - 1) smartHtml += `<div class="text-center my-1"><i data-lucide="link" size="12" style="color: #a78bfa;"></i></div>`;
                 });
-                frag.appendChild(wrap);
-            } else { frag.appendChild(buildCard(driverOrders[0], true, dName, phone)); }
+                smartHtml += `</div></div>`;
+            } else {
+                smartHtml += generateSingleCardHTML(orders[0], true, driverName, driverPhone, activeDriversOptions);
+            }
         });
 
-        pendingOrders.forEach(o => { frag.appendChild(buildCard(o, false, 'جاري البحث...', null)); });
-
-        container.innerHTML = ""; container.appendChild(frag); lucide.createIcons({root: container});
+        pendingOrders.forEach(o => { smartHtml += generateSingleCardHTML(o, false, 'جاري البحث...', null, activeDriversOptions); });
+        
+        const currentRadarHtml = smartHtml || '<div class="col-12 text-center p-4 fw-bold text-success small">الرادار نظيف، لا توجد طلبات.</div>';
+        if (lastRadarHtml !== currentRadarHtml) {
+            const container = document.getElementById('smartOrdersContainer');
+            container.innerHTML = currentRadarHtml;
+            lastRadarHtml = currentRadarHtml;
+            if (typeof lucide !== 'undefined') lucide.createIcons({root: container});
+        }
     }
+
+    function generateSingleCardHTML(o, hasDriver, driverName, driverPhone, activeDriversOptions) {
+        const orderId = o[0], restName = o[1], orderArea = o[2], details = o[3], orderPrice = o[4], status = o[5], orderTimeStr = o[7];
+        const orderTimeStrFormat = new Date(orderTimeStr).toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'});
+        
+        const diffMins = Math.floor((new Date() - new Date(orderTimeStr)) / 60000);
+        
+        const getStatusInfo = (status, hasDriver, orderTimeStr) => {
+            const diffSecs = Math.floor((new Date() - new Date(orderTimeStr)) / 1000);
+            if(!hasDriver || status === 'pending_driver' || status === 'manual_pending') {
+                if (hasDriver) { 
+                    if (diffSecs > 60) return { class: "status-overdue", desc: "🚨 الكابتن لا يستجيب", badge: "bg-danger", isRinging: true, overdue: true };
+                    else return { class: "status-ringing", desc: "⏳ جاري الرنين...", badge: "bg-warning text-dark", isRinging: true };
+                }
+                return { class: "status-danger", desc: "🔴 بانتظار كابتن", badge: "bg-danger" };
+            }
+            if(status === 'picked_up' || status === 'في الطريق') return { class: "status-success", desc: "🟢 بالطريق للزبون", badge: "bg-success" };
+            if(status === 'arrived_at_res') return { class: "status-warning", desc: "🟠 في المطعم", badge: "bg-warning text-dark" };
+            if(status === 'accepted' || status === 'heading') return { class: "status-primary", desc: "🔵 متوجه للمطعم", badge: "bg-primary" };
+            return { class: "status-primary", desc: status, badge: "bg-primary" };
+        };
+
+        const sInfo = getStatusInfo(status, hasDriver, orderTimeStr);
+
+        let withdrawBtn = '';
+        if (sInfo.isRinging && hasDriver) {
+            withdrawBtn = `<button class="btn btn-sm btn-outline-danger p-1 d-flex align-items-center gap-1 bg-white" style="font-size:0.7rem; border-radius:8px;" onclick="withdrawOrderOptUI('${orderId}', '${driverPhone}', this)"><i data-lucide="user-minus" size="14"></i> سحب</button>`;
+        }
+
+        let callBtn = '';
+        let currentOptions = activeDriversOptions;
+
+        if (hasDriver && !sInfo.isRinging) {
+            callBtn = `<button class="btn-call-mini call-success text-success" style="width:28px;height:28px; flex-shrink: 0;" onclick="window.open('tel:${driverPhone}')"><i data-lucide="phone" size="12"></i></button>`;
+            currentOptions = activeDriversOptions.replace('تعيين يدوي', 'إعادة تعيين 🔄');
+        }
+
+        let driverControls = `
+            <div class="d-flex gap-1 align-items-center">
+                ${withdrawBtn}
+                ${callBtn}
+                <select class="manual-assign-select p-1" style="font-size:0.7rem;" onchange="assignDriverOptUI('${orderId}', this.value, this)">${currentOptions}</select>
+            </div>
+        `;
+
+        return `
+        <div class="col-md-6 col-12" id="order-${orderId}">
+            <div class="smart-order-card ${sInfo.class}" style="padding: 12px;">
+                ${diffMins > 3 && !hasDriver ? `<div class="delay-badge">${diffMins} دقيقة</div>` : ''}
+                <div class="d-flex justify-content-between align-items-start mb-2 border-bottom pb-2">
+                    <div>
+                        <h6 class="fw-black m-0" style="color: var(--primary-blue); font-size: 0.9rem;">#${orderId}</h6>
+                        <div class="mt-1 small fw-bold text-muted" style="font-size: 0.7rem;">أُرسل: ${orderTimeStrFormat}</div>
+                    </div>
+                    <div class="d-flex flex-column align-items-end gap-1">
+                        <span class="badge ${sInfo.badge}" style="font-size: 0.65rem;">${sInfo.desc}</span>
+                        <div class="d-flex gap-1 align-items-center mt-1">
+                            ${hasDriver ? `<button class="btn-track" onclick="trackDriver('${driverPhone}', '${restName}')"><i data-lucide="map-pin" size="12"></i></button>` : ''}
+                            <button class="btn btn-sm text-success p-0" onclick="adminActionOptUI('COMPLETE', 'ORDER', '${orderId}', this)"><i data-lucide="check-circle" size="16"></i></button>
+                            <button class="btn btn-sm text-danger p-0" onclick="adminActionOptUI('DELETE', 'ORDER', '${orderId}', this)"><i data-lucide="trash-2" size="16"></i></button>
+                        </div>
+                    </div>
+                </div>
+                <div class="d-flex flex-column gap-1">
+                    <div class="info-row" style="padding: 6px;">
+                        <span class="text-muted" style="font-size: 0.75rem; flex-shrink: 0; margin-left: 5px;"><i data-lucide="store" class="text-warning" size="12"></i> المطعم:</span> 
+                        <span class="text-dark fw-bold" style="font-size: 0.8rem;">${restName}</span>
+                    </div>
+                    <div class="info-card-inner" style="padding: 8px; margin-top: 4px;">
+                        <div class="d-flex justify-content-between align-items-center mb-1 pb-1 border-bottom border-light">
+                            <span class="fw-bold text-dark" style="font-size: 0.75rem;"><i data-lucide="map-pin" size="12" class="text-accent"></i> ${orderArea || 'غير محدد'}</span>
+                            <span class="fw-bold text-success" style="font-size: 0.8rem; flex-shrink: 0; margin-right: 5px;">${orderPrice || 0} د.ع</span>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="fw-bold text-primary" style="font-size: 0.75rem;"><i data-lucide="bike" size="12"></i> ${driverName}</span>
+                            ${driverControls}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    }
+
+    function withdrawOrderOptUI(orderId, driverPhone, element) {
+        if(!confirm("هل أنت متأكد من سحب الطلب من هذا الكابتن وإعادته للرادار للبحث عن غيره؟")) return;
+        pauseAutoFetch();
+        element.classList.add('btn-loading');
+        const card = document.getElementById(`order-${orderId}`);
+        if(card) card.style.opacity = '0.5';
+
+        localOverrides.orders[String(orderId)] = { status: 'pending_driver', driverPhone: 'pending_driver', ts: Date.now() };
+
+        const url = `${API_URL}?action=DECLINE_ORDER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}&pass=${masterPassword}`;
+        const script = document.createElement('script'); script.src = `${url}&callback=silentCallback&ts=${Date.now()}`; 
+        
+        script.onload = () => script.remove(); 
+        script.onerror = () => { script.remove(); showToast("فشل الاتصال", "error"); if(card) card.style.opacity = '1'; };
+        setTimeout(() => { if(script.parentNode) script.remove(); }, 15000);
+        
+        document.body.appendChild(script); showToast("تم سحب الطلب وإعادته للرادار", "success");
+    }
+
+    function trackDriver(driverPhone, restName) {
+        if(!map || !globalData) return;
+        const driver = globalData.drivers.find(d => String(d[2]) === String(driverPhone));
+        const restaurant = globalData.restaurants.find(r => r[1] === restName);
+
+        if(driver && driver[5] && driver[6]) {
+            let dLat = parseFloat(driver[5]); let dLng = parseFloat(driver[6]);
+            
+            // قراءة أحدث إحداثية من التتبع اللحظي إن وجدت
+            if(liveDriverMarkers[String(driverPhone)]) {
+                const pos = liveDriverMarkers[String(driverPhone)].getLatLng();
+                dLat = pos.lat; dLng = pos.lng;
+            }
+
+            if(isNaN(dLat) || isNaN(dLng)) { showToast("لا توجد إحداثيات حالية", "error"); return; }
+            
+            let bounds = [[dLat, dLng]]; 
+            if(trackPolyline) map.removeLayer(trackPolyline);
+
+            if(restaurant && restaurant[6] && restaurant[7]) {
+                const rLat = parseFloat(restaurant[6]); const rLng = parseFloat(restaurant[7]);
+                if(!isNaN(rLat) && !isNaN(rLng)) {
+                    bounds.push([rLat, rLng]); 
+                    trackPolyline = L.polyline([[dLat, dLng], [rLat, rLng]], { color: '#3b82f6', weight: 5, dashArray: '15, 15', className: 'path-animated' }).addTo(map);
+                    map.fitBounds(bounds, { padding: [30, 30], maxZoom: 16, animate: true, duration: 1.5 });
+                } else { map.flyTo([dLat, dLng], 16, { duration: 1.5 }); }
+            } else { map.flyTo([dLat, dLng], 16, { duration: 1.5 }); }
+            
+            if(window.innerWidth <= 768) {
+                document.getElementById('tab-live').scrollTop = 0;
+            } else {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        }
+    }
+
+    function pauseAutoFetch() {
+        if (fetchPauseTimeout) clearTimeout(fetchPauseTimeout);
+        fetchPauseTimeout = setTimeout(() => { fetchPauseTimeout = null; }, 3000);
+    }
+
+    function assignDriverOptUI(orderId, driverPhone, element) {
+        if(!driverPhone) return;
+        pauseAutoFetch();
+        element.classList.add('btn-loading');
+        const card = document.getElementById(`order-${orderId}`);
+        if(card) card.style.opacity = '0.5';
+        
+        localOverrides.orders[String(orderId)] = { status: 'manual_pending', driverPhone: driverPhone, ts: Date.now() };
+
+        const url = `${API_URL}?action=ASSIGN_DRIVER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}&pass=${masterPassword}`;
+        const script = document.createElement('script'); script.src = `${url}&callback=silentCallback&ts=${Date.now()}`; 
+        
+        script.onload = () => script.remove(); 
+        script.onerror = () => { script.remove(); showToast("فشل الاتصال", "error"); if(card) card.style.opacity = '1'; };
+        setTimeout(() => { if(script.parentNode) script.remove(); }, 15000);
+        
+        document.body.appendChild(script); showToast("تم إرسال التعيين", "success");
+    }
+
+    function resetDebtOptUI(type, id, element) {
+        if(!confirm(`تأكيد تصفير ديون (${id})؟`)) return;
+        pauseAutoFetch();
+        element.classList.add('btn-loading');
+        const url = `${API_URL}?action=RESET_DEBT&type=${type}&id=${id}&token=${API_TOKEN}&pass=${masterPassword}`;
+        const script = document.createElement('script'); script.src = `${url}&callback=silentCallback&ts=${Date.now()}`; 
+        
+        script.onload = () => script.remove(); 
+        script.onerror = () => script.remove();
+        setTimeout(() => { if(script.parentNode) script.remove(); }, 15000);
+        
+        document.body.appendChild(script); showToast("تم تصفير الديون", "success");
+    }
+
+    function adminActionOptUI(cmd, type, id, element) {
+        const statusMap = { 'ACCEPT': 'active', 'PAUSE': 'inactive', 'DELETE': 'deleted', 'COMPLETE': 'completed' };
+        let newStatus = statusMap[cmd];
+        if (cmd === 'DELETE' && type !== 'ORDER') newStatus = 'banned'; 
+
+        if (cmd === 'COMPLETE' || cmd === 'DELETE') {
+            if(!confirm(cmd === 'COMPLETE' ? "تأكيد الإتمام القسري؟" : "تأكيد الحظر؟")) return;
+            const card = element.closest('.col-md-6') || element.closest('.col-12');
+            
+            if (card && (cmd === 'DELETE' || (cmd === 'COMPLETE' && type === 'ORDER'))) { 
+                card.style.transition = '0.3s'; 
+                card.style.opacity = '0'; 
+                card.style.transform = 'scale(0.95)';
+                setTimeout(() => card.style.display = 'none', 300); 
+                
+                if (type === 'ORDER') localOverrides.orders[String(id)] = { status: newStatus, ts: Date.now() };
+                if (type === 'RESTAURANT') localOverrides.restaurants[String(id)] = { status: newStatus, ts: Date.now() };
+                if (type === 'DRIVER') localOverrides.drivers[String(id)] = { status: newStatus, ts: Date.now() };
+            }
+        } else {
+             if (type === 'ORDER') localOverrides.orders[String(id)] = { status: newStatus, ts: Date.now() };
+             if (type === 'RESTAURANT') localOverrides.restaurants[String(id)] = { status: newStatus, ts: Date.now() };
+             if (type === 'DRIVER') localOverrides.drivers[String(id)] = { status: newStatus, ts: Date.now() };
+        }
+        
+        pauseAutoFetch();
+        element.classList.add('btn-loading'); 
+
+        const script = document.createElement('script'); 
+        script.src = `${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${id}&status=${newStatus}&token=${API_TOKEN}&pass=${masterPassword}&callback=silentCallback&ts=${Date.now()}`; 
+        
+        script.onload = () => script.remove(); 
+        script.onerror = () => script.remove();
+        setTimeout(() => { if(script.parentNode) script.remove(); }, 15000);
+        
+        document.body.appendChild(script); showToast("تم إرسال الأمر", "success");
+    }
+
+    window.silentCallback = function(response) {
+        if(!response.success) { showToast("خطأ: " + (response.msg || response.error), "error"); refreshData(); }
+    };
 
     function renderArchive() {
-        if(appState.ui.activeTab !== 'archive') return;
-        const tbody = document.getElementById("archiveTableBody"); if(!tbody) return;
-        const search = appState.ui.search.toLowerCase();
+        if(!globalData) return;
+        const search = document.getElementById('arcSearch').value.trim().toLowerCase();
+        const resFilter = document.getElementById('arcRes').value;
+        const driverFilter = document.getElementById('arcDriver').value;
+        const dateFrom = document.getElementById('arcDateFrom').value;
+        const dateTo = document.getElementById('arcDateTo').value;
         
-        let list = Object.values(appState.orders).filter(o => o.status === 'completed' || o.status === 'settled' || o.status === 'deleted');
-        if(search) list = list.filter(o => (o.id||'').toLowerCase().includes(search) || (o.restaurant||'').toLowerCase().includes(search) || (o.driverPhone||'').includes(search));
-        
-        list.sort((a,b) => (b.timestamp||0) - (a.timestamp||0));
+        let archiveHtml = ''; let totalOrders = 0; let totalComm = 0;
+        let displayedCount = 0;
+        let displayLimit = 150; 
 
-        if (list.length === 0) { tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:40px;color:#4a6fa5;">لا يوجد أرشيف</td></tr>`; return; }
+        const completedOrders = globalData.orders.slice(1).filter(o => o[5] === 'completed' || o[5] === 'مكتمل' || o[5] === 'settled').reverse();
         
-        const frag = document.createDocumentFragment();
-        list.slice(0, 100).forEach((o,i) => {
-            const isSettled = o.status === 'settled';
-            const dName = appState.drivers[o.driverPhone] ? appState.drivers[o.driverPhone].name : o.driverPhone;
-            const tr = document.createElement("tr");
-            tr.innerHTML = `<td style="color:#4a6fa5">${i+1}</td> <td class="text-neon-blue text-mono" style="font-size:0.75rem">${o.id}</td> <td>${o.restaurant}</td> <td style="color:#8ab8e8">${dName || '---'}</td> <td><span class="order-status-badge badge-${isSettled?'active':o.status==='deleted'?'cancel':'done'}">${isSettled?'مسدد':o.status==='deleted'?'ملغى':'مكتمل'}</span></td> <td class="text-neon-green text-mono">${o.price}</td> <td style="color:#4a6fa5;font-size:0.75rem">${o.timestamp?new Date(o.timestamp).toLocaleDateString('ar-EG'):'---'}</td> <td>${o.area}</td>`;
-            tr.onclick = () => window.openOrderModal(o.id);
-            frag.appendChild(tr);
+        completedOrders.forEach(o => {
+            const orderId = o[0], restName = o[1], price = o[4], details = o[3], status = o[5], driverPhone = o[6];
+            let orderDateISO = "", orderDateFormatted = "---";
+            if (o[7]) {
+                const orderDateObj = new Date(o[7]);
+                if (!isNaN(orderDateObj.getTime())) { orderDateISO = orderDateObj.toISOString().split('T')[0]; orderDateFormatted = orderDateObj.toLocaleString('ar-EG'); }
+            }
+            let match = true;
+            if(search && !String(orderId).toLowerCase().includes(search) && !String(details).toLowerCase().includes(search)) match = false;
+            if(resFilter && restName !== resFilter) match = false;
+            if(driverFilter && String(driverPhone) !== driverFilter) match = false;
+            if(dateFrom && orderDateISO && orderDateISO < dateFrom) match = false;
+            if(dateTo && orderDateISO && orderDateISO > dateTo) match = false;
+            
+            if(match) {
+                totalOrders++;
+                const isSettled = (status === 'settled');
+                let comm = 0, payType = "المطعم يدفع";
+                const rData = globalData.restaurants.find(r => r[1] === restName);
+                if(rData) { comm = parseFloat(rData[5]) || 0; payType = String(rData[8]); }
+                totalComm += comm;
+                
+                if (displayedCount < displayLimit) {
+                    displayedCount++;
+                    const dData = globalData.drivers.find(d => String(d[2]) === String(driverPhone));
+                    let driverName = dData ? dData[1] : driverPhone;
+                    const orderDataObj = { id: orderId, date: orderDateFormatted, res: restName, driver: driverName, details: details, price: price, comm: comm, payType: payType, isSettled: isSettled };
+                    const orderDataStr = encodeURIComponent(JSON.stringify(orderDataObj));
+                    archiveHtml += `<tr onclick="openInvoice('${orderDataStr}')" style="cursor:pointer;">
+                        <td class="fw-bold text-nowrap text-primary" style="font-size:0.8rem;">${orderId || '-'}</td>
+                        <td class="small fw-bold text-muted text-nowrap">${orderDateISO || '-'}</td>
+                        <td class="fw-bold text-dark" style="white-space: normal;">${restName || '-'}</td>
+                        <td class="text-muted fw-bold" style="white-space: normal;">${driverName}</td>
+                        <td><span class="badge ${isSettled ? 'bg-secondary' : 'bg-success'} px-2 py-1 rounded-pill" style="font-size:0.65rem;">${isSettled ? 'مسدد' : 'مكتمل'}</span></td>
+                    </tr>`;
+                }
+            }
         });
-        tbody.innerHTML = ""; tbody.appendChild(frag);
-    }
-
-    function renderRestaurants() {
-        if(appState.ui.activeTab !== 'restaurants') return;
-        const grid = document.getElementById("restaurantsGrid"); if(!grid) return;
-        const search = appState.ui.searchRes.toLowerCase();
         
-        let list = Object.values(appState.restaurants);
-        if(search) list = list.filter(r => (r.name||'').toLowerCase().includes(search) || (r.phone||'').includes(search));
-
-        if(list.length === 0) { grid.innerHTML = `<div class="empty-state"><i data-lucide="store" size="40"></i><h4>لا توجد مطاعم</h4></div>`; lucide.createIcons({root:grid}); return; }
-
-        const frag = document.createDocumentFragment();
-        list.forEach(res => {
-            const badge = res.status==='active'?'<span class="entity-status text-neon-green" style="border-color:var(--neon-green)">نشط</span>' : res.status==='pending'?'<span class="entity-status text-neon-blue" style="border-color:var(--neon-blue)">جديد</span>':'<span class="entity-status text-neon-red" style="border-color:var(--neon-red)">موقوف</span>';
-            const el = document.createElement("div"); el.className = "entity-card";
-            el.innerHTML = `
-            <div class="entity-header"><div class="entity-avatar"><i data-lucide="store" size="24"></i></div>${badge}</div>
-            <div class="entity-name">${res.name}</div><div class="entity-sub">${res.phone}</div>
-            <div class="entity-actions">
-                <div class="action-group">
-                    <button class="action-btn btn-accept" onclick="adminAction('ACCEPT','RESTAURANT','${res.name}')"><i data-lucide="check" size="14"></i></button>
-                    <button class="action-btn btn-ban" onclick="adminAction('DELETE','RESTAURANT','${res.name}')"><i data-lucide="ban" size="14"></i></button>
-                </div>
-                <button class="action-btn btn-call" onclick="window.open('tel:${res.phone}')"><i data-lucide="phone" size="14"></i></button>
-            </div>`;
-            frag.appendChild(el);
-        });
-        grid.innerHTML = ""; grid.appendChild(frag); lucide.createIcons({root:grid});
-    }
-
-    function renderDrivers() {
-        if(appState.ui.activeTab !== 'drivers') return;
-        const grid = document.getElementById("driversGrid"); if(!grid) return;
-        const search = appState.ui.searchDriver.toLowerCase();
-        
-        let list = Object.values(appState.drivers);
-        if(search) list = list.filter(d => (d.name||'').toLowerCase().includes(search) || (d.phone||'').includes(search));
-
-        if(list.length === 0) { grid.innerHTML = `<div class="empty-state"><i data-lucide="users" size="40"></i><h4>لا يوجد كباتن</h4></div>`; lucide.createIcons({root:grid}); return; }
-
-        const frag = document.createDocumentFragment();
-        list.forEach(d => {
-            const badge = d.status==='active'?'<span class="entity-status text-neon-green" style="border-color:var(--neon-green)">متاح</span>' : d.status==='pending'?'<span class="entity-status text-neon-blue" style="border-color:var(--neon-blue)">جديد</span>':'<span class="entity-status text-neon-amber" style="border-color:var(--neon-amber)">أوفلاين</span>';
-            const el = document.createElement("div"); el.className = "entity-card";
-            el.innerHTML = `
-            <div class="entity-header"><div class="entity-avatar"><i data-lucide="bike" size="24"></i></div>${badge}</div>
-            <div class="entity-name">${d.name || 'مجهول'}</div><div class="entity-sub">${d.phone}</div>
-            <div class="entity-actions">
-                <div class="action-group">
-                    <button class="action-btn btn-accept" onclick="adminAction('ACCEPT','DRIVER','${d.phone}')"><i data-lucide="check" size="14"></i></button>
-                    <button class="action-btn btn-ban" onclick="adminAction('DELETE','DRIVER','${d.phone}')"><i data-lucide="ban" size="14"></i></button>
-                </div>
-                <button class="action-btn btn-call" onclick="window.open('tel:${d.phone}')"><i data-lucide="phone" size="14"></i></button>
-            </div>`;
-            frag.appendChild(el);
-        });
-        grid.innerHTML = ""; grid.appendChild(frag); lucide.createIcons({root:grid});
-    }
-
-    /* ── UI ACTIONS (Mutations) ── */
-    window.adminAction = function(cmd, type, id, val = null) {
-        if (!confirm("تأكيد الإجراء؟")) return;
-        
-        let act = 'ADMIN_UPDATE_STATUS', newStatus = '';
-        if(cmd === 'ACCEPT') newStatus = 'active';
-        if(cmd === 'PAUSE') newStatus = 'inactive';
-        if(cmd === 'DELETE') newStatus = type === 'ORDER' ? 'deleted' : 'banned';
-        if(cmd === 'COMPLETE') newStatus = 'completed';
-        
-        let params = `&type=${type}&id=${id}&status=${newStatus}`;
-        
-        if (cmd === 'DECLINE') { act = 'DECLINE_ORDER'; params = `&orderId=${id}&driverPhone=${appState.orders[id]?.driverPhone}`; }
-        if (cmd === 'ASSIGN') { act = 'ASSIGN_DRIVER'; params = `&orderId=${id}&driverPhone=${val}`; }
-
-        // Optimistic UI Update
-        if (type === 'ORDER' && appState.orders[id]) {
-            if(cmd === 'DECLINE') appState.orders[id].driverPhone = 'pending_driver';
-            else if(cmd === 'ASSIGN') { appState.orders[id].driverPhone = val; appState.orders[id].status = 'manual_pending'; }
-            else appState.orders[id].status = newStatus;
+        if (totalOrders > displayLimit) {
+            archiveHtml += `<tr><td colspan="5" class="text-center text-muted py-3 fw-bold small">تم إخفاء ${totalOrders - displayLimit} طلب قديم لتسريع الشاشة. استخدم البحث والتاريخ للوصول إليها.</td></tr>`;
         }
-        if (type === 'RESTAURANT' && appState.restaurants[id]) appState.restaurants[id].status = newStatus;
-        if (type === 'DRIVER' && appState.drivers[id]) appState.drivers[id].status = newStatus;
+
+        document.getElementById('arcTotalCount').innerText = totalOrders;
+        document.getElementById('arcTotalComm').innerHTML = `${totalComm} <span class="fs-6">د.ع</span>`;
         
-        triggerFullRender(); // Reflect immediately
+        const currentArchiveHtml = archiveHtml || `<tr><td colspan="5" class="text-center text-muted py-5 fw-bold">لا توجد طلبات.</td></tr>`;
+        if (lastArchiveHtml !== currentArchiveHtml) {
+            document.getElementById('ordersTableBody').innerHTML = currentArchiveHtml;
+            lastArchiveHtml = currentArchiveHtml;
+        }
+    }
 
-        const cb = `actCb_${Date.now()}`;
-        window[cb] = function(res) { delete window[cb]; if(!res.success) { showToast("فشل الإجراء", "error"); window.fetchColdData(); } else showToast("تم التنفيذ", "success"); };
-        const script = document.createElement('script'); 
-        script.src = `${SHEETS_URL}?action=${act}${params}&token=${TOKEN}&pass=${appState.meta.pass}&callback=${cb}&ts=${Date.now()}`; 
-        document.body.appendChild(script);
-    };
+    function openInvoice(dataStr) {
+        const data = JSON.parse(decodeURIComponent(dataStr));
+        document.getElementById('invOrderId').innerText = "#" + data.id; document.getElementById('invDate').innerText = data.date; document.getElementById('invRes').innerText = data.res; document.getElementById('invDriver').innerText = data.driver; document.getElementById('invCust').innerText = data.details; document.getElementById('invPrice').innerText = data.price + " د.ع"; document.getElementById('invComm').innerText = data.comm + " د.ع"; document.getElementById('invPayType').innerText = data.payType; document.getElementById('invStatus').innerHTML = data.isSettled ? '<span class="badge bg-secondary">تم تسوية الحساب</span>' : '<span class="badge bg-success">مكتمل (غير مسدد)</span>';
+        document.getElementById('invoiceModal').style.display = 'flex';
+    }
+    function closeInvoice(e) { if(!e || e.target.id === 'invoiceModal') document.getElementById('invoiceModal').style.display = 'none'; }
 
-    window.openOrderModal = function(id) {
-        const o = appState.orders[id]; if(!o) return;
-        document.getElementById("modalTitle").textContent = `طلب #${id}`;
-        document.getElementById("modalBody").innerHTML = `
-            <div class="info-row"><span class="info-label">المطعم</span><span class="info-value">${o.restaurant}</span></div>
-            <div class="info-row"><span class="info-label">المنطقة</span><span class="info-value text-neon-cyan">${o.area}</span></div>
-            <div class="info-row"><span class="info-label">الكابتن</span><span class="info-value">${appState.drivers[o.driverPhone]?.name || o.driverPhone || 'بانتظار كابتن'}</span></div>
-            <div class="info-row"><span class="info-label">السعر</span><span class="info-value text-neon-green">${o.price} د.ع</span></div>
-            <div class="info-row"><span class="info-label">الحالة</span><span class="info-value">${o.status}</span></div>
-            <div class="info-row"><span class="info-label">الوقت</span><span class="info-value">${new Date(o.timestamp).toLocaleString('ar-EG')}</span></div>
-            ${o.photoUrl ? `<div class="mt-3"><a href="${o.photoUrl}" target="_blank" class="auth-btn d-block text-center text-decoration-none">عرض الوصل 📸</a></div>` : ''}
-        `;
-        document.getElementById("orderModal").classList.add("open");
-    };
+    function exportExcel() {
+        let csv = '\uFEFF'; csv += "ID الطلب,التاريخ,المطعم,الكابتن,الحالة\n";
+        const rows = document.querySelectorAll("#archiveTable tbody tr");
+        if(rows.length === 0 || rows[0].cells.length === 1) return showToast("لا توجد بيانات للتصدير", "error");
+        rows.forEach(row => { let rowData = []; row.querySelectorAll("td").forEach(cell => rowData.push('"' + cell.innerText.trim() + '"')); csv += rowData.join(",") + "\n"; });
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "تقرير_الحوت_" + new Date().toISOString().split('T')[0] + ".csv"; document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    }
 
+    function showTab(e, name) {
+        document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active-tab'));
+        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+        document.querySelectorAll('.b-nav-item').forEach(n => n.classList.remove('active'));
+        
+        document.getElementById('tab-' + name).classList.add('active-tab');
+        
+        document.querySelectorAll(`.desktop-nav-link[onclick*="${name}"]`).forEach(el => el.classList.add('active'));
+        document.querySelectorAll(`.mobile-nav-link[onclick*="${name}"]`).forEach(el => el.classList.add('active'));
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+        if(name === 'live' && map) { setTimeout(() => { map.invalidateSize(); }, 300); }
+    }
+
+    function initMap() {
+        const kirkukLocation = [35.468, 44.392];
+        map = L.map('adminMap', { zoomControl: false }).setView(kirkukLocation, 13);
+        
+        L.control.zoom({ position: 'topright' }).addTo(map);
+        
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OpenStreetMap & CartoDB', maxZoom: 19 }).addTo(map);
+        heatLayer = L.heatLayer([], { radius: 25, blur: 15, maxZoom: 14, gradient: {0.4: 'blue', 0.6: 'cyan', 0.7: 'lime', 0.8: 'yellow', 1.0: 'red'} }).addTo(map);
+        restaurantMarkersLayer = L.layerGroup().addTo(map);
+        driverClusterGroup = L.markerClusterGroup({
+            iconCreateFunction: function(cluster) {
+                return L.divIcon({ html: '<div style="background-color: var(--primary-blue); color: white; width: 35px; height: 35px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900; border: 3px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">' + cluster.getChildCount() + '</div>', className: 'custom-cluster-icon', iconSize: L.point(35, 35) });
+            }, maxClusterRadius: 40 
+        });
+        map.addLayer(driverClusterGroup);
+        setTimeout(() => { map.invalidateSize(); }, 1000);
+    }
 </script>
+
 </body>
 </html>
