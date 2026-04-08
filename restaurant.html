@@ -421,11 +421,10 @@
 <script>
     if (typeof lucide !== 'undefined') lucide.createIcons();
 
-    // 🟢 الرابط المركزي الجديد الموثق
     const API_URL = "https://script.google.com/macros/s/AKfycbxzu60Om1wG6yUGrFZYePctQwFiyZJv5V0yox-BsSjEPv4sBi_APf2FVmfPdgB44zsSsQ/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
-    // 🟢 إعدادات Firebase الموثقة
+    // 🟢 تهيئة Firebase
     const firebaseConfig = {
       apiKey: "AIzaSyAo1rmqUzieYZU3RIwXOAN87GkpNrp-_Hc",
       authDomain: "sufyan-delivery.firebaseapp.com",
@@ -452,8 +451,8 @@
     let dataRefreshInterval;
     let myCustomPriceList = {};
     let waitingPollingTimer = null; 
-    let driverNamesCache = {}; 
-    let notifiedArrivals = {}; 
+    let driverNamesCache = {}; // لحفظ أسماء الكباتن للجرس
+    let notifiedArrivals = {}; // لضمان عدم رنين الجرس مرتين لنفس الطلب
     
     let pickerMap;
     let regLat = 35.468; 
@@ -461,11 +460,8 @@
 
     let lastActiveHtml = "";
     let lastArchiveHtml = "";
-    let actionBlacklist = []; 
 
-    // قفل الحماية للسرعة (Debounce Lock) للمطعم
-    let isFetchingResData = false;
-    let pendingResFetchTimeout = null;
+    let actionBlacklist = []; 
 
     document.addEventListener('contextmenu', event => {
         const tag = event.target.tagName;
@@ -864,8 +860,9 @@
         }
     };
 
+    // 🟢 1. دالة الجرس الذكي
     function triggerArrivalAlert(orderId, driverName) {
-        if(notifiedArrivals[orderId]) return; 
+        if(notifiedArrivals[orderId]) return; // منع التكرار
         notifiedArrivals[orderId] = true;
         
         document.getElementById('arrivalAlertText').innerHTML = `الكابتن <b>${escapeHTML(driverName)}</b> بالباب لاستلام الطلب <b>#${escapeHTML(orderId)}</b>`;
@@ -886,28 +883,23 @@
         if (typeof lucide !== 'undefined') lucide.createIcons();
         buildCustomAreaDropdown(); restoreDraft(); fetchResDashboardData();
         
+        // 🟢 2. الاستماع الفوري لفايربيس لرصد وصول الكابتن
         db.ref('active_orders').orderByChild('restaurant').equalTo(currentResName).on('value', (snapshot) => {
             const orders = snapshot.val();
             if(orders) {
                 let requiresDashboardUpdate = false;
                 Object.values(orders).forEach(o => {
                     if(o.status === 'arrived_at_res') {
-                        const driverName = driverNamesCache[String(o.driverPhone)] || "كابتن التوصيل";
+                        const driverName = driverNamesCache[String(o.driverPhone)] || "كابتن سفيان";
                         triggerArrivalAlert(o.id, driverName);
                         requiresDashboardUpdate = true;
                     }
                 });
-                
-                // جلب البيانات فقط إذا كان هناك تغيير حقيقي لمنع الضغط
-                if(requiresDashboardUpdate) {
-                    if(!pendingResFetchTimeout) {
-                        pendingResFetchTimeout = setTimeout(() => { pendingResFetchTimeout = null; fetchResDashboardData(); }, 2000);
-                    }
-                }
+                if(requiresDashboardUpdate) fetchResDashboardData();
             }
         });
 
-        dataRefreshInterval = setInterval(fetchResDashboardData, 300000); // تحديث احتياطي كل 5 دقائق
+        dataRefreshInterval = setInterval(fetchResDashboardData, 30000); // تحديث احتياطي خفيف
     }
 
     function cancelOrderGrace(orderId) {
@@ -937,15 +929,6 @@
     function fetchResDashboardData() {
         if (document.hidden) return;
 
-        // حماية السرعة (Debounce Lock)
-        if (isFetchingResData) {
-            if (!pendingResFetchTimeout) {
-                pendingResFetchTimeout = setTimeout(() => { pendingResFetchTimeout = null; fetchResDashboardData(); }, 5000);
-            }
-            return;
-        }
-
-        isFetchingResData = true;
         const scriptId = 'res-fetch-script';
         const oldScript = document.getElementById(scriptId);
         if (oldScript) oldScript.remove();
@@ -955,22 +938,12 @@
         
         const timeoutId = setTimeout(() => {
             if (script.parentNode) script.remove();
-            isFetchingResData = false;
-        }, 15000);
+        }, 20000);
 
         window.renderResDashboardCallback = function(data) {
             clearTimeout(timeoutId);
             if (script.parentNode) script.remove();
-            
-            try {
-                if (!data || !data.restaurants || !data.orders) {
-                    isFetchingResData = false;
-                    return;
-                }
-                renderResDashboard(data);
-            } catch(e) {}
-            
-            isFetchingResData = false;
+            renderResDashboard(data);
         };
 
         script.src = `${API_URL}?action=getGlobalData&token=${API_TOKEN}&callback=renderResDashboardCallback&ts=${Date.now()}`;
@@ -980,6 +953,7 @@
     window.renderResDashboard = function(data) {
         if(!data || !data.restaurants || !data.orders) return;
 
+        // 🟢 حفظ أسماء الكباتن في الكاش لاستخدامها في الجرس
         data.drivers.slice(1).forEach(d => {
             driverNamesCache[String(d[2])] = d[1];
         });
