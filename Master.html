@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 5.0 (النسخة الفولاذية: إصلاح الاختفاء المفاجئ وحماية المصفوفات الفارغة) ---
-        const CURRENT_APP_VERSION = "5.0"; 
+        // --- إصدار 6.0 (إصلاح انهيار المتغيرات - النسخة المستقرة النهائية) ---
+        const CURRENT_APP_VERSION = "6.0"; 
         if (localStorage.getItem('hut_master_version') !== CURRENT_APP_VERSION) {
             console.log("تحديث الإدارة المكتشف... جاري تفريغ الذاكرة المؤقتة!");
             localStorage.setItem('hut_master_version', CURRENT_APP_VERSION);
@@ -392,7 +392,7 @@
     let map, driverClusterGroup, trackPolyline = null, restaurantMarkersLayer = null; 
     let activeDriverMarkers = {}; 
 
-    // 🟢 فصل الـ State مع وضع عناوين افتراضية لمنع انهيار المصفوفات
+    // 🟢 فصل الـ State بقيم افتراضية حقيقية لمنع الانهيار
     window.appState = {
         orders: [["ID", "Restaurant", "Area", "Details", "Price", "Status", "DriverPhone", "Timestamp", "PhotoUrl"]],
         drivers: [["ID", "Name", "Phone", "Area", "Status", "Lat", "Lng", "OrdersCount", "PayType", "LastAction", "", "Ex"]],
@@ -453,7 +453,9 @@
         const today = new Date(); const currentMonth = today.getMonth(); const currentYear = today.getFullYear();
         let deliveryTimes = []; 
         for (let i = ordersData.length - 1; i >= 1; i--) {
-            const o = ordersData[i]; const orderDateStr = o[7];
+            const o = ordersData[i];
+            if (!o) continue;
+            const orderDateStr = o[7];
             if (!orderDateStr) continue; const orderDate = new Date(orderDateStr);
             if (orderDate.getMonth() === currentMonth && orderDate.getFullYear() === currentYear && o[6] === driverPhone && (o[5] === 'completed' || o[5] === 'مكتمل' || o[5] === 'settled')) {
                 deliveryTimes.push(1); if(deliveryTimes.length >= 10) break; 
@@ -533,6 +535,7 @@
         if (data.orders && data.orders.length > 0) {
             const freshOrdersMap = new Map(window.appState.orders.map(o => [o[0], o]));
             data.orders.forEach(sheetOrder => {
+                if(!sheetOrder) return;
                 const existingHotOrder = freshOrdersMap.get(sheetOrder[0]);
                 if (!existingHotOrder) {
                     freshOrdersMap.set(sheetOrder[0], sheetOrder);
@@ -546,13 +549,13 @@
         }
         
         if(document.getElementById('arcRes').options.length === 1 && window.appState.restaurants.length > 0) {
-            window.appState.restaurants.slice(1).forEach(r => document.getElementById('arcRes').innerHTML += `<option value="${r[1]}">${r[1]}</option>`);
-            window.appState.drivers.slice(1).forEach(d => document.getElementById('arcDriver').innerHTML += `<option value="${String(d[2])}">${d[1]}</option>`);
+            window.appState.restaurants.slice(1).forEach(r => { if(r) document.getElementById('arcRes').innerHTML += `<option value="${r[1]}">${r[1]}</option>`; });
+            window.appState.drivers.slice(1).forEach(d => { if(d) document.getElementById('arcDriver').innerHTML += `<option value="${String(d[2])}">${d[1]}</option>`; });
         }
         
         if (map && restaurantMarkersLayer && restaurantMarkersLayer.getLayers().length === 0 && window.appState.restaurants.length > 0) {
             window.appState.restaurants.slice(1).forEach(r => {
-                if(r[4] === 'active' && r[6] && r[7]) { 
+                if(r && r[4] === 'active' && r[6] && r[7]) { 
                     const lat = parseFloat(r[6]), lng = parseFloat(r[7]);
                     if(!isNaN(lat) && !isNaN(lng)) {
                         const resIcon = L.divIcon({ className: 'custom-res-icon', html: `<div style="background-color: #f97316; width: 12px; height: 12px; border-radius: 3px; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.4); transform: rotate(45deg);"></div>`, iconSize: [12, 12], iconAnchor: [6, 6] });
@@ -570,6 +573,7 @@
             const locations = snapshot.val();
             if (locations && window.appState.drivers.length > 0) {
                 window.appState.drivers.forEach(d => {
+                    if(!d) return;
                     const phone = String(d[2]);
                     if (locations[phone]) {
                         d[4] = locations[phone].status || d[4]; 
@@ -586,13 +590,14 @@
             const activeFbOrders = snapshot.val() || {};
             
             window.appState.orders = window.appState.orders.filter(o => {
+                if (!o) return false;
                 if (o[5] === 'completed' || o[5] === 'settled' || o[5] === 'deleted' || o[0] === 'ID') return true; 
                 return !!activeFbOrders[o[0]]; 
             });
 
             let requiresColdSync = false;
             Object.values(activeFbOrders).forEach(fbOrder => {
-                const existingOrder = window.appState.orders.find(o => String(o[0]) === String(fbOrder.id));
+                const existingOrder = window.appState.orders.find(o => o && String(o[0]) === String(fbOrder.id));
                 if (existingOrder) {
                     existingOrder[5] = fbOrder.status; 
                     existingOrder[6] = fbOrder.driverPhone || "pending_driver"; 
@@ -610,7 +615,7 @@
         if (!map || !driverClusterGroup || window.appState.drivers.length === 0) return;
 
         window.appState.drivers.slice(1).forEach(d => {
-            if(!d || !d[2]) return;
+            if(!d) return;
             const phone = String(d[2]);
             if(d[4] === 'active' && d[5] && d[6]) { 
                 const lat = parseFloat(d[5]); const lng = parseFloat(d[6]);
@@ -1021,10 +1026,7 @@
 
     window.withdrawOrderOptUI = function(orderId, driverPhone, element) {
         if(!confirm("هل أنت متأكد من سحب الطلب من هذا الكابتن وإعادته للرادار للبحث عن غيره؟")) return;
-        
-        const oldScript = document.getElementById('withdraw-script');
-        if (oldScript) oldScript.remove();
-        
+        fetchPauseTimeout = setTimeout(() => { fetchPauseTimeout = null; }, 3000);
         element.classList.add('btn-loading');
         const card = document.getElementById(`order-${orderId}`);
         if(card) card.style.opacity = '0.5';
@@ -1070,10 +1072,7 @@
 
     window.assignDriverOptUI = function(orderId, driverPhone, element) {
         if(!driverPhone) return;
-        
-        const oldScript = document.getElementById('assign-script');
-        if (oldScript) oldScript.remove();
-        
+        fetchPauseTimeout = setTimeout(() => { fetchPauseTimeout = null; }, 3000);
         element.classList.add('btn-loading');
         const card = document.getElementById(`order-${orderId}`);
         if(card) card.style.opacity = '0.5';
@@ -1094,10 +1093,7 @@
 
     window.resetDebtOptUI = function(type, id, element) {
         if(!confirm(`تأكيد تصفير ديون (${id})؟`)) return;
-        
-        const oldScript = document.getElementById('reset-script');
-        if (oldScript) oldScript.remove();
-        
+        fetchPauseTimeout = setTimeout(() => { fetchPauseTimeout = null; }, 3000);
         element.classList.add('btn-loading');
         const url = `${API_URL}?action=RESET_DEBT&type=${type}&id=${id}&token=${API_TOKEN}&pass=${masterPassword}`;
         const script = document.createElement('script'); 
@@ -1132,9 +1128,7 @@
              if (type === 'DRIVER') localOverrides.drivers[String(id)] = { status: newStatus, ts: Date.now() };
         }
         
-        const oldScript = document.getElementById('action-script');
-        if (oldScript) oldScript.remove();
-        
+        fetchPauseTimeout = setTimeout(() => { fetchPauseTimeout = null; }, 3000); 
         element.classList.add('btn-loading'); 
         window.renderDataUI();
 
