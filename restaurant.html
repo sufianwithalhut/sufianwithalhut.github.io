@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 3.1 - المعمارية المستقرة النهائية) ---
-        const CURRENT_APP_VERSION = "3.1"; 
+        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 3.2 - نسخة فك القيود الكاملة) ---
+        const CURRENT_APP_VERSION = "3.2"; 
         if (localStorage.getItem('hut_res_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة مكتشفة... جاري التحديث!");
             localStorage.setItem('hut_res_app_version', CURRENT_APP_VERSION);
@@ -145,7 +145,6 @@
 
         .archive-item { display: flex; justify-content: space-between; align-items: center; background: #f8fafc; padding: 12px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 8px; }
         
-        /* Toast UI الماسي */
         #toast-container { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 99999; width: 90%; max-width: 350px; display: flex; flex-direction: column; gap: 10px; }
         .toast-msg { background: white; padding: 15px 20px; border-radius: 20px; box-shadow: var(--shadow-float); border: 1px solid rgba(0,0,0,0.05); display: flex; align-items: center; gap: 12px; font-weight: 800; font-size: 0.9rem; animation: slideDown 0.4s forwards; }
         @keyframes slideDown { from { transform: translateY(-100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
@@ -424,7 +423,7 @@
             const todayStr = today.toISOString().split('T')[0];
             if (lastMsg !== todayStr) {
                 setTimeout(() => {
-                    showToast("جمعة مباركة طيبة 🕌✨.. رزقكم الله من واسع فضله 💙", "success");
+                    window.showToast("جمعة مباركة طيبة 🕌✨.. رزقكم الله من واسع فضله 💙", "success");
                     localStorage.setItem('hut_friday_res', todayStr);
                 }, 3000);
             }
@@ -460,7 +459,7 @@
                 window.showLoading(false);
                 if (data && data.length > 0) {
                     if(pickerMap) { pickerMap.flyTo([data[0].lat, data[0].lon], 16); regLat = data[0].lat; regLng = data[0].lon; }
-                } else { showToast("لم يتم العثور على المكان.", "error"); }
+                } else { window.showToast("لم يتم العثور على المكان.", "error"); }
             }).catch(err => { window.showLoading(false); });
     }
 
@@ -470,7 +469,7 @@
             navigator.geolocation.getCurrentPosition(pos => {
                 window.showLoading(false);
                 regLat = pos.coords.latitude; regLng = pos.coords.longitude; pickerMap.flyTo([regLat, regLng], 16);
-            }, err => { window.showLoading(false); showToast("تأكد من تشغيل الـ GPS", "error"); }, { enableHighAccuracy: true, timeout: 10000 });
+            }, err => { window.showLoading(false); window.showToast("تأكد من تشغيل الـ GPS", "error"); }, { enableHighAccuracy: true, timeout: 10000 });
         }
     }
 
@@ -560,7 +559,6 @@
         return JSON.stringify(resultObj);
     }
 
-    let isAuthenticating = false;
     function autoLogin() {
         const sessionStr = localStorage.getItem('hut_res_session');
         const pendingStr = localStorage.getItem('hut_res_pending');
@@ -650,25 +648,16 @@
         window.saveDraft(); 
     }
 
+    // 🟢 استرجاع منطق V2.6 الحر وتدمير القيود (isAuthenticating)
     window.authAction = function() {
-        if(isAuthenticating) return;
-        isAuthenticating = true;
-        
-        const btn = document.getElementById('mainAuthBtn');
-        const origText = btn.innerHTML;
-        
         let rawPhone = document.getElementById('checkPhone').value.trim();
         let cleanPhone = rawPhone.replace(/\D/g, ''); 
         
         if(!cleanPhone) {
-            isAuthenticating = false;
-            return showToast("أدخل رقم الهاتف", "error");
+            return window.showToast("أدخل رقم الهاتف", "error");
         }
         
         if(cleanPhone.startsWith('0')) cleanPhone = cleanPhone.substring(1);
-
-        btn.innerHTML = `<div class="spinner-border spinner-border-sm text-white"></div>`;
-        btn.disabled = true;
 
         if (isRegistering) {
             const name = document.getElementById('regName').value.trim();
@@ -678,36 +667,40 @@
             const rawPriceListText = document.getElementById('regPriceList').value;
 
             if(!name || !area || !comm) { 
-                isAuthenticating=false; btn.innerHTML=origText; btn.disabled=false; 
-                return showToast("أكمل الحقول", "error");
+                return window.showToast("أكمل الحقول", "error");
             }
             if(Math.abs(regLat - 35.468) < 0.001) { 
-                isAuthenticating=false; btn.innerHTML=origText; btn.disabled=false; 
-                return showToast("حدد موقعك", "error");
+                return window.showToast("حدد موقعك", "error");
             }
             
             const packedPriceList = parseCustomPriceList(rawPriceListText);
-            sendRegistration(name, cleanPhone, area, comm, pay, regLat, regLng, packedPriceList, btn, origText);
+            window.showLoading(true, "جاري إرسال طلب الشراكة...");
+            sendRegistration(name, cleanPhone, area, comm, pay, regLat, regLng, packedPriceList);
             return;
         }
 
+        window.showLoading(true, "جاري فحص حالة المطعم...");
         fetch(`${API_URL}?action=checkRes&phone=${cleanPhone}&token=${API_TOKEN}`)
             .then(r => r.json()).then(data => {
-                isAuthenticating=false; btn.innerHTML=origText; btn.disabled=false; handleLogin(data, cleanPhone);
+                handleLogin(data, cleanPhone);
             }).catch(err => { 
-                isAuthenticating=false; btn.innerHTML=origText; btn.disabled=false; showToast("خطأ اتصال", "error"); 
+                window.showLoading(false);
+                window.showToast("خطأ في الاتصال، حاول مجدداً.", "error"); 
             });
     }
 
-    function sendRegistration(name, phone, area, comm, pay, lat, lng, priceListStr, btn, origText) {
+    function sendRegistration(name, phone, area, comm, pay, lat, lng, priceListStr) {
         const payload = { action: 'RESTAURANT_REG', token: API_TOKEN, name: name, phone: phone, area: area, comm: comm, pay: pay, lat: lat, lng: lng, priceList: priceListStr };
         fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) })
         .then(() => {
-            isAuthenticating=false; btn.innerHTML=origText; btn.disabled=false;
+            window.showLoading(false);
             const fPhone = phone.startsWith('0') ? phone : '0'+phone;
-            localStorage.setItem('hut_res_phone', fPhone); localStorage.setItem('hut_res_pending', fPhone); showWaitingRoom();
+            localStorage.setItem('hut_res_phone', fPhone); 
+            localStorage.setItem('hut_res_pending', fPhone); 
+            showWaitingRoom();
         }).catch(() => { 
-            isAuthenticating=false; btn.innerHTML=origText; btn.disabled=false; showToast("خطأ أثناء الإرسال", "error"); 
+            window.showLoading(false);
+            window.showToast("خطأ أثناء الإرسال", "error"); 
         });
     }
 
@@ -740,6 +733,7 @@
     }
 
     function handleLogin(data, phone) {
+        window.showLoading(false);
         if(data.status === "active" || data.status === "inactive") {
             currentResName = data.name; const fPhone = phone.startsWith('0') ? phone : '0'+phone;
             localStorage.setItem('hut_res_phone', fPhone); localStorage.removeItem('hut_res_pending');
@@ -750,11 +744,12 @@
             const fPhone = phone.startsWith('0') ? phone : '0'+phone;
             localStorage.setItem('hut_res_phone', fPhone); localStorage.setItem('hut_res_pending', fPhone); showWaitingRoom();
         } else if(data.status === "banned") {
-            showToast("حساب محظور", "error"); localStorage.clear(); sessionStorage.clear();
+            window.showToast("حساب محظور", "error"); localStorage.clear(); sessionStorage.clear();
         } else {
             isRegistering = true;
             document.getElementById('registerFields').classList.remove('hidden-section'); document.getElementById('checkPhone').disabled = true;
-            const btn = document.getElementById('mainAuthBtn'); btn.innerHTML = `إرسال الانضمام <i data-lucide="send"></i>`;
+            const btn = document.getElementById('mainAuthBtn'); 
+            btn.innerHTML = `إرسال الانضمام <i data-lucide="send"></i>`;
             if (typeof lucide !== 'undefined') lucide.createIcons(); setTimeout(window.initPickerMap, 300);
         }
     };
@@ -912,9 +907,9 @@
         let finalArea = document.getElementById('customerArea').value, areaWithHint = finalArea;
         if (finalArea === "أخرى") {
             let cName = document.getElementById('customAreaName').value.trim(), cPrice = document.getElementById('customAreaPrice').value.trim();
-            if(!cName || !cPrice) return showToast("أدخل اسم المنطقة والسعر.", "error");
+            if(!cName || !cPrice) return window.showToast("أدخل اسم المنطقة والسعر.", "error");
             areaWithHint = `${cName} (توصيل: ${cPrice})`;
-        } else if (!finalArea && currentOrderMode === 'manual') { return showToast("اختر منطقة الزبون.", "error"); } 
+        } else if (!finalArea && currentOrderMode === 'manual') { return window.showToast("اختر منطقة الزبون.", "error"); } 
         else if (myCustomPriceList[finalArea]) { areaWithHint = `${finalArea} (توصيل: ${myCustomPriceList[finalArea]})`; }
 
         let finalDetails = "", finalPrice = parseFloat(document.getElementById('orderPrice').value) || 0; 
@@ -926,16 +921,16 @@
         if (currentOrderMode === 'manual') {
             const rawPhone = document.getElementById('customerPhone').value.trim();
             let cleanPhone = rawPhone.replace(/\D/g, ''); 
-            if(!cleanPhone) { isSendingOrder=false; return showToast("أدخل رقم الزبون بشكل صحيح", "error"); }
+            if(!cleanPhone) { isSendingOrder=false; return window.showToast("أدخل رقم الزبون بشكل صحيح", "error"); }
             if(cleanPhone.startsWith('0')) cleanPhone = cleanPhone.substring(1);
-            cleanPhone = '0' + cleanPhone; // توحيد التنسيق
+            cleanPhone = '0' + cleanPhone; 
             
             const extra = document.getElementById('customerDetails').value.trim();
             finalDetails = `الهاتف: ${cleanPhone} | ${extra}`;
             
             finalizeOrderPlacement(finalDetails, "", finalPrice, areaWithHint, btn, originalBtnHtml);
         } else {
-            if (!base64Receipt) { isSendingOrder=false; return showToast("يرجى التقاط صورة للوصل.", "error"); }
+            if (!base64Receipt) { isSendingOrder=false; return window.showToast("يرجى التقاط صورة للوصل.", "error"); }
             finalDetails = "طلب مصور سريع (انظر الوصل)"; 
             btn.innerHTML = `<div class="spinner-border spinner-border-sm me-2"></div> جاري الرفع...`;
             btn.disabled = true;
@@ -945,7 +940,7 @@
             .then(res => res.json()).then(data => {
                 if(data && data.data && data.data.url) { finalizeOrderPlacement(finalDetails, data.data.url, finalPrice, areaWithHint, btn, originalBtnHtml); } 
                 else { throw new Error("ImgBB"); }
-            }).catch(err => { isSendingOrder=false; btn.innerHTML = originalBtnHtml; btn.disabled = false; showToast("خطأ في رفع الصورة", "error"); });
+            }).catch(err => { isSendingOrder=false; btn.innerHTML = originalBtnHtml; btn.disabled = false; window.showToast("خطأ في رفع الصورة", "error"); });
         }
     };
 
