@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 7.3 (النسخة الماسية المطلقة: التزامن الكامل مع السيرفر V28 + منع الرنين الجماعي + قفل السحب) ---
-        const CURRENT_APP_VERSION = "7.3"; 
+        // --- إصدار 7.4 (النسخة الماسية: نبض الحياة اللحظي Heartbeat + Firebase-First) ---
+        const CURRENT_APP_VERSION = "7.4"; 
         
         if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة... جاري تطهير الكاش!");
@@ -350,10 +350,10 @@
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getDatabase, ref, onValue, update } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+    import { getDatabase, ref, onValue, update, get } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-    // 🟢 السيرفر الماسي V28
-    const API_URL = "https://script.google.com/macros/s/AKfycbzq-V2n6lDOKHhj_3O-3zDuyGAdl0EUwMng5h7QBYIQX7PSP-5iAdy7ux3lQQPoB3o7/exec";
+    // 🟢 السيرفر الماسي V30
+    const API_URL = "https://script.google.com/macros/s/AKfycbwwAjzCQCtnlTNrPvuK3MuE1n-5EQXGjpavxDxzehXbCpi5GoE8etgLlBTvomiLJrWr/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
     const firebaseConfig = {
@@ -367,7 +367,7 @@
     const db = getDatabase(app);
 
     let driverData = null, countdownInterval, currentOrderData = null, activeOrders = [], isRegistering = false, isOnline = true;
-    let wakeLock = null, waitingPollingTimer = null, statsInterval = null;
+    let wakeLock = null, waitingPollingTimer = null, statsInterval = null, heartbeatInterval = null;
     let lastLocUpdateTs = 0, lastSentLat = 0, lastSentLng = 0, lastActiveHtml = "";
 
     let offlineActionQueue = JSON.parse(localStorage.getItem('hut_offline_queue') || '[]');
@@ -614,7 +614,6 @@
         if (confirm("تأكيد تسجيل الخروج؟")) { 
             releaseWakeLock(); 
             updateFirebaseLocationStatus('inactive');
-            safeFetchUpdate(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=DRIVER&id=${driverData.phone}&status=inactive&token=${API_TOKEN}`); 
             localStorage.clear(); sessionStorage.clear(); location.reload(); 
         }
     }
@@ -627,19 +626,31 @@
             badge.className = "status-badge online"; badge.innerHTML = `متاح للطلبات`;
             document.getElementById('searchingStatus').classList.remove('offline-mode');
             updateFirebaseLocationStatus('active');
-            safeFetchUpdate(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=DRIVER&id=${driverData.phone}&status=active&token=${API_TOKEN}`); 
             requestWakeLock(); if (silentAudio) silentAudio.play().catch(e=>{}); 
             if(!statsInterval) statsInterval = setInterval(updateStats, 60000); 
+            if(!heartbeatInterval) heartbeatInterval = setInterval(sendHeartbeat, 30000); // Heartbeat
             displayActiveOrders();
         } else {
             badge.className = "status-badge offline"; badge.innerHTML = `في استراحة`;
             document.getElementById('searchingStatus').classList.add('offline-mode');
             updateFirebaseLocationStatus('inactive');
-            safeFetchUpdate(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=DRIVER&id=${driverData.phone}&status=inactive&token=${API_TOKEN}`); 
             releaseWakeLock(); if (silentAudio) silentAudio.pause(); 
             if(statsInterval) { clearInterval(statsInterval); statsInterval = null; } 
+            if(heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
             displayActiveOrders();
         }
+    }
+
+    // 🟢 إرسال نبض الحياة (Heartbeat) كل 30 ثانية إلى Firebase
+    function sendHeartbeat() {
+        if (!isOnline || !driverData || !lastSentLat) return;
+        const updates = {};
+        updates[`drivers_locations/${driverData.phone}`] = { 
+            lat: lastSentLat, lng: lastSentLng, 
+            status: "active", 
+            last_update: new Date().toISOString() 
+        };
+        update(ref(db), updates);
     }
 
     function updateFirebaseLocationStatus(statusStr) {
@@ -651,7 +662,12 @@
     }
 
     function startSystem() {
-        if (isOnline) { requestWakeLock(); let silentAudio = document.getElementById('keepAliveAudio'); if (silentAudio) silentAudio.play().catch(e=>{}); statsInterval = setInterval(updateStats, 60000); }
+        if (isOnline) { 
+            requestWakeLock(); 
+            let silentAudio = document.getElementById('keepAliveAudio'); if (silentAudio) silentAudio.play().catch(e=>{}); 
+            statsInterval = setInterval(updateStats, 60000); 
+            heartbeatInterval = setInterval(sendHeartbeat, 30000); // 💓 تفعيل النبض
+        }
         updateStats(); 
         startHotDataListeners(); 
         
@@ -676,8 +692,6 @@
                                 lastSentLng = pos.coords.longitude;
                                 
                                 updateFirebaseLocationStatus(isOnline ? 'active' : 'inactive');
-                                const url = `${API_URL}?action=DRIVER_UPDATE&phone=${driverData.phone}&lat=${pos.coords.latitude}&lng=${pos.coords.longitude}&token=${API_TOKEN}`;
-                                fetch(url, { cache: 'no-store' }).catch(e => {});
                             }
                         }
                     }
@@ -703,6 +717,17 @@
     }
 
     function startHotDataListeners() {
+        // 1. مراقبة حالة حساب الكابتن (للحظر القسري)
+        const accountRef = ref(db, `drivers_locations/${driverData.phone}/account_status`);
+        onValue(accountRef, (snapshot) => {
+            const status = snapshot.val();
+            if (status === "banned") {
+                alert("⚠️ لقد تم حظر حسابك من قبل الإدارة.");
+                localStorage.clear(); sessionStorage.clear(); location.reload();
+            }
+        });
+
+        // 2. مراقبة الطلبات
         const ordersRef = ref(db, 'active_orders');
         onValue(ordersRef, (snapshot) => {
             const activeFbOrders = snapshot.val() || {};
@@ -721,7 +746,6 @@
                 Object.values(activeFbOrders).forEach(fbOrder => {
                     if (!fbOrder.restaurant || fbOrder.restaurant.trim() === "" || fbOrder.restaurant === "undefined") return;
 
-                    // 🛡️ التزامن الجراحي لمنع الرنين الجماعي
                     let isTargetedForMe = String(fbOrder.driverPhone) === String(driverData.phone);
                     let isBroadcastToAll = String(fbOrder.driverPhone) === "pending_driver"; 
 
@@ -740,6 +764,7 @@
                             document.getElementById('orderAlertOverlay').classList.remove('hidden-section');
                             if (window.AndroidRadar) { window.AndroidRadar.triggerOrderAlarm(); } else { let audio = document.getElementById(activeOrders.length > 0 ? 'doubleOrderSound' : 'alertSound'); audio.currentTime = 0; audio.play().catch(e => {}); }
                             
+                            // لا نحتاج للرجوع لـ GAS لجلب إحداثيات المطعم بعد الآن إذا كانت تأتي من Firebase، لكن للضمان:
                             fetch(`${API_URL}?action=getGlobalData&token=${API_TOKEN}`).then(r=>r.json()).then(data => {
                                 if(data && data.restaurants && currentOrderData) {
                                     const resInfo = data.restaurants.find(r => r[1] === currentOrderData.resName);
@@ -767,8 +792,8 @@
         }, 1000);
     }
 
+    // 🟢 الكابتن يحدث Firebase مباشرة فقط
     window.acceptOrder = function() {
-        // 🛡️ التزامن المطلق: جلب البيانات قسراً إذا ضغط الكابتن بسرعة
         if (!currentOrderData.resPhone && currentOrderData.resName) {
             const btn = document.getElementById('btnAcceptMain');
             btn.innerHTML = `<div class="spinner-border spinner-border-sm text-white"></div> جاري تأمين البيانات...`;
@@ -796,12 +821,13 @@
         localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
         displayActiveOrders();
         
-        // 🛡️ التزامن المطلق: تحديث Firebase فوراً لإقفال السحب من السيرفر
+        // التحديث اللحظي لـ Firebase يقفل الطلب باسمك
         const updates = {};
         updates[`active_orders/${newO.id}/status`] = 'accepted';
         updates[`active_orders/${newO.id}/driverPhone`] = driverData.phone;
         update(ref(db), updates);
 
+        // إبلاغ السيرفر بهدوء
         safeFetchUpdate(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${newO.id}&status=accepted&token=${API_TOKEN}`);
         
         const acceptBtn = document.getElementById('btnAcceptMain');
