@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 2.6 - الماسي: إطلاق الطلبات لحظياً) ---
-        const CURRENT_APP_VERSION = "2.6"; 
+        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 2.7 - الماسي: إطلاق الطلبات لحظياً + منع الرنين الجماعي) ---
+        const CURRENT_APP_VERSION = "2.7"; 
         if (localStorage.getItem('hut_res_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة مكتشفة... جاري التحديث الإجباري لتسريع النظام!");
             localStorage.setItem('hut_res_app_version', CURRENT_APP_VERSION);
@@ -836,7 +836,7 @@
                     newLiveOrders.push({
                         id: fbOrder.id,
                         status: fbOrder.status,
-                        driverPhone: fbOrder.driverPhone || "pending_driver",
+                        driverPhone: fbOrder.driverPhone || "system_routing", // تم تحديث العرض هنا أيضاً لتتناسب مع التغيير
                         timestamp: fbOrder.timestamp,
                         area: fbOrder.area
                     });
@@ -930,7 +930,8 @@
             let driverName = 'جاري البحث في الرادار...', step = 1, fillWidth = "0%", isCancelable = true;
             if (status === 'picked_up' || status === 'في الطريق') isCancelable = false; 
 
-            if (driverPhone && driverPhone !== "pending_driver" && driverPhone !== "manual_pending") {
+            // تم إضافة system_routing إلى شروط العرض لكي لا يظهر رقم غير معرف
+            if (driverPhone && driverPhone !== "pending_driver" && driverPhone !== "manual_pending" && driverPhone !== "system_routing") {
                 const dInfo = globalDriversInfo.find(d => String(d[2]) === String(driverPhone)); if(dInfo) driverName = dInfo[1];
                 if (status === 'picked_up' || status === 'في الطريق') { step = 4; fillWidth = "100%"; } 
                 else if (status === 'arrived_at_res') { step = 3; fillWidth = "66%"; } 
@@ -942,7 +943,7 @@
                 <div class="d-flex justify-content-between align-items-start pb-2 border-bottom">
                     <div><span class="fw-black text-dark fs-5">طلب #${orderId}</span><div class="mt-1 small fw-bold text-muted"><i data-lucide="clock" size="12"></i> أُرسل: ${orderTimeStrFormat}</div></div>
                     <div class="d-flex flex-column gap-2 align-items-end">
-                        ${driverPhone && driverPhone !== "pending_driver" && driverPhone !== "manual_pending" ? `<button class="btn-call-mini" onclick="window.open('tel:${driverPhone}')"><i data-lucide="phone" size="16"></i></button>` : ''}
+                        ${driverPhone && driverPhone !== "pending_driver" && driverPhone !== "manual_pending" && driverPhone !== "system_routing" ? `<button class="btn-call-mini" onclick="window.open('tel:${driverPhone}')"><i data-lucide="phone" size="16"></i></button>` : ''}
                         ${isCancelable ? `<button class="btn-cancel-grace mt-1" onclick="cancelOrderGrace('${orderId}')"><i data-lucide="x" size="14"></i> إلغاء</button>` : ''}
                     </div>
                 </div>
@@ -1023,8 +1024,9 @@
             id: uniqueFrontendId,
             restaurant: currentResName,
             area: area,
+            details: details, // التعديل الأول: لضمان وصول تفاصيل الزبون
             status: "pending_driver",
-            driverPhone: "pending_driver",
+            driverPhone: "system_routing", // التعديل الثاني (الجراحي): لمنع الرنين الجماعي للكباتن
             price: price,
             timestamp: timestampIso,
             photoUrl: imageUrl,
@@ -1042,7 +1044,7 @@
 
     function showSuccessMessage() {
         document.getElementById('orderStatusBox').classList.remove('hidden-section');
-        document.getElementById('statusMsg').innerHTML = `<span class="fw-bold">تم الإطلاق بنجاح!</span><br><span class="text-warning small fw-bold">الطلب الآن يسبح في الرادار بانتظار كابتن 📡</span>`;
+        document.getElementById('statusMsg').innerHTML = `<span class="fw-bold">تم الإطلاق بنجاح!</span><br><span class="text-warning small fw-bold">الطلب الآن يسبح في الرادار بانتظار توجيه النظام 📡</span>`;
         
         document.getElementById('customerPhone').value = ""; document.getElementById('customerDetails').value = ""; document.getElementById('orderPrice').value = ""; document.getElementById('customAreaName').value = ""; document.getElementById('customAreaPrice').value = "";
         document.getElementById('priceHint').classList.add('hidden-section'); document.getElementById('customerArea').selectedIndex = 0; document.getElementById('customAreaSection').classList.add('hidden-section');
@@ -1051,4 +1053,4 @@
     }
 </script>
 </body>
-</html>​
+</html>
