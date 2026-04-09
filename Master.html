@@ -1404,9 +1404,9 @@
 if (typeof lucide !== 'undefined') lucide.createIcons();
 
 /* ═══════════════════════════════════════════
-   🔗 CONFIG - التحديث الجراحي V28
+   🔗 CONFIG - التحديث الجراحي الماسي V30
 ═══════════════════════════════════════════ */
-const API_URL   = "https://script.google.com/macros/s/AKfycbzq-V2n6lDOKHhj_3O-3zDuyGAdl0EUwMng5h7QBYIQX7PSP-5iAdy7ux3lQQPoB3o7/exec";
+const API_URL   = "https://script.google.com/macros/s/AKfycbwwAjzCQCtnlTNrPvuK3MuE1n-5EQXGjpavxDxzehXbCpi5GoE8etgLlBTvomiLJrWr/exec";
 const API_TOKEN = "HUT_SECURE_99";
 
 let map, heatLayer, driverClusterGroup, trackPolyline = null;
@@ -1668,7 +1668,6 @@ function listenToFirebaseOrders() {
 
         if (ordersObj) {
             Object.values(ordersObj).forEach(o => {
-                // 👻🔫 منع عرض الطلبات الشبحية التي لا تحتوي على مطعم
                 if (!o.restaurant || o.restaurant.trim() === "") return; 
 
                 let details = "طلب توصيل";
@@ -2149,7 +2148,7 @@ function filterRadar(type, btn) {
     if (liveFirebaseOrders.length > 0) smartRenderRadar(liveFirebaseOrders);
 }
 
-/* ─── Actions ─── */
+/* ─── Actions (Sovereign Control) ─── */
 function withdrawOrderOptUI(orderId, driverPhone, el) {
     if (!confirm("سحب الطلب من هذا الكابتن وإعادته للرادار؟")) return;
     el.disabled = true;
@@ -2194,40 +2193,49 @@ function trackDriver(driverPhone, restName) {
     }, 100);
 }
 
+// 🟢 التعيين اليدوي الفولاذي
 function assignDriverOptUI(orderId, driverPhone, el) {
     if (!driverPhone) return;
     el.disabled = true;
     const card = document.getElementById(`oc-${orderId}`);
     if (card) { card.style.transition = '.3s'; card.style.opacity = '0.5'; }
     localOverrides.orders[String(orderId)] = { status: 'manual_pending', driverPhone, ts: Date.now() };
+    
+    // إبلاغ السيرفر لوضع القفل السيادي
     fetch(`${API_URL}?action=ASSIGN_DRIVER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}&pass=${masterPassword}`)
         .then(r => r.json()).then(res => {
             if (!res.success) { showToast("خطأ", "error"); if (card) card.style.opacity = '1'; el.disabled = false; }
-            else showToast("تم التعيين");
+            else showToast("تم التعيين السيادي بنجاح!");
         }).catch(() => showToast("تم الإرسال"));
 }
 
 function resetDebtOptUI(type, id, el) {
-    if (!confirm(`تأكيد تصفير ديون (${id})؟`)) return;
+    if (!confirm(`تأكيد تصفير ديون (${id})؟ سيتم مسحها من الإكسل وتصفير العداد.`)) return;
     el.classList.add('btn-loading');
     el.disabled = true;
     fetch(`${API_URL}?action=RESET_DEBT&type=${type}&id=${id}&token=${API_TOKEN}&pass=${masterPassword}`)
         .then(r => r.json()).then(res => {
-            if (res.success) { showToast("تم التصفير"); el.classList.remove('btn-loading'); el.disabled = false; refreshData(); }
-            else { showToast("خطأ", "error"); el.classList.remove('btn-loading'); el.disabled = false; }
-        }).catch(() => showToast("تم إرسال الأمر"));
+            if (res.success) { showToast("تم التصفير بنجاح"); el.classList.remove('btn-loading'); el.disabled = false; refreshData(); }
+            else { showToast("خطأ أثناء التصفير", "error"); el.classList.remove('btn-loading'); el.disabled = false; }
+        }).catch(() => showToast("تم إرسال أمر التصفير"));
 }
 
+// 🟢 الإكمال والحذف القسري (يمسح Firebase لحظياً)
 function adminActionOptUI(cmd, type, id, el) {
     const map_ = { ACCEPT: 'active', PAUSE: 'inactive', DELETE: 'deleted', COMPLETE: 'completed' };
     let newStatus = map_[cmd];
     if (cmd === 'DELETE' && type !== 'ORDER') newStatus = 'banned';
 
     if (cmd === 'COMPLETE' || cmd === 'DELETE') {
-        if (!confirm(cmd === 'COMPLETE' ? "تأكيد الإتمام؟" : "تأكيد الحذف/الحظر؟")) return;
+        if (!confirm(cmd === 'COMPLETE' ? "تأكيد الإتمام القسري؟" : "تأكيد الحذف/الحظر؟")) return;
         if (type === 'ORDER') {
-            const card = el.closest('.order-card');
+            const card = el.closest('.order-card') || el.closest('.batch-order-inner');
             if (card) { card.style.transition = '.3s'; card.style.opacity = '0'; card.style.transform = 'scale(0.95)'; setTimeout(() => card.remove(), 320); }
+            
+            // حذف/إكمال لحظي من Firebase لتفريغ الرادار فوراً
+            if (cmd === 'COMPLETE' || cmd === 'DELETE') {
+                db.ref(`active_orders/${id}`).remove().catch(()=>{});
+            }
         }
     }
 
@@ -2248,7 +2256,7 @@ function adminActionOptUI(cmd, type, id, el) {
     }
 
     fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${id}&status=${newStatus}&token=${API_TOKEN}&pass=${masterPassword}`)
-        .then(r => r.json()).then(res => { if (!res.success) { showToast("خطأ", "error"); refreshData(); } })
+        .then(r => r.json()).then(res => { if (!res.success) { showToast("حدث خطأ", "error"); refreshData(); } })
         .catch(() => {});
 }
 
