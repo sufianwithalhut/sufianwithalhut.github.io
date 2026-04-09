@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 6.8 (النسخة الماسية: استجابة لحظية + واتساب ذكي + حماية جغرافية من الاحتيال) ---
-        const CURRENT_APP_VERSION = "6.8"; 
+        // --- إصدار 6.9 (النسخة الماسية: استجابة لحظية + التوافق مع السيرفر V26 المعقم) ---
+        const CURRENT_APP_VERSION = "6.9"; 
         
         if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة... جاري تطهير الكاش!");
@@ -363,7 +363,8 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getDatabase, ref, onValue, update } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-    const API_URL = "https://script.google.com/macros/s/AKfycbzCGEQDmWp5su19c911j1TUxL65t1Y63-LhuXLrq0Z1Qc9sLG9f__4GQa0pN2k5MErw/exec";
+    // 🟢 السيرفر الماسي V26
+    const API_URL = "https://script.google.com/macros/s/AKfycbyKEcbBPGJ4q6d8I46PnNROTxVTF2FXV0RDZlAkM8D6iQDSQ-5IGEjLqmphXXiNE5Qc/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
     const firebaseConfig = {
@@ -731,11 +732,16 @@
 
             if(isOnline && activeOrders.length < 2 && document.getElementById('orderAlertOverlay').classList.contains('hidden-section')) {
                 Object.values(activeFbOrders).forEach(fbOrder => {
+                    // 👻🔫 منع الرنين الوهمي للأشباح التي لا تحتوي على اسم مطعم
+                    if (!fbOrder.restaurant || fbOrder.restaurant.trim() === "") return;
+
+                    // 🛡️ التعديل الجراحي: الرنين يحدث فقط إذا كان الطلب موجهاً للكابتن حصراً، أو إذا عاد للحالة العامة (pending_driver)
+                    // تم استثناء "system_routing" لكي لا يرن عند جميع الكباتن في نفس اللحظة
                     if(String(fbOrder.driverPhone) === String(driverData.phone) || fbOrder.status === "pending_driver") {
                         if (!activeOrders.find(o => String(o.id) === String(fbOrder.id))) {
                             currentOrderData = {
                                 id: fbOrder.id, resName: fbOrder.restaurant, area: fbOrder.area || "غير محدد",
-                                price: fbOrder.price || 0, details: "", photoUrl: fbOrder.photoUrl || ""
+                                price: fbOrder.price || 0, details: fbOrder.details || "", photoUrl: fbOrder.photoUrl || ""
                             };
                             currentOrderData.expireTime = Date.now() + 60000; 
                             
@@ -1020,4 +1026,4 @@
     window.closeLedger = function() { document.getElementById('ledgerModal').classList.add('hidden-section'); }
 </script>
 </body>
-</html>​
+</html>
