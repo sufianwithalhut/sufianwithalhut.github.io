@@ -1,10 +1,10 @@
 // =========================================================
-// AlHut-Rocket-V12: محرك الكاش الصاروخي (Enterprise Edition)
-// تحديث: إصلاح التحديث بالخلفية + دعم الـ Opaque + التوجيه الذكي للإشعارات 🚀
+// AlHut-Rocket-V13: محرك الكاش الصاروخي (Hybrid Enterprise Edition)
+// تحديث: حماية Firebase اللحظي + تمرير رفع الصور (POST) + تسريع الأوفلاين 🚀
 // =========================================================
 
-const CACHE_NAME = 'AlHut-Core-V12.1'; 
-const CDN_CACHE_NAME = 'AlHut-CDNs-V1.1';
+const CACHE_NAME = 'AlHut-Core-V13.0'; 
+const CDN_CACHE_NAME = 'AlHut-CDNs-V13.0';
 
 // قائمة الملفات الأساسية للنظام
 const ASSETS_TO_CACHE = [
@@ -25,7 +25,7 @@ self.addEventListener('install', event => {
   self.skipWaiting(); 
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => {
-      console.log('🚀 [AlHut SW] جاري تهيئة محركات الكاش الصاروخية...');
+      console.log('🚀 [AlHut SW] جاري تهيئة محركات الكاش الصاروخية V13...');
       return Promise.allSettled(
         ASSETS_TO_CACHE.map(url => cache.add(url).catch(err => console.warn(`⚠️ [AlHut SW] ملف مفقود تم تخطيه: ${url}`)))
       );
@@ -52,21 +52,29 @@ self.addEventListener('activate', event => {
 
 // 3. جلب البيانات (Fetch)
 self.addEventListener('fetch', event => {
+  // 🚨 أ. خط أحمر: السماح لطلبات POST (مثل رفع الصور إلى ImgBB) بالمرور مباشرة دون تدخل الكاش
+  if (event.request.method !== 'GET') {
+    return; 
+  }
+
   const url = new URL(event.request.url);
 
-  // 🔴 أ. طلبات قاعدة البيانات (جوجل سكريبت) -> إنترنت فقط
-  if (url.hostname.includes('script.google.com')) {
+  // 🔴 ب. طلبات قاعدة البيانات (جوجل سكريبت) + Firebase اللحظي -> إنترنت فقط (تُمنع من الكاش نهائياً)
+  if (url.hostname.includes('script.google.com') || 
+      url.hostname.includes('firebasedatabase.app') || 
+      url.hostname.includes('googleapis.com') ||
+      url.hostname.includes('imgbb.com')) {
     event.respondWith(fetch(event.request));
     return;
   }
 
-  // 🔵 ب. ملفات الـ CDNs والأصوات والخرائط -> Cache First
+  // 🔵 ج. ملفات الـ CDNs والأصوات والخرائط -> Cache First
   if (url.hostname.includes('unpkg.com') || 
       url.hostname.includes('cdn.jsdelivr.net') || 
       url.hostname.includes('fonts.googleapis.com') || 
       url.hostname.includes('fonts.gstatic.com') ||
       url.hostname.includes('basemaps.cartocdn.com') ||
-      url.hostname.includes('actions.google.com')) { // 🟢 تم إضافة الأصوات للكاش
+      url.hostname.includes('actions.google.com')) { 
     
     event.respondWith(
       caches.match(event.request).then(cachedResponse => {
@@ -79,15 +87,15 @@ self.addEventListener('fetch', event => {
             caches.open(CDN_CACHE_NAME).then(cache => cache.put(event.request, responseClone));
           }
           return networkResponse;
-        });
+        }).catch(err => console.log('⚠️ [AlHut SW] CDN Offline:', url.hostname));
       })
     );
     return;
   }
 
-  // 🟢 ج. ملفات النظام الأساسية -> Stale-While-Revalidate
+  // 🟢 د. ملفات النظام الأساسية -> Stale-While-Revalidate مع التجاهل الذكي للمتغيرات (ignoreSearch)
   event.respondWith(
-    caches.match(event.request).then(cachedResponse => {
+    caches.match(event.request, { ignoreSearch: true }).then(cachedResponse => {
       const fetchPromise = fetch(event.request).then(networkResponse => {
         if (networkResponse && networkResponse.status === 200) {
           caches.open(CACHE_NAME).then(cache => cache.put(event.request, networkResponse.clone()));
@@ -98,7 +106,7 @@ self.addEventListener('fetch', event => {
       });
 
       if (cachedResponse) {
-         // 🚨 إجبار المتصفح على عدم إغلاق الـ Service Worker حتى يكتمل التحديث
+         // إجبار المتصفح على عدم إغلاق الـ Service Worker حتى يكتمل التحديث بالخلفية
          event.waitUntil(fetchPromise); 
          return cachedResponse;
       }
@@ -112,12 +120,12 @@ self.addEventListener('fetch', event => {
 self.addEventListener('notificationclick', event => {
   event.notification.close(); 
 
-  // 🚨 قراءة الرابط من بيانات الإشعار، أو التوجيه للجذر ليقوم السيرفر بتوجيهه
+  // التوجيه للجذر أو الرابط المرفق
   const targetUrl = (event.notification.data && event.notification.data.url) ? event.notification.data.url : '/';
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
-      // البحث عن أي نافذة تابعة للنظام وفتحها
+      // البحث عن أي نافذة مفتوحة للنظام وتفعيلها
       for (let client of windowClients) {
         if (client.url.includes('Driver.html') || client.url.includes('Restaurant.html') || client.url.includes('Master.html')) {
           if ('focus' in client) {
@@ -125,7 +133,7 @@ self.addEventListener('notificationclick', event => {
           }
         }
       }
-      // إذا كان مغلقاً تماماً، نفتح الرابط المستهدف
+      // إذا كانت مغلقة تماماً، افتح نافذة جديدة
       if (clients.openWindow) {
         return clients.openWindow(targetUrl); 
       }
