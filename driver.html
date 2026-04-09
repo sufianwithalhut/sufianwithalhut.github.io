@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 6.8 (النسخة الماسية: استجابة لحظية + واتساب ذكي + حماية جغرافية من الاحتيال) ---
-        const CURRENT_APP_VERSION = "6.8"; 
+        // --- إصدار 6.81 (النسخة الماسية: إصلاح التزامن، السياج الصارم، ومنع النقرات المزدوجة) ---
+        const CURRENT_APP_VERSION = "6.81"; 
         
         if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة... جاري تطهير الكاش!");
@@ -68,7 +68,8 @@
         .custom-input:focus { background: white; border-color: var(--accent-orange); outline: none; box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.1); }
         
         .btn-action { background: var(--primary-blue); color: white; border: none; border-radius: 18px; padding: 20px; font-weight: 900; width: 100%; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; gap: 12px; transition: 0.3s; box-shadow: 0 10px 20px rgba(30, 58, 138, 0.2); }
-        .btn-action:active { transform: scale(0.96); box-shadow: none; }
+        .btn-action:active:not(:disabled) { transform: scale(0.96); box-shadow: none; }
+        .btn-action:disabled { opacity: 0.8; cursor: not-allowed; }
         
         .dash-header { background: var(--primary-blue); color: white; padding: max(30px, env(safe-area-inset-top)) 20px 60px 20px; border-bottom-left-radius: 35px; border-bottom-right-radius: 35px; box-shadow: 0 10px 30px rgba(30, 58, 138, 0.15); position: relative; z-index: 10; transition: 0.3s; }
         .status-badge { padding: 6px 14px; border-radius: 20px; font-weight: 800; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 6px; transition: 0.3s; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); }
@@ -155,6 +156,7 @@
         @keyframes softPulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.7; transform: scale(0.95); } 100% { opacity: 1; transform: scale(1); } }
         .btn-refresh-waiting { background: #f1f5f9; color: var(--text-muted); border: 1px solid var(--border-color); font-weight: 700; border-radius: 20px; padding: 10px 20px; transition: 0.2s; border: none; }
         .btn-accept-order { background: var(--success-green); color: white; border-radius: 20px; padding: 20px; font-weight: 900; font-size: 1.2rem; width: 100%; border: none; transition: 0.3s; display: flex; align-items: center; justify-content: center; gap: 15px; box-shadow: 0 10px 20px rgba(16, 185, 129, 0.3); margin-bottom: 15px; }
+        .btn-accept-order:disabled { background: #94a3b8; cursor: not-allowed; box-shadow: none; opacity: 0.9; }
         
         .svg-icon { width: 22px; height: 22px; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; fill: none; }
         .svg-icon-small { width: 16px; height: 16px; }
@@ -162,10 +164,16 @@
         #syncStatus { position: fixed; bottom: max(10px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); background: rgba(15, 23, 42, 0.9); color: white; padding: 6px 15px; border-radius: 20px; font-size: 0.75rem; font-weight: 800; z-index: 10000; display: none; align-items: center; gap: 8px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); backdrop-filter: blur(5px); }
         .sync-spinner { width: 12px; height: 12px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Toast Notifications */
+        #toast-container { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 40000; display: flex; flex-direction: column; gap: 10px; width: 90%; max-width: 350px;}
+        .toast-msg { background: white; border-right: 5px solid var(--primary-blue); border-radius: 12px; padding: 12px 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 0.85rem; animation: slideDown 0.3s ease-out forwards; }
+        .toast-msg.success { border-color: #10b981; } .toast-msg.error { border-color: #ef4444; }
     </style>
 </head>
 <body>
 
+<div id="toast-container"></div>
 <div id="offlineBanner" class="hidden-section">أنت غير متصل بالإنترنت حالياً</div>
 
 <div id="syncStatus">
@@ -545,27 +553,50 @@
         } 
     };
 
+    // 🟢 1. منع النقرات المزدوجة أثناء الدخول
+    let isAuthenticating = false;
     function authAction() {
+        if(isAuthenticating) return;
+        
         let rawPhone = document.getElementById('driverPhone').value.trim();
         if (!rawPhone) return alert("يرجى إدخال رقم الهاتف");
         let phone = rawPhone.startsWith('0') ? rawPhone.substring(1) : rawPhone;
         
+        isAuthenticating = true;
+        const btn = document.getElementById('mainAuthBtn');
+        const origText = btn.innerHTML;
+        btn.innerHTML = `<div class="spinner-border spinner-border-sm text-white"></div>`;
+        btn.disabled = true;
+
         if (isRegistering) {
             const name = document.getElementById('driverName').value.trim();
-            if (!name) return alert("يرجى كتابة الاسم الثلاثي");
+            if (!name) { 
+                isAuthenticating = false; btn.innerHTML = origText; btn.disabled = false; 
+                return alert("يرجى كتابة الاسم الثلاثي"); 
+            }
             showLoading(true, "جاري إنشاء الحساب...");
             const payload = { action: 'DRIVER_REG', token: API_TOKEN, name: name, phone: phone };
             
             fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) })
             .then(() => {
-                showLoading(false); localStorage.setItem('hut_driver_pending', phone); showWaitingRoom();
-            }).catch(() => { showLoading(false); alert("ضعف في الاتصال بالشبكة."); });
+                isAuthenticating = false; btn.innerHTML = origText; btn.disabled = false; showLoading(false);
+                localStorage.setItem('hut_driver_pending', phone); showWaitingRoom();
+            }).catch(() => { 
+                isAuthenticating = false; btn.innerHTML = origText; btn.disabled = false; showLoading(false); 
+                alert("ضعف في الاتصال بالشبكة."); 
+            });
             return;
         }
 
         showLoading(true, "جاري المزامنة...");
         fetch(`${API_URL}?action=checkDriver&phone=${phone}&token=${API_TOKEN}`)
-            .then(res => res.json()).then(data => handleLoginCheck(data, phone)).catch(err => { showLoading(false); alert("خطأ اتصال"); });
+            .then(res => res.json()).then(data => {
+                isAuthenticating = false; btn.innerHTML = origText; btn.disabled = false;
+                handleLoginCheck(data, phone);
+            }).catch(err => { 
+                isAuthenticating = false; btn.innerHTML = origText; btn.disabled = false; showLoading(false); 
+                alert("خطأ اتصال"); 
+            });
     }
 
     function handleLoginCheck(data, phone) {
@@ -773,7 +804,16 @@
         }, 1000);
     }
 
+    // 🟢 2. منع النقرات المزدوجة المتزامنة لقبول الطلب
+    let isAcceptingOrder = false;
     window.acceptOrder = function() {
+        if(isAcceptingOrder) return;
+        isAcceptingOrder = true;
+        
+        const btn = document.querySelector('.btn-accept-order');
+        const origHtml = btn.innerHTML;
+        btn.innerHTML = '<div class="spinner-border spinner-border-sm text-white"></div>';
+        
         closeAlert(); 
         const newOrder = { 
             id: currentOrderData.id, resName: currentOrderData.resName, resArea: currentOrderData.resArea, 
@@ -790,6 +830,11 @@
         update(ref(db), updates);
 
         safeFetchUpdate(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${newOrder.id}&status=accepted&token=${API_TOKEN}`); 
+        
+        setTimeout(() => {
+            isAcceptingOrder = false;
+            if(btn) btn.innerHTML = origHtml;
+        }, 1000);
     }
 
     function closeAlert() { document.getElementById('orderAlertOverlay').classList.add('hidden-section'); clearInterval(countdownInterval); window.muteAlarmOnly(); }
@@ -924,16 +969,18 @@
 
     setInterval(updateOrderTimers, 1000);
 
-    // 🟢 تحديث الأزرار الخارقة + السياج الجغرافي
+    // 🟢 3. الصرامة الجغرافية ومنع الاحتيال
     window.updateOrderStatus = function(id, action, btnElement) {
         const order = activeOrders.find(o => String(o.id) === String(id));
         if (!order) return;
 
-        // 🛑 Anti-Fraud Check (نظام حماية الموقع)
         if (action === 'arrive') {
-            if (order.resLat && order.resLng && driverData && driverData.currentLat && driverData.currentLng) {
+            if (!driverData || !driverData.currentLat || !driverData.currentLng) {
+                showToast("⚠️ يرجى الانتظار حتى يلتقط الهاتف إشارة الـ GPS الدقيقة لتأكيد الوصول.", "error");
+                return;
+            }
+            if (order.resLat && order.resLng) {
                 const dist = calculateDistanceMeters(driverData.currentLat, driverData.currentLng, order.resLat, order.resLng);
-                // السماح بـ 150 متر كمسافة أمان لتفاوت أجهزة الموبايل
                 if (dist > 150) {
                     showToast(`⚠️ لا يمكنك تأكيد الوصول!<br>أنت تبعد <b>${Math.round(dist)} متر</b> عن المطعم 📍`, "error");
                     return; 
