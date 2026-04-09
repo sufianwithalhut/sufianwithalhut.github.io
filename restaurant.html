@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- نظام التحديث الإجباري (إصدار 3.0 - الماسي المدمج: حقن البيانات + حماية الدخول) ---
-        const CURRENT_APP_VERSION = "3.0"; 
+        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 3.1 - المعمارية المستقرة النهائية) ---
+        const CURRENT_APP_VERSION = "3.1"; 
         if (localStorage.getItem('hut_res_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة مكتشفة... جاري التحديث!");
             localStorage.setItem('hut_res_app_version', CURRENT_APP_VERSION);
@@ -417,7 +417,6 @@
         setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 3500);
     }
 
-    // 🟢 ميزة يوم الجمعة للمطاعم
     function checkFridayMessage() {
         const today = new Date();
         if (today.getDay() === 5) {
@@ -561,7 +560,6 @@
         return JSON.stringify(resultObj);
     }
 
-    // 🟢 حماية الدخول الذكية (المعمارية الماسية)
     let isAuthenticating = false;
     function autoLogin() {
         const sessionStr = localStorage.getItem('hut_res_session');
@@ -654,15 +652,21 @@
 
     window.authAction = function() {
         if(isAuthenticating) return;
+        isAuthenticating = true;
+        
+        const btn = document.getElementById('mainAuthBtn');
+        const origText = btn.innerHTML;
         
         let rawPhone = document.getElementById('checkPhone').value.trim();
         let cleanPhone = rawPhone.replace(/\D/g, ''); 
-        if(!cleanPhone) return showToast("أدخل رقم الهاتف", "error");
+        
+        if(!cleanPhone) {
+            isAuthenticating = false;
+            return showToast("أدخل رقم الهاتف", "error");
+        }
+        
         if(cleanPhone.startsWith('0')) cleanPhone = cleanPhone.substring(1);
 
-        isAuthenticating = true;
-        const btn = document.getElementById('mainAuthBtn');
-        const origText = btn.innerHTML;
         btn.innerHTML = `<div class="spinner-border spinner-border-sm text-white"></div>`;
         btn.disabled = true;
 
@@ -673,8 +677,14 @@
             const pay = document.getElementById('regPay').value;
             const rawPriceListText = document.getElementById('regPriceList').value;
 
-            if(!name || !area || !comm) { isAuthenticating=false; btn.innerHTML=origText; btn.disabled=false; return showToast("أكمل الحقول", "error");}
-            if(Math.abs(regLat - 35.468) < 0.001) { isAuthenticating=false; btn.innerHTML=origText; btn.disabled=false; return showToast("حدد موقعك", "error");}
+            if(!name || !area || !comm) { 
+                isAuthenticating=false; btn.innerHTML=origText; btn.disabled=false; 
+                return showToast("أكمل الحقول", "error");
+            }
+            if(Math.abs(regLat - 35.468) < 0.001) { 
+                isAuthenticating=false; btn.innerHTML=origText; btn.disabled=false; 
+                return showToast("حدد موقعك", "error");
+            }
             
             const packedPriceList = parseCustomPriceList(rawPriceListText);
             sendRegistration(name, cleanPhone, area, comm, pay, regLat, regLng, packedPriceList, btn, origText);
@@ -684,7 +694,9 @@
         fetch(`${API_URL}?action=checkRes&phone=${cleanPhone}&token=${API_TOKEN}`)
             .then(r => r.json()).then(data => {
                 isAuthenticating=false; btn.innerHTML=origText; btn.disabled=false; handleLogin(data, cleanPhone);
-            }).catch(err => { isAuthenticating=false; btn.innerHTML=origText; btn.disabled=false; showToast("خطأ اتصال", "error"); });
+            }).catch(err => { 
+                isAuthenticating=false; btn.innerHTML=origText; btn.disabled=false; showToast("خطأ اتصال", "error"); 
+            });
     }
 
     function sendRegistration(name, phone, area, comm, pay, lat, lng, priceListStr, btn, origText) {
@@ -694,7 +706,9 @@
             isAuthenticating=false; btn.innerHTML=origText; btn.disabled=false;
             const fPhone = phone.startsWith('0') ? phone : '0'+phone;
             localStorage.setItem('hut_res_phone', fPhone); localStorage.setItem('hut_res_pending', fPhone); showWaitingRoom();
-        }).catch(() => { isAuthenticating=false; btn.innerHTML=origText; btn.disabled=false; showToast("خطأ", "error"); });
+        }).catch(() => { 
+            isAuthenticating=false; btn.innerHTML=origText; btn.disabled=false; showToast("خطأ أثناء الإرسال", "error"); 
+        });
     }
 
     function showWaitingRoom() {
@@ -762,7 +776,7 @@
             .then(data => {
                 if(data && data.drivers) globalDriversInfo = data.drivers;
                 renderDashboardStats(data); renderActiveOrdersUI(); 
-            }).catch(e=>{}); // حماية الطرد عند الضعف
+            }).catch(e=>{});
     }
 
     function startHotDataListeners() {
@@ -935,17 +949,15 @@
         }
     };
 
-    // 🟢 الحقن الكلي (إصلاح الثغرة الكبرى)
     function finalizeOrderPlacement(details, imageUrl, price, area, btn, originalBtnHtml) {
         btn.innerHTML = `<div class="spinner-border spinner-border-sm me-2"></div> جاري الإطلاق...`;
         
         const uniqueFrontendId = "HUT-" + Math.floor(Date.now() / 1000);
         const timestampIso = new Date().toISOString();
         
-        // هنا تم الحقن السليم للـ details
         set(ref(db, 'active_orders/' + uniqueFrontendId), {
             id: uniqueFrontendId, restaurant: currentResName, area: area, 
-            details: details, // 👈 الجوهر الذي كان مفقوداً
+            details: details, 
             status: "pending_driver", driverPhone: "pending_driver", price: price, 
             timestamp: timestampIso, photoUrl: imageUrl, last_update: timestampIso
         });
