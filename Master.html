@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 1.5 (النسخة الماسية: علاج أشباح الخريطة، تخفيف الضغط، حماية واجهة المستخدم) ---
-        const CURRENT_APP_VERSION = "1.5"; 
+        // --- إصدار 1.6 (النسخة الماسية: إحصائيات المطاعم والكباتن لحظية 100% + الربط التام مع Firebase) ---
+        const CURRENT_APP_VERSION = "1.6"; 
         if (localStorage.getItem('hut_master_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة إدارة جديدة... جاري تطهير الكاش!");
             localStorage.setItem('hut_master_app_version', CURRENT_APP_VERSION);
@@ -1272,7 +1272,7 @@
         <div id="tab-orders" class="admin-tab tab-inner-padding">
             <span class="page-title-mob">الأرشيف المركزي</span>
             <div class="refresh-btn-wrap">
-                <button class="btn-manual-refresh" onclick="refreshData()"><i data-lucide="refresh-cw" width="14" height="14"></i> تحديث بيانات الأرشيف</button>
+                <button class="btn-manual-refresh" onclick="refreshData(this)"><i data-lucide="refresh-cw" width="14" height="14"></i> تحديث بيانات الأرشيف</button>
             </div>
 
             <div class="arch-toolbar">
@@ -1343,9 +1343,7 @@
 
         <div id="tab-restaurants" class="admin-tab tab-inner-padding">
             <span class="page-title-mob">إدارة الشركاء</span>
-            <div class="refresh-btn-wrap">
-                <button class="btn-manual-refresh" onclick="refreshData()"><i data-lucide="refresh-cw" width="14" height="14"></i> تحديث الحسابات</button>
-            </div>
+            
             <div class="search-input-wrap">
                 <span class="s-icon"><i data-lucide="search" width="16" height="16"></i></span>
                 <input type="text" id="searchResInput" class="search-input" placeholder="بحث عن مطعم أو رقم هاتف..." oninput="triggerSearch('RESTAURANT')">
@@ -1366,9 +1364,7 @@
 
         <div id="tab-drivers" class="admin-tab tab-inner-padding">
             <span class="page-title-mob">إدارة الأسطول</span>
-            <div class="refresh-btn-wrap">
-                <button class="btn-manual-refresh" onclick="refreshData()"><i data-lucide="refresh-cw" width="14" height="14"></i> تحديث الحسابات</button>
-            </div>
+            
             <div class="search-input-wrap">
                 <span class="s-icon"><i data-lucide="search" width="16" height="16"></i></span>
                 <input type="text" id="searchDriverInput" class="search-input" placeholder="بحث عن كابتن أو رقم هاتف..." oninput="triggerSearch('DRIVER')">
@@ -1667,38 +1663,10 @@ window.renderData = function(data) {
     try { smartRenderFilteredSection('RESTAURANT', data.restaurants, resDebts, resUnpaidCounts); } catch(e) { console.error("Res:", e); }
     try { smartRenderFilteredSection('DRIVER', data.drivers, driverDebts, null); } catch(e) { console.error("Driver:", e); }
 
-    if (map && restaurantMarkersLayer) {
-        data.restaurants.slice(1).forEach(r => {
-            const rName = r[1];
-            if (r[4] === 'active' && r[6] && r[7]) {
-                const lat = parseFloat(r[6]), lng = parseFloat(r[7]);
-                if (!isNaN(lat) && !isNaN(lng)) {
-                    if (liveResMarkers[rName]) {
-                        liveResMarkers[rName].setLatLng([lat, lng]);
-                    } else {
-                        const icon = L.divIcon({
-                            className: '',
-                            html: `<div class="res-marker"><span>🍽</span></div>`,
-                            iconSize: [28, 28], iconAnchor: [14, 14]
-                        });
-                        const m = L.marker([lat, lng], { icon, zIndexOffset: -100 })
-                            .bindPopup(`<div class="map-popup"><div class="map-popup-title">🍽 ${rName}</div><div class="map-popup-sub">مطعم شريك نشط</div></div>`);
-                        restaurantMarkersLayer.addLayer(m);
-                        liveResMarkers[rName] = m;
-                    }
-                }
-            } else if (liveResMarkers[rName]) {
-                restaurantMarkersLayer.removeLayer(liveResMarkers[rName]);
-                delete liveResMarkers[rName];
-            }
-        });
-    }
-
     if (!isFirebaseListening) {
         isFirebaseListening = true;
         listenToFirebaseLocations();
         listenToFirebaseOrders();
-        // ⛔ تمت إزالة setInterval لطلب الداتا كل 3 دقائق لتخفيف الضغط
     } else {
         if (liveFirebaseOrders.length > 0) {
             try { smartRenderRadar(liveFirebaseOrders); } catch(e) {}
@@ -1712,10 +1680,13 @@ function listenToFirebaseOrders() {
         const ordersObj = snapshot.val();
         let newActive = [], pendingCount = 0, hasEmergency = false;
         const now = Date.now();
+        const activeResNames = new Set();
 
         if (ordersObj) {
             Object.values(ordersObj).forEach(o => {
                 if (!o.restaurant || o.restaurant.trim() === "") return; 
+                
+                activeResNames.add(o.restaurant);
 
                 let details = "طلب توصيل";
                 if (globalData?.orders) {
@@ -1762,6 +1733,8 @@ function listenToFirebaseOrders() {
         }
 
         document.querySelectorAll('.val-orders').forEach(el => el.textContent = liveFirebaseOrders.length);
+        document.querySelectorAll('.val-res').forEach(el => el.textContent = activeResNames.size);
+        
         if (globalData) { try { smartRenderRadar(liveFirebaseOrders); } catch(e) {} }
         updateHeatmap(liveFirebaseOrders);
     });
@@ -1788,6 +1761,7 @@ function listenToFirebaseLocations() {
         
         let activeDriversCount = 0;
         const currentLocPhones = new Set();
+        let needDriverUIRefresh = false;
         
         Object.keys(locs).forEach(phone => {
             const locData = locs[phone];
@@ -1799,12 +1773,10 @@ function listenToFirebaseLocations() {
             if (!isNaN(lat) && !isNaN(lng)) {
                 currentLocPhones.add(phone);
                 
-                // تحديث موقع وتفاصيل الدبوس على الخريطة
                 if (liveDriverMarkers[phone]) {
                     liveDriverMarkers[phone].setLatLng([lat, lng]);
                     updateMarkerStyle(liveDriverMarkers[phone], isActive, phone);
                 } else {
-                    // إنشاء دبوس جديد (حل ثغرة الأشباح)
                     if (isActive) {
                         const driverName = globalData?.drivers.find(d => String(d[2]) === phone)?.[1] || phone;
                         const icon = L.divIcon({
@@ -1824,19 +1796,17 @@ function listenToFirebaseLocations() {
                 }
             }
             
-            // تحديث الإحصائيات في حالة السائق محلياً (לتحديث الشاشة فوراً)
-            if (globalData) {
+            // Sync status to local globalData instantly
+            if (globalData && !localOverrides.drivers[phone]) {
                 const dData = globalData.drivers.find(d => String(d[2]) === phone);
-                if(dData && !localOverrides.drivers[phone]) {
-                    if (dData[4] !== locData.status) {
-                        dData[4] = locData.status;
-                        triggerSearch('DRIVER'); // تحديث فوري للقوائم بدون رفرش السيرفر
-                    }
+                if(dData && dData[4] !== locData.status) {
+                    dData[4] = locData.status;
+                    needDriverUIRefresh = true;
                 }
             }
         });
         
-        // إزالة أشباح الخريطة (الكباتن الذين سجلوا خروج)
+        // Remove offline markers
         Object.keys(liveDriverMarkers).forEach(phone => {
             if (!currentLocPhones.has(phone) || (locs[phone] && locs[phone].status !== 'active')) {
                 driverClusterGroup.removeLayer(liveDriverMarkers[phone]);
@@ -1844,8 +1814,13 @@ function listenToFirebaseLocations() {
             }
         });
 
-        // تحديث العدادات فوراً
         document.querySelectorAll('.val-drivers').forEach(el => el.textContent = activeDriversCount);
+        
+        // Refresh driver cards and badges instantly
+        if (needDriverUIRefresh) {
+            triggerSearch('DRIVER');
+            updateSectionBadges('DRIVER', globalData.drivers);
+        }
     });
 }
 
