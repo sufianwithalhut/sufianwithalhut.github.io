@@ -2,11 +2,10 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 6.9 (النسخة الماسية: استجابة لحظية + التوافق مع السيرفر V26 المعقم) ---
-        const CURRENT_APP_VERSION = "6.9"; 
+        // --- إصدار 7.1 (النسخة الماسية الكاملة: حماية جراحية + استعادة الواجهة الغنية وأزرار الزبون) ---
+        const CURRENT_APP_VERSION = "7.1"; 
         
         if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
-            console.log("نسخة جديدة... جاري تطهير الكاش!");
             localStorage.setItem('hut_app_version', CURRENT_APP_VERSION);
             if ('caches' in window) { caches.keys().then(names => { names.forEach(name => caches.delete(name)); }); }
             if ('serviceWorker' in navigator) { navigator.serviceWorker.getRegistrations().then(regs => { regs.forEach(r => r.unregister()); }); }
@@ -39,21 +38,10 @@
             --border-color: #e2e8f0; 
             --stat-bg: #f1f5f9;
         }
-        body { 
-            background: var(--bg-light); 
-            font-family: 'Cairo', sans-serif; 
-            overflow-x: hidden; 
-            color: var(--text-main); 
-            -webkit-tap-highlight-color: transparent; 
-            user-select: none; 
-            -webkit-user-select: none; 
-            overscroll-behavior-y: contain; 
-        }
+        body { background: var(--bg-light); font-family: 'Cairo', sans-serif; overflow-x: hidden; color: var(--text-main); -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; overscroll-behavior-y: contain; }
         .hidden-section { display: none !important; }
-        
         #offlineBanner { position: fixed; top: 0; left: 0; width: 100%; background: var(--danger-red); color: white; text-align: center; z-index: 99999; padding: max(5px, env(safe-area-inset-top)) 10px 5px 10px; font-weight: 800; font-size: 0.85rem; box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4); animation: slideDown 0.3s; }
         @keyframes slideDown { from { transform: translateY(-100%); } to { transform: translateY(0); } }
-        
         #loadingOverlay, #permissionOverlay { position: fixed; inset: 0; background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); z-index: 30000; display: flex; align-items: center; justify-content: center; flex-direction: column; color: var(--primary-blue); text-align: center; padding: 25px; }
         #loadingOverlay { z-index: 20000; display: none; }
         .permission-icon { animation: shakeAlert 0.5s ease-in-out infinite alternate; }
@@ -350,7 +338,7 @@
         <button class="btn-mute w-100 d-flex align-items-center justify-content-center gap-2" onclick="window.muteAlarmOnly()">
             إسكات الصوت <svg class="svg-icon" viewBox="0 0 24 24"><path d="M13.73 21a2 2 0 0 1-3.46 0"></path><path d="M18.63 13A17.89 17.89 0 0 1 18 8"></path><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"></path><path d="M18 8a6 6 0 0 0-9.33-5"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
         </button>
-        <button class="btn-accept-order" onclick="window.acceptOrder()">
+        <button class="btn-accept-order" id="btnAcceptMain" onclick="window.acceptOrder()">
             قبول الطلب فوراً <svg class="svg-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>
         </button>
         <button class="btn btn-link text-white w-100 fw-bold text-decoration-none fs-5" onclick="window.declineOrder()">
@@ -733,10 +721,9 @@
             if(isOnline && activeOrders.length < 2 && document.getElementById('orderAlertOverlay').classList.contains('hidden-section')) {
                 Object.values(activeFbOrders).forEach(fbOrder => {
                     // 👻🔫 منع الرنين الوهمي للأشباح التي لا تحتوي على اسم مطعم
-                    if (!fbOrder.restaurant || fbOrder.restaurant.trim() === "") return;
+                    if (!fbOrder.restaurant || fbOrder.restaurant.trim() === "" || fbOrder.restaurant === "undefined") return;
 
                     // 🛡️ التعديل الجراحي: الرنين يحدث فقط إذا كان الطلب موجهاً للكابتن حصراً، أو إذا عاد للحالة العامة (pending_driver)
-                    // تم استثناء "system_routing" لكي لا يرن عند جميع الكباتن في نفس اللحظة
                     if(String(fbOrder.driverPhone) === String(driverData.phone) || fbOrder.status === "pending_driver") {
                         if (!activeOrders.find(o => String(o.id) === String(fbOrder.id))) {
                             currentOrderData = {
@@ -780,29 +767,43 @@
     }
 
     window.acceptOrder = function() {
-        closeAlert(); 
-        const newOrder = { 
+        // 🛡️ حماية جراحية: إذا ضغط الكابتن بسرعة والبيانات لم تصل بعد، نجلبها قسراً
+        if (!currentOrderData.resPhone && currentOrderData.resName) {
+            document.getElementById('btnAcceptMain').innerHTML = `<div class="spinner-border spinner-border-sm text-white"></div> جاري تأمين البيانات...`;
+            document.getElementById('btnAcceptMain').disabled = true;
+            fetch(`${API_URL}?action=getGlobalData&token=${API_TOKEN}`).then(r=>r.json()).then(data => {
+                const res = data.restaurants.find(r => r[1] === currentOrderData.resName);
+                if(res) {
+                    currentOrderData.resPhone = res[2]; currentOrderData.resLat = res[6]; currentOrderData.resLng = res[7]; currentOrderData.resArea = res[3];
+                    finalizeAccept();
+                } else { finalizeAccept(); } 
+            }).catch(e => { finalizeAccept(); });
+        } else { finalizeAccept(); }
+    }
+
+    function finalizeAccept() {
+        document.getElementById('orderAlertOverlay').classList.add('hidden-section');
+        document.getElementById('alertSound').pause();
+        const newO = { 
             id: currentOrderData.id, resName: currentOrderData.resName, resArea: currentOrderData.resArea, 
             details: String(currentOrderData.details), price: currentOrderData.price, area: currentOrderData.area, 
             state: 'heading', photoUrl: currentOrderData.photoUrl, resPhone: currentOrderData.resPhone, 
             resLat: currentOrderData.resLat, resLng: currentOrderData.resLng, acceptedTime: Date.now() 
         };
-        activeOrders.push(newOrder); localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
-        displayActiveOrders(); 
+        activeOrders.push(newO);
+        localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
+        displayActiveOrders();
         
         const updates = {};
-        updates[`active_orders/${newOrder.id}/status`] = 'accepted';
-        updates[`active_orders/${newOrder.id}/driverPhone`] = driverData.phone;
+        updates[`active_orders/${newO.id}/status`] = 'accepted';
+        updates[`active_orders/${newO.id}/driverPhone`] = driverData.phone;
         update(ref(db), updates);
 
-        safeFetchUpdate(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${newOrder.id}&status=accepted&token=${API_TOKEN}`); 
-    }
-
-    function closeAlert() { document.getElementById('orderAlertOverlay').classList.add('hidden-section'); clearInterval(countdownInterval); window.muteAlarmOnly(); }
-    
-    window.declineOrder = function() { 
-        safeFetchUpdate(`${API_URL}?action=DECLINE_ORDER&orderId=${currentOrderData.id}&driverPhone=${driverData.phone}&token=${API_TOKEN}`); 
-        closeAlert(); 
+        safeFetchUpdate(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${newO.id}&status=accepted&token=${API_TOKEN}`);
+        
+        // Reset the button state for the next order
+        const acceptBtn = document.getElementById('btnAcceptMain');
+        if (acceptBtn) { acceptBtn.innerHTML = `قبول الطلب فوراً <svg class="svg-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>`; acceptBtn.disabled = false; }
     }
 
     function displayActiveOrders() {
@@ -842,6 +843,7 @@
             let waRes = resPhoneStr ? (resPhoneStr.startsWith('0') ? '964' + resPhoneStr.substring(1) : resPhoneStr) : null;
             
             let safeDetails = String(order.details || "");
+            // 🔍 صائد أرقام الزبون الذكي
             let custMatch = safeDetails.match(/(07[0-9]{8,9})/);
             let custPhoneNum = custMatch ? String(custMatch[0]) : null;
             
