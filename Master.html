@@ -1,6 +1,17 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
+    <script>
+        // --- إصدار 1.5 (النسخة الماسية: علاج أشباح الخريطة، تخفيف الضغط، حماية واجهة المستخدم) ---
+        const CURRENT_APP_VERSION = "1.5"; 
+        if (localStorage.getItem('hut_master_app_version') !== CURRENT_APP_VERSION) {
+            console.log("نسخة إدارة جديدة... جاري تطهير الكاش!");
+            localStorage.setItem('hut_master_app_version', CURRENT_APP_VERSION);
+            if ('caches' in window) { caches.keys().then(names => names.forEach(name => caches.delete(name))); }
+            if ('serviceWorker' in navigator) { navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister())); }
+            window.location.reload(true);
+        }
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>مكتب سفيان | الإدارة العليا</title>
@@ -934,9 +945,17 @@
             display: flex; align-items: center; justify-content: center;
             font-size: 14px;
             animation: markerPop .3s cubic-bezier(0.22,1,0.36,1);
+            position: relative;
         }
         .drv-marker-active { background: linear-gradient(135deg, var(--primary), var(--primary-dark)); box-shadow: 0 0 0 0 rgba(59,158,221,0.5); animation: markerPop .3s, gpsBlip 2s 1s infinite; }
-        .drv-marker-inactive { background: #94a3b8; }
+        .drv-marker-inactive { background: #94a3b8; border-color: #cbd5e1; }
+        .drv-label {
+            position: absolute; bottom: -20px; white-space: nowrap;
+            background: rgba(255,255,255,0.9); padding: 2px 6px; border-radius: 4px;
+            font-size: 10px; font-weight: 700; color: #0f172a; border: 1px solid #e2e8f0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
         @keyframes markerPop { from { transform: scale(0.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
         @keyframes gpsBlip {
             0%   { box-shadow: 0 0 0 0 rgba(59,158,221,0.5); }
@@ -1061,6 +1080,7 @@
         .status-pill {
             padding: 4px 12px; border-radius: var(--r-full);
             font-size: 0.72rem; font-weight: 900;
+            transition: all 0.3s;
         }
         .sp-active   { background: #e6faf3; color: var(--success); }
         .sp-inactive { background: #fffbeb; color: var(--warning); }
@@ -1113,6 +1133,10 @@
         .custom-cluster-icon > div {
             background: linear-gradient(135deg, var(--primary), var(--primary-dark)) !important;
         }
+        
+        .refresh-btn-wrap { display: flex; justify-content: flex-end; margin-bottom: 15px; }
+        .btn-manual-refresh { background: var(--surface); color: var(--primary); border: 1px solid var(--primary-light); padding: 8px 16px; border-radius: 20px; font-size: 0.8rem; font-weight: 800; cursor: pointer; transition: 0.2s; box-shadow: var(--s-xs); display: flex; align-items: center; gap: 6px; }
+        .btn-manual-refresh:active { transform: scale(0.95); }
     </style>
 </head>
 <body>
@@ -1247,6 +1271,9 @@
 
         <div id="tab-orders" class="admin-tab tab-inner-padding">
             <span class="page-title-mob">الأرشيف المركزي</span>
+            <div class="refresh-btn-wrap">
+                <button class="btn-manual-refresh" onclick="refreshData()"><i data-lucide="refresh-cw" width="14" height="14"></i> تحديث بيانات الأرشيف</button>
+            </div>
 
             <div class="arch-toolbar">
                 <div class="row g-2 align-items-end">
@@ -1316,6 +1343,9 @@
 
         <div id="tab-restaurants" class="admin-tab tab-inner-padding">
             <span class="page-title-mob">إدارة الشركاء</span>
+            <div class="refresh-btn-wrap">
+                <button class="btn-manual-refresh" onclick="refreshData()"><i data-lucide="refresh-cw" width="14" height="14"></i> تحديث الحسابات</button>
+            </div>
             <div class="search-input-wrap">
                 <span class="s-icon"><i data-lucide="search" width="16" height="16"></i></span>
                 <input type="text" id="searchResInput" class="search-input" placeholder="بحث عن مطعم أو رقم هاتف..." oninput="triggerSearch('RESTAURANT')">
@@ -1336,6 +1366,9 @@
 
         <div id="tab-drivers" class="admin-tab tab-inner-padding">
             <span class="page-title-mob">إدارة الأسطول</span>
+            <div class="refresh-btn-wrap">
+                <button class="btn-manual-refresh" onclick="refreshData()"><i data-lucide="refresh-cw" width="14" height="14"></i> تحديث الحسابات</button>
+            </div>
             <div class="search-input-wrap">
                 <span class="s-icon"><i data-lucide="search" width="16" height="16"></i></span>
                 <input type="text" id="searchDriverInput" class="search-input" placeholder="بحث عن كابتن أو رقم هاتف..." oninput="triggerSearch('DRIVER')">
@@ -1428,7 +1461,6 @@ let liveResMarkers = {};
 let localOverrides = { orders: {}, drivers: {}, restaurants: {} };
 let isEmergencyMuted = false;
 let isFirebaseListening = false;
-let dataRefreshInterval = null;
 let lastArchiveHtml = '';
 
 const firebaseConfig = {
@@ -1470,24 +1502,37 @@ function closeEmergency() {
     isEmergencyMuted = true;
 }
 
-/* ─── Driver Performance ─── */
-function calculateDriverPerformanceBySpeed(ordersData, driverPhone) {
+/* ─── Driver Performance (Optimized) ─── */
+function calculateDriverPerformances(ordersData, driversData) {
     const today = new Date();
     const cm = today.getMonth(), cy = today.getFullYear();
-    let count = 0;
+    let performanceMap = {};
+    
+    // Initialize map
+    driversData.slice(1).forEach(d => { performanceMap[String(d[2])] = 0; });
+    
+    // Loop orders only once! (Fixing the Loop of Death)
     for (let i = ordersData.length - 1; i >= 1; i--) {
         const o = ordersData[i];
         if (!o[7]) continue;
         const d = new Date(o[7]);
-        if (d.getMonth() === cm && d.getFullYear() === cy && o[6] === driverPhone &&
-            (o[5] === 'completed' || o[5] === 'مكتمل' || o[5] === 'settled')) {
-            count++;
-            if (count >= 10) break;
+        if (d.getMonth() === cm && d.getFullYear() === cy && (o[5] === 'completed' || o[5] === 'مكتمل' || o[5] === 'settled')) {
+            const dp = String(o[6]);
+            if (performanceMap[dp] !== undefined) {
+                performanceMap[dp]++;
+            }
         }
     }
-    if (count >= 10) return { class: 'perf-green', label: 'ممتاز' };
-    if (count > 0)   return { class: 'perf-yellow', label: 'نشط' };
-    return { class: 'perf-red', label: 'جديد' };
+    
+    let resultCache = {};
+    Object.keys(performanceMap).forEach(phone => {
+        const count = performanceMap[phone];
+        if (count >= 10) resultCache[phone] = { class: 'perf-green', label: 'ممتاز' };
+        else if (count > 0) resultCache[phone] = { class: 'perf-yellow', label: 'نشط' };
+        else resultCache[phone] = { class: 'perf-red', label: 'جديد' };
+    });
+    
+    return resultCache;
 }
 
 /* ─── Auth ─── */
@@ -1530,7 +1575,7 @@ window.authResult = function(response) {
         a.volume = 0; a.play().then(() => { a.pause(); a.currentTime = 0; a.volume = 1; }).catch(() => {});
         startClock();
         initMap();
-        refreshData();
+        refreshData(); // يجلب الداتا مرة واحدة فقط
     } else {
         masterPassword = "";
         showToast("رمز المرور غير صحيح", "error");
@@ -1546,8 +1591,15 @@ function startClock() {
     }, 1000);
 }
 
-/* ─── Data Refresh ─── */
-function refreshData() {
+/* ─── Data Refresh (Manual & Initial Only to prevent Quota Exhaustion) ─── */
+function refreshData(btnEl = null) {
+    if(btnEl) {
+        const origIcon = btnEl.innerHTML;
+        btnEl.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> جاري التحديث...`;
+        btnEl.disabled = true;
+        setTimeout(()=> { btnEl.innerHTML = origIcon; btnEl.disabled = false; }, 3000);
+    }
+    
     const old = document.getElementById('data-fetch-script');
     if (old) old.remove();
     const s = document.createElement('script');
@@ -1583,17 +1635,12 @@ window.renderData = function(data) {
         });
     }
 
-    const countDrivers = data.drivers.filter(d => d[4] === 'active').length;
-    const countRes     = data.restaurants.filter(r => r[4] === 'active').length;
-    document.querySelectorAll('.val-drivers').forEach(el => el.textContent = countDrivers);
-    document.querySelectorAll('.val-res').forEach(el => el.textContent = countRes);
+    // Calculate Performance efficiently
+    driverPerformanceCache = calculateDriverPerformances(data.orders, data.drivers);
 
     let resDebts = {}, resUnpaidCounts = {}, driverDebts = {};
     data.restaurants.slice(1).forEach(r => { resDebts[r[1]] = 0; resUnpaidCounts[r[1]] = 0; });
-    data.drivers.slice(1).forEach(d => {
-        driverDebts[String(d[2])] = 0;
-        driverPerformanceCache[String(d[2])] = calculateDriverPerformanceBySpeed(data.orders, String(d[2]));
-    });
+    data.drivers.slice(1).forEach(d => { driverDebts[String(d[2])] = 0; });
 
     data.orders.slice(1).forEach(o => {
         const status = o[5];
@@ -1651,7 +1698,7 @@ window.renderData = function(data) {
         isFirebaseListening = true;
         listenToFirebaseLocations();
         listenToFirebaseOrders();
-        dataRefreshInterval = setInterval(refreshData, 180000);
+        // ⛔ تمت إزالة setInterval لطلب الداتا كل 3 دقائق لتخفيف الضغط
     } else {
         if (liveFirebaseOrders.length > 0) {
             try { smartRenderRadar(liveFirebaseOrders); } catch(e) {}
@@ -1738,13 +1785,79 @@ function listenToFirebaseLocations() {
     db.ref('drivers_locations').on('value', snapshot => {
         const locs = snapshot.val();
         if (!locs) return;
+        
+        let activeDriversCount = 0;
+        const currentLocPhones = new Set();
+        
         Object.keys(locs).forEach(phone => {
-            if (liveDriverMarkers[phone]) {
-                const lat = parseFloat(locs[phone].lat), lng = parseFloat(locs[phone].lng);
-                if (!isNaN(lat) && !isNaN(lng)) liveDriverMarkers[phone].setLatLng([lat, lng]);
+            const locData = locs[phone];
+            const isActive = locData.status === 'active';
+            
+            if (isActive) activeDriversCount++;
+            
+            const lat = parseFloat(locData.lat), lng = parseFloat(locData.lng);
+            if (!isNaN(lat) && !isNaN(lng)) {
+                currentLocPhones.add(phone);
+                
+                // تحديث موقع وتفاصيل الدبوس على الخريطة
+                if (liveDriverMarkers[phone]) {
+                    liveDriverMarkers[phone].setLatLng([lat, lng]);
+                    updateMarkerStyle(liveDriverMarkers[phone], isActive, phone);
+                } else {
+                    // إنشاء دبوس جديد (حل ثغرة الأشباح)
+                    if (isActive) {
+                        const driverName = globalData?.drivers.find(d => String(d[2]) === phone)?.[1] || phone;
+                        const icon = L.divIcon({
+                            className: '',
+                            html: `
+                                <div class="drv-marker drv-marker-active">
+                                    <i data-lucide="bike" width="16" height="16"></i>
+                                    <div class="drv-label">${driverName.split(' ')[0]}</div>
+                                </div>`,
+                            iconSize: [36, 36], iconAnchor: [18, 18]
+                        });
+                        const m = L.marker([lat, lng], { icon }).bindPopup(`<div class="map-popup"><div class="map-popup-title">🏍 ${driverName}</div><div class="map-popup-sub">${phone}</div></div>`);
+                        driverClusterGroup.addLayer(m);
+                        liveDriverMarkers[phone] = m;
+                        if (typeof lucide !== 'undefined') lucide.createIcons({ root: m.getElement() });
+                    }
+                }
+            }
+            
+            // تحديث الإحصائيات في حالة السائق محلياً (לتحديث الشاشة فوراً)
+            if (globalData) {
+                const dData = globalData.drivers.find(d => String(d[2]) === phone);
+                if(dData && !localOverrides.drivers[phone]) {
+                    if (dData[4] !== locData.status) {
+                        dData[4] = locData.status;
+                        triggerSearch('DRIVER'); // تحديث فوري للقوائم بدون رفرش السيرفر
+                    }
+                }
             }
         });
+        
+        // إزالة أشباح الخريطة (الكباتن الذين سجلوا خروج)
+        Object.keys(liveDriverMarkers).forEach(phone => {
+            if (!currentLocPhones.has(phone) || (locs[phone] && locs[phone].status !== 'active')) {
+                driverClusterGroup.removeLayer(liveDriverMarkers[phone]);
+                delete liveDriverMarkers[phone];
+            }
+        });
+
+        // تحديث العدادات فوراً
+        document.querySelectorAll('.val-drivers').forEach(el => el.textContent = activeDriversCount);
     });
+}
+
+function updateMarkerStyle(marker, isActive, phone) {
+    const el = marker.getElement();
+    if(el) {
+        const div = el.querySelector('.drv-marker');
+        if(div) {
+            if(isActive) { div.classList.add('drv-marker-active'); div.classList.remove('drv-marker-inactive'); }
+            else { div.classList.add('drv-marker-inactive'); div.classList.remove('drv-marker-active'); }
+        }
+    }
 }
 
 /* ─── Radar Render ─── */
@@ -1998,9 +2111,14 @@ function triggerSearch(type) {
 function applySectionFilter(type, filter, btn) {
     if (type === 'RESTAURANT') currentResSectionFilter = filter;
     else currentDriverSectionFilter = filter;
-    const grp = btn.closest('.filter-bar');
-    grp.querySelectorAll('.fp').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
+    
+    if(btn) {
+        const grp = btn.closest('.filter-bar');
+        if(grp) {
+            grp.querySelectorAll('.fp').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        }
+    }
 
     if (globalData) {
         const resDebts = {}, resUnpaid = {}, drvDebts = {};
@@ -2091,6 +2209,11 @@ function smartRenderFilteredSection(type, fullList, debtsMap, unpaidCounts) {
                 if (dEl) dEl.textContent = `${debt} د.ع`;
                 const upEl = existing.querySelector('.unpaid-wrap');
                 if (upEl) upEl.innerHTML = unpaidHtml;
+                
+                // إضافة الفلاش للتنبيه بتغير الحالة
+                existing.classList.add('flash-update');
+                setTimeout(()=> existing.classList.remove('flash-update'), 600);
+                
                 cache[safeId] = hash;
             }
             return;
@@ -2153,6 +2276,10 @@ function withdrawOrderOptUI(orderId, driverPhone, el) {
     if (!confirm("سحب الطلب من هذا الكابتن وإعادته للرادار؟")) return;
     el.disabled = true;
     localOverrides.orders[String(orderId)] = { status: 'pending_driver', driverPhone: 'pending_driver', ts: Date.now() };
+    
+    // سحب من Firebase فوراً
+    db.ref(`active_orders/${orderId}`).update({ status: 'pending_driver', driverPhone: 'pending_driver' });
+    
     fetch(`${API_URL}?action=DECLINE_ORDER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}&pass=${masterPassword}`)
         .then(r => r.json()).then(res => { if (res.success) showToast("تم سحب الطلب"); })
         .catch(() => showToast("أمر مرسل للخلفية"));
@@ -2201,7 +2328,10 @@ function assignDriverOptUI(orderId, driverPhone, el) {
     if (card) { card.style.transition = '.3s'; card.style.opacity = '0.5'; }
     localOverrides.orders[String(orderId)] = { status: 'manual_pending', driverPhone, ts: Date.now() };
     
-    // إبلاغ السيرفر لوضع القفل السيادي
+    // التحديث في Firebase لحظياً
+    db.ref(`active_orders/${orderId}`).update({ status: 'manual_pending', driverPhone: driverPhone, is_sovereign: true });
+
+    // إبلاغ السيرفر 
     fetch(`${API_URL}?action=ASSIGN_DRIVER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}&pass=${masterPassword}`)
         .then(r => r.json()).then(res => {
             if (!res.success) { showToast("خطأ", "error"); if (card) card.style.opacity = '1'; el.disabled = false; }
@@ -2211,6 +2341,16 @@ function assignDriverOptUI(orderId, driverPhone, el) {
 
 function resetDebtOptUI(type, id, el) {
     if (!confirm(`تأكيد تصفير ديون (${id})؟ سيتم مسحها من الإكسل وتصفير العداد.`)) return;
+    
+    const card = el.closest('.entity-card');
+    if(card) {
+        card.classList.add('flash-update');
+        const dEl = card.querySelector('.debt-val');
+        if(dEl) dEl.textContent = '0 د.ع';
+        const upEl = card.querySelector('.unpaid-wrap');
+        if(upEl) upEl.innerHTML = '';
+    }
+    
     el.classList.add('btn-loading');
     el.disabled = true;
     fetch(`${API_URL}?action=RESET_DEBT&type=${type}&id=${id}&token=${API_TOKEN}&pass=${masterPassword}`)
@@ -2220,7 +2360,7 @@ function resetDebtOptUI(type, id, el) {
         }).catch(() => showToast("تم إرسال أمر التصفير"));
 }
 
-// 🟢 الإكمال والحذف القسري (يمسح Firebase لحظياً)
+// 🟢 الإكمال والحذف القسري (يمسح Firebase لحظياً) + حماية واجهة المستخدم
 function adminActionOptUI(cmd, type, id, el) {
     const map_ = { ACCEPT: 'active', PAUSE: 'inactive', DELETE: 'deleted', COMPLETE: 'completed' };
     let newStatus = map_[cmd];
@@ -2233,9 +2373,7 @@ function adminActionOptUI(cmd, type, id, el) {
             if (card) { card.style.transition = '.3s'; card.style.opacity = '0'; card.style.transform = 'scale(0.95)'; setTimeout(() => card.remove(), 320); }
             
             // حذف/إكمال لحظي من Firebase لتفريغ الرادار فوراً
-            if (cmd === 'COMPLETE' || cmd === 'DELETE') {
-                db.ref(`active_orders/${id}`).remove().catch(()=>{});
-            }
+            db.ref(`active_orders/${id}`).remove().catch(()=>{});
         }
     }
 
@@ -2244,19 +2382,26 @@ function adminActionOptUI(cmd, type, id, el) {
         localOverrides.restaurants[String(id)] = { status: newStatus, ts: Date.now() };
         const item = globalData?.restaurants.find(r => String(r[2]) === String(id));
         if (item) item[4] = newStatus;
-        applySectionFilter('RESTAURANT', currentResSectionFilter, document.querySelector('#resFiltersGroup .fp.active'));
+        triggerSearch('RESTAURANT'); // تحديث UI فوري
         updateSectionBadges('RESTAURANT', globalData.restaurants);
     }
     if (type === 'DRIVER') {
         localOverrides.drivers[String(id)] = { status: newStatus, ts: Date.now() };
         const item = globalData?.drivers.find(d => String(d[2]) === String(id));
         if (item) item[4] = newStatus;
-        applySectionFilter('DRIVER', currentDriverSectionFilter, document.querySelector('#driverFiltersGroup .fp.active'));
+        
+        // تحديث Firebase فوراً لخروج الكابتن إذا حظر
+        if(newStatus === 'banned' || newStatus === 'inactive' || newStatus === 'active') {
+            db.ref(`drivers_locations/${id}/account_status`).set(newStatus === 'banned' ? 'banned' : 'active');
+            db.ref(`drivers_locations/${id}/status`).set(newStatus === 'banned' ? 'inactive' : newStatus);
+        }
+        
+        triggerSearch('DRIVER'); // تحديث UI فوري
         updateSectionBadges('DRIVER', globalData.drivers);
     }
 
     fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${id}&status=${newStatus}&token=${API_TOKEN}&pass=${masterPassword}`)
-        .then(r => r.json()).then(res => { if (!res.success) { showToast("حدث خطأ", "error"); refreshData(); } })
+        .then(r => r.json()).then(res => { if (!res.success) { showToast("حدث خطأ في السيرفر", "error"); refreshData(); } else { showToast("تم التحديث بنجاح"); } })
         .catch(() => {});
 }
 
