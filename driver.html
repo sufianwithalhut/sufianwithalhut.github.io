@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 7.5 (النسخة الماسية: إصلاح كتم صوت الأندرويد عند القبول) ---
-        const CURRENT_APP_VERSION = "7.5"; 
+        // --- إصدار 7.6 (النسخة الماسية: حماية البيانات من القبول السريع + كتم الصوت) ---
+        const CURRENT_APP_VERSION = "7.6"; 
         
         if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة... جاري تطهير الكاش!");
@@ -792,34 +792,65 @@
         }, 1000);
     }
 
-    // 🟢 الكابتن يحدث Firebase مباشرة فقط
-    window.acceptOrder = function() {
-        if (!currentOrderData.resPhone && currentOrderData.resName) {
-            const btn = document.getElementById('btnAcceptMain');
-            btn.innerHTML = `<div class="spinner-border spinner-border-sm text-white"></div> جاري تأمين البيانات...`;
-            btn.disabled = true;
-            fetch(`${API_URL}?action=getGlobalData&token=${API_TOKEN}`).then(r=>r.json()).then(data => {
-                const res = data.restaurants.find(r => r[1] === currentOrderData.resName);
-                if(res) {
-                    currentOrderData.resPhone = res[2]; currentOrderData.resLat = res[6]; currentOrderData.resLng = res[7]; currentOrderData.resArea = res[3];
-                    finalizeAccept();
-                } else { finalizeAccept(); } 
-            }).catch(e => { finalizeAccept(); });
-        } else { finalizeAccept(); }
+    // 🟢 دالة تأكيد القبول - ذكية وآمنة (لا تقبل الطلب حتى تكتمل معلوماته)
+    window.acceptOrder = async function() {
+        const btn = document.getElementById('btnAcceptMain');
+        btn.innerHTML = `<div class="spinner-border spinner-border-sm text-white"></div> جاري تأمين البيانات...`;
+        btn.disabled = true;
+
+        // إذا كانت بيانات المطعم موجودة بالفعل، ننهي القبول فوراً
+        if (currentOrderData.resPhone && currentOrderData.resLat) {
+            finalizeAccept();
+            return;
+        }
+
+        // إذا كانت ناقصة، نجلبها من السيرفر قبل الإكمال
+        try {
+            const r = await fetch(`${API_URL}?action=getGlobalData&token=${API_TOKEN}`);
+            const data = await r.json();
+            const resInfo = data.restaurants.find(r => r[1] === currentOrderData.resName);
+            
+            if (resInfo) {
+                currentOrderData.resPhone = resInfo[2]; 
+                currentOrderData.resArea = resInfo[3];
+                currentOrderData.resLat = resInfo[6]; 
+                currentOrderData.resLng = resInfo[7];
+            } else {
+                // إذا لم نجد المطعم في السيرفر، نعين قيم افتراضية لكي لا يتعطل الطلب
+                currentOrderData.resPhone = "غير متوفر";
+                currentOrderData.resLat = "";
+                currentOrderData.resLng = "";
+            }
+        } catch (e) {
+            console.error("فشل جلب بيانات المطعم:", e);
+            currentOrderData.resPhone = "غير متوفر";
+        }
+
+        // بعد التأكد من وجود البيانات (أو تعيين بديل)، نقوم بحفظ الطلب
+        finalizeAccept();
     }
 
     function finalizeAccept() {
         document.getElementById('orderAlertOverlay').classList.add('hidden-section');
         
-        // ✅ التعديل الجراحي: استدعاء دالة الإسكات الشاملة بدلاً من إيقاف صوت واحد فقط
+        // إيقاف الصوت الشامل
         window.muteAlarmOnly();
         
         const newO = { 
-            id: currentOrderData.id, resName: currentOrderData.resName, resArea: currentOrderData.resArea, 
-            details: String(currentOrderData.details), price: currentOrderData.price, area: currentOrderData.area, 
-            state: 'heading', photoUrl: currentOrderData.photoUrl, resPhone: currentOrderData.resPhone, 
-            resLat: currentOrderData.resLat, resLng: currentOrderData.resLng, acceptedTime: Date.now() 
+            id: currentOrderData.id, 
+            resName: currentOrderData.resName, 
+            resArea: currentOrderData.resArea, 
+            details: String(currentOrderData.details), 
+            price: currentOrderData.price, 
+            area: currentOrderData.area, 
+            state: 'heading', 
+            photoUrl: currentOrderData.photoUrl, 
+            resPhone: currentOrderData.resPhone, 
+            resLat: currentOrderData.resLat, 
+            resLng: currentOrderData.resLng, 
+            acceptedTime: Date.now() 
         };
+        
         activeOrders.push(newO);
         localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
         displayActiveOrders();
@@ -834,7 +865,10 @@
         safeFetchUpdate(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${newO.id}&status=accepted&token=${API_TOKEN}`);
         
         const acceptBtn = document.getElementById('btnAcceptMain');
-        if (acceptBtn) { acceptBtn.innerHTML = `قبول الطلب فوراً <svg class="svg-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>`; acceptBtn.disabled = false; }
+        if (acceptBtn) { 
+            acceptBtn.innerHTML = `قبول الطلب فوراً <svg class="svg-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>`; 
+            acceptBtn.disabled = false; 
+        }
     }
 
     function displayActiveOrders() {
