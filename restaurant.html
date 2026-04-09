@@ -445,9 +445,6 @@
     let lastArchiveHtml = "";
     let actionBlacklist = []; 
 
-    // 🔒 حارس الإرسال: يمنع النقرات المزدوجة المتزامنة
-    let isSubmittingOrder = false;
-
     // مصفوفة الطلبات اللحظية لـ Firebase
     let liveActiveOrders = [];
 
@@ -598,13 +595,6 @@
         const persianNumbers = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
         let convertedStr = str.replace(/[٠-٩]/g, w => arabicNumbers.indexOf(w));
         return convertedStr.replace(/[۰-۹]/g, w => persianNumbers.indexOf(w));
-    }
-
-    // 🧹 تنظيف رقم الهاتف: إزالة كل ما ليس رقماً، وتحويل الأرقام العربية/الفارسية لإنجليزية
-    function sanitizePhone(raw) {
-        let cleaned = convertArabicNumerals(String(raw));   // تحويل الأرقام العربية/الفارسية
-        cleaned = cleaned.replace(/[^\d]/g, '');             // إبقاء الأرقام فقط (مسح فواصل ومسافات وحروف)
-        return cleaned;
     }
 
     function parseCustomPriceList(rawText) {
@@ -834,7 +824,7 @@
             });
     }
 
-    // 🟢 الاستماع اللحظي (Firebase) لتحديث حالة الطلب أمام المطعم فوراً
+    // 🟢 5. الاستماع اللحظي (Firebase) لتحديث حالة الطلب أممام المطعم فوراً
     function startHotDataListeners() {
         const ordersRef = ref(db, 'active_orders');
         onValue(ordersRef, (snapshot) => {
@@ -859,7 +849,7 @@
         });
     }
 
-    // 🟢 الإلغاء اللحظي (مسح من Firebase فوراً ثم إبلاغ السيرفر)
+    // 🟢 6. الإلغاء اللحظي (مسح من Firebase فوراً ثم إبلاغ السيرفر)
     window.cancelOrderGrace = function(orderId) {
         if(confirm("هل أنت متأكد من إلغاء هذا الطلب؟ سيتم سحبه من الرادار فوراً.")) {
             const card = document.getElementById(`order-${orderId}`);
@@ -979,51 +969,29 @@
 
     document.getElementById('orderForm').onsubmit = function(e) {
         e.preventDefault();
-
-        // 🔒 حماية Spam: منع الإرسال المزدوج المتزامن
-        if (isSubmittingOrder) return;
-        isSubmittingOrder = true;
-
         let finalArea = document.getElementById('customerArea').value, areaWithHint = finalArea;
 
         if (finalArea === "أخرى") {
             let cName = document.getElementById('customAreaName').value.trim(), cPrice = document.getElementById('customAreaPrice').value.trim();
-            if(!cName || !cPrice) {
-                isSubmittingOrder = false;
-                return alert("يرجى إدخال اسم المنطقة الجديدة وسعر التوصيل.");
-            }
+            if(!cName || !cPrice) return alert("يرجى إدخال اسم المنطقة الجديدة وسعر التوصيل.");
             areaWithHint = `${cName} (توصيل: ${cPrice})`;
-        } else if (!finalArea && currentOrderMode === 'manual') {
-            isSubmittingOrder = false;
-            return alert("يرجى اختيار منطقة الزبون من القائمة.");
-        } else if (myCustomPriceList[finalArea]) { areaWithHint = `${finalArea} (توصيل: ${myCustomPriceList[finalArea]})`; }
+        } else if (!finalArea && currentOrderMode === 'manual') { return alert("يرجى اختيار منطقة الزبون من القائمة."); } 
+        else if (myCustomPriceList[finalArea]) { areaWithHint = `${finalArea} (توصيل: ${myCustomPriceList[finalArea]})`; }
 
         let finalDetails = "", finalPrice = parseFloat(document.getElementById('orderPrice').value) || 0; 
         const btn = document.getElementById('submitOrderBtn');
         const originalBtnHtml = btn.innerHTML;
-        btn.disabled = true; // تعطيل الزر فوراً لمنع الضغط المتكرر
 
         if (currentOrderMode === 'manual') {
-            // 🧹 تنظيف رقم هاتف الزبون قبل الإرسال
-            const rawCustPhone = document.getElementById('customerPhone').value.trim();
-            const custPhone = sanitizePhone(rawCustPhone);
-            const extra = document.getElementById('customerDetails').value.trim();
-            if (!custPhone) {
-                btn.disabled = false;
-                isSubmittingOrder = false;
-                return alert("يرجى كتابة رقم الزبون.");
-            }
-            finalDetails = `الهاتف: ${custPhone} | ${extra}`;
+            const custPhone = document.getElementById('customerPhone').value.trim(), extra = document.getElementById('customerDetails').value.trim();
+            if (!custPhone) return alert("يرجى كتابة رقم الزبون."); finalDetails = `الهاتف: ${custPhone} | ${extra}`;
             finalizeOrderPlacement(finalDetails, "", finalPrice, areaWithHint, btn, originalBtnHtml);
         } else {
-            if (!base64Receipt) {
-                btn.disabled = false;
-                isSubmittingOrder = false;
-                return alert("يرجى التقاط صورة للوصل أولاً.");
-            }
+            if (!base64Receipt) return alert("يرجى التقاط صورة للوصل أولاً.");
             finalDetails = "طلب مصور سريع (انظر الوصل)"; 
             
             btn.innerHTML = `<div class="spinner-border spinner-border-sm me-2"></div> جاري الرفع السريع للوصل...`;
+            btn.disabled = true;
             
             let base64ImageContent = base64Receipt.split(',')[1];
             let formData = new FormData();
@@ -1038,13 +1006,12 @@
             })
             .catch(err => {
                 btn.innerHTML = originalBtnHtml; btn.disabled = false;
-                isSubmittingOrder = false;
                 alert("حدث خطأ أثناء رفع الصورة، تأكد من سرعة الإنترنت لديك.");
             });
         }
     };
 
-    // 🟢 الحقن اللحظي في Firebase مع الإطلاق السريع جداً
+    // 🟢 7. الحقن اللحظي في Firebase مع الإطلاق السريع جداً
     function finalizeOrderPlacement(details, imageUrl, price, area, btn, originalBtnHtml) {
         btn.innerHTML = `<div class="spinner-border spinner-border-sm me-2"></div> جاري الإطلاق للرادار...`;
         
@@ -1056,7 +1023,6 @@
             id: uniqueFrontendId,
             restaurant: currentResName,
             area: area,
-            details: details, // ✅ رقم الزبون موجود هنا - الكابتن يستلمه لحظياً
             status: "pending_driver",
             driverPhone: "pending_driver",
             price: price,
@@ -1069,10 +1035,8 @@
         const payload = { action: 'NEW_ORDER', token: API_TOKEN, frontendId: uniqueFrontendId, restaurantName: currentResName, area: area, price: price, details: details, image: imageUrl };
         fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) }).catch(e=>{});
 
-        // 3. إظهار النجاح للمطعم فوراً وإعادة تهيئة الحارس
-        btn.innerHTML = originalBtnHtml;
-        btn.disabled = false;
-        isSubmittingOrder = false;
+        // 3. إظهار النجاح للمطعم فوراً
+        btn.innerHTML = originalBtnHtml; btn.disabled = false;
         showSuccessMessage();
     }
 
@@ -1087,4 +1051,4 @@
     }
 </script>
 </body>
-</html>
+</html>​
