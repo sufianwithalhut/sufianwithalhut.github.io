@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 3.0 - الماسي: الرادار الذكي المدمج + Firebase-First) ---
-        const CURRENT_APP_VERSION = "3.0"; 
+        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 3.1 - الماسي: حقن الإحداثيات الذاتي في الطلب) ---
+        const CURRENT_APP_VERSION = "3.1"; 
         if (localStorage.getItem('hut_res_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة مكتشفة... جاري التحديث الإجباري لتسريع النظام!");
             localStorage.setItem('hut_res_app_version', CURRENT_APP_VERSION);
@@ -439,6 +439,7 @@
     let pickerMap;
     let regLat = 35.468; 
     let regLng = 44.392;
+    let regPhone = ""; // سيتم تخزين هاتف المطعم هنا لحقنه في الطلب
 
     let lastActiveHtml = "";
     let lastArchiveHtml = "";
@@ -749,7 +750,9 @@
                 const diffHours = (Date.now() - session.timestamp) / (1000 * 60 * 60);
                 if (diffHours < 24) {
                     document.getElementById('checkPhone').value = session.phone.startsWith('0') ? session.phone : '0' + session.phone;
-                    currentResName = session.name; enterDashboard(); return true;
+                    currentResName = session.name; 
+                    regPhone = session.phone; // تخزين الهاتف للحقن
+                    enterDashboard(); return true;
                 }
             } catch(e) {}
         } else if (pendingStr) {
@@ -893,6 +896,7 @@
                 if(data.status === "active" || data.status === "inactive") {
                     clearInterval(waitingPollingTimer); localStorage.removeItem('hut_res_pending');
                     currentResName = data.name;
+                    regPhone = phone; // تخزين
                     try { if (data.priceList && data.priceList.trim() !== "") myCustomPriceList = JSON.parse(data.priceList); } catch(e) {}
                     localStorage.setItem('hut_res_session', JSON.stringify({ phone: phone, name: data.name, timestamp: Date.now() }));
                     const wAudio = document.getElementById('welcomeSound'); if(wAudio) { wAudio.currentTime = 0; wAudio.play().catch(e=>{}); }
@@ -908,6 +912,7 @@
         window.showLoading(false);
         if(data.status === "active" || data.status === "inactive") {
             currentResName = data.name; localStorage.setItem('hut_res_phone', phone); localStorage.removeItem('hut_res_pending');
+            regPhone = phone; // تخزين
             try { if (data.priceList && data.priceList.trim() !== "") myCustomPriceList = JSON.parse(data.priceList); } catch(e) {}
             localStorage.setItem('hut_res_session', JSON.stringify({ phone: phone, name: data.name, timestamp: Date.now() }));
             enterDashboard();
@@ -945,6 +950,8 @@
                     if(resInfo && resInfo[6] && resInfo[7]) {
                         regLat = parseFloat(resInfo[6]);
                         regLng = parseFloat(resInfo[7]);
+                        // نحدث رقم الهاتف أيضاً تحسباً لتغييره من الإدارة
+                        if (resInfo[2]) regPhone = resInfo[2]; 
                     }
                 }
                 renderDashboardStats(data);
@@ -1136,7 +1143,7 @@
         }
     };
 
-    // 🟢 7. الرادار الذكي والتعيين المباشر عبر Firebase
+    // 🟢 7. الرادار الذكي والتعيين المباشر عبر Firebase (مع الحقن الذاتي)
     async function finalizeOrderPlacement(details, imageUrl, price, area, btn, originalBtnHtml) {
         btn.innerHTML = `<div class="spinner-border spinner-border-sm me-2"></div> جاري تحليل الرادار الذكي...`;
         btn.disabled = true;
@@ -1157,7 +1164,7 @@
             const bestDriverPhone = await calculateBestDriver(fbLocs, activeFbOrders, area);
             const finalDriver = bestDriverPhone || "pending_driver";
 
-            // 3. الحقن الذري المباشر في Firebase
+            // 3. الحقن الذري المباشر في Firebase (مع حقن اللوكيشن ورقم الهاتف)
             await set(ref(db, 'active_orders/' + uniqueFrontendId), {
                 id: uniqueFrontendId,
                 restaurant: currentResName,
@@ -1168,7 +1175,11 @@
                 price: price,
                 timestamp: timestampIso,
                 photoUrl: imageUrl,
-                last_update: timestampIso
+                last_update: timestampIso,
+                // 🔥 الحقن الذاتي لتفادي أخطاء الكابتن
+                resPhone: regPhone || "غير متوفر",
+                resLat: regLat || 0,
+                resLng: regLng || 0
             });
 
             // 4. إبلاغ السيرفر بهدوء للأرشفة فقط
