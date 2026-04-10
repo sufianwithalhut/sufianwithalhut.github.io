@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 7.6 (النسخة الماسية: حماية البيانات من القبول السريع + كتم الصوت) ---
-        const CURRENT_APP_VERSION = "7.6"; 
+        // --- إصدار 7.7 (النسخة الماسية: نظام كشف السكون المزدوج لمنع بقاء الكابتن نشطاً أثناء النوم) ---
+        const CURRENT_APP_VERSION = "7.7"; 
         
         if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة... جاري تطهير الكاش!");
@@ -370,6 +370,10 @@
     let wakeLock = null, waitingPollingTimer = null, statsInterval = null, heartbeatInterval = null;
     let lastLocUpdateTs = 0, lastSentLat = 0, lastSentLng = 0, lastActiveHtml = "";
 
+    // --- متغيرات كشف السكون (Idle Detection) ---
+    let lastSignificantMovementTs = Date.now(); // آخر مرة تحرك فيها الكابتن مسافة حقيقية
+    const IDLE_TIMEOUT_MS = 15 * 60 * 1000; // 15 دقيقة من السكون المكاني
+
     let offlineActionQueue = JSON.parse(localStorage.getItem('hut_offline_queue') || '[]');
     let isProcessingQueue = false;
 
@@ -478,6 +482,26 @@
         document.getElementById('loadingText').innerText = text; 
         document.getElementById('loadingOverlay').style.display = s ? 'flex' : 'none'; 
     }
+
+    // 🟢 1. مراقبة قفل الشاشة أو الخروج من التطبيق (Visibility Change)
+    document.addEventListener("visibilitychange", function() {
+        if (document.hidden) {
+            // المتصفح في الخلفية أو الشاشة مقفلة
+            if (isOnline && driverData) {
+                console.log("تم قفل الشاشة، إيقاف النبض مؤقتاً");
+                updateFirebaseLocationStatus('inactive'); // تحويله لاستراحة فوراً
+                if(heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
+            }
+        } else {
+            // المتصفح عاد للعمل
+            if (isOnline && driverData) {
+                console.log("عاد المتصفح للعمل، استئناف النبض");
+                lastSignificantMovementTs = Date.now(); // تصفير عداد السكون
+                updateFirebaseLocationStatus('active'); // إعادته نشط
+                if(!heartbeatInterval) heartbeatInterval = setInterval(sendHeartbeat, 30000);
+            }
+        }
+    });
 
     window.addEventListener('online', () => { document.getElementById('offlineBanner').classList.add('hidden-section'); processOfflineQueue(); });
     window.addEventListener('offline', () => { document.getElementById('offlineBanner').classList.remove('hidden-section'); });
@@ -618,6 +642,7 @@
         }
     }
 
+    // زر التحويل اليدوي (استراحة / نشط)
     window.toggleOnlineStatus = function() {
         isOnline = document.getElementById('onlineToggle').checked;
         const badge = document.getElementById('onlineStatusBadge');
@@ -627,8 +652,11 @@
             document.getElementById('searchingStatus').classList.remove('offline-mode');
             updateFirebaseLocationStatus('active');
             requestWakeLock(); if (silentAudio) silentAudio.play().catch(e=>{}); 
+            
+            lastSignificantMovementTs = Date.now(); // إعادة ضبط عداد السكون عند التفعيل
             if(!statsInterval) statsInterval = setInterval(updateStats, 60000); 
-            if(!heartbeatInterval) heartbeatInterval = setInterval(sendHeartbeat, 30000); // Heartbeat
+            if(!heartbeatInterval) heartbeatInterval = setInterval(sendHeartbeat, 30000); 
+            
             displayActiveOrders();
         } else {
             badge.className = "status-badge offline"; badge.innerHTML = `في استراحة`;
@@ -641,9 +669,9 @@
         }
     }
 
-    // 🟢 إرسال نبض الحياة (Heartbeat) كل 30 ثانية إلى Firebase
+    // النبض
     function sendHeartbeat() {
-        if (!isOnline || !driverData || !lastSentLat) return;
+        if (!isOnline || !driverData || !lastSentLat || document.hidden) return;
         const updates = {};
         updates[`drivers_locations/${driverData.phone}`] = { 
             lat: lastSentLat, lng: lastSentLng, 
@@ -666,7 +694,7 @@
             requestWakeLock(); 
             let silentAudio = document.getElementById('keepAliveAudio'); if (silentAudio) silentAudio.play().catch(e=>{}); 
             statsInterval = setInterval(updateStats, 60000); 
-            heartbeatInterval = setInterval(sendHeartbeat, 30000); // 💓 تفعيل النبض
+            heartbeatInterval = setInterval(sendHeartbeat, 30000); 
         }
         updateStats(); 
         startHotDataListeners(); 
@@ -679,9 +707,31 @@
                     driverData.currentLng = pos.coords.longitude;
                     const now = Date.now();
                     
-                    let isHeadingToCustomer = activeOrders.some(o => o.state === 'picked_up');
+                    let isCarryingOrder = activeOrders.length > 0;
                     
-                    if (!isHeadingToCustomer) { 
+                    // 🟢 2. خوارزمية السكون المكاني
+                    if (!isCarryingOrder && lastSentLat) {
+                        const distMoved = calculateDistanceMeters(lastSentLat, lastSentLng, pos.coords.latitude, pos.coords.longitude);
+                        
+                        // إذا تحرك مسافة حقيقية (أكثر من 30 متر)، نُصفر العداد
+                        if (distMoved > 30) {
+                            lastSignificantMovementTs = now;
+                        } else {
+                            // إذا لم يتحرك، نتحقق كم مضى من الوقت
+                            if (now - lastSignificantMovementTs > IDLE_TIMEOUT_MS) {
+                                // تجاوز 15 دقيقة دون حركة! (نائم أو ترك الهاتف)
+                                if(isOnline) {
+                                    console.log("تم اكتشاف سكون طويل، تحويل لاستراحة تلقائياً");
+                                    document.getElementById('onlineToggle').checked = false; // نطفئ الزر في الشاشة
+                                    window.toggleOnlineStatus(); // ننفذ دالة الإطفاء لترسل لفايربيس
+                                    showToast("تم تحويلك لوضع الاستراحة تلقائياً بسبب عدم الحركة لفترة طويلة.", "error");
+                                }
+                                return; // نوقف التحديث هنا
+                            }
+                        }
+                    }
+
+                    if (!isCarryingOrder) { 
                         const dist = calculateDistanceMeters(lastSentLat, lastSentLng, pos.coords.latitude, pos.coords.longitude);
                         const timeElapsed = now - lastLocUpdateTs;
                         
@@ -691,7 +741,7 @@
                                 lastSentLat = pos.coords.latitude;
                                 lastSentLng = pos.coords.longitude;
                                 
-                                updateFirebaseLocationStatus(isOnline ? 'active' : 'inactive');
+                                if(isOnline && !document.hidden) updateFirebaseLocationStatus('active');
                             }
                         }
                     }
@@ -833,7 +883,6 @@
     function finalizeAccept() {
         document.getElementById('orderAlertOverlay').classList.add('hidden-section');
         
-        // إيقاف الصوت الشامل
         window.muteAlarmOnly();
         
         const newO = { 
