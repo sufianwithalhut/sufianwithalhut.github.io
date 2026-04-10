@@ -1,26 +1,37 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
+    <meta charset="UTF-8">
     <script>
         // --- الإصدار 5.1 (اللوحة السيادية الكاملة - Enterprise SRE) ---
-        const CURRENT_APP_VERSION = "5.1"; 
-        if (localStorage.getItem('hut_master_app_version') !== CURRENT_APP_VERSION) {
-            console.log("نسخة إدارة سيادية جديدة مكتشفة... جاري التحديث!");
-            localStorage.setItem('hut_master_app_version', CURRENT_APP_VERSION);
-            if ('caches' in window) {
-                caches.keys().then(function(names) {
-                    for (let name of names) caches.delete(name);
-                });
+        // FIX #1: charset moved before script (browser needs charset first to parse JS correctly)
+        // FIX #2: try/catch + verify write succeeded to prevent infinite reload loop
+        const CURRENT_APP_VERSION = "5.1";
+        const VERSION_KEY = 'hut_master_app_version';
+        try {
+            if (localStorage.getItem(VERSION_KEY) !== CURRENT_APP_VERSION) {
+                localStorage.setItem(VERSION_KEY, CURRENT_APP_VERSION);
+                // Only reload if the write actually succeeded (prevents infinite loop)
+                if (localStorage.getItem(VERSION_KEY) === CURRENT_APP_VERSION) {
+                    console.log("نسخة إدارة سيادية جديدة مكتشفة... جاري التحديث!");
+                    if ('caches' in window) {
+                        caches.keys().then(function(names) {
+                            for (let name of names) caches.delete(name);
+                        });
+                    }
+                    if ('serviceWorker' in navigator) {
+                        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                            for (let registration of registrations) { registration.update(); }
+                        });
+                    }
+                    window.location.reload();
+                }
             }
-            if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.getRegistrations().then(function(registrations) {
-                    for(let registration of registrations) { registration.update(); }
-                });
-            }
-            window.location.reload(true);
+        } catch (e) {
+            // localStorage unavailable (private mode / storage full) — skip version check silently
+            console.warn('تعذّر التحقق من الإصدار:', e.message);
         }
     </script>
-    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>مكتب سفيان | الإدارة العليا</title>
     <meta name="theme-color" content="#f0f7ff">
@@ -1388,7 +1399,29 @@
 if (typeof lucide !== 'undefined') lucide.createIcons();
 
 /* ═══════════════════════════════════════════
-   🔗 CONFIG - التحديث الجراحي الماسي V4.1
+   🛡️ SECURITY UTIL — FIX #6: XSS protection
+   استخدم escHtml() دائماً قبل حقن أي نص في innerHTML
+═══════════════════════════════════════════ */
+function escHtml(str) {
+    if (str === null || str === undefined) return '';
+    const d = document.createElement('div');
+    d.textContent = String(str);
+    return d.innerHTML;
+}
+
+/* ═══════════════════════════════════════════
+   📐 DATA SCHEMA — FIX #7: No more magic numbers
+   تعريف مخطط البيانات بأسماء واضحة بدل الأرقام السحرية
+═══════════════════════════════════════════ */
+const O = { ID:0, REST_NAME:1, AREA:2, DETAILS:3, PRICE:4, STATUS:5, DRIVER_PHONE:6, TIME:7 };
+const R = { ID:0, NAME:1, PHONE:2, AREA:3, STATUS:4, COMMISSION:5, LAT:6, LNG:7, PAY_TYPE:8 };
+const D = { ID:0, NAME:1, PHONE:2, AREA:3, STATUS:4, LAT:5, LNG:6 };
+
+// Transition duration matching CSS tabIn animation (used for map.invalidateSize)
+const TAB_TRANSITION_MS = 350; // FIX #15: replaces magic number 800
+
+/* ═══════════════════════════════════════════
+   🔗 CONFIG
 ═══════════════════════════════════════════ */
 const API_URL   = "https://script.google.com/macros/s/AKfycbxt4vA6cbF7sCRg196WYQoc26mR2yc9JelqotDzVdLDEEPjFtXDDXVbT7l_FwbZTANA/exec";
 const API_TOKEN = "HUT_SECURE_99";
@@ -1471,38 +1504,38 @@ function sendBroadcast(type) {
 }
 
 /* ─── Auth ─── */
-function checkAuth() {
+// FIX #4: Replaced JSONP (script injection XSS risk) with fetch()
+// FIX #12: Replaced alert() with showToast()
+async function checkAuth() {
     const pass = document.getElementById('masterPass').value.trim();
-    if (!pass) return alert("الرجاء إدخال رمز المرور");
+    if (!pass) { showToast("الرجاء إدخال رمز المرور", "error"); return; }
     masterPassword = encodeURIComponent(pass);
     const btn = document.querySelector('.auth-btn');
     btn.textContent = '';
     btn.classList.add('btn-loading');
     btn.disabled = true;
 
-    const s = document.createElement('script');
-    s.id = 'auth-script';
-    s.src = `${API_URL}?action=VERIFY_MASTER_PASS&pass=${masterPassword}&token=${API_TOKEN}&callback=authResult&ts=${Date.now()}`;
-    document.body.appendChild(s);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
 
-    setTimeout(() => {
-        if (btn.disabled) {
-            btn.textContent = 'تسجيل الدخول';
-            btn.classList.remove('btn-loading');
-            btn.disabled = false;
-            showToast("تأخر السيرفر، تحقق من الإنترنت", "error");
-        }
-    }, 12000);
+    try {
+        const url = `${API_URL}?action=VERIFY_MASTER_PASS&pass=${masterPassword}&token=${API_TOKEN}&ts=${Date.now()}`;
+        const res = await fetch(url, { signal: controller.signal });
+        const response = await res.json();
+        clearTimeout(timeout);
+        _handleAuthResult(response);
+    } catch (err) {
+        clearTimeout(timeout);
+        masterPassword = "";
+        showToast(err.name === 'AbortError' ? "تأخر السيرفر، تحقق من الإنترنت" : "فشل الاتصال بالخادم", "error");
+    } finally {
+        btn.textContent = 'تسجيل الدخول';
+        btn.classList.remove('btn-loading');
+        btn.disabled = false;
+    }
 }
 
-window.authResult = function(response) {
-    const s = document.getElementById('auth-script');
-    if (s) s.remove();
-    const btn = document.querySelector('.auth-btn');
-    btn.textContent = 'تسجيل الدخول';
-    btn.classList.remove('btn-loading');
-    btn.disabled = false;
-
+function _handleAuthResult(response) {
     if (response.success) {
         document.getElementById('authOverlay').style.display = 'none';
         document.getElementById('mainDashboard').classList.remove('d-none');
@@ -1510,16 +1543,19 @@ window.authResult = function(response) {
         a.volume = 0; a.play().then(() => { a.pause(); a.currentTime = 0; a.volume = 1; }).catch(() => {});
         startClock();
         initMap();
-        refreshData(); // Fetch static names once
+        refreshData();
     } else {
         masterPassword = "";
         showToast("رمز المرور غير صحيح", "error");
     }
-};
+}
 
 /* ─── Clock ─── */
+// FIX #13: Guard prevents interval accumulation on multiple calls
+let _clockInterval = null;
 function startClock() {
-    setInterval(() => {
+    if (_clockInterval) clearInterval(_clockInterval);
+    _clockInterval = setInterval(() => {
         const t = new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
         document.getElementById('liveTimeDesk').textContent = t;
         document.getElementById('liveTimeMob').textContent = t;
@@ -1527,19 +1563,20 @@ function startClock() {
 }
 
 /* ─── Data Refresh (Mainly for Archive now) ─── */
-function refreshData() {
-    const old = document.getElementById('data-fetch-script');
-    if (old) old.remove();
-    const s = document.createElement('script');
-    s.id = 'data-fetch-script';
-    s.src = `${API_URL}?action=getGlobalData&token=${API_TOKEN}&callback=renderData&ts=${Date.now()}`;
-    document.body.appendChild(s);
+// FIX #4: Replaced JSONP (script injection) with fetch()
+async function refreshData() {
+    try {
+        const url = `${API_URL}?action=getGlobalData&token=${API_TOKEN}&ts=${Date.now()}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        renderData(data);
+    } catch (e) {
+        console.error("فشل تحديث البيانات:", e);
+    }
 }
 
 window.renderData = function(data) {
-    const old = document.getElementById('data-fetch-script');
-    if (old) old.remove();
-
+    // FIX #4: renderData is now called directly by fetch, not as JSONP callback
     const now = Date.now();
     data.drivers.forEach(d => {
         const ov = localOverrides.drivers[d[2]];
@@ -1783,12 +1820,28 @@ function smartRenderRadar(activeList) {
         } else { pending.push(o); }
     });
 
+    /* ─── FIX #8: Helper replaces duplicated ctrl-building logic ─── */
+    function buildDriverControls(orderId, driverPhone, hasDriver, sInfo) {
+        let ctrl = '';
+        let opts = activeDriversOptionsCache;
+
+        if (sInfo.ringing && hasDriver) {
+            ctrl += `<button class="oc-btn oc-btn-delete" style="width:auto;padding:0 10px;font-family:'Cairo',sans-serif;font-size:0.72rem;font-weight:800;" onclick="withdrawOrderOptUI('${escHtml(orderId)}','${escHtml(driverPhone)}',this)"><i data-lucide="user-minus" width="13" height="13"></i> سحب</button>`;
+        }
+        if (hasDriver && !sInfo.ringing) {
+            ctrl += `<button class="btn-call-sm" onclick="window.open('tel:${escHtml(driverPhone)}')"><i data-lucide="phone" width="14" height="14"></i></button>`;
+            opts = opts.replace('تعيين يدوي', 'إعادة تعيين 🔄');
+        }
+        ctrl += `<select class="assign-select" onchange="assignDriverOptUI('${escHtml(orderId)}',this.value,this)">${opts}</select>`;
+        return ctrl;
+    }
+
     const getStatusInfo = (status, hasDriver, timeStr) => {
         const mins = Math.floor((new Date() - new Date(timeStr)) / 60000);
         if (!hasDriver || status === 'pending_driver' || status === 'manual_pending') {
+            // FIX #9: Removed dead code — both if/else branches were identical
             if (hasDriver) {
-                if (mins > 1) return { cls: 'oc-ringing', sbCls: 'sbadge-warn',    desc: '⏳ جاري الرنين', ringing: true };
-                else          return { cls: 'oc-ringing', sbCls: 'sbadge-warn',    desc: '⏳ جاري الرنين', ringing: true };
+                return { cls: 'oc-ringing', sbCls: 'sbadge-warn', desc: '⏳ جاري الرنين', ringing: true };
             }
             return { cls: 'oc-pending', sbCls: 'sbadge-danger', desc: '🔴 بانتظار كابتن', ringing: false };
         }
@@ -1879,14 +1932,8 @@ function smartRenderRadar(activeList) {
                 if (dnEl) { dnEl.querySelector('span').textContent = driverName; }
                 const ctrlEl = existing.querySelector('.driver-controls-ui');
                 if (ctrlEl) {
-                    let ctrl = '';
-                    if (sInfo.ringing && hasDriver) ctrl += `<button class="oc-btn oc-btn-delete" style="width:auto;padding:0 10px;font-family:'Cairo',sans-serif;font-size:0.72rem;font-weight:800;" onclick="withdrawOrderOptUI('${orderId}','${driverPhone}',this)"><i data-lucide="user-minus" width="13" height="13"></i> سحب</button>`;
-                    let opts = activeDriversOptionsCache;
-                    if (hasDriver && !sInfo.ringing) {
-                        ctrl += `<button class="btn-call-sm" onclick="window.open('tel:${driverPhone}')"><i data-lucide="phone" width="14" height="14"></i></button>`;
-                        opts = opts.replace('تعيين يدوي', 'إعادة تعيين 🔄');
-                    }
-                    ctrl += `<select class="assign-select" onchange="assignDriverOptUI('${orderId}',this.value,this)">${opts}</select>`;
+                    // FIX #8: Using extracted buildDriverControls() instead of duplicated code
+                    const ctrl = buildDriverControls(orderId, driverPhone, hasDriver, sInfo);
                     ctrlEl.innerHTML = ctrl;
                     if (typeof lucide !== 'undefined') lucide.createIcons({ root: ctrlEl });
                 }
@@ -1904,15 +1951,9 @@ function smartRenderRadar(activeList) {
             return;
         }
 
-        let ctrl = '';
-        if (sInfo.ringing && hasDriver) ctrl += `<button class="oc-btn oc-btn-delete" style="width:auto;padding:0 10px;font-family:'Cairo',sans-serif;font-size:0.72rem;font-weight:800;" onclick="withdrawOrderOptUI('${orderId}','${driverPhone}',this)"><i data-lucide="user-minus" width="13" height="13"></i> سحب</button>`;
-        let opts = activeDriversOptionsCache;
-        let callBtn = '';
-        if (hasDriver && !sInfo.ringing) {
-            callBtn = `<button class="btn-call-sm" onclick="window.open('tel:${driverPhone}')"><i data-lucide="phone" width="14" height="14"></i></button>`;
-            opts = opts.replace('تعيين يدوي', 'إعادة تعيين 🔄');
-        }
-        ctrl += `<select class="assign-select" onchange="assignDriverOptUI('${orderId}',this.value,this)">${opts}</select>`;
+        // FIX #8: Using extracted buildDriverControls() instead of duplicated code
+        const ctrl = buildDriverControls(orderId, driverPhone, hasDriver, sInfo);
+        let callBtn = (hasDriver && !sInfo.ringing) ? `<button class="btn-call-sm" onclick="window.open('tel:${escHtml(driverPhone)}')"><i data-lucide="phone" width="14" height="14"></i></button>` : '';
 
         const html = `
         <div id="oc-${orderId}" class="order-card ${sInfo.cls} flash-update">
@@ -1999,13 +2040,15 @@ function applySectionFilter(type, filter, btn) {
 
     if (globalData) {
         // We no longer calculate debts from Excel orders. We use liveLedgers directly in smartRenderFilteredSection.
-        if (type === 'RESTAURANT') smartRenderFilteredSection('RESTAURANT', globalData.restaurants, null, null);
-        else smartRenderFilteredSection('DRIVER', globalData.drivers, null, null);
+        // FIX #11: Removed dead parameters (null, null)
+        if (type === 'RESTAURANT') smartRenderFilteredSection('RESTAURANT', globalData.restaurants);
+        else smartRenderFilteredSection('DRIVER', globalData.drivers);
     }
 }
 
 /* ─── Entity Cards ─── */
-function smartRenderFilteredSection(type, fullList, dummyDebts, dummyUnpaid) {
+// FIX #11: Removed unused dead parameters (dummyDebts, dummyUnpaid)
+function smartRenderFilteredSection(type, fullList) {
     const filter  = type === 'RESTAURANT' ? currentResSectionFilter : currentDriverSectionFilter;
     const searchQ = type === 'RESTAURANT'
         ? (document.getElementById('searchResInput')?.value.trim().toLowerCase() || '')
@@ -2083,30 +2126,31 @@ function smartRenderFilteredSection(type, fullList, dummyDebts, dummyUnpaid) {
             return;
         }
 
+        // FIX #6: escHtml() on all data injected into HTML to prevent XSS
         const html = `
         <div id="card-${type}-${safeId}" class="entity-card">
             ${perfHtml}
             <div class="entity-card-top">
-                <div class="entity-avatar"><i data-lucide="${icon}" width="22" height="22"></i></div>
-                <span class="status-pill ${spClass}">${spLabel}</span>
+                <div class="entity-avatar"><i data-lucide="${escHtml(icon)}" width="22" height="22"></i></div>
+                <span class="status-pill ${spClass}">${escHtml(spLabel)}</span>
             </div>
-            <div class="entity-name" style="margin-top: 8px;">${name}</div>
-            <div class="entity-phone">${phone}</div>
+            <div class="entity-name" style="margin-top: 8px;">${escHtml(name)}</div>
+            <div class="entity-phone">${escHtml(phone)}</div>
             <div class="entity-debt" style="margin-top: 12px;">
                 <div>
-                    <div class="entity-debt-lbl">طلبات منجزة: <span class="unpaid-wrap" style="color:var(--text-1); font-weight:900;">${compCount}</span></div>
-                    <div class="debt-val" style="font-size:1rem; font-weight:900; color:var(--danger);">${debt} د.ع</div>
+                    <div class="entity-debt-lbl">طلبات منجزة: <span class="unpaid-wrap" style="color:var(--text-1); font-weight:900;">${escHtml(compCount)}</span></div>
+                    <div class="debt-val" style="font-size:1rem; font-weight:900; color:var(--danger);">${escHtml(debt)} د.ع</div>
                 </div>
             </div>
             <div class="entity-actions">
                 <div class="ea-group">
-                    <button class="ea-btn ea-accept" title="تفعيل" onclick="adminActionOptUI('ACCEPT','${type}','${phone}',this)"><i data-lucide="check" width="16" height="16"></i></button>
-                    <button class="ea-btn ea-pause"  title="استراحة" onclick="adminActionOptUI('PAUSE','${type}','${phone}',this)"><i data-lucide="pause" width="16" height="16"></i></button>
-                    <button class="ea-btn ea-ban"    title="حظر" onclick="adminActionOptUI('DELETE','${type}','${phone}',this)"><i data-lucide="ban" width="16" height="16"></i></button>
+                    <button class="ea-btn ea-accept" title="تفعيل" onclick="adminActionOptUI('ACCEPT','${type}','${escHtml(phone)}',this)"><i data-lucide="check" width="16" height="16"></i></button>
+                    <button class="ea-btn ea-pause"  title="استراحة" onclick="adminActionOptUI('PAUSE','${type}','${escHtml(phone)}',this)"><i data-lucide="pause" width="16" height="16"></i></button>
+                    <button class="ea-btn ea-ban"    title="حظر" onclick="adminActionOptUI('DELETE','${type}','${escHtml(phone)}',this)"><i data-lucide="ban" width="16" height="16"></i></button>
                 </div>
                 <div class="ea-group">
-                    <button class="ea-btn ea-debt"   title="تصفير الديون" onclick="resetDebtOptUI('${type}','${phone}',this)"><i data-lucide="banknote" width="16" height="16"></i></button>
-                    <button class="ea-btn ea-call"   title="اتصال" onclick="window.open('tel:${phone}')"><i data-lucide="phone-call" width="16" height="16"></i></button>
+                    <button class="ea-btn ea-debt"   title="تصفير الديون" onclick="resetDebtOptUI('${type}','${escHtml(phone)}',this)"><i data-lucide="banknote" width="16" height="16"></i></button>
+                    <button class="ea-btn ea-call"   title="اتصال" onclick="window.open('tel:${escHtml(phone)}')"><i data-lucide="phone-call" width="16" height="16"></i></button>
                 </div>
             </div>
         </div>`;
@@ -2268,23 +2312,27 @@ function renderArchive() {
     let html = '', totalOrders = 0, totalComm = 0, displayed = 0;
     const LIMIT = 150;
 
+    // FIX #7: Using O schema constants instead of magic index numbers
     const completed = globalData.orders.slice(1)
-        .filter(o => o[5] === 'completed' || o[5] === 'مكتمل' || o[5] === 'settled')
+        .filter(o => o[O.STATUS] === 'completed' || o[O.STATUS] === 'مكتمل' || o[O.STATUS] === 'settled')
         .reverse();
 
     completed.forEach(o => {
-        const [orderId,,restName,,price, details, status, driverPhone] = [o[0],,o[1],,o[4],o[3],o[5],o[6]];
-        const restN = o[1], dp = o[6];
+        // FIX #10: Removed broken destructuring + redundant re-declaration
+        // FIX #7: Using schema constants instead of magic index numbers
+        const orderId     = o[O.ID];
+        const restN       = o[O.REST_NAME];
+        const dp          = o[O.DRIVER_PHONE];
         let isoDate = '', fmtDate = '---';
-        if (o[7]) {
-            const d = new Date(o[7]);
+        if (o[O.TIME]) {
+            const d = new Date(o[O.TIME]);
             if (!isNaN(d.getTime())) {
-                isoDate  = d.toISOString().split('T')[0];
-                fmtDate  = d.toLocaleString('ar-EG');
+                isoDate = d.toISOString().split('T')[0];
+                fmtDate = d.toLocaleString('ar-EG');
             }
         }
         let match = true;
-        if (search    && !String(o[0]).toLowerCase().includes(search) && !String(o[3]).toLowerCase().includes(search)) match = false;
+        if (search    && !String(o[O.ID]).toLowerCase().includes(search) && !String(o[O.DETAILS]).toLowerCase().includes(search)) match = false;
         if (resFilter && restN !== resFilter) match = false;
         if (drvFilter && String(dp) !== drvFilter) match = false;
         if (dateFrom  && isoDate && isoDate < dateFrom) match = false;
@@ -2294,24 +2342,26 @@ function renderArchive() {
         totalOrders++;
 
         let comm = 0, payType = "المطعم يدفع";
-        const rData = globalData.restaurants.find(r => r[1] === restN);
-        if (rData) { comm = parseFloat(rData[5]) || 0; payType = String(rData[8]); }
+        // FIX #7: Using R schema constants instead of magic numbers r[5], r[8]
+        const rData = globalData.restaurants.find(r => r[R.NAME] === restN);
+        if (rData) { comm = parseFloat(rData[R.COMMISSION]) || 0; payType = String(rData[R.PAY_TYPE]); }
         totalComm += comm;
-        const isSettled = (o[5] === 'settled');
+        const isSettled = (o[O.STATUS] === 'settled');
 
         if (displayed >= LIMIT) return;
         displayed++;
 
-        const dData = globalData.drivers.find(d => String(d[2]) === String(dp));
-        const driverName = dData ? dData[1] : (dp || '---');
-        const od = { id: o[0], date: fmtDate, res: restN, driver: driverName, details: o[3], price: o[4], comm, payType, isSettled };
+        const dData = globalData.drivers.find(d => String(d[D.PHONE]) === String(dp));
+        const driverName = dData ? dData[D.NAME] : (dp || '---');
+        const od = { id: orderId, date: fmtDate, res: restN, driver: driverName, details: o[O.DETAILS], price: o[O.PRICE], comm, payType, isSettled };
         const ds = encodeURIComponent(JSON.stringify(od)).replace(/'/g, "%27");
 
+        // FIX #6: escHtml() on all user-sourced data to prevent XSS
         html += `<tr onclick="openInvoice('${ds}')">
-            <td style="color:var(--primary); font-weight:900; font-size:0.82rem;">${o[0] || '-'}</td>
-            <td style="font-size:0.76rem; color:var(--text-3);">${isoDate || '-'}</td>
-            <td style="font-weight:800; color:var(--text-1); max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${restN || '-'}</td>
-            <td style="color:var(--text-2); font-size:0.8rem;">${driverName}</td>
+            <td style="color:var(--primary); font-weight:900; font-size:0.82rem;">${escHtml(orderId) || '-'}</td>
+            <td style="font-size:0.76rem; color:var(--text-3);">${escHtml(isoDate) || '-'}</td>
+            <td style="font-weight:800; color:var(--text-1); max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escHtml(restN) || '-'}</td>
+            <td style="color:var(--text-2); font-size:0.8rem;">${escHtml(driverName)}</td>
             <td>
                 <span style="padding:4px 12px; border-radius:99px; font-size:0.72rem; font-weight:900; ${isSettled ? 'background:#f1f5f9; color:var(--text-3); border:1px solid var(--border);' : 'background:#e6faf3; color:var(--success); border:1px solid #a7f3d0;'}">
                     ${isSettled ? 'مسدد' : 'مكتمل'}
@@ -2360,21 +2410,39 @@ function closeInvoice(e) {
 }
 
 /* ─── Export ─── */
+// FIX #14: Now reads directly from globalData (not just the 150 visible DOM rows)
+// FIX #14: Added URL.revokeObjectURL() to prevent memory leak
 function exportExcel() {
+    if (!globalData?.orders) return showToast("لا توجد بيانات", "error");
+
+    const completed = globalData.orders.slice(1)
+        .filter(o => o[O.STATUS] === 'completed' || o[O.STATUS] === 'مكتمل' || o[O.STATUS] === 'settled');
+
+    if (!completed.length) return showToast("لا توجد طلبات مكتملة للتصدير", "error");
+
     let csv = '\uFEFF';
     csv += "ID الطلب,التاريخ,المطعم,الكابتن,الحالة\n";
-    const rows = document.querySelectorAll('#archiveTable tbody tr');
-    if (!rows.length) return showToast("لا توجد بيانات", "error");
-    rows.forEach(r => {
-        const cols = [];
-        r.querySelectorAll('td').forEach(td => cols.push('"' + td.innerText.trim() + '"'));
-        csv += cols.join(',') + '\n';
+
+    completed.forEach(o => {
+        const dp = o[O.DRIVER_PHONE];
+        const dData = globalData.drivers.find(d => String(d[D.PHONE]) === String(dp));
+        const driverName = dData ? dData[D.NAME] : (dp || '---');
+        const date = o[O.TIME] ? new Date(o[O.TIME]).toLocaleString('ar-EG') : '---';
+        // Escape double quotes inside field values to maintain valid CSV format
+        const esc = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+        csv += [esc(o[O.ID]), esc(date), esc(o[O.REST_NAME]), esc(driverName), esc(o[O.STATUS])].join(',') + '\n';
     });
+
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const blobUrl = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
+    a.href = blobUrl;
     a.download = `تقرير_الحوت_${new Date().toISOString().split('T')[0]}.csv`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // FIX #14: Release object URL to free memory
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
 }
 
 /* ─── Map Init ─── */
@@ -2416,7 +2484,8 @@ function initMap() {
     });
     map.addLayer(driverClusterGroup);
 
-    setTimeout(() => map.invalidateSize(), 800);
+    // FIX #15: TAB_TRANSITION_MS replaces magic number — matches CSS tabIn animation duration
+    setTimeout(() => map.invalidateSize(), TAB_TRANSITION_MS + 50);
 }
 </script>
 </body>
