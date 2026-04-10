@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 7.7 (تحديث V4.1: التجاهل الذكي والـ Cooldown الميداني) ---
-        const CURRENT_APP_VERSION = "7.7"; 
+        // --- إصدار 7.8 (تحديث: مؤقت القبول + فك قفل الصوت الإجباري) ---
+        const CURRENT_APP_VERSION = "7.8"; 
         
         if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة... جاري تطهير الكاش!");
@@ -372,6 +372,21 @@
 
     let offlineActionQueue = JSON.parse(localStorage.getItem('hut_offline_queue') || '[]');
     let isProcessingQueue = false;
+
+    // 🟢 إضافة هذه الدالة لفك قفل الصوت الإجباري في متصفحات الجوال
+    function unlockAudio() {
+        const audios = ['keepAliveAudio', 'alertSound', 'doubleOrderSound', 'cancelSound', 'welcomeSound'];
+        audios.forEach(id => {
+            const a = document.getElementById(id);
+            if(a) {
+                a.play().then(() => { a.pause(); a.currentTime = 0; }).catch(()=>{});
+            }
+        });
+        document.removeEventListener('touchstart', unlockAudio);
+        document.removeEventListener('click', unlockAudio);
+    }
+    document.addEventListener('touchstart', unlockAudio);
+    document.addEventListener('click', unlockAudio);
 
     function calculateDistanceMeters(lat1, lon1, lat2, lon2) {
         if (!lat1 || !lon1) return 9999;
@@ -777,7 +792,6 @@
         }, 1000);
     }
 
-    // 🟢 دالة التجاهل الذكية (التحديث السريع عبر Firebase للـ Cooldown)
     window.declineOrder = function() {
         clearInterval(countdownInterval);
         document.getElementById('orderAlertOverlay').classList.add('hidden-section');
@@ -796,15 +810,43 @@
         }
     }
 
-    // 🟢 دالة القبول السريعة (بما أن البيانات أصبحت تأتي كاملة من الرادار)
-    window.acceptOrder = function() {
+    // 🟢 دالة القبول (تم إضافة تأخير متعمد 2.5 ثانية لضمان اكتمال المزامنة قبل الإخفاء)
+    window.acceptOrder = async function() {
         const btn = document.getElementById('btnAcceptMain');
-        btn.innerHTML = `<div class="spinner-border spinner-border-sm text-white"></div> جاري تأمين الطلب...`;
+        btn.innerHTML = `<div class="spinner-border spinner-border-sm text-white"></div> جاري تأمين ومزامنة الطلب...`;
         btn.disabled = true;
 
         clearInterval(countdownInterval);
-        document.getElementById('orderAlertOverlay').classList.add('hidden-section');
         window.muteAlarmOnly();
+        
+        // ⏱️ تأخير متعمد لضمان استقرار مزامنة Firebase وجلب معلومات المطعم
+        setTimeout(async () => {
+            try {
+                // إذا كانت بيانات المطعم ناقصة (نادراً ما تحدث)، نجلبها من السيرفر كطبقة أمان
+                if (!currentOrderData.resPhone || !currentOrderData.resLat) {
+                    const r = await fetch(`${API_URL}?action=getGlobalData&token=${API_TOKEN}`);
+                    const data = await r.json();
+                    const resInfo = data.restaurants.find(r => r[1] === currentOrderData.resName);
+                    if (resInfo) {
+                        currentOrderData.resPhone = resInfo[2]; 
+                        currentOrderData.resArea = resInfo[3];
+                        currentOrderData.resLat = resInfo[6]; 
+                        currentOrderData.resLng = resInfo[7];
+                    } else {
+                        currentOrderData.resPhone = "غير متوفر";
+                    }
+                }
+            } catch (e) {
+                console.error("فشل جلب بيانات المطعم:", e);
+                if (!currentOrderData.resPhone) currentOrderData.resPhone = "غير متوفر";
+            }
+            
+            finalizeAccept();
+        }, 2500); // تأخير 2.5 ثانية
+    }
+
+    function finalizeAccept() {
+        document.getElementById('orderAlertOverlay').classList.add('hidden-section');
         
         const newO = { 
             id: currentOrderData.id, 
@@ -832,8 +874,11 @@
 
         safeFetchUpdate(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${newO.id}&status=accepted&token=${API_TOKEN}`);
         
-        btn.innerHTML = `قبول الطلب فوراً <svg class="svg-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>`; 
-        btn.disabled = false; 
+        const acceptBtn = document.getElementById('btnAcceptMain');
+        if (acceptBtn) { 
+            acceptBtn.innerHTML = `قبول الطلب فوراً <svg class="svg-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>`; 
+            acceptBtn.disabled = false; 
+        }
     }
 
     function displayActiveOrders() {
