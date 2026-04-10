@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 1.8 (النسخة الماسية: إظهار المطاعم ذات الطلبات النشطة فقط) ---
-        const CURRENT_APP_VERSION = "1.8"; 
+        // --- إصدار 1.9 (النسخة الماسية: فلترة كباتن التعيين اليدوي + كشف المرفوضين) ---
+        const CURRENT_APP_VERSION = "1.9"; 
         if (localStorage.getItem('hut_master_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة إدارة جديدة... جاري تطهير الكاش!");
             localStorage.setItem('hut_master_app_version', CURRENT_APP_VERSION);
@@ -592,6 +592,12 @@
             background: var(--surface); color: var(--primary-dark);
             outline: none; cursor: pointer;
             appearance: none;
+        }
+        
+        .btn-rejected-view {
+            background: #fef2f2; color: var(--danger); border: 1px solid #fecaca;
+            border-radius: 10px; padding: 0 10px; font-size: 0.75rem; font-weight: 800;
+            display: flex; align-items: center; gap: 4px; cursor: pointer; height: 34px;
         }
 
         .delay-pill {
@@ -1326,7 +1332,9 @@
 
         <div id="tab-restaurants" class="admin-tab tab-inner-padding">
             <span class="page-title-mob">إدارة الشركاء</span>
-            
+            <div class="refresh-btn-wrap">
+                <button class="btn-manual-refresh" onclick="refreshData(this)"><i data-lucide="refresh-cw" width="14" height="14"></i> تحديث الحسابات</button>
+            </div>
             <div class="search-input-wrap">
                 <span class="s-icon"><i data-lucide="search" width="16" height="16"></i></span>
                 <input type="text" id="searchResInput" class="search-input" placeholder="بحث عن مطعم أو رقم هاتف..." oninput="triggerSearch('RESTAURANT')">
@@ -1347,7 +1355,9 @@
 
         <div id="tab-drivers" class="admin-tab tab-inner-padding">
             <span class="page-title-mob">إدارة الأسطول</span>
-            
+            <div class="refresh-btn-wrap">
+                <button class="btn-manual-refresh" onclick="refreshData(this)"><i data-lucide="refresh-cw" width="14" height="14"></i> تحديث الحسابات</button>
+            </div>
             <div class="search-input-wrap">
                 <span class="s-icon"><i data-lucide="search" width="16" height="16"></i></span>
                 <input type="text" id="searchDriverInput" class="search-input" placeholder="بحث عن كابتن أو رقم هاتف..." oninput="triggerSearch('DRIVER')">
@@ -1653,8 +1663,6 @@ window.renderData = function(data) {
     } else {
         if (liveFirebaseOrders.length > 0) {
             try { smartRenderRadar(liveFirebaseOrders); } catch(e) {}
-            // تحديث خريطة المطاعم بناء على الطلبات النشطة حاليا
-            updateRestaurantMapMarkers(liveFirebaseOrders);
         }
     }
 };
@@ -1678,11 +1686,17 @@ function listenToFirebaseOrders() {
                     const ex = globalData.orders.find(go => go[0] === o.id);
                     if (ex) details = ex[3];
                 }
+                
+                // 🟢 استخراج المرفوضين وحفظهم في الطلب اللحظي
+                let rejectedByObj = o.rejected_by || {};
+                
                 let arr = [
                     o.id || '', o.restaurant || '', o.area || 'غير محدد',
                     details, o.price || 0, o.status || 'pending',
-                    o.driverPhone || '', o.last_update || o.timestamp || '', o.photoUrl || ''
+                    o.driverPhone || '', o.last_update || o.timestamp || '', o.photoUrl || '',
+                    rejectedByObj // إرفاق المرفوضين كعنصر عاشر
                 ];
+                
                 const ov = localOverrides.orders[arr[0]];
                 if (ov) {
                     if (now - ov.ts < 120000) {
@@ -1718,11 +1732,9 @@ function listenToFirebaseOrders() {
         }
 
         document.querySelectorAll('.val-orders').forEach(el => el.textContent = liveFirebaseOrders.length);
-        document.querySelectorAll('.val-res').forEach(el => el.textContent = activeResNames.size); // تحديث عداد المطاعم النشطة فقط
         
         if (globalData) { try { smartRenderRadar(liveFirebaseOrders); } catch(e) {} }
         updateHeatmap(liveFirebaseOrders);
-        updateRestaurantMapMarkers(liveFirebaseOrders); // تحديث المطاعم على الخريطة
     });
 }
 
@@ -1737,45 +1749,6 @@ function updateHeatmap(orders) {
         }
     });
     heatLayer.setLatLngs(pts);
-}
-
-// 🟢 دالة جديدة لإظهار المطاعم ذات الطلبات النشطة فقط
-function updateRestaurantMapMarkers(orders) {
-    if (!map || !restaurantMarkersLayer || !globalData) return;
-
-    // 1. تحديد المطاعم النشطة حالياً
-    const activeResNames = new Set();
-    orders.forEach(o => activeResNames.add(o[1]));
-
-    // 2. إزالة المطاعم التي ليس لديها طلبات
-    Object.keys(liveResMarkers).forEach(rName => {
-        if (!activeResNames.has(rName)) {
-            restaurantMarkersLayer.removeLayer(liveResMarkers[rName]);
-            delete liveResMarkers[rName];
-        }
-    });
-
-    // 3. إضافة المطاعم النشطة التي لم تُرسم بعد
-    activeResNames.forEach(rName => {
-        if (!liveResMarkers[rName]) {
-            const rData = globalData.restaurants.find(r => r[1] === rName);
-            if (rData && rData[4] === 'active' && rData[6] && rData[7]) {
-                const lat = parseFloat(rData[6]), lng = parseFloat(rData[7]);
-                if (!isNaN(lat) && !isNaN(lng)) {
-                    const icon = L.divIcon({
-                        className: '',
-                        html: `<div class="res-marker"><i data-lucide="utensils" width="12" height="12"></i></div>`,
-                        iconSize: [24, 24], iconAnchor: [12, 12]
-                    });
-                    const m = L.marker([lat, lng], { icon, zIndexOffset: -100 })
-                        .bindPopup(`<div class="map-popup"><div class="map-popup-title">🍽 ${rName}</div><div class="map-popup-sub">لديه طلبات نشطة</div></div>`);
-                    restaurantMarkersLayer.addLayer(m);
-                    liveResMarkers[rName] = m;
-                    if (typeof lucide !== 'undefined') lucide.createIcons({ root: m.getElement() });
-                }
-            }
-        }
-    });
 }
 
 function listenToFirebaseLocations() {
@@ -1858,17 +1831,64 @@ function updateMarkerStyle(marker, isActive, phone) {
     }
 }
 
+// 🟢 دالة عرض قائمة الكباتن الذين رفضوا الطلب
+window.viewRejectedDrivers = function(orderId) {
+    const order = liveFirebaseOrders.find(o => o[0] === orderId);
+    if(!order || !order[9]) return alert("لا توجد بيانات لهذا الطلب.");
+    
+    const rejectedObj = order[9];
+    let rejectedPhones = Object.keys(rejectedObj).filter(p => p !== "init");
+    
+    if(rejectedPhones.length === 0) return alert("لم يقم أي كابتن برفض هذا الطلب حتى الآن.");
+    
+    let htmlList = `<div style="text-align:right; margin-top:10px;">`;
+    rejectedPhones.forEach(phone => {
+        let driverName = phone;
+        if(globalData && globalData.drivers) {
+            const dInfo = globalData.drivers.find(d => String(d[2]) === phone);
+            if(dInfo) driverName = dInfo[1];
+        }
+        htmlList += `
+        <div style="background:#f1f5f9; padding:8px 12px; border-radius:10px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-weight:800; font-size:0.85rem; color:#0f172a;">${driverName}</span>
+            <a href="tel:${phone}" style="color:var(--primary);"><i data-lucide="phone-call" width="16" height="16"></i></a>
+        </div>`;
+    });
+    htmlList += `</div>`;
+    
+    // استخدام مودال الطوارئ لعرض القائمة بشكل سريع
+    const modal = document.getElementById('emergencyModal');
+    const card = modal.querySelector('.emergency-card');
+    card.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+            <h3 style="font-size:1.1rem; font-weight:900; color:var(--text-1); margin:0;">قائمة الرفض للطلب #${orderId}</h3>
+            <button class="inv-close" style="position:static;" onclick="closeEmergency()"><i data-lucide="x" width="16" height="16"></i></button>
+        </div>
+        ${htmlList}
+    `;
+    lucide.createIcons({ root: card });
+    modal.style.display = 'flex';
+}
+
+
 /* ─── Radar Render ─── */
 function smartRenderRadar(activeList) {
     const container = document.getElementById('smartOrdersContainer');
 
+    // 🟢 تعديل 1: فلترة الكباتن المتاحين للتعيين اليدوي (نشط في فايربيس فقط + غير محظور)
     let newOpts = '<option value="" disabled selected>تعيين يدوي</option>';
     if (globalData) {
-        globalData.drivers.slice(1).forEach(d => {
-            if (d[4] === 'active') {
-                const p = driverPerformanceCache[String(d[2])] || { class: 'perf-yellow' };
+        // نأخذ الكباتن الذين لهم أيقونة زرقاء على الخريطة حالياً (نشط فعلياً)
+        const activeLivePhones = Object.keys(liveDriverMarkers).filter(phone => {
+            return liveDriverMarkers[phone].getElement().querySelector('.drv-marker-active') !== null;
+        });
+
+        activeLivePhones.forEach(phone => {
+            const dData = globalData.drivers.find(d => String(d[2]) === phone);
+            if(dData && dData[4] !== 'banned') {
+                const p = driverPerformanceCache[phone] || { class: 'perf-yellow' };
                 const sym = p.class === 'perf-green' ? '🟢' : (p.class === 'perf-red' ? '🔴' : '🟡');
-                newOpts += `<option value="${String(d[2])}">${sym} ${d[1]}</option>`;
+                newOpts += `<option value="${phone}">${sym} ${dData[1]}</option>`;
             }
         });
     }
@@ -1977,7 +1997,7 @@ function smartRenderRadar(activeList) {
     Object.keys(grouped).forEach(dp => { if (grouped[dp].length === 1) allSingle.push(grouped[dp][0]); });
 
     allSingle.forEach(o => {
-        const [orderId, restName, orderArea, , orderPrice, status, driverPhone, orderTimeStr] = o;
+        const [orderId, restName, orderArea, , orderPrice, status, driverPhone, orderTimeStr, photoUrl, rejectedObj] = o;
         const hasDriver = (driverPhone && driverPhone !== "pending_driver" && driverPhone !== "manual_pending" && driverPhone !== "system_routing");
         const driverName = hasDriver
             ? (globalData?.drivers.find(d => String(d[2]) === String(driverPhone))?.[1] || 'كابتن جديد')
@@ -1985,9 +2005,14 @@ function smartRenderRadar(activeList) {
         const sInfo = getStatusInfo(status, hasDriver, orderTimeStr);
         const diffMins = Math.floor((new Date() - new Date(orderTimeStr)) / 60000);
         const timeF = new Date(orderTimeStr).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
-
+        
+        // 🟢 2. بناء زر رؤية المرفوضين (إذا كان هناك مرفوضين غير init)
+        let rejectedCount = 0;
+        if(rejectedObj) { rejectedCount = Object.keys(rejectedObj).filter(k => k !== "init").length; }
+        
+        // ربط الهاش ليحدث الكارت إذا رفض كابتن جديد (زاد العدد)
         currentIds.add(orderId);
-        const hash = `${status}-${driverPhone}-${diffMins}`;
+        const hash = `${status}-${driverPhone}-${diffMins}-${rejectedCount}`;
         let existing = document.getElementById(`oc-${orderId}`);
 
         if (existing) {
@@ -1998,6 +2023,8 @@ function smartRenderRadar(activeList) {
                 const dnEl = existing.querySelector('.driver-name-ui');
                 if (dnEl) { dnEl.querySelector('span').textContent = driverName; }
                 const ctrlEl = existing.querySelector('.driver-controls-ui');
+                
+                // تحديث أزرار التحكم
                 if (ctrlEl) {
                     let ctrl = '';
                     if (sInfo.ringing && hasDriver) ctrl += `<button class="oc-btn oc-btn-delete" style="width:auto;padding:0 10px;font-family:'Cairo',sans-serif;font-size:0.72rem;font-weight:800;" onclick="withdrawOrderOptUI('${orderId}','${driverPhone}',this)"><i data-lucide="user-minus" width="13" height="13"></i> سحب</button>`;
@@ -2007,6 +2034,12 @@ function smartRenderRadar(activeList) {
                         opts = opts.replace('تعيين يدوي', 'إعادة تعيين 🔄');
                     }
                     ctrl += `<select class="assign-select" onchange="assignDriverOptUI('${orderId}',this.value,this)">${opts}</select>`;
+                    
+                    // إضافة زر المرفوضين إن وجد
+                    if(rejectedCount > 0) {
+                        ctrl += `<button class="btn-rejected-view" onclick="viewRejectedDrivers('${orderId}')"><i data-lucide="eye-off" width="14" height="14"></i> ${rejectedCount}</button>`;
+                    }
+                    
                     ctrlEl.innerHTML = ctrl;
                     if (typeof lucide !== 'undefined') lucide.createIcons({ root: ctrlEl });
                 }
@@ -2029,6 +2062,10 @@ function smartRenderRadar(activeList) {
             opts = opts.replace('تعيين يدوي', 'إعادة تعيين 🔄');
         }
         ctrl += `<select class="assign-select" onchange="assignDriverOptUI('${orderId}',this.value,this)">${opts}</select>`;
+        
+        if(rejectedCount > 0) {
+            ctrl += `<button class="btn-rejected-view" onclick="viewRejectedDrivers('${orderId}')"><i data-lucide="eye-off" width="14" height="14"></i> ${rejectedCount}</button>`;
+        }
 
         const html = `
         <div id="oc-${orderId}" class="order-card ${sInfo.cls} flash-update">
