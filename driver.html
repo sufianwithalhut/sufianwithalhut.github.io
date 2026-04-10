@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 7.6 (النسخة الماسية: حماية البيانات من القبول السريع + كتم الصوت) ---
-        const CURRENT_APP_VERSION = "7.6"; 
+        // --- إصدار 7.7 (تحديث V4.1: التجاهل الذكي والـ Cooldown الميداني) ---
+        const CURRENT_APP_VERSION = "7.7"; 
         
         if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة... جاري تطهير الكاش!");
@@ -352,8 +352,8 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getDatabase, ref, onValue, update, get } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-    // 🟢 السيرفر الماسي V30
-    const API_URL = "https://script.google.com/macros/s/AKfycbwwAjzCQCtnlTNrPvuK3MuE1n-5EQXGjpavxDxzehXbCpi5GoE8etgLlBTvomiLJrWr/exec";
+    // 🟢 السيرفر الماسي V4.1
+    const API_URL = "https://script.google.com/macros/s/AKfycbxfldAUQp6s4CWF1LL4jCzz20IxOYken2ZpQoMEr8kxWfRN3WSOqe65aX_HjwMbjgDQ/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
     const firebaseConfig = {
@@ -641,7 +641,6 @@
         }
     }
 
-    // 🟢 إرسال نبض الحياة (Heartbeat) كل 30 ثانية إلى Firebase
     function sendHeartbeat() {
         if (!isOnline || !driverData || !lastSentLat) return;
         const updates = {};
@@ -666,7 +665,7 @@
             requestWakeLock(); 
             let silentAudio = document.getElementById('keepAliveAudio'); if (silentAudio) silentAudio.play().catch(e=>{}); 
             statsInterval = setInterval(updateStats, 60000); 
-            heartbeatInterval = setInterval(sendHeartbeat, 30000); // 💓 تفعيل النبض
+            heartbeatInterval = setInterval(sendHeartbeat, 30000); 
         }
         updateStats(); 
         startHotDataListeners(); 
@@ -717,7 +716,6 @@
     }
 
     function startHotDataListeners() {
-        // 1. مراقبة حالة حساب الكابتن (للحظر القسري)
         const accountRef = ref(db, `drivers_locations/${driverData.phone}/account_status`);
         onValue(accountRef, (snapshot) => {
             const status = snapshot.val();
@@ -727,7 +725,6 @@
             }
         });
 
-        // 2. مراقبة الطلبات
         const ordersRef = ref(db, 'active_orders');
         onValue(ordersRef, (snapshot) => {
             const activeFbOrders = snapshot.val() || {};
@@ -746,14 +743,14 @@
                 Object.values(activeFbOrders).forEach(fbOrder => {
                     if (!fbOrder.restaurant || fbOrder.restaurant.trim() === "" || fbOrder.restaurant === "undefined") return;
 
-                    let isTargetedForMe = String(fbOrder.driverPhone) === String(driverData.phone);
-                    let isBroadcastToAll = String(fbOrder.driverPhone) === "pending_driver"; 
+                    let isTargetedForMe = String(fbOrder.driverPhone) === String(driverData.phone) && fbOrder.status === "pending_driver";
 
-                    if(isTargetedForMe || isBroadcastToAll) {
+                    if(isTargetedForMe) {
                         if (!activeOrders.find(o => String(o.id) === String(fbOrder.id))) {
                             currentOrderData = {
                                 id: fbOrder.id, resName: fbOrder.restaurant, area: fbOrder.area || "غير محدد",
-                                price: fbOrder.price || 0, details: fbOrder.details || "", photoUrl: fbOrder.photoUrl || ""
+                                price: fbOrder.price || 0, details: fbOrder.details || "", photoUrl: fbOrder.photoUrl || "",
+                                resLat: fbOrder.resLat, resLng: fbOrder.resLng, resPhone: fbOrder.resPhone
                             };
                             currentOrderData.expireTime = Date.now() + 60000; 
                             
@@ -764,18 +761,6 @@
                             document.getElementById('orderAlertOverlay').classList.remove('hidden-section');
                             if (window.AndroidRadar) { window.AndroidRadar.triggerOrderAlarm(); } else { let audio = document.getElementById(activeOrders.length > 0 ? 'doubleOrderSound' : 'alertSound'); audio.currentTime = 0; audio.play().catch(e => {}); }
                             
-                            // لا نحتاج للرجوع لـ GAS لجلب إحداثيات المطعم بعد الآن إذا كانت تأتي من Firebase، لكن للضمان:
-                            fetch(`${API_URL}?action=getGlobalData&token=${API_TOKEN}`).then(r=>r.json()).then(data => {
-                                if(data && data.restaurants && currentOrderData) {
-                                    const resInfo = data.restaurants.find(r => r[1] === currentOrderData.resName);
-                                    if(resInfo) {
-                                        currentOrderData.resPhone = resInfo[2]; currentOrderData.resArea = resInfo[3]; 
-                                        currentOrderData.resLat = parseFloat(resInfo[6]); currentOrderData.resLng = parseFloat(resInfo[7]);
-                                        document.getElementById('alertResName').innerText = `${currentOrderData.resName} (${resInfo[3] || ''})`;
-                                    }
-                                }
-                            }).catch(e=>{});
-
                             startCountdown();
                         }
                     }
@@ -792,54 +777,39 @@
         }, 1000);
     }
 
-    // 🟢 دالة تأكيد القبول - ذكية وآمنة (لا تقبل الطلب حتى تكتمل معلوماته)
-    window.acceptOrder = async function() {
-        const btn = document.getElementById('btnAcceptMain');
-        btn.innerHTML = `<div class="spinner-border spinner-border-sm text-white"></div> جاري تأمين البيانات...`;
-        btn.disabled = true;
+    // 🟢 دالة التجاهل الذكية (التحديث السريع عبر Firebase للـ Cooldown)
+    window.declineOrder = function() {
+        clearInterval(countdownInterval);
+        document.getElementById('orderAlertOverlay').classList.add('hidden-section');
+        window.muteAlarmOnly();
 
-        // إذا كانت بيانات المطعم موجودة بالفعل، ننهي القبول فوراً
-        if (currentOrderData.resPhone && currentOrderData.resLat) {
-            finalizeAccept();
-            return;
+        if (currentOrderData) {
+            const now = new Date().toISOString();
+            const updates = {};
+            updates[`active_orders/${currentOrderData.id}/status`] = "pending_driver";
+            updates[`active_orders/${currentOrderData.id}/driverPhone`] = "system_routing";
+            updates[`active_orders/${currentOrderData.id}/last_update`] = now;
+            updates[`active_orders/${currentOrderData.id}/last_offered_to`] = driverData.phone;
+            updates[`active_orders/${currentOrderData.id}/last_offered_time`] = now;
+            update(ref(db), updates);
+            currentOrderData = null;
         }
-
-        // إذا كانت ناقصة، نجلبها من السيرفر قبل الإكمال
-        try {
-            const r = await fetch(`${API_URL}?action=getGlobalData&token=${API_TOKEN}`);
-            const data = await r.json();
-            const resInfo = data.restaurants.find(r => r[1] === currentOrderData.resName);
-            
-            if (resInfo) {
-                currentOrderData.resPhone = resInfo[2]; 
-                currentOrderData.resArea = resInfo[3];
-                currentOrderData.resLat = resInfo[6]; 
-                currentOrderData.resLng = resInfo[7];
-            } else {
-                // إذا لم نجد المطعم في السيرفر، نعين قيم افتراضية لكي لا يتعطل الطلب
-                currentOrderData.resPhone = "غير متوفر";
-                currentOrderData.resLat = "";
-                currentOrderData.resLng = "";
-            }
-        } catch (e) {
-            console.error("فشل جلب بيانات المطعم:", e);
-            currentOrderData.resPhone = "غير متوفر";
-        }
-
-        // بعد التأكد من وجود البيانات (أو تعيين بديل)، نقوم بحفظ الطلب
-        finalizeAccept();
     }
 
-    function finalizeAccept() {
+    // 🟢 دالة القبول السريعة (بما أن البيانات أصبحت تأتي كاملة من الرادار)
+    window.acceptOrder = function() {
+        const btn = document.getElementById('btnAcceptMain');
+        btn.innerHTML = `<div class="spinner-border spinner-border-sm text-white"></div> جاري تأمين الطلب...`;
+        btn.disabled = true;
+
+        clearInterval(countdownInterval);
         document.getElementById('orderAlertOverlay').classList.add('hidden-section');
-        
-        // إيقاف الصوت الشامل
         window.muteAlarmOnly();
         
         const newO = { 
             id: currentOrderData.id, 
             resName: currentOrderData.resName, 
-            resArea: currentOrderData.resArea, 
+            resArea: currentOrderData.resArea || currentOrderData.area, 
             details: String(currentOrderData.details), 
             price: currentOrderData.price, 
             area: currentOrderData.area, 
@@ -855,20 +825,15 @@
         localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
         displayActiveOrders();
         
-        // التحديث اللحظي لـ Firebase يقفل الطلب باسمك
         const updates = {};
         updates[`active_orders/${newO.id}/status`] = 'accepted';
         updates[`active_orders/${newO.id}/driverPhone`] = driverData.phone;
         update(ref(db), updates);
 
-        // إبلاغ السيرفر بهدوء
         safeFetchUpdate(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${newO.id}&status=accepted&token=${API_TOKEN}`);
         
-        const acceptBtn = document.getElementById('btnAcceptMain');
-        if (acceptBtn) { 
-            acceptBtn.innerHTML = `قبول الطلب فوراً <svg class="svg-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>`; 
-            acceptBtn.disabled = false; 
-        }
+        btn.innerHTML = `قبول الطلب فوراً <svg class="svg-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>`; 
+        btn.disabled = false; 
     }
 
     function displayActiveOrders() {
@@ -1089,4 +1054,4 @@
     window.closeLedger = function() { document.getElementById('ledgerModal').classList.add('hidden-section'); }
 </script>
 </body>
-</html>​
+</html>
