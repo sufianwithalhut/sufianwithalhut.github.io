@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 1.9 (النسخة الماسية: فلترة كباتن التعيين اليدوي + كشف المرفوضين) ---
-        const CURRENT_APP_VERSION = "1.9"; 
+        // --- إصدار 2.0 (النسخة الماسية: إبادة الأشباح من جميع القوائم والإحصائيات اللحظية) ---
+        const CURRENT_APP_VERSION = "2.0"; 
         if (localStorage.getItem('hut_master_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة إدارة جديدة... جاري تطهير الكاش!");
             localStorage.setItem('hut_master_app_version', CURRENT_APP_VERSION);
@@ -903,7 +903,7 @@
             display: flex; align-items: center; justify-content: center;
             margin: 0 auto 14px; color: var(--accent);
         }
-        .inv-title { font-size: 1.1rem; font-weight: 900; text-align: center; color: var(--text-1); margin-bottom: 4px; }
+        .inv-title { font-size: 1.1rem; font-weight: 900; text-align: center; color: var(--text-1); margin margin-bottom: 4px; }
         .inv-id    { font-size: 0.82rem; font-weight: 700; text-align: center; color: var(--text-3); margin-bottom: 24px; }
         .inv-row {
             display: flex; justify-content: space-between; align-items: center;
@@ -1656,6 +1656,34 @@ window.renderData = function(data) {
     try { smartRenderFilteredSection('RESTAURANT', data.restaurants, resDebts, resUnpaidCounts); } catch(e) { console.error("Res:", e); }
     try { smartRenderFilteredSection('DRIVER', data.drivers, driverDebts, null); } catch(e) { console.error("Driver:", e); }
 
+    if (map && restaurantMarkersLayer) {
+        data.restaurants.slice(1).forEach(r => {
+            const rName = r[1];
+            if (r[4] === 'active' && r[6] && r[7]) {
+                const lat = parseFloat(r[6]), lng = parseFloat(r[7]);
+                if (!isNaN(lat) && !isNaN(lng)) {
+                    if (liveResMarkers[rName]) {
+                        liveResMarkers[rName].setLatLng([lat, lng]);
+                    } else {
+                        const icon = L.divIcon({
+                            className: '',
+                            html: `<div class="res-marker"><i data-lucide="utensils" width="12" height="12"></i></div>`,
+                            iconSize: [24, 24], iconAnchor: [12, 12]
+                        });
+                        const m = L.marker([lat, lng], { icon, zIndexOffset: -100 })
+                            .bindPopup(`<div class="map-popup"><div class="map-popup-title">🍽 ${rName}</div><div class="map-popup-sub">مطعم شريك نشط</div></div>`);
+                        restaurantMarkersLayer.addLayer(m);
+                        liveResMarkers[rName] = m;
+                        if (typeof lucide !== 'undefined') lucide.createIcons({ root: m.getElement() });
+                    }
+                }
+            } else if (liveResMarkers[rName]) {
+                restaurantMarkersLayer.removeLayer(liveResMarkers[rName]);
+                delete liveResMarkers[rName];
+            }
+        });
+    }
+
     if (!isFirebaseListening) {
         isFirebaseListening = true;
         listenToFirebaseLocations();
@@ -1732,6 +1760,7 @@ function listenToFirebaseOrders() {
         }
 
         document.querySelectorAll('.val-orders').forEach(el => el.textContent = liveFirebaseOrders.length);
+        document.querySelectorAll('.val-res').forEach(el => el.textContent = activeResNames.size); // تحديث عداد المطاعم النشطة فقط
         
         if (globalData) { try { smartRenderRadar(liveFirebaseOrders); } catch(e) {} }
         updateHeatmap(liveFirebaseOrders);
