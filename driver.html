@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 7.8 (تحديث: مؤقت القبول + فك قفل الصوت الإجباري) ---
-        const CURRENT_APP_VERSION = "7.8"; 
+        // --- إصدار 8.0 (تحديث: المحافظ اللحظية Real-time Ledgers + الرابط الجديد) ---
+        const CURRENT_APP_VERSION = "8.0"; 
         
         if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة... جاري تطهير الكاش!");
@@ -350,10 +350,10 @@
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getDatabase, ref, onValue, update, get } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+    import { getDatabase, ref, onValue, update, get, increment } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-    // 🟢 السيرفر الماسي V4.1
-    const API_URL = "https://script.google.com/macros/s/AKfycbxfldAUQp6s4CWF1LL4jCzz20IxOYken2ZpQoMEr8kxWfRN3WSOqe65aX_HjwMbjgDQ/exec";
+    // 🟢 السيرفر الماسي V4.2
+    const API_URL = "https://script.google.com/macros/s/AKfycbxt4vA6cbF7sCRg196WYQoc26mR2yc9JelqotDzVdLDEEPjFtXDDXVbT7l_FwbZTANA/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
     const firebaseConfig = {
@@ -367,13 +367,13 @@
     const db = getDatabase(app);
 
     let driverData = null, countdownInterval, currentOrderData = null, activeOrders = [], isRegistering = false, isOnline = true;
-    let wakeLock = null, waitingPollingTimer = null, statsInterval = null, heartbeatInterval = null;
+    let wakeLock = null, waitingPollingTimer = null, heartbeatInterval = null;
     let lastLocUpdateTs = 0, lastSentLat = 0, lastSentLng = 0, lastActiveHtml = "";
 
     let offlineActionQueue = JSON.parse(localStorage.getItem('hut_offline_queue') || '[]');
     let isProcessingQueue = false;
 
-    // 🟢 إضافة هذه الدالة لفك قفل الصوت الإجباري في متصفحات الجوال
+    // 🟢 فك قفل الصوت الإجباري
     function unlockAudio() {
         const audios = ['keepAliveAudio', 'alertSound', 'doubleOrderSound', 'cancelSound', 'welcomeSound'];
         audios.forEach(id => {
@@ -642,15 +642,13 @@
             document.getElementById('searchingStatus').classList.remove('offline-mode');
             updateFirebaseLocationStatus('active');
             requestWakeLock(); if (silentAudio) silentAudio.play().catch(e=>{}); 
-            if(!statsInterval) statsInterval = setInterval(updateStats, 60000); 
-            if(!heartbeatInterval) heartbeatInterval = setInterval(sendHeartbeat, 30000); // Heartbeat
+            if(!heartbeatInterval) heartbeatInterval = setInterval(sendHeartbeat, 30000); 
             displayActiveOrders();
         } else {
             badge.className = "status-badge offline"; badge.innerHTML = `في استراحة`;
             document.getElementById('searchingStatus').classList.add('offline-mode');
             updateFirebaseLocationStatus('inactive');
             releaseWakeLock(); if (silentAudio) silentAudio.pause(); 
-            if(statsInterval) { clearInterval(statsInterval); statsInterval = null; } 
             if(heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
             displayActiveOrders();
         }
@@ -679,10 +677,8 @@
         if (isOnline) { 
             requestWakeLock(); 
             let silentAudio = document.getElementById('keepAliveAudio'); if (silentAudio) silentAudio.play().catch(e=>{}); 
-            statsInterval = setInterval(updateStats, 60000); 
             heartbeatInterval = setInterval(sendHeartbeat, 30000); 
         }
-        updateStats(); 
         startHotDataListeners(); 
         
         if (navigator.geolocation) {
@@ -731,6 +727,7 @@
     }
 
     function startHotDataListeners() {
+        // مراقبة الحظر
         const accountRef = ref(db, `drivers_locations/${driverData.phone}/account_status`);
         onValue(accountRef, (snapshot) => {
             const status = snapshot.val();
@@ -740,6 +737,33 @@
             }
         });
 
+        // 🚀 مراقبة المحفظة اللحظية
+        const ledgerRef = ref(db, `ledgers/drivers/${driverData.phone}`);
+        onValue(ledgerRef, (snapshot) => {
+            const ledger = snapshot.val() || { completed_orders: 0, debt: 0 };
+            document.getElementById('statOrdersCount').innerText = ledger.completed_orders || 0;
+            document.getElementById('statDebt').innerHTML = `${ledger.debt || 0} <small class="fs-6">د.ع</small>`;
+        });
+
+        // 🚀 مراقبة سجل اليوم اللحظي (Daily Ledger)
+        const todayStr = new Date().toISOString().split('T')[0];
+        const dailyLedgerRef = ref(db, `daily_ledgers/${driverData.phone}/${todayStr}`);
+        onValue(dailyLedgerRef, (snapshot) => {
+            const dailyData = snapshot.val() || {};
+            let todayCashCalc = 0;
+            let ledgerHtmlString = '';
+            
+            Object.values(dailyData).sort((a,b) => b.timestamp - a.timestamp).forEach(record => {
+                todayCashCalc += record.price;
+                const timeFmt = new Date(record.timestamp).toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'});
+                ledgerHtmlString += `<div class="ledger-item"><div><h6 class="fw-black m-0 text-dark">#${record.orderId} - ${record.resName}</h6><small class="text-muted fw-bold">${timeFmt} | منطقة ${record.area}</small></div><h5 class="fw-black text-success m-0">${record.price} <small class="fs-6">د.ع</small></h5></div>`;
+            });
+            
+            document.getElementById('ledgerTotalCash').innerHTML = `${todayCashCalc} <small class="fs-5">د.ع</small>`;
+            document.getElementById('ledgerList').innerHTML = ledgerHtmlString || '<div class="text-center text-muted fw-bold py-4">لا توجد رحلات مكتملة اليوم.</div>';
+        });
+
+        // مراقبة الطلبات النشطة والرادار
         const ordersRef = ref(db, 'active_orders');
         onValue(ordersRef, (snapshot) => {
             const activeFbOrders = snapshot.val() || {};
@@ -765,7 +789,8 @@
                             currentOrderData = {
                                 id: fbOrder.id, resName: fbOrder.restaurant, area: fbOrder.area || "غير محدد",
                                 price: fbOrder.price || 0, details: fbOrder.details || "", photoUrl: fbOrder.photoUrl || "",
-                                resLat: fbOrder.resLat, resLng: fbOrder.resLng, resPhone: fbOrder.resPhone
+                                resLat: fbOrder.resLat, resLng: fbOrder.resLng, resPhone: fbOrder.resPhone,
+                                comm: fbOrder.comm || 0, payType: fbOrder.payType || "المطعم يدفع" // تم التقاط العمولات
                             };
                             currentOrderData.expireTime = Date.now() + 60000; 
                             
@@ -810,19 +835,16 @@
         }
     }
 
-    // 🟢 دالة القبول (تم إضافة تأخير متعمد 2.5 ثانية لضمان اكتمال المزامنة قبل الإخفاء)
     window.acceptOrder = async function() {
         const btn = document.getElementById('btnAcceptMain');
-        btn.innerHTML = `<div class="spinner-border spinner-border-sm text-white"></div> جاري تأمين ومزامنة الطلب...`;
+        btn.innerHTML = `<div class="spinner-border spinner-border-sm text-white"></div> جاري تأمين الطلب...`;
         btn.disabled = true;
 
         clearInterval(countdownInterval);
         window.muteAlarmOnly();
         
-        // ⏱️ تأخير متعمد لضمان استقرار مزامنة Firebase وجلب معلومات المطعم
         setTimeout(async () => {
             try {
-                // إذا كانت بيانات المطعم ناقصة (نادراً ما تحدث)، نجلبها من السيرفر كطبقة أمان
                 if (!currentOrderData.resPhone || !currentOrderData.resLat) {
                     const r = await fetch(`${API_URL}?action=getGlobalData&token=${API_TOKEN}`);
                     const data = await r.json();
@@ -832,17 +854,18 @@
                         currentOrderData.resArea = resInfo[3];
                         currentOrderData.resLat = resInfo[6]; 
                         currentOrderData.resLng = resInfo[7];
+                        currentOrderData.comm = parseFloat(resInfo[5]) || 0;
+                        currentOrderData.payType = resInfo[8] || "المطعم يدفع";
                     } else {
                         currentOrderData.resPhone = "غير متوفر";
                     }
                 }
             } catch (e) {
-                console.error("فشل جلب بيانات المطعم:", e);
                 if (!currentOrderData.resPhone) currentOrderData.resPhone = "غير متوفر";
             }
             
             finalizeAccept();
-        }, 2500); // تأخير 2.5 ثانية
+        }, 1500); 
     }
 
     function finalizeAccept() {
@@ -853,13 +876,15 @@
             resName: currentOrderData.resName, 
             resArea: currentOrderData.resArea || currentOrderData.area, 
             details: String(currentOrderData.details), 
-            price: currentOrderData.price, 
+            price: parseFloat(currentOrderData.price) || 0, 
             area: currentOrderData.area, 
             state: 'heading', 
             photoUrl: currentOrderData.photoUrl, 
             resPhone: currentOrderData.resPhone, 
             resLat: currentOrderData.resLat, 
             resLng: currentOrderData.resLng, 
+            comm: currentOrderData.comm || 0,
+            payType: currentOrderData.payType || "المطعم يدفع",
             acceptedTime: Date.now() 
         };
         
@@ -871,8 +896,6 @@
         updates[`active_orders/${newO.id}/status`] = 'accepted';
         updates[`active_orders/${newO.id}/driverPhone`] = driverData.phone;
         update(ref(db), updates);
-
-        safeFetchUpdate(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${newO.id}&status=accepted&token=${API_TOKEN}`);
         
         const acceptBtn = document.getElementById('btnAcceptMain');
         if (acceptBtn) { 
@@ -1029,14 +1052,12 @@
             const updates = {}; updates[`active_orders/${id}/status`] = 'arrived_at_res'; update(ref(db), updates);
             localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders)); 
             displayActiveOrders(); 
-            safeFetchUpdate(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${id}&status=arrived_at_res&token=${API_TOKEN}`);
         } 
         else if (action === 'pickup') {
             order.state = 'picked_up'; order.pickupTime = Date.now();
             const updates = {}; updates[`active_orders/${id}/status`] = 'picked_up'; update(ref(db), updates);
             localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders)); 
             displayActiveOrders(); 
-            safeFetchUpdate(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${id}&status=picked_up&token=${API_TOKEN}`);
         } 
         else if (action === 'finish') {
             if (Date.now() - order.pickupTime < 120000) { btnElement.innerHTML = origHtml; btnElement.disabled = false; return; }
@@ -1045,55 +1066,48 @@
             if (card) { card.style.transition = '0.3s'; card.style.opacity = '0'; card.style.transform = 'scale(0.95)'; }
             
             setTimeout(() => {
+                // 1. حساب الديون اللحظية
+                let driverDebtIncrease = 0;
+                let resDebtIncrease = parseFloat(order.comm) || 0;
+                
+                if (order.payType && order.payType.includes('مناصفة')) {
+                    driverDebtIncrease = resDebtIncrease / 2;
+                }
+
+                // 2. تحديث المحافظ اللحظية الذرية (Atomic Update)
+                let updates = {};
+                
+                updates[`active_orders/${id}/status`] = 'completed'; // تغيير الحالة فقط في فايربيس للمطعم
+                
+                updates[`ledgers/drivers/${driverData.phone}/completed_orders`] = increment(1);
+                updates[`ledgers/drivers/${driverData.phone}/debt`] = increment(driverDebtIncrease);
+                
+                let safeResPhone = order.resPhone && order.resPhone !== "غير متوفر" ? order.resPhone : null;
+                if(safeResPhone) {
+                    updates[`ledgers/restaurants/${safeResPhone}/completed_orders`] = increment(1);
+                    updates[`ledgers/restaurants/${safeResPhone}/debt`] = increment(resDebtIncrease);
+                }
+
+                // 3. تحديث سجل اليوم اللحظي للكابتن
+                const todayStr = new Date().toISOString().split('T')[0];
+                updates[`daily_ledgers/${driverData.phone}/${todayStr}/${id}`] = {
+                    orderId: id,
+                    resName: order.resName,
+                    area: order.area,
+                    price: order.price,
+                    timestamp: Date.now()
+                };
+
+                update(ref(db), updates);
+
+                // إزالة الطلب من شاشة الكابتن
                 activeOrders = activeOrders.filter(o => String(o.id) !== String(id));
                 localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
+                displayActiveOrders();
                 
-                const updates = {}; updates[`active_orders/${id}`] = null; update(ref(db), updates);
-                displayActiveOrders(); updateStats();
-                
-                safeFetchUpdate(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${id}&status=completed&token=${API_TOKEN}`);
             }, 300);
         }
     };
-
-    function updateStats() {
-        if (!driverData) return;
-        fetch(`${API_URL}?action=getGlobalData&token=${API_TOKEN}`)
-            .then(r=>r.json()).then(data => {
-                if(!data || !data.orders) return;
-                let totalOrdersCount = 0; let totalDebtCalc = 0; let ledgerHtmlString = ''; let todayCashCalc = 0;
-                const t = new Date(); const todayISO = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
-
-                data.orders.slice(1).forEach(o => {
-                    if (String(o[6]) === String(driverData.phone)) {
-                        const status = o[5];
-                        if (status === 'completed' || status === 'مكتمل' || status === 'settled') {
-                            totalOrdersCount++; 
-                            const resInfo = data.restaurants.find(r => r[1] === o[1]);
-                            if (resInfo && status !== 'settled') {
-                                const paySystem = String(resInfo[8]); const comm = parseFloat(resInfo[5]) || 0;
-                                if (paySystem.includes('مناصفة')) { totalDebtCalc += (comm / 2); }
-                            }
-                            const orderDateStr = o[7];
-                            if (orderDateStr) {
-                                const orderDateObj = new Date(orderDateStr);
-                                const orderLocalISO = orderDateObj.getFullYear() + '-' + String(orderDateObj.getMonth() + 1).padStart(2, '0') + '-' + String(orderDateObj.getDate()).padStart(2, '0');
-                                if (orderLocalISO === todayISO) {
-                                    const price = parseFloat(o[4]) || 0; todayCashCalc += price;
-                                    const timeFmt = orderDateObj.toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'});
-                                    ledgerHtmlString += `<div class="ledger-item"><div><h6 class="fw-black m-0 text-dark">#${o[0]} - ${o[1]}</h6><small class="text-muted fw-bold">${timeFmt} | منطقة ${o[2]}</small></div><h5 class="fw-black text-success m-0">${price} <small class="fs-6">د.ع</small></h5></div>`;
-                                }
-                            }
-                        }
-                    }
-                });
-
-                document.getElementById('statOrdersCount').innerText = totalOrdersCount;
-                document.getElementById('statDebt').innerHTML = `${totalDebtCalc} <small class="fs-6">د.ع</small>`;
-                document.getElementById('ledgerTotalCash').innerHTML = `${todayCashCalc} <small class="fs-5">د.ع</small>`;
-                document.getElementById('ledgerList').innerHTML = ledgerHtmlString || '<div class="text-center text-muted fw-bold py-4">لا توجد رحلات مكتملة اليوم.</div>';
-            }).catch(e=>{});
-    }
 
     window.openLedger = function() { document.getElementById('ledgerModal').classList.remove('hidden-section'); }
     window.closeLedger = function() { document.getElementById('ledgerModal').classList.add('hidden-section'); }
