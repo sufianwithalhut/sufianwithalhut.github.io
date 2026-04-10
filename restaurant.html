@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 3.2 - الماسي: الرادار الكاسح المستمر) ---
-        const CURRENT_APP_VERSION = "3.2"; 
+        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 3.3 - الماسي: الرادار يقرأ القائمة السوداء للمرفوضين) ---
+        const CURRENT_APP_VERSION = "3.3"; 
         if (localStorage.getItem('hut_res_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة مكتشفة... جاري التحديث الإجباري لتسريع النظام!");
             localStorage.setItem('hut_res_app_version', CURRENT_APP_VERSION);
@@ -447,9 +447,6 @@
 
     // مصفوفة الطلبات اللحظية لـ Firebase
     let liveActiveOrders = [];
-    
-    // متغير لمراقبة الكباتن لتجنب التكرار في الرادار
-    let lastKnownFbLocsStr = "";
 
     document.addEventListener('contextmenu', event => {
         const tag = event.target.tagName;
@@ -469,14 +466,17 @@
         return R * c;
     }
 
-    // 🧠 الرادار الذكي (محرك العقل المدبر - نسخة خالية من الإكسل)
-    async function calculateBestDriver(fbLocs, activeFbOrders, newOrderArea) {
+    // 🧠 الرادار الذكي المحدث (مع فلترة القائمة السوداء rejected_by)
+    async function calculateBestDriver(fbLocs, activeFbOrders, newOrderArea, pendingOrderObj = null) {
         if (!globalDriversInfo || globalDriversInfo.length === 0) return null;
 
         let rLat = regLat, rLng = regLng; 
         let bestDriver = null;
         let highestScore = -Infinity;
         const now = new Date();
+
+        // قراءة القائمة السوداء لهذا الطلب تحديداً (الكباتن الذين رفضوا أو تجاهلوا)
+        const rejectedByMap = (pendingOrderObj && pendingOrderObj.rejected_by) ? pendingOrderObj.rejected_by : {};
 
         const activeOrdersList = Object.values(activeFbOrders).filter(o =>
             ["accepted","heading","arrived_at_res","picked_up","pending_driver","manual_pending"].includes(o.status)
@@ -509,7 +509,11 @@
             let phone = row[2] ? String(row[2]).trim() : "";
             phone = phone.replace(/[^\d+]/g, '');
 
-            // ⚠️ تحرير الرادار من الإكسل: تجاهل row[4] تماماً والاعتماد فقط على Firebase
+            // ⛔ فلترة المرفوضين: إذا كان الكابتن قد رفض هذا الطلب، تخطاه فوراً
+            if (rejectedByMap[phone]) {
+                continue; 
+            }
+
             let isFirebaseActive = false;
             let isZombie = false;
 
@@ -972,7 +976,7 @@
             });
     }
 
-    // 🟢 مراقبة الكباتن لتشغيل "الرادار الكاسح المستمر"
+    // 🟢 مراقبة الكباتن لتشغيل "الرادار الكاسح المستمر" مع فلترة المرفوضين
     function listenToFirebaseLocations() {
         const driversRef = ref(db, 'drivers_locations');
         onValue(driversRef, (snapshot) => {
@@ -994,13 +998,19 @@
                     get(ref(db, 'active_orders')).then(ordersSnap => {
                         const activeFbOrders = ordersSnap.val() || {};
                         pendingMyOrders.forEach(async (pendingOrder) => {
-                            const bestDriverPhone = await calculateBestDriver(locs, activeFbOrders, pendingOrder.area);
-                            // إذا وجد الرادار كابتناً مناسباً الآن، يقوم بتحويل الطلب إليه
+                            
+                            // تمرير كائن الطلب للرادار لكي يتحقق من قائمة المرفوضين
+                            const orderObjInFb = activeFbOrders[pendingOrder.id];
+                            
+                            const bestDriverPhone = await calculateBestDriver(locs, activeFbOrders, pendingOrder.area, orderObjInFb);
+                            
+                            // إذا وجد الرادار كابتناً مناسباً (ولم يسبق له الرفض)، يقوم بتحويل الطلب إليه
                             if (bestDriverPhone && bestDriverPhone !== "pending_driver") {
-                                console.log("الرادار المستمر التقط كابتناً للطلب:", pendingOrder.id);
+                                console.log("الرادار المستمر التقط كابتناً جديداً للطلب:", pendingOrder.id);
                                 update(ref(db, `active_orders/${pendingOrder.id}`), {
                                     driverPhone: bestDriverPhone,
-                                    status: "pending_driver" // لإطلاق الرنين عند الكابتن الجديد
+                                    status: "pending_driver", // لإطلاق الرنين عند الكابتن الجديد
+                                    last_update: new Date().toISOString()
                                 });
                             }
                         });
@@ -1218,7 +1228,7 @@
             const bestDriverPhone = await calculateBestDriver(fbLocs, activeFbOrders, area);
             const finalDriver = bestDriverPhone || "pending_driver";
 
-            // 3. الحقن الذري المباشر في Firebase (مع حقن اللوكيشن ورقم الهاتف)
+            // 3. الحقن الذري المباشر في Firebase (مع حقن اللوكيشن ورقم الهاتف وتصفير قائمة المرفوضين)
             await set(ref(db, 'active_orders/' + uniqueFrontendId), {
                 id: uniqueFrontendId,
                 restaurant: currentResName,
@@ -1230,7 +1240,7 @@
                 timestamp: timestampIso,
                 photoUrl: imageUrl,
                 last_update: timestampIso,
-                // 🔥 الحقن الذاتي لتفادي أخطاء الكابتن
+                rejected_by: { "init": true }, // قائمة المرفوضين فارغة مبدئياً
                 resPhone: regPhone || "غير متوفر",
                 resLat: regLat || 0,
                 resLng: regLng || 0
