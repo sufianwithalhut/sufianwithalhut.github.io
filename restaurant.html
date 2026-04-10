@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 3.3 - الماسي: الرادار يقرأ القائمة السوداء للمرفوضين) ---
-        const CURRENT_APP_VERSION = "3.3"; 
+        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 3.4 - الماسي: إطلاق الطلبات للنظام اللامركزي) ---
+        const CURRENT_APP_VERSION = "3.4"; 
         if (localStorage.getItem('hut_res_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة مكتشفة... جاري التحديث الإجباري لتسريع النظام!");
             localStorage.setItem('hut_res_app_version', CURRENT_APP_VERSION);
@@ -453,145 +453,6 @@
         if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') event.preventDefault();
     });
 
-    // 🛠️ خوارزمية حساب المسافة (بالمتر)
-    function calculateDistanceMeters(lat1, lon1, lat2, lon2) {
-        if (!lat1 || !lon1) return 9999000;
-        const R = 6371e3; 
-        const p1 = lat1 * Math.PI/180;
-        const p2 = lat2 * Math.PI/180;
-        const dp = (lat2-lat1) * Math.PI/180;
-        const dl = (lon2-lon1) * Math.PI/180;
-        const a = Math.sin(dp/2) * Math.sin(dp/2) + Math.cos(p1) * Math.cos(p2) * Math.sin(dl/2) * Math.sin(dl/2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-        return R * c;
-    }
-
-    // 🧠 الرادار الذكي المحدث (مع فلترة القائمة السوداء rejected_by)
-    async function calculateBestDriver(fbLocs, activeFbOrders, newOrderArea, pendingOrderObj = null) {
-        if (!globalDriversInfo || globalDriversInfo.length === 0) return null;
-
-        let rLat = regLat, rLng = regLng; 
-        let bestDriver = null;
-        let highestScore = -Infinity;
-        const now = new Date();
-
-        // قراءة القائمة السوداء لهذا الطلب تحديداً (الكباتن الذين رفضوا أو تجاهلوا)
-        const rejectedByMap = (pendingOrderObj && pendingOrderObj.rejected_by) ? pendingOrderObj.rejected_by : {};
-
-        const activeOrdersList = Object.values(activeFbOrders).filter(o =>
-            ["accepted","heading","arrived_at_res","picked_up","pending_driver","manual_pending"].includes(o.status)
-        );
-
-        let driverActiveLoads = {};
-        activeOrdersList.forEach(o => {
-            const dp = String(o.driverPhone);
-            if (dp && dp !== "pending_driver" && dp !== "system_routing" && dp !== "manual_pending") {
-                driverActiveLoads[dp] = (driverActiveLoads[dp] || 0) + 1;
-            }
-        });
-
-        // الاعتماد على Firebase فقط لمعرفة عدد الكباتن المتاحين
-        let activeFirebaseDriversCount = 0;
-        if (fbLocs) {
-            Object.values(fbLocs).forEach(loc => {
-                if (loc.status === "active" && loc.account_status !== "banned") {
-                    const idleMins = (now - new Date(loc.last_update)) / 60000;
-                    if (!(idleMins > 3)) activeFirebaseDriversCount++;
-                }
-            });
-        }
-
-        const pendingOrdersCount = activeOrdersList.filter(o => !o.driverPhone || o.driverPhone === "pending_driver" || o.driverPhone === "system_routing").length;
-        const isLowPressure = (pendingOrdersCount < activeFirebaseDriversCount);
-
-        for (let i = 1; i < globalDriversInfo.length; i++) {
-            const row = globalDriversInfo[i];
-            let phone = row[2] ? String(row[2]).trim() : "";
-            phone = phone.replace(/[^\d+]/g, '');
-
-            // ⛔ فلترة المرفوضين: إذا كان الكابتن قد رفض هذا الطلب، تخطاه فوراً
-            if (rejectedByMap[phone]) {
-                continue; 
-            }
-
-            let isFirebaseActive = false;
-            let isZombie = false;
-
-            if (fbLocs && fbLocs[phone]) {
-                if (fbLocs[phone].status === "active") isFirebaseActive = true;
-                if (fbLocs[phone].account_status === "banned") continue; // محظور
-
-                if (fbLocs[phone].last_update) {
-                    const idleMins = (now - new Date(fbLocs[phone].last_update)) / 60000;
-                    if (isNaN(idleMins) || idleMins > 3) isZombie = true; // نائم أو غائب
-                } else {
-                    isZombie = true;
-                }
-            } else {
-                isZombie = true; 
-            }
-
-            // إذا كان الكابتن نشطاً في Firebase وغير محظور وغير نائم
-            if (isFirebaseActive && !isZombie && row[11] !== true && row[11] !== "TRUE") {
-                let dLat = parseFloat(row[5]);
-                let dLng = parseFloat(row[6]);
-                let dailyOrdersCount = parseInt(row[7]) || 0;
-                let lastActionStr = row[9];
-
-                if (fbLocs[phone]) {
-                    dLat = parseFloat(fbLocs[phone].lat) || dLat;
-                    dLng = parseFloat(fbLocs[phone].lng) || dLng;
-                    if (fbLocs[phone].last_update) lastActionStr = fbLocs[phone].last_update;
-                    if (fbLocs[phone].daily_count !== undefined) dailyOrdersCount = parseInt(fbLocs[phone].daily_count) || dailyOrdersCount;
-                }
-
-                let dist = 9999;
-                if (!isNaN(rLat) && !isNaN(rLng) && !isNaN(dLat) && !isNaN(dLng)) {
-                    dist = calculateDistanceMeters(rLat, rLng, dLat, dLng) / 1000; 
-                }
-
-                if (dist > 15) continue; // MAX RADIUS 15KM
-
-                const distanceScore = 50 / (dist + 0.5);
-
-                let idleTimeBonus = 0;
-                if (lastActionStr) {
-                    const idleMins = (now - new Date(lastActionStr)) / 60000;
-                    if (!isNaN(idleMins) && idleMins > 5) idleTimeBonus = Math.min(idleMins * 0.5, 20);
-                }
-
-                const dailyOrdersPenalty = dailyOrdersCount * 3;
-
-                const driverCurrentOrders = activeOrdersList.filter(o => String(o.driverPhone) === phone);
-                const isCarryingOrder = driverCurrentOrders.length > 0;
-
-                let batchPenalty = 0;
-                if (driverActiveLoads[phone] >= 3) {
-                     continue; // Exclude maxed out
-                }
-
-                if (isCarryingOrder) {
-                    if (isLowPressure) {
-                        batchPenalty = 100; // Penalize heavy if low pressure
-                    } else {
-                        const currentOrderArea = driverCurrentOrders[0].area ? String(driverCurrentOrders[0].area).trim() : "";
-                        batchPenalty = (newOrderArea && currentOrderArea && newOrderArea === currentOrderArea) ? 10 : 40;
-                    }
-                }
-
-                const randomJitter = Math.random() * 1;
-                const score = distanceScore + idleTimeBonus - dailyOrdersPenalty - batchPenalty + randomJitter;
-
-                if (score > highestScore) {
-                    highestScore = score;
-                    bestDriver = phone;
-                }
-            }
-        }
-        return bestDriver;
-    }
-
-
     window.initPickerMap = function() {
         if (!document.getElementById('pickerMap')) return;
         if(pickerMap) { setTimeout(() => { pickerMap.invalidateSize(); }, 500); return; }
@@ -976,50 +837,6 @@
             });
     }
 
-    // 🟢 مراقبة الكباتن لتشغيل "الرادار الكاسح المستمر" مع فلترة المرفوضين
-    function listenToFirebaseLocations() {
-        const driversRef = ref(db, 'drivers_locations');
-        onValue(driversRef, (snapshot) => {
-            const locs = snapshot.val();
-            if (!locs) return;
-            
-            // تحويل البيانات لنص للمقارنة البسيطة
-            const currentFbLocsStr = JSON.stringify(locs);
-            
-            // إذا تغيرت مواقع الكباتن أو أحدهم أصبح متاحاً
-            if (currentFbLocsStr !== lastKnownFbLocsStr) {
-                lastKnownFbLocsStr = currentFbLocsStr;
-                
-                // هل لدينا طلبات معلقة بانتظار كابتن؟
-                const pendingMyOrders = liveActiveOrders.filter(o => !o.driverPhone || o.driverPhone === "pending_driver" || o.driverPhone === "system_routing");
-                
-                if (pendingMyOrders.length > 0) {
-                    // تشغيل الرادار بصمت لكل طلب معلق
-                    get(ref(db, 'active_orders')).then(ordersSnap => {
-                        const activeFbOrders = ordersSnap.val() || {};
-                        pendingMyOrders.forEach(async (pendingOrder) => {
-                            
-                            // تمرير كائن الطلب للرادار لكي يتحقق من قائمة المرفوضين
-                            const orderObjInFb = activeFbOrders[pendingOrder.id];
-                            
-                            const bestDriverPhone = await calculateBestDriver(locs, activeFbOrders, pendingOrder.area, orderObjInFb);
-                            
-                            // إذا وجد الرادار كابتناً مناسباً (ولم يسبق له الرفض)، يقوم بتحويل الطلب إليه
-                            if (bestDriverPhone && bestDriverPhone !== "pending_driver") {
-                                console.log("الرادار المستمر التقط كابتناً جديداً للطلب:", pendingOrder.id);
-                                update(ref(db, `active_orders/${pendingOrder.id}`), {
-                                    driverPhone: bestDriverPhone,
-                                    status: "pending_driver", // لإطلاق الرنين عند الكابتن الجديد
-                                    last_update: new Date().toISOString()
-                                });
-                            }
-                        });
-                    });
-                }
-            }
-        });
-    }
-
     function startHotDataListeners() {
         const ordersRef = ref(db, 'active_orders');
         onValue(ordersRef, (snapshot) => {
@@ -1042,9 +859,6 @@
             liveActiveOrders = newLiveOrders;
             renderActiveOrdersUI();
         });
-        
-        // تشغيل مراقبة مواقع الكباتن للرادار المستمر
-        listenToFirebaseLocations();
     }
 
     window.cancelOrderGrace = function(orderId) {
@@ -1207,61 +1021,49 @@
         }
     };
 
-    // 🟢 7. الرادار الذكي والتعيين المباشر عبر Firebase (مع الحقن الذاتي)
+    // 🟢 8. إرسال الطلب للنظام اللامركزي (بدون بحث محلي)
     async function finalizeOrderPlacement(details, imageUrl, price, area, btn, originalBtnHtml) {
-        btn.innerHTML = `<div class="spinner-border spinner-border-sm me-2"></div> جاري تحليل الرادار الذكي...`;
+        btn.innerHTML = `<div class="spinner-border spinner-border-sm me-2"></div> جاري إطلاق الطلب للكباتن...`;
         btn.disabled = true;
 
         try {
             const uniqueFrontendId = "HUT-" + Math.floor(Date.now() / 1000);
             const timestampIso = new Date().toISOString();
 
-            // 1. جلب المواقع والطلبات اللحظية من Firebase
-            const [locsSnap, ordersSnap] = await Promise.all([
-                get(ref(db, 'drivers_locations')),
-                get(ref(db, 'active_orders'))
-            ]);
-            const fbLocs = locsSnap.val() || {};
-            const activeFbOrders = ordersSnap.val() || {};
-
-            // 2. تطبيق الخوارزمية الذكية محلياً
-            const bestDriverPhone = await calculateBestDriver(fbLocs, activeFbOrders, area);
-            const finalDriver = bestDriverPhone || "pending_driver";
-
-            // 3. الحقن الذري المباشر في Firebase (مع حقن اللوكيشن ورقم الهاتف وتصفير قائمة المرفوضين)
+            // رمي الطلب مباشرة في فايربيس (معلق للجميع) مع إحداثيات المطعم
             await set(ref(db, 'active_orders/' + uniqueFrontendId), {
                 id: uniqueFrontendId,
                 restaurant: currentResName,
                 area: area,
                 details: details,
                 status: "pending_driver",
-                driverPhone: finalDriver, 
+                driverPhone: "pending_driver", // ⚠️ الكباتن هم من سيتنافسون عليه الآن
                 price: price,
                 timestamp: timestampIso,
                 photoUrl: imageUrl,
                 last_update: timestampIso,
-                rejected_by: { "init": true }, // قائمة المرفوضين فارغة مبدئياً
+                rejected_by: { "init": true },
                 resPhone: regPhone || "غير متوفر",
                 resLat: regLat || 0,
                 resLng: regLng || 0
             });
 
-            // 4. إبلاغ السيرفر بهدوء للأرشفة فقط
+            // إبلاغ السيرفر بهدوء للأرشفة فقط
             const payload = { action: 'NEW_ORDER', token: API_TOKEN, frontendId: uniqueFrontendId, restaurantName: currentResName, area: area, price: price, details: details, image: imageUrl };
             fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) }).catch(e=>{});
 
             btn.innerHTML = originalBtnHtml; btn.disabled = false;
-            showSuccessMessage(bestDriverPhone ? "تم توجيه الطلب للكابتن بنجاح!" : "لا يوجد كابتن متاح، الطلب قيد الانتظار!");
+            showSuccessMessage("تم إطلاق الطلب بنجاح! الكابتن الأقرب في طريقه لقبوله.");
 
         } catch (e) {
             btn.innerHTML = originalBtnHtml; btn.disabled = false;
-            alert("حدث خطأ أثناء الاتصال بالرادار.");
+            alert("حدث خطأ أثناء الاتصال بالنظام.");
         }
     }
 
     function showSuccessMessage(msgText) {
         document.getElementById('orderStatusBox').classList.remove('hidden-section');
-        document.getElementById('statusMsg').innerHTML = `<span class="fw-bold">${msgText}</span><br><span class="text-warning small fw-bold">الطلب الآن نشط ومحمي في الرادار 📡</span>`;
+        document.getElementById('statusMsg').innerHTML = `<span class="fw-bold">${msgText}</span><br><span class="text-warning small fw-bold">الطلب الآن نشط في الرادار 📡</span>`;
         
         document.getElementById('customerPhone').value = ""; document.getElementById('customerDetails').value = ""; document.getElementById('orderPrice').value = ""; document.getElementById('customAreaName').value = ""; document.getElementById('customAreaPrice').value = "";
         document.getElementById('priceHint').classList.add('hidden-section'); document.getElementById('customerArea').selectedIndex = 0; document.getElementById('customAreaSection').classList.add('hidden-section');
