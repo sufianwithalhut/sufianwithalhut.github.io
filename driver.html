@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 7.9 (النسخة الماسية: التوزيع العادل والتأخير الزمني الذكي للرادار اللامركزي) ---
-        const CURRENT_APP_VERSION = "7.9"; 
+        // --- إصدار 8.0 (النسخة الماسية: نبض حياة مستقل عن الحركة + إرسال موقع فوري) ---
+        const CURRENT_APP_VERSION = "8.0"; 
         
         if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة... جاري تطهير الكاش!");
@@ -639,6 +639,7 @@
         }
     }
 
+    // زر التحويل اليدوي (استراحة / نشط)
     window.toggleOnlineStatus = function() {
         isOnline = document.getElementById('onlineToggle').checked;
         const badge = document.getElementById('onlineStatusBadge');
@@ -646,7 +647,18 @@
         if (isOnline) {
             badge.className = "status-badge online"; badge.innerHTML = `متاح للطلبات`;
             document.getElementById('searchingStatus').classList.remove('offline-mode');
-            updateFirebaseLocationStatus('active');
+            
+            // 🟢 إرسال نبضة قوية وموقع فوري عند التبديل لـ "نشط" (لإلغاء حالة الزومبي فوراً)
+            if(navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(pos => {
+                    lastSentLat = pos.coords.latitude;
+                    lastSentLng = pos.coords.longitude;
+                    updateFirebaseLocationStatus('active');
+                });
+            } else {
+                updateFirebaseLocationStatus('active');
+            }
+            
             requestWakeLock(); if (silentAudio) silentAudio.play().catch(e=>{}); 
             
             lastSignificantMovementTs = Date.now(); 
@@ -665,26 +677,44 @@
         }
     }
 
+    // 🟢 دالة النبض المحسنة (إرسال النبض حتى بدون حركة)
     function sendHeartbeat() {
-        if (!isOnline || !driverData || !lastSentLat || document.hidden) return;
+        if (!isOnline || !driverData || document.hidden) return;
+        
         const updates = {};
-        updates[`drivers_locations/${driverData.phone}`] = { 
-            lat: lastSentLat, lng: lastSentLng, 
-            status: "active", 
-            last_update: new Date().toISOString() 
-        };
+        // إذا كان يملك إحداثيات سابقة، نرسلها، وإلا نرسل الحالة فقط لتأكيد أنه חי
+        if (lastSentLat && lastSentLng) {
+            updates[`drivers_locations/${driverData.phone}/lat`] = lastSentLat;
+            updates[`drivers_locations/${driverData.phone}/lng`] = lastSentLng;
+        }
+        updates[`drivers_locations/${driverData.phone}/status`] = "active";
+        updates[`drivers_locations/${driverData.phone}/last_update`] = new Date().toISOString();
+        
         update(ref(db), updates);
     }
 
     function updateFirebaseLocationStatus(statusStr) {
-        if(lastSentLat && lastSentLng) {
-            const updates = {};
-            updates[`drivers_locations/${driverData.phone}`] = { lat: lastSentLat, lng: lastSentLng, status: statusStr, last_update: new Date().toISOString() };
-            update(ref(db), updates);
+        if (!driverData) return;
+        const updates = {};
+        if (lastSentLat && lastSentLng) {
+            updates[`drivers_locations/${driverData.phone}/lat`] = lastSentLat;
+            updates[`drivers_locations/${driverData.phone}/lng`] = lastSentLng;
         }
+        updates[`drivers_locations/${driverData.phone}/status`] = statusStr;
+        updates[`drivers_locations/${driverData.phone}/last_update`] = new Date().toISOString();
+        update(ref(db), updates);
     }
 
     function startSystem() {
+        // 🟢 بمجرد بدء النظام، نرسل موقعه فوراً ليراه الرادار
+        if(navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(pos => {
+                lastSentLat = pos.coords.latitude;
+                lastSentLng = pos.coords.longitude;
+                if(isOnline) updateFirebaseLocationStatus('active');
+            });
+        }
+
         if (isOnline) { 
             requestWakeLock(); 
             let silentAudio = document.getElementById('keepAliveAudio'); if (silentAudio) silentAudio.play().catch(e=>{}); 
