@@ -3,9 +3,9 @@
 <head>
 <script>
     // ═══════════════════════════════════════════════════════════
-    // نظام الحوت | لوحة الكابتن v8.0 — الرادار الذكي (الرنين المتدرج)
+    // نظام الحوت | لوحة الكابتن v8.1 — الحماية من الضغط العالي والطوابير الذكية
     // ═══════════════════════════════════════════════════════════
-    const CURRENT_APP_VERSION = "8.0";
+    const CURRENT_APP_VERSION = "8.1";
     if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
         localStorage.setItem('hut_app_version', CURRENT_APP_VERSION);
         if ('caches' in window) { caches.keys().then(n => n.forEach(k => caches.delete(k))); }
@@ -15,7 +15,7 @@
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>كباتن سفيان | الرادار الذكي v8</title>
+<title>كباتن سفيان | الرادار الذكي v8.1</title>
 <meta name="theme-color" content="#0f172a">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -351,6 +351,21 @@ body {
     margin-bottom: 20px; box-shadow: 0 0 0 14px rgba(255,255,255,.12);
 }
 
+/* ══════════════ SNACKBAR FOR DOUBLE ORDERS ══════════════ */
+#doubleOrderSnackbar {
+    position: fixed; top: max(16px, env(safe-area-inset-top)); left: 16px; right: 16px;
+    background: var(--card); border-radius: 20px; padding: 16px;
+    box-shadow: 0 15px 40px rgba(0,0,0,.25); border: 2px solid var(--orange);
+    z-index: 45000; display: none; align-items: center; justify-content: space-between;
+    animation: slideDown .3s ease-out;
+}
+.snack-details { display: flex; flex-direction: column; gap: 4px; }
+.snack-title { font-weight: 900; color: var(--navy-mid); font-size: 1rem; display: flex; align-items: center; gap: 6px; }
+.snack-sub { font-weight: 700; color: var(--muted); font-size: .85rem; }
+.snack-actions { display: flex; align-items: center; gap: 8px; }
+.btn-snack-accept { background: var(--green); color: #fff; border: none; padding: 10px 16px; border-radius: 12px; font-weight: 800; font-size: .9rem; cursor: pointer; }
+.btn-snack-ignore { background: #f1f5f9; color: var(--muted); border: none; padding: 10px; border-radius: 12px; font-weight: 800; cursor: pointer; }
+
 /* ══════════════ LEDGER ══════════════ */
 #ledgerModal {
     position: fixed; inset: 0; background: var(--bg);
@@ -373,17 +388,6 @@ body {
 }
 .sync-spin { width: 12px; height: 12px; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin 1s linear infinite; }
 
-/* ══════════════ DELAY COUNTDOWN (pre-ring) ══════════════ */
-#delayOverlay {
-    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
-    background: rgba(15,23,42,.93); color: #fff; padding: 12px 22px;
-    border-radius: 20px; z-index: 35000; display: none; align-items: center; gap: 10px;
-    font-weight: 800; font-size: .9rem; backdrop-filter: blur(8px);
-    border: 1px solid rgba(255,255,255,.15); box-shadow: 0 8px 24px rgba(0,0,0,.3);
-}
-.delay-dot { width: 10px; height: 10px; background: var(--amber); border-radius: 50%; animation: delayBlink 1s infinite; }
-@keyframes delayBlink { 0%,100% { opacity:1; } 50% { opacity:.3; } }
-
 /* SVGs */
 .ico { width: 20px; height: 20px; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; fill: none; flex-shrink: 0; }
 .ico-sm { width: 15px; height: 15px; }
@@ -391,19 +395,10 @@ body {
 </head>
 <body>
 
-<!-- ── Offline Banner ── -->
 <div id="offlineBanner" class="gone">⚡ أنت غير متصل بالإنترنت</div>
 
-<!-- ── Sync Badge ── -->
 <div id="syncBadge"><div class="sync-spin"></div><span id="syncTxt">مزامنة...</span></div>
 
-<!-- ── Delay Overlay ── -->
-<div id="delayOverlay">
-    <div class="delay-dot"></div>
-    <span id="delayTxt">الرادار يحسب أولويتك...</span>
-</div>
-
-<!-- ── Permission Overlay ── -->
 <div id="permissionOverlay" class="gone" style="display:none; flex-direction:column;">
     <svg class="ico shake mb-4 text-danger" style="width:70px;height:70px;color:var(--red);" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
     <h2 class="fw-black text-danger mb-3">الرادار محتاج موقعك!</h2>
@@ -411,13 +406,11 @@ body {
     <button class="btn btn-primary rounded-pill px-5 py-3 fw-bold fs-5" onclick="location.reload()">تحديث بعد التفعيل</button>
 </div>
 
-<!-- ── Loading ── -->
 <div id="loadingOverlay">
     <div class="spinner mb-3"></div>
     <h5 class="fw-bold" id="loadingTxt" style="color:var(--blue);">جاري الاتصال بالرادار...</h5>
 </div>
 
-<!-- ── Cancel Overlay ── -->
 <div id="cancelAlertOverlay">
     <div class="cancel-icon">
         <svg class="ico" style="width:36px;height:36px;color:#fff;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
@@ -427,28 +420,33 @@ body {
     <button class="btn btn-light btn-lg rounded-pill px-5 fw-bold text-danger" onclick="closeCancelAlert()">حسناً، فهمت</button>
 </div>
 
-<!-- ══════════════════════════════════════
-     AUDIO
-══════════════════════════════════════ -->
+<div id="doubleOrderSnackbar">
+    <div class="snack-details">
+        <div class="snack-title">🔥 طلب مزدوج! <span id="snackScore" style="color:var(--orange); font-size:.8rem;"></span></div>
+        <div class="snack-sub" id="snackRes">---</div>
+        <div class="snack-sub" style="color:var(--green);" id="snackPrice">---</div>
+    </div>
+    <div class="snack-actions">
+        <button class="btn-snack-ignore" onclick="window.declineOrder()">تجاهل</button>
+        <button class="btn-snack-accept" id="btnAcceptSnack" onclick="window.acceptOrder()">قبول</button>
+    </div>
+</div>
+
 <audio id="keepAliveAudio" loop src="data:audio/wav;base64,UklGRjIAAABXQVZFZm10IBIAAAABAAEAQB8AAEAfAAABAAgAAABkYXRhDAAAAAA="></audio>
 <audio id="alertSound"       loop src="https://actions.google.com/sounds/v1/alarms/submarine_dive_horn.ogg"></audio>
-<audio id="doubleOrderSound" loop src="https://actions.google.com/sounds/v1/alarms/bugle_tune.ogg"></audio>
+<audio id="doubleOrderSound" src="https://actions.google.com/sounds/v1/alarms/bugle_tune.ogg"></audio>
 <audio id="cancelSound"      src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg"></audio>
 <audio id="welcomeSound"     src="https://actions.google.com/sounds/v1/water/water_drop.ogg"></audio>
 
-<!-- ══════════════════════════════════════
-     LOGIN
-══════════════════════════════════════ -->
 <div id="loginSection" class="login-wrap">
     <div class="text-center mb-4" style="color:#fff;">
         <div class="login-logo">
             <svg class="ico" style="width:40px;height:40px;color:#fff;" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
         </div>
         <h2 class="fw-black m-0" style="font-size:1.6rem;">مكتب سفيان للشركاء</h2>
-        <p style="opacity:.7; font-weight:700; margin:4px 0 0;">الرادار الذكي v8 | نظام الحوت</p>
+        <p style="opacity:.7; font-weight:700; margin:4px 0 0;">الرادار الذكي v8.1 | نظام الحوت</p>
     </div>
 
-    <!-- Auth Box -->
     <div class="login-card" id="authBox">
         <label class="field-label text-center d-block mb-2">رقم هاتف الكابتن المسجل</label>
         <input type="tel" id="driverPhone" class="field-input phone mb-4" placeholder="07XXXXXXXXX" dir="ltr" autocomplete="off" readonly onfocus="this.removeAttribute('readonly');">
@@ -468,8 +466,7 @@ body {
             <svg class="ico" style="width:18px;height:18px;" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
         </button>
     </div>
-
-    <!-- Waiting Room -->
+    
     <div class="waiting-card gone" id="waitingBox">
         <div class="wait-spinner mb-4">
             <svg class="ico" style="width:64px;height:64px;color:var(--amber);" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><polyline points="21 3 21 8 16 8"/><polyline points="12 8 12 12 15 15"/></svg>
@@ -484,11 +481,7 @@ body {
     </div>
 </div>
 
-<!-- ══════════════════════════════════════
-     DASHBOARD
-══════════════════════════════════════ -->
 <div id="dashboardPage" class="gone">
-    <!-- Header -->
     <div class="dash-header">
         <div class="d-flex justify-content-between align-items-start">
             <div>
@@ -500,9 +493,6 @@ body {
                     </label>
                     <div id="statusPill" class="status-pill online">متاح للطلبات</div>
                 </div>
-                <div class="mt-2" id="myScoreDisplay" style="font-size:.8rem; opacity:.75; font-weight:700;">
-                    نقاط أهليتي: <span id="myScoreVal">--</span>
-                </div>
             </div>
             <div>
                 <button class="btn btn-light rounded-circle p-2 border-0 shadow-sm text-danger" onclick="window.logout()">
@@ -512,7 +502,6 @@ body {
         </div>
     </div>
 
-    <!-- Stats -->
     <div class="stats-wrap">
         <div class="row g-3">
             <div class="col-6">
@@ -540,9 +529,7 @@ body {
         </div>
     </div>
 
-    <!-- Content -->
     <div class="pb-5 mt-4" style="padding-bottom: calc(60px + env(safe-area-inset-bottom)) !important;">
-        <!-- Radar -->
         <div id="radarBox" class="radar-wrap mx-0">
             <div class="radar-hub">
                 <div class="rw" style="animation-delay:0s"></div>
@@ -556,14 +543,10 @@ body {
             <p class="text-muted fw-bold mb-0" id="radarDesc">جاري المسح عن طلبات قريبة منك...</p>
         </div>
 
-        <!-- Active orders -->
         <div id="activeOrderBox"></div>
     </div>
 </div>
 
-<!-- ══════════════════════════════════════
-     LEDGER MODAL
-══════════════════════════════════════ -->
 <div id="ledgerModal">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h3 class="fw-black m-0" style="color:var(--navy-mid);">سجل اليوم</h3>
@@ -578,17 +561,12 @@ body {
     <div class="ledger-card" id="ledgerList" style="padding:10px;"></div>
 </div>
 
-<!-- ══════════════════════════════════════
-     ORDER ALERT OVERLAY
-══════════════════════════════════════ -->
 <div id="orderAlertOverlay" class="gone">
-    <!-- Top: ring + title -->
     <div>
         <div class="alert-ring">
             <svg class="ico" style="color:#fff;width:38px;height:38px;" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
         </div>
         <h1 class="fw-black mb-1" id="alertTitle">طلب جديد!</h1>
-        <!-- Score meter -->
         <div class="score-meter mx-auto" style="max-width:320px;">
             <div>
                 <div style="font-size:.8rem; opacity:.7; font-weight:700;">نقاط أهليتي</div>
@@ -598,7 +576,6 @@ body {
         </div>
     </div>
 
-    <!-- Middle: countdown -->
     <div class="timer-ring-wrap">
         <svg width="150" height="150" viewBox="0 0 150 150">
             <circle cx="75" cy="75" r="70" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="10"/>
@@ -607,7 +584,6 @@ body {
         <div class="t-num text-white" id="seconds">60</div>
     </div>
 
-    <!-- Details card -->
     <div class="alert-card-info">
         <div class="d-flex justify-content-between align-items-center mb-3 pb-3 border-bottom">
             <small class="text-muted fw-bold">المطعم</small>
@@ -623,7 +599,6 @@ body {
         </div>
     </div>
 
-    <!-- Actions -->
     <div>
         <button class="btn-mute-link" onclick="window.muteAlarmOnly()">
             🔇 إسكات الصوت
@@ -636,13 +611,10 @@ body {
     </div>
 </div>
 
-<!-- ══════════════════════════════════════
-     FIREBASE + MAIN LOGIC
-══════════════════════════════════════ -->
 <script type="module">
 import { initializeApp }            from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getDatabase, ref, onValue,
-         update, get, serverTimestamp }
+         update, get, set, runTransaction, onDisconnect }
                                      from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
 // ═══════════ FIREBASE CONFIG ═══════════
@@ -663,15 +635,15 @@ const API_URL   = "https://script.google.com/macros/s/AKfycbwwAjzCQCtnlTNrPvuK3M
 const API_TOKEN = "HUT_SECURE_99";
 
 // ═══════════ CONSTANTS ═══════════
-const ORDER_TIMEOUT_MS  = 60_000;  // 60 ثانية
-const HEARTBEAT_MS      = 30_000;  // نبض كل 30 ثانية
-const ZOMBIE_MINS       = 3;       // الكابتن يُعتبر ميتاً بعد 3 دقائق
+const ORDER_TIMEOUT_MS  = 60_000;  // 60 ثانية للقبول
+const HEARTBEAT_MS      = 45_000;  // نبض كل 45 ثانية
+const STATS_SYNC_MS     = 15 * 60 * 1000; // 15 دقيقة لتقليل الضغط على السيرفر
 
 // ═══════════ STATE ═══════════
 let driverData       = null;   // { phone, name, timestamp }
 let isOnline         = true;
-let activeOrders     = [];     // الطلبات النشطة لهذا الكابتن
-let currentAlertOrder= null;   // الطلب المعروض حالياً في تنبيه
+let activeOrders     = [];     // الطلبات النشطة المحلية
+let currentAlertOrder= null;   // الطلب المعروض حالياً
 let countdownTimer   = null;
 let heartbeatTimer   = null;
 let statsTimer       = null;
@@ -679,16 +651,14 @@ let waitingPollTimer = null;
 let wakeLock         = null;
 let lastSentLat      = 0;
 let lastSentLng      = 0;
-let lastLocUpdateTs  = 0;
-let completedTodayCount = 0;
+let completedTodayCount = parseInt(localStorage.getItem('hut_comp_today') || '0');
 let lastOrderCompletedTime = parseInt(localStorage.getItem('hut_last_order_ts') || '0');
-let pendingAlertTimers = {};   // orderId → timer handle  (منع الطلب من الرنين مرتين)
 let isRegistering    = false;
 let lastActiveHtml   = '';
 
-// Offline queue
-let offlineQueue   = JSON.parse(localStorage.getItem('hut_offline_q') || '[]');
-let processingQ    = false;
+// الطابور المحلي للطلبات
+let pendingRadarQueue = [];
+let isAlertShowing    = false;
 
 // ═══════════ HELPERS ═══════════
 function metersApart(lat1, lng1, lat2, lng2) {
@@ -717,44 +687,24 @@ function showToast(msg, type = 'success') {
     setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 5000);
 }
 
-// ═══════════ OFFLINE QUEUE ═══════════
-function enqueue(url) { offlineQueue.push({ url, ts: Date.now() }); localStorage.setItem('hut_offline_q', JSON.stringify(offlineQueue)); processQueue(); }
-async function processQueue() {
-    if (processingQ || !offlineQueue.length || !navigator.onLine) return;
-    processingQ = true;
-    const s = document.getElementById('syncBadge'); if (s) { s.style.display = 'flex'; document.getElementById('syncTxt').innerText = `مزامنة ${offlineQueue.length} عملية...`; }
-    let failed = [];
-    for (const a of offlineQueue) { try { await fetch(a.url, { method:'GET', mode:'no-cors', cache:'no-store' }); } catch(e) { failed.push(a); } }
-    offlineQueue = failed; localStorage.setItem('hut_offline_q', JSON.stringify(offlineQueue));
-    if (s) s.style.display = 'none';
-    processingQ = false;
-}
-setInterval(processQueue, 6000);
-window.addEventListener('online', () => { document.getElementById('offlineBanner').classList.add('gone'); processQueue(); });
-window.addEventListener('offline', () => document.getElementById('offlineBanner').classList.remove('gone'));
-
 // ═══════════════════════════════════════════
 // ╔═══════════════════════════════════════╗
 // ║   خوارزمية حساب نقاط الأهلية         ║
-// ║   (Weighted Eligibility Score)        ║
 // ╚═══════════════════════════════════════╝
 // ═══════════════════════════════════════════
 function calculateEligibilityScore(order) {
     const resLat = parseFloat(order.resLat || 0);
     const resLng = parseFloat(order.resLng || 0);
 
-    // 1. نقاط المسافة (أقرب = أكثر نقاطاً)
     let distKm = 99;
-    if (driverData?.currentLat && resLat) {
-        distKm = metersApart(driverData.currentLat, driverData.currentLng, resLat, resLng) / 1000;
+    if (lastSentLat && resLat) {
+        distKm = metersApart(lastSentLat, lastSentLng, resLat, resLng) / 1000;
     }
-    const distScore = Math.max(0, 55 - (distKm * 6));  // max 55 نقطة
+    const distScore = Math.max(0, 55 - (distKm * 6));
 
-    // 2. مكافأة وقت الانتظار (كل دقيقة بدون طلب = 0.6 نقطة، حد أقصى 25)
     const idleMins = (Date.now() - lastOrderCompletedTime) / 60000;
     const idleScore = Math.min(25, idleMins * 0.6);
 
-    // 3. خصم الطلبات اليومية (كل طلب مكتمل اليوم ينقص 3 نقاط)
     const dailyPenalty = completedTodayCount * 3;
 
     const total = Math.round(distScore + idleScore - dailyPenalty);
@@ -767,47 +717,43 @@ function calculateEligibilityScore(order) {
     };
 }
 
-// ══════════════════════════════════════════════════════
-// ╔══════════════════════════════════════════════════╗
-// ║   خوارزمية التأخير الزمني العكسي                ║
-// ║   (Reverse Time-Delay Based on Score)            ║
-// ╚══════════════════════════════════════════════════╝
-// ══════════════════════════════════════════════════════
 function getRingDelay(score) {
-    if (score >= 90) return 0;          // رنين فوري
-    if (score >= 70) return 15_000;     // 15 ثانية
-    return 30_000;                      // 30 ثانية
+    if (score >= 90) return 0;
+    if (score >= 70) return 15_000;
+    return 30_000;
 }
 
-// ═══════════ HEARTBEAT (كل 30 ثانية) ═══════════
+// ═══════════ HEARTBEAT & PRESENCE ═══════════
 function sendHeartbeat() {
-    if (!isOnline || !driverData || !lastSentLat) return;
+    if (!isOnline || !driverData) return;
     const updates = {};
-    updates[`drivers_locations/${driverData.phone}`] = {
-        lat: lastSentLat, lng: lastSentLng,
-        status: 'active',
-        name: driverData.name,
-        last_update: new Date().toISOString()
-    };
+    updates[`drivers_locations/${driverData.phone}/status`] = 'active';
+    if(lastSentLat) { updates[`drivers_locations/${driverData.phone}/lat`] = lastSentLat; updates[`drivers_locations/${driverData.phone}/lng`] = lastSentLng; }
+    updates[`drivers_locations/${driverData.phone}/last_update`] = new Date().toISOString();
     update(ref(db), updates).catch(()=>{});
 }
 
 function updateFirebasePresence(status) {
     if (!driverData) return;
-    const updates = {};
-    updates[`drivers_locations/${driverData.phone}`] = {
-        lat: lastSentLat || 0, lng: lastSentLng || 0,
+    const locRef = ref(db, `drivers_locations/${driverData.phone}`);
+    const updates = {
         status,
         name: driverData.name,
         last_update: new Date().toISOString()
     };
-    update(ref(db), updates).catch(()=>{});
+    if(lastSentLat) { updates.lat = lastSentLat; updates.lng = lastSentLng; }
+    update(locRef, updates).catch(()=>{});
+
+    // 🟢 OnDisconnect (الخروج الآمن):
+    if (status === 'active') {
+        onDisconnect(locRef).update({ status: 'inactive', last_update: new Date().toISOString() });
+    } else {
+        onDisconnect(locRef).cancel();
+    }
 }
 
 // ═══════════ WAKE LOCK ═══════════
-async function requestWakeLock() {
-    if ('wakeLock' in navigator) { try { wakeLock = await navigator.wakeLock.request('screen'); } catch(e){} }
-}
+async function requestWakeLock() { if ('wakeLock' in navigator) { try { wakeLock = await navigator.wakeLock.request('screen'); } catch(e){} } }
 function releaseWakeLock() { if (wakeLock) { wakeLock.release().then(()=>{ wakeLock=null; }); } }
 
 // ═══════════════════════════════════════
@@ -815,21 +761,13 @@ function releaseWakeLock() { if (wakeLock) { wakeLock.release().then(()=>{ wakeL
 // ═══════════════════════════════════════
 function checkSavedSession() {
     const sess = localStorage.getItem('hut_driver_session');
-    const pending = localStorage.getItem('hut_driver_pending');
     if (sess) {
         try {
             const s = JSON.parse(sess);
-            if ((Date.now() - s.timestamp) / 3_600_000 < 24) {
-                driverData = s;
-                document.getElementById('driverPhone').value = s.phone;
-                const savedOrders = localStorage.getItem('hut_active_orders');
-                if (savedOrders) { activeOrders = JSON.parse(savedOrders); activeOrders.forEach(o=>{ if(!o.acceptedTime) o.acceptedTime = Date.now(); }); }
-                showDashboard(); return true;
-            }
+            driverData = s;
+            document.getElementById('driverPhone').value = s.phone;
+            showDashboard(); return true;
         } catch(e){}
-    } else if (pending) {
-        document.getElementById('driverPhone').value = pending;
-        showWaitingRoom(); return true;
     }
     return false;
 }
@@ -946,10 +884,12 @@ function startSystem() {
         document.getElementById('keepAliveAudio')?.play().catch(()=>{});
     }
     heartbeatTimer = setInterval(sendHeartbeat, HEARTBEAT_MS);
-    statsTimer     = setInterval(updateStats, 120_000);
+    statsTimer     = setInterval(updateStats, STATS_SYNC_MS); // كل 15 دقيقة
     updateStats();
     startLocationWatch();
-    startFirebaseListeners();
+    
+    // تأخير تحميل المستمعات حتى نحصل على الموقع الأولي
+    setTimeout(startFirebaseListeners, 2000);
 }
 
 window.toggleOnlineStatus = function() {
@@ -968,11 +908,12 @@ window.toggleOnlineStatus = function() {
         updateFirebasePresence('inactive');
         releaseWakeLock(); ka?.pause();
         clearInterval(heartbeatTimer); heartbeatTimer = null;
-        // إلغاء أي تنبيهات معلقة
-        Object.values(pendingAlertTimers).forEach(t => clearTimeout(t));
-        pendingAlertTimers = {};
+        
+        // إفراغ الطابور
+        pendingRadarQueue = [];
+        closeAlert();
+        document.getElementById('doubleOrderSnackbar').style.display = 'none';
     }
-    displayActiveOrders();
 };
 
 // ═══════════════════════════════════════
@@ -982,147 +923,137 @@ function startLocationWatch() {
     if (!navigator.geolocation) return;
     navigator.geolocation.watchPosition(pos => {
         document.getElementById('permissionOverlay').style.display = 'none';
-        driverData.currentLat = pos.coords.latitude;
-        driverData.currentLng = pos.coords.longitude;
-        const now = Date.now();
-        const dist = metersApart(lastSentLat, lastSentLng, pos.coords.latitude, pos.coords.longitude);
-        const elapsed = now - lastLocUpdateTs;
-        if ((dist >= 30 || elapsed > 180_000) && elapsed > 10_000) {
-            lastLocUpdateTs = now; lastSentLat = pos.coords.latitude; lastSentLng = pos.coords.longitude;
-            updateFirebasePresence(isOnline ? 'active' : 'inactive');
-        }
-        // تحديث عرض نقاط الأهلية في الهيدر
-        updateScoreDisplay();
+        lastSentLat = pos.coords.latitude;
+        lastSentLng = pos.coords.longitude;
+        updateFirebasePresence(isOnline ? 'active' : 'inactive');
     }, () => {
         document.getElementById('permissionOverlay').style.display = 'flex';
     }, { enableHighAccuracy:true, maximumAge:5000 });
 }
 
-function updateScoreDisplay() {
-    if (!currentAlertOrder) {
-        // نحسب النقاط بناءً على آخر طلب مرئي
-        const val = document.getElementById('myScoreVal');
-        const idleMins = (Date.now() - lastOrderCompletedTime) / 60000;
-        const idleScore = Math.min(25, idleMins * 0.6);
-        val.innerText = `~${Math.round(idleScore + 25)} (تقديري)`;
-    }
-}
-
 // ═══════════════════════════════════════════════════════
 // ╔═════════════════════════════════════════════════╗
 // ║  FIREBASE REALTIME LISTENERS                    ║
-// ║  المراقبة اللحظية + الرادار الذكي               ║
 // ╚═════════════════════════════════════════════════╝
 // ═══════════════════════════════════════════════════════
 function startFirebaseListeners() {
 
-    // ── 1. مراقبة حالة الحساب (للحظر الفوري) ──
-    onValue(ref(db, `drivers_locations/${driverData.phone}/account_status`), snap => {
-        if (snap.val() === 'banned') {
-            alert("⚠️ تم حظر حسابك من قبل الإدارة.");
-            localStorage.clear(); sessionStorage.clear(); location.reload();
+    // ── 1. مزامنة الطلبات النشطة (Single Source of Truth) ──
+    const ordersRef = ref(db, 'active_orders');
+    onValue(ordersRef, snap => {
+        const fbOrders = snap.val() || {};
+        
+        // أ. تنظيف قائمة activeOrders المحلية (لو الطلب سحب أو انتهى)
+        let needsDisplayUpdate = false;
+        activeOrders = activeOrders.filter(localO => {
+            const fbO = fbOrders[localO.id];
+            if (!fbO || String(fbO.driverPhone) !== String(driverData.phone)) {
+                forceRemoveOrder("تم سحب الطلب أو إنهائه من الإدارة.", localO.id);
+                needsDisplayUpdate = true;
+                return false;
+            }
+            return true;
+        });
+
+        // ب. تحديث الشاشة إذا لزم
+        if(needsDisplayUpdate) {
+            localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
+            displayActiveOrders();
         }
+
+        // ج. معالجة الطابور للطلبات المعلقة
+        if (isOnline) handleIncomingOrders(fbOrders);
     });
 
-    // ── 2. مراقبة الطلبات النشطة ──
-    onValue(ref(db, 'active_orders'), snap => {
-        const fbOrders = snap.val() || {};
-        handleOrdersSnapshot(fbOrders);
+    onValue(ref(db, `drivers_locations/${driverData.phone}/account_status`), snap => {
+        if (snap.val() === 'banned') { alert("⚠️ تم حظر حسابك."); localStorage.clear(); location.reload(); }
     });
 }
 
 // ═══════════════════════════════════════════════════════════════
 // ╔═══════════════════════════════════════════════════════════╗
-// ║  معالجة لقطة الطلبات  (قلب الرادار الذكي)               ║
-// ║  • إبادة الكباتن الأشباح تلقائياً (عبر last_update)      ║
-// ║  • حساب نقاط الأهلية لكل طلب جديد                       ║
-// ║  • تطبيق التأخير الزمني العكسي قبل الرنين               ║
+// ║  طابور الرادار اللامركزي (Queue System)                    ║
 // ╚═══════════════════════════════════════════════════════════╝
 // ═══════════════════════════════════════════════════════════════
-function handleOrdersSnapshot(fbOrders) {
+function handleIncomingOrders(fbOrders) {
+    if (activeOrders.length >= 2) return; // الحد الأقصى
 
-    // ───── أ. فحص الطلبات النشطة لدينا (هل سُحبت أو أُلغيت؟) ─────
-    for (let i = activeOrders.length - 1; i >= 0; i--) {
-        const mine = activeOrders[i];
-        const fb   = fbOrders[mine.id];
-        if (!fb) {
-            forceRemoveOrder("تم إنهاء هذا الطلب أو حذفه.", mine.id);
-        } else if (String(fb.driverPhone) !== String(driverData.phone)) {
-            forceRemoveOrder("تم سحب الطلب وتعيينه لكابتن آخر.", mine.id);
-        }
-    }
-
-    // ───── ب. البحث عن طلبات جديدة للرادار ─────
-    if (!isOnline) return;
-    if (activeOrders.length >= 2) return;
-    if (!document.getElementById('orderAlertOverlay').classList.contains('gone')) return;
-
-    Object.values(fbOrders).forEach(fbOrder => {
-        // تجاهل الطلبات الفارغة
-        if (!fbOrder?.restaurant || fbOrder.restaurant.trim() === "" || fbOrder.restaurant === "undefined") return;
-
-        // فقط الطلبات التي تنتظر كابتن
-        if (fbOrder.status !== 'pending_driver') return;
-
-        // تجاهل إذا كنا مرفوضون لهذا الطلب
-        const rejectedBy = fbOrder.rejected_by || {};
-        if (rejectedBy[driverData.phone]) return;
-
-        // تجاهل إذا كان الطلب موجود مسبقاً في قائمتنا
-        if (activeOrders.find(o => String(o.id) === String(fbOrder.id))) return;
-
-        // تجاهل إذا سبق أن جدولنا تنبيهاً لهذا الطلب
-        if (pendingAlertTimers[fbOrder.id] !== undefined) return;
-
-        // ───── حساب نقاط الأهلية ─────
-        const scoreData = calculateEligibilityScore(fbOrder);
-        const delay     = getRingDelay(scoreData.total);
-
-        console.log(`[Radar] طلب ${fbOrder.id} | نقاط: ${scoreData.total} | تأخير: ${delay/1000}s`);
-
-        if (delay > 0) {
-            // أظهر لوحة الانتظار الصامتة
-            showDelayOverlay(scoreData.total, delay / 1000);
-        }
-
-        // جدولة الرنين بعد التأخير المحسوب
-        pendingAlertTimers[fbOrder.id] = setTimeout(() => {
-            delete pendingAlertTimers[fbOrder.id];
-            hideDelayOverlay();
-
-            // تحقق مجدداً قبل الرنين: هل الطلب لا يزال يحتاج كابتن؟
-            get(ref(db, `active_orders/${fbOrder.id}`)).then(snap2 => {
-                if (!snap2.exists()) return; // اختفى الطلب
-                const fresh = snap2.val();
-                if (fresh.status !== 'pending_driver') return; // قُبل من كابتن آخر
-                const rejNow = fresh.rejected_by || {};
-                if (rejNow[driverData.phone]) return; // رُفضنا لاحقاً
-
-                // لا يزال يحتاج كابتن → نرن!
-                if (!document.getElementById('orderAlertOverlay').classList.contains('gone')) return;
-                if (activeOrders.length >= 2) return;
-                triggerOrderAlert(fresh, scoreData);
-            }).catch(()=>{});
-        }, delay);
+    // استخراج الطلبات المعلقة التي يحق لي رؤيتها
+    let validPending = [];
+    Object.values(fbOrders).forEach(fbO => {
+        if (fbO.status !== 'pending_driver') return;
+        if (activeOrders.find(o => o.id === fbO.id)) return; // معي بالفعل
+        if ((fbO.rejected_by || {})[driverData.phone]) return; // رفضته سابقاً
+        validPending.push(fbO);
     });
+
+    if (validPending.length === 0) return;
+
+    // إضافة الجديد للطابور مع حساب النقاط والتأخير
+    validPending.forEach(fbO => {
+        if (!pendingRadarQueue.find(q => q.order.id === fbO.id)) {
+            const scoreData = calculateEligibilityScore(fbO);
+            const delayMs   = getRingDelay(scoreData.total);
+            pendingRadarQueue.push({
+                order: fbO,
+                scoreData: scoreData,
+                triggerTime: Date.now() + delayMs
+            });
+            console.log(`[Queue] تمت إضافة ${fbO.id} سيرن بعد ${delayMs/1000}s`);
+        }
+    });
+
+    // فرز الطابور ليتم تشغيل الأقرب للرنين أولاً
+    pendingRadarQueue.sort((a,b) => a.triggerTime - b.triggerTime);
+    
+    // تشغيل المعالج
+    processRadarQueue();
+}
+
+function processRadarQueue() {
+    if (isAlertShowing || pendingRadarQueue.length === 0 || !isOnline || activeOrders.length >= 2) return;
+
+    const nextItem = pendingRadarQueue[0];
+    const now = Date.now();
+
+    if (now >= nextItem.triggerTime) {
+        // حان وقت الرنين!
+        pendingRadarQueue.shift(); // نزيله من الطابور
+        
+        // التحقق الأخير من فايربيس (هل ما زال موجوداً؟)
+        get(ref(db, `active_orders/${nextItem.order.id}`)).then(snap => {
+            const fresh = snap.val();
+            if (fresh && fresh.status === 'pending_driver' && !(fresh.rejected_by || {})[driverData.phone]) {
+                triggerOrderAlert(fresh, nextItem.scoreData);
+            } else {
+                processRadarQueue(); // الطلب طار، شوف اللي بعده
+            }
+        });
+    } else {
+        // نعرض له شريط تأخير صامت إذا كان ينتظر
+        showDelayOverlay(nextItem.scoreData.total, Math.ceil((nextItem.triggerTime - now)/1000));
+        setTimeout(processRadarQueue, 1000); // نفحص بعد ثانية
+    }
 }
 
 // ═══════════════════════════════════════
-// DELAY OVERLAY (الانتظار الصامت)
+// DELAY OVERLAY
 // ═══════════════════════════════════════
 function showDelayOverlay(score, secs) {
+    if(isAlertShowing || activeOrders.length >= 2) return;
     const d = document.getElementById('delayOverlay');
     document.getElementById('delayTxt').innerText = `نقاطك ${score} | الرادار يرن خلال ${secs}s...`;
     d.style.display = 'flex';
 }
-function hideDelayOverlay() {
-    document.getElementById('delayOverlay').style.display = 'none';
-}
+function hideDelayOverlay() { document.getElementById('delayOverlay').style.display = 'none'; }
 
 // ═══════════════════════════════════════
-// TRIGGER ORDER ALERT
+// TRIGGER ORDER ALERT (Full screen or Snackbar)
 // ═══════════════════════════════════════
 function triggerOrderAlert(fbOrder, scoreData) {
+    isAlertShowing = true;
+    hideDelayOverlay();
+
     currentAlertOrder = {
         id:       fbOrder.id,
         resName:  fbOrder.restaurant,
@@ -1130,34 +1061,34 @@ function triggerOrderAlert(fbOrder, scoreData) {
         price:    fbOrder.price || 0,
         details:  String(fbOrder.details || ""),
         photoUrl: fbOrder.photoUrl || "",
-        // الحقن الذاتي لبيانات المطعم من Firebase مباشرة ✅
         resPhone: fbOrder.resPhone || "",
         resLat:   parseFloat(fbOrder.resLat || 0),
         resLng:   parseFloat(fbOrder.resLng || 0),
         expireTime: Date.now() + ORDER_TIMEOUT_MS
     };
 
-    // عرض البيانات في الـ overlay
-    const isDouble = activeOrders.length > 0;
-    document.getElementById('alertTitle').innerText = isDouble ? "طلب مزدوج! 🔥" : "طلب جديد!";
-    document.getElementById('alertResName').innerText = currentAlertOrder.resName;
-    document.getElementById('alertArea').innerText    = currentAlertOrder.area;
-    document.getElementById('alertPrice').innerText   = `${currentAlertOrder.price} د.ع`;
+    if (activeOrders.length === 1) {
+        // 🟢 إظهار كـ Snackbar لعدم إزعاج الكابتن بطلبه الحالي
+        document.getElementById('snackScore').innerText = `(نقاطك: ${scoreData.total})`;
+        document.getElementById('snackRes').innerText = fbOrder.restaurant;
+        document.getElementById('snackPrice').innerText = `${fbOrder.price} د.ع`;
+        document.getElementById('doubleOrderSnackbar').style.display = 'flex';
+        document.getElementById('doubleOrderSound').play().catch(()=>{});
+    } else {
+        // شاشة كاملة
+        document.getElementById('alertTitle').innerText = "طلب جديد!";
+        document.getElementById('alertResName').innerText = currentAlertOrder.resName;
+        document.getElementById('alertArea').innerText    = currentAlertOrder.area;
+        document.getElementById('alertPrice').innerText   = `${currentAlertOrder.price} د.ع`;
 
-    // عرض النقاط
-    const sv = document.getElementById('alertScoreVal');
-    sv.innerText = scoreData.total;
-    sv.className = `score-val ${scoreData.total >= 90 ? 's-top' : scoreData.total >= 70 ? 's-mid' : 's-low'}`;
-    document.getElementById('scoreBreakdown').innerText =
-        `📍 مسافة: ${scoreData.distKm}km (+${scoreData.distScore}) | ⏳ انتظار: +${scoreData.idleScore} | 📦 اليوم: -${scoreData.dailyPenalty}`;
+        const sv = document.getElementById('alertScoreVal');
+        sv.innerText = scoreData.total;
+        sv.className = `score-val ${scoreData.total >= 90 ? 's-top' : scoreData.total >= 70 ? 's-mid' : 's-low'}`;
+        document.getElementById('scoreBreakdown').innerText = `📍 +${scoreData.distScore} | ⏳ +${scoreData.idleScore} | 📦 -${scoreData.dailyPenalty}`;
 
-    document.getElementById('orderAlertOverlay').classList.remove('gone');
-
-    // صوت الرنين
-    if (window.AndroidRadar?.triggerOrderAlarm) { window.AndroidRadar.triggerOrderAlarm(); }
-    else {
-        const aud = document.getElementById(isDouble ? 'doubleOrderSound' : 'alertSound');
-        aud.currentTime = 0; aud.play().catch(()=>{});
+        document.getElementById('orderAlertOverlay').classList.remove('gone');
+        if (window.AndroidRadar?.triggerOrderAlarm) { window.AndroidRadar.triggerOrderAlarm(); }
+        else { const aud = document.getElementById('alertSound'); aud.currentTime = 0; aud.play().catch(()=>{}); }
     }
 
     startAlertCountdown();
@@ -1174,123 +1105,117 @@ function startAlertCountdown() {
         document.getElementById('seconds').innerText = rem;
         if (circle) circle.style.strokeDashoffset = 440 - (rem * (440 / 60));
         if (circle) circle.style.stroke = rem > 30 ? '#10b981' : rem > 15 ? '#f59e0b' : '#ef4444';
-        if (rem <= 0) { clearInterval(countdownTimer); window.declineOrder(); }
+        if (rem <= 0) window.declineOrder();
     }, 1000);
 }
 
 // ═══════════════════════════════════════════════════════════════
 // ╔═══════════════════════════════════════════════════════════╗
-// ║  قبول الطلب — الآلية الذكية الآمنة                       ║
-// ║  1. إغلاق الطلب باسمنا فوراً في Firebase (atomic)       ║
-// ║  2. التحقق من عدم قبوله من كابتن آخر                    ║
-// ║  3. حفظ الطلب محلياً وإبلاغ GAS للأرشفة                 ║
+// ║  قبول الطلب (المعاملة الذرية - Firebase Transaction)     ║
 // ╚═══════════════════════════════════════════════════════════╝
 // ═══════════════════════════════════════════════════════════════
 window.acceptOrder = async function() {
     if (!currentAlertOrder) return;
-    const btn = document.getElementById('btnAcceptMain');
-    btn.innerHTML = `<div class="spinner-border spinner-border-sm text-white me-2"></div> جاري التأمين...`;
-    btn.disabled = true;
     clearInterval(countdownTimer);
     window.muteAlarmOnly();
 
     const oid = currentAlertOrder.id;
+    const btnId = activeOrders.length === 1 ? 'btnAcceptSnack' : 'btnAcceptMain';
+    const btn = document.getElementById(btnId);
+    const origHtml = btn.innerHTML;
+    btn.innerHTML = `تأمين...`; btn.disabled = true;
 
-    // محاولة القبول الذري في Firebase
+    const orderRef = ref(db, `active_orders/${oid}`);
+
     try {
-        const orderRef = ref(db, `active_orders/${oid}`);
-        const snap = await get(orderRef);
-        if (!snap.exists()) { showToast("❌ الطلب اختفى قبل قبوله", 'error'); resetAlertBtn(); closeAlert(); return; }
-        const cur = snap.val();
-        if (cur.status !== 'pending_driver') { showToast("⚡ سبقك كابتن آخر لهذا الطلب!", 'error'); resetAlertBtn(); closeAlert(); return; }
-
-        // تأمين الطلب
-        await update(orderRef, {
-            status: 'accepted',
-            driverPhone: driverData.phone,
-            last_update: new Date().toISOString()
+        // 🟢 Transaction تمنع أي كابتن آخر من أخذ الطلب في نفس اللحظة
+        const result = await runTransaction(orderRef, (currentData) => {
+            if (currentData === null) return; // الطلب انحذف
+            if (currentData.status === 'pending_driver') {
+                currentData.status = 'accepted';
+                currentData.driverPhone = driverData.phone;
+                currentData.last_update = new Date().toISOString();
+                return currentData; // نفذ التحديث
+            }
+            return; // إجهاض، أحدهم سبقنا
         });
 
-        // إضافة الطلب لقائمتنا المحلية
-        const newOrder = {
-            id:           currentAlertOrder.id,
-            resName:      currentAlertOrder.resName,
-            area:         currentAlertOrder.area,
-            details:      currentAlertOrder.details,
-            price:        currentAlertOrder.price,
-            photoUrl:     currentAlertOrder.photoUrl,
-            resPhone:     currentAlertOrder.resPhone,
-            resLat:       currentAlertOrder.resLat,
-            resLng:       currentAlertOrder.resLng,
-            state:        'heading',
-            acceptedTime: Date.now()
-        };
-        activeOrders.push(newOrder);
-        localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
+        if (result.committed) {
+            // نجحنا!
+            const newOrder = {
+                id:           currentAlertOrder.id,
+                resName:      currentAlertOrder.resName,
+                area:         currentAlertOrder.area,
+                details:      currentAlertOrder.details,
+                price:        currentAlertOrder.price,
+                photoUrl:     currentAlertOrder.photoUrl,
+                resPhone:     currentAlertOrder.resPhone,
+                resLat:       currentAlertOrder.resLat,
+                resLng:       currentAlertOrder.resLng,
+                state:        'heading',
+                acceptedTime: Date.now()
+            };
+            activeOrders.push(newOrder);
+            localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
 
-        // إبلاغ GAS بالهدوء (للأرشفة فقط)
-        enqueue(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${oid}&status=accepted&token=${API_TOKEN}`);
+            // أرشفة في GAS
+            fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${oid}&status=accepted&token=${API_TOKEN}`).catch(()=>{});
 
-        closeAlert(); displayActiveOrders();
-        showToast(`✅ تم قبول طلب ${currentAlertOrder.resName}`);
-        currentAlertOrder = null;
+            showToast(`✅ تم تأمين طلب ${currentAlertOrder.resName}`);
+            
+            // إذا كان هذا الطلب الثاني، نحدث عدد الطلبات اليومية استباقياً
+            if(activeOrders.length === 1 && completedTodayCount === 0) lastOrderCompletedTime = Date.now();
 
+            closeAlert();
+            displayActiveOrders();
+        } else {
+            showToast("⚡ عذراً، كابتن آخر أسرع منك أخذ الطلب!", 'error');
+            closeAlert();
+        }
     } catch(e) {
-        console.error("acceptOrder error:", e);
-        showToast("خطأ أثناء قبول الطلب، حاول مجدداً.", 'error');
-    } finally {
-        resetAlertBtn();
+        showToast("خطأ شبكة، حاول مجدداً", 'error');
+        if (btn) { btn.innerHTML = origHtml; btn.disabled = false; }
     }
 };
 
 // ═══════════════════════════════════════════════════════════════
 // ╔═══════════════════════════════════════════════════════════╗
-// ║  رفض/تجاهل الطلب — نظام القائمة السوداء (Blacklist)      ║
-// ║  • حقن رقم الهاتف في rejected_by داخل Firebase           ║
-// ║  • يتيح للكباتن الآخرين رؤية الطلب مجدداً               ║
+// ║  تجاهل الطلب (القائمة السوداء)                           ║
 // ╚═══════════════════════════════════════════════════════════╝
 // ═══════════════════════════════════════════════════════════════
 window.declineOrder = function() {
     if (!currentAlertOrder) return;
-    clearInterval(countdownTimer);
-    window.muteAlarmOnly();
-
     const oid = currentAlertOrder.id;
-
-    // حقن هاتفنا في rejected_by → يجعل الطلب مرئياً للكباتن الآخرين
+    
+    // حقن هاتفنا في المرفوضين
     const rejUpdate = {};
     rejUpdate[`active_orders/${oid}/rejected_by/${driverData.phone}`] = true;
     rejUpdate[`active_orders/${oid}/last_update`] = new Date().toISOString();
     update(ref(db), rejUpdate).catch(()=>{});
 
-    // إبلاغ GAS ليعيد التوزيع
-    enqueue(`${API_URL}?action=DECLINE_ORDER&orderId=${oid}&driverPhone=${driverData.phone}&token=${API_TOKEN}`);
+    fetch(`${API_URL}?action=DECLINE_ORDER&orderId=${oid}&driverPhone=${driverData.phone}&token=${API_TOKEN}`).catch(()=>{});
 
-    currentAlertOrder = null;
     closeAlert();
-    hideDelayOverlay();
 };
 
 function closeAlert() {
     document.getElementById('orderAlertOverlay').classList.add('gone');
-    resetAlertBtn();
+    document.getElementById('doubleOrderSnackbar').style.display = 'none';
+    
+    const b1 = document.getElementById('btnAcceptMain'); if(b1){ b1.disabled=false; b1.innerHTML=`قبول الطلب فوراً <svg class="ico" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>`;}
+    const b2 = document.getElementById('btnAcceptSnack'); if(b2){ b2.disabled=false; b2.innerHTML=`قبول`;}
+    
     clearInterval(countdownTimer);
-}
-function resetAlertBtn() {
-    const btn = document.getElementById('btnAcceptMain');
-    if (btn) {
-        btn.disabled = false;
-        btn.innerHTML = `قبول الطلب فوراً <svg class="ico" style="width:22px;height:22px;" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>`;
-    }
-}
+    window.muteAlarmOnly();
+    currentAlertOrder = null;
+    isAlertShowing = false;
 
-window.muteAlarmOnly = function() {
-    window.AndroidRadar?.stopAlarm?.();
-    try { document.getElementById('alertSound').pause(); document.getElementById('doubleOrderSound').pause(); } catch(e){}
-};
+    // شغل الطابور ليرى إذا كان هناك طلب آخر بانتظاره
+    setTimeout(processRadarQueue, 1000);
+}
 
 // ═══════════════════════════════════════
-// ORDER REMOVED (Cancel/Reassign)
+// ORDER REMOVED BY ADMIN
 // ═══════════════════════════════════════
 function forceRemoveOrder(msg, orderId) {
     const cancel = document.getElementById('cancelSound'); cancel.currentTime = 0; cancel.play().catch(()=>{});
@@ -1298,27 +1223,24 @@ function forceRemoveOrder(msg, orderId) {
     document.getElementById('cancelAlertOverlay').style.display = 'flex';
     activeOrders = activeOrders.filter(o => String(o.id) !== String(orderId));
     localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
+    
+    // إغلاق الرنين إذا كان هو نفس الطلب الذي سُحب
+    if(currentAlertOrder && currentAlertOrder.id === orderId) { closeAlert(); }
+    
     displayActiveOrders();
 }
-window.closeCancelAlert = function() {
-    document.getElementById('cancelAlertOverlay').style.display = 'none';
-    document.getElementById('cancelSound').pause();
-};
 
 // ═══════════════════════════════════════
 // DISPLAY ACTIVE ORDERS
 // ═══════════════════════════════════════
-const I_PHONE = `<svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>`;
-const I_MAP   = `<svg class="ico ico-sm" viewBox="0 0 24 24"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>`;
-const I_WA    = `<svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>`;
-const I_IMG   = `<svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`;
-const I_CLK   = `<svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
-
 function displayActiveOrders() {
     const box = document.getElementById('activeOrderBox');
     if (activeOrders.length === 0) {
         document.getElementById('radarBox').classList.remove('gone');
-        box.innerHTML = ''; lastActiveHtml = ''; return;
+        box.innerHTML = ''; lastActiveHtml = ''; 
+        // استئناف الرادار
+        if(isOnline && pendingRadarQueue.length > 0) processRadarQueue();
+        return;
     }
     document.getElementById('radarBox').classList.add('gone');
 
@@ -1347,22 +1269,22 @@ function displayActiveOrders() {
         const custWa      = custPhone ? '964' + custPhone.substring(1) : null;
 
         const tagHtml   = isDouble ? `<span class="order-tag tag-double">مزدوج (${idx+1}/${activeOrders.length})</span>` : `<span class="order-tag tag-single">حصري</span>`;
-        const photoHtml = (order.photoUrl && order.photoUrl.startsWith('http')) ? `<button class="pill-btn pill-photo" onclick="openLink('${order.photoUrl}')">${I_IMG} عرض صورة الوصل</button>` : '';
+        const photoHtml = (order.photoUrl && order.photoUrl.startsWith('http')) ? `<button class="pill-btn pill-photo" onclick="window.openLink('${order.photoUrl}')">عرض صورة الوصل</button>` : '';
 
         const waMsg = encodeURIComponent(`مرحباً! 🛵 أنا كابتن سفيان، سأوصل طلبك من (${order.resName}) 🍔.\nأرسل موقعك الدقيق 📍 لأسرع توصيل 🚀`);
-        const waCustBtn = custWa ? `<button class="pill-btn pill-wa" onclick="openLink('https://wa.me/${custWa}?text=${waMsg}')">${I_WA} واتساب</button>` : '';
+        const waCustBtn = custWa ? `<button class="pill-btn pill-wa" onclick="window.openLink('https://wa.me/${custWa}?text=${waMsg}')">واتساب</button>` : '';
 
         html += `
         <div class="order-card" id="order-${order.id}">
             <div class="d-flex justify-content-between align-items-start mb-3">
                 <div class="d-flex flex-column gap-2">
                     ${tagHtml}
-                    <div id="timer-${order.id}" class="timer-bd t-safe">${I_CLK} --:--</div>
+                    <div id="timer-${order.id}" class="timer-bd t-safe">--:--</div>
                 </div>
                 <div class="d-flex flex-column align-items-end gap-2">
                     <div class="order-price">${order.price} <small>د.ع</small></div>
-                    <a href="#" onclick="openLink('https://wa.me/9647828942660'); return false;"
-                       style="background:rgba(59,130,246,.06);color:var(--blue);border:1px solid rgba(59,130,246,.2);padding:4px 10px;border-radius:10px;font-size:.78rem;font-weight:800;text-decoration:none;display:inline-flex;align-items:center;gap:4px;">
+                    <a href="#" onclick="window.openLink('https://wa.me/9647828942660'); return false;"
+                       style="background:rgba(59,130,246,.06);color:var(--blue);border:1px solid rgba(59,130,246,.2);padding:4px 10px;border-radius:10px;font-size:.78rem;font-weight:800;text-decoration:none;">
                        الدعم الفني
                     </a>
                 </div>
@@ -1375,16 +1297,16 @@ function displayActiveOrders() {
                     <div class="pt-label">الاستلام من</div>
                     <div class="pt-name">${order.resName}</div>
                     <div class="action-row">
-                        ${resPhoneNum ? `<button class="pill-btn pill-call" onclick="openLink('tel:${resPhoneNum}')">${I_PHONE} اتصال</button>` : ''}
-                        ${resWaNum    ? `<button class="pill-btn pill-wa"   onclick="openLink('https://wa.me/${resWaNum}')">${I_WA} مطعم</button>` : ''}
-                        ${mapUrl      ? `<button class="pill-btn pill-map"  onclick="openLink('${mapUrl}')">${I_MAP} خريطة</button>` : ''}
+                        ${resPhoneNum ? `<button class="pill-btn pill-call" onclick="window.openLink('tel:${resPhoneNum}')">اتصال</button>` : ''}
+                        ${resWaNum    ? `<button class="pill-btn pill-wa"   onclick="window.openLink('https://wa.me/${resWaNum}')">مطعم</button>` : ''}
+                        ${mapUrl      ? `<button class="pill-btn pill-map"  onclick="window.openLink('${mapUrl}')">خريطة</button>` : ''}
                     </div>
                 </div>
                 <div class="route-pt drop">
                     <div class="pt-label">التسليم إلى (${order.area})</div>
                     <div class="pt-name">${details}</div>
                     <div class="action-row">
-                        ${custPhone ? `<button class="pill-btn pill-call" onclick="openLink('tel:${custPhone}')">${I_PHONE} زبون</button>` : ''}
+                        ${custPhone ? `<button class="pill-btn pill-call" onclick="window.openLink('tel:${custPhone}')">زبون</button>` : ''}
                         ${waCustBtn}
                     </div>
                 </div>
@@ -1409,9 +1331,8 @@ window.updateOrderStatus = function(id, action, btn) {
     const order = activeOrders.find(o => String(o.id) === String(id));
     if (!order) return;
 
-    // حماية: التحقق من المسافة عند "تأكيد الوصول للمطعم"
-    if (action === 'arrive' && order.resLat && order.resLng && driverData?.currentLat) {
-        const d = metersApart(driverData.currentLat, driverData.currentLng, order.resLat, order.resLng);
+    if (action === 'arrive' && order.resLat && order.resLng && lastSentLat) {
+        const d = metersApart(lastSentLat, lastSentLng, order.resLat, order.resLng);
         if (d > 150) { showToast(`⚠️ أنت تبعد ${Math.round(d)}م عن المطعم! اقترب أكثر.`, 'error'); return; }
     }
 
@@ -1421,7 +1342,6 @@ window.updateOrderStatus = function(id, action, btn) {
     const now = new Date().toISOString();
 
     const fbUpdate  = {};
-    const gasAction = action === 'arrive' ? 'arrived_at_res' : action === 'pickup' ? 'picked_up' : 'completed';
 
     if (action === 'arrive') {
         order.state = 'arrived';
@@ -1430,7 +1350,7 @@ window.updateOrderStatus = function(id, action, btn) {
         update(ref(db), fbUpdate).catch(()=>{});
         localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
         displayActiveOrders();
-        enqueue(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${id}&status=arrived_at_res&token=${API_TOKEN}`);
+        fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${id}&status=arrived_at_res&token=${API_TOKEN}`).catch(()=>{});
         btn.innerHTML = orig; btn.disabled = false;
 
     } else if (action === 'pickup') {
@@ -1440,25 +1360,33 @@ window.updateOrderStatus = function(id, action, btn) {
         update(ref(db), fbUpdate).catch(()=>{});
         localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
         displayActiveOrders();
-        enqueue(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${id}&status=picked_up&token=${API_TOKEN}`);
+        fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${id}&status=picked_up&token=${API_TOKEN}`).catch(()=>{});
         btn.innerHTML = orig; btn.disabled = false;
 
     } else if (action === 'finish') {
         if (Date.now() - order.pickupTime < 120_000) { btn.innerHTML = orig; btn.disabled = false; return; }
+        
         const card = document.getElementById(`order-${id}`);
         if (card) { card.style.transition = '.3s'; card.style.opacity = '0'; card.style.transform = 'scale(.95)'; }
+        
         setTimeout(() => {
             activeOrders = activeOrders.filter(o => String(o.id) !== String(id));
             localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
-            // تحديث إحصاء اليوم
+            
+            // تحديث إحصاء اليوم محلياً فوراً (للرادار)
             completedTodayCount++;
+            localStorage.setItem('hut_comp_today', String(completedTodayCount));
             lastOrderCompletedTime = Date.now();
             localStorage.setItem('hut_last_order_ts', String(lastOrderCompletedTime));
+            
             // حذف الطلب من Firebase
             const del = {}; del[`active_orders/${id}`] = null;
             update(ref(db), del).catch(()=>{});
-            displayActiveOrders(); updateStats();
-            enqueue(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${id}&status=completed&token=${API_TOKEN}`);
+            
+            displayActiveOrders(); 
+            
+            // إبلاغ السيرفر 
+            fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${id}&status=completed&token=${API_TOKEN}`).then(()=>updateStats()).catch(()=>{});
         }, 320);
     }
 };
@@ -1477,14 +1405,14 @@ function tickOrderTimers() {
         const abs   = Math.abs(rem);
         const mins  = Math.floor(abs / 60000);
         const secs  = Math.floor((abs % 60000) / 1000);
-        el.innerHTML = `${I_CLK} ${neg ? '-' : ''}${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
+        el.innerHTML = `⏱️ ${neg ? '-' : ''}${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
         el.className = `timer-bd ${rem > 600_000 ? 't-safe' : rem > 0 ? 't-warn' : 't-danger'}`;
     });
 }
 setInterval(tickOrderTimers, 1000);
 
 // ═══════════════════════════════════════
-// STATS (GAS) + LEDGER
+// STATS (GAS)
 // ═══════════════════════════════════════
 function updateStats() {
     if (!driverData) return;
@@ -1525,6 +1453,7 @@ function updateStats() {
                     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` === todayISO;
                 })()
             ).length;
+            localStorage.setItem('hut_comp_today', String(completedTodayCount));
 
             document.getElementById('statOrders').innerText = cnt;
             document.getElementById('statDebt').innerHTML   = `${debt} <small style="font-size:.75rem;">د.ع</small>`;
@@ -1532,30 +1461,6 @@ function updateStats() {
             document.getElementById('ledgerList').innerHTML  = ledgerHtml || '<div class="text-center text-muted fw-bold py-4">لا توجد رحلات مكتملة اليوم.</div>';
         }).catch(()=>{});
 }
-
-window.openLedger  = () => { document.getElementById('ledgerModal').style.display = 'flex'; };
-window.closeLedger = () => { document.getElementById('ledgerModal').style.display = 'none'; };
-
-// ═══════════════════════════════════════
-// MISC
-// ═══════════════════════════════════════
-window.openLink = function(url) {
-    if (window.AndroidRadar?.openExternalApp) window.AndroidRadar.openExternalApp(url);
-    else window.open(url, '_blank');
-};
-
-document.addEventListener('contextmenu', e => e.preventDefault());
-
-// الجمعة المباركة
-(function checkFriday() {
-    if (new Date().getDay() !== 5) return;
-    const key = 'hut_friday_' + new Date().toISOString().split('T')[0];
-    if (localStorage.getItem(key)) return;
-    setTimeout(() => {
-        showToast('جمعة مباركة 🕌 لا تنسَ الصلاة على الحبيب ﷺ 📿', 'success');
-        localStorage.setItem(key, '1');
-    }, 3000);
-})();
 
 </script>
 </body>
