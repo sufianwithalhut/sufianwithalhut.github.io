@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 2.3 (الجراحة المعمارية: إصلاح فخ الإخفاء، فك ارتباط GAS، رادار الخريطة الساخن) ---
-        const CURRENT_APP_VERSION = "2.3"; 
+        // --- إصدار 2.4 (النسخة الماسية: التدمير الكامل للكروت المحذوفة، رادار الخريطة الساخن) ---
+        const CURRENT_APP_VERSION = "2.4"; 
         if (localStorage.getItem('hut_master_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة إدارة جديدة... جاري تطهير الكاش!");
             localStorage.setItem('hut_master_app_version', CURRENT_APP_VERSION);
@@ -1354,7 +1354,7 @@
 if (typeof lucide !== 'undefined') lucide.createIcons();
 
 /* ═══════════════════════════════════════════
-   🔗 CONFIG — v2.3
+   🔗 CONFIG - التحديث الجراحي الماسي V30
 ═══════════════════════════════════════════ */
 const API_URL   = "https://script.google.com/macros/s/AKfycbwwAjzCQCtnlTNrPvuK3MuE1n-5EQXGjpavxDxzehXbCpi5GoE8etgLlBTvomiLJrWr/exec";
 const API_TOKEN = "HUT_SECURE_99";
@@ -1419,21 +1419,28 @@ function closeEmergency() {
     isEmergencyMuted = true;
 }
 
-/* ─── Driver Performance ─── */
+/* ─── Driver Performance (Optimized) ─── */
 function calculateDriverPerformances(ordersData, driversData) {
     const today = new Date();
     const cm = today.getMonth(), cy = today.getFullYear();
     let performanceMap = {};
+    
+    // Initialize map
     driversData.slice(1).forEach(d => { performanceMap[String(d[2])] = 0; });
+    
+    // Loop orders only once! (Fixing the Loop of Death)
     for (let i = ordersData.length - 1; i >= 1; i--) {
         const o = ordersData[i];
         if (!o[7]) continue;
         const d = new Date(o[7]);
         if (d.getMonth() === cm && d.getFullYear() === cy && (o[5] === 'completed' || o[5] === 'مكتمل' || o[5] === 'settled')) {
             const dp = String(o[6]);
-            if (performanceMap[dp] !== undefined) performanceMap[dp]++;
+            if (performanceMap[dp] !== undefined) {
+                performanceMap[dp]++;
+            }
         }
     }
+    
     let resultCache = {};
     Object.keys(performanceMap).forEach(phone => {
         const count = performanceMap[phone];
@@ -1441,6 +1448,7 @@ function calculateDriverPerformances(ordersData, driversData) {
         else if (count > 0) resultCache[phone] = { class: 'perf-yellow', label: 'نشط' };
         else resultCache[phone] = { class: 'perf-red', label: 'جديد' };
     });
+    
     return resultCache;
 }
 
@@ -1484,12 +1492,7 @@ window.authResult = function(response) {
         a.volume = 0; a.play().then(() => { a.pause(); a.currentTime = 0; a.volume = 1; }).catch(() => {});
         startClock();
         initMap();
-        // ✅ FIX 2.3 — Bug 2: بدء استماع Firebase فوراً بدون انتظار globalData
-        isFirebaseListening = true;
-        listenToFirebaseLocations();
-        listenToFirebaseOrders();
-        // جلب globalData بشكل مستقل في الخلفية
-        refreshData();
+        refreshData(); // يجلب الداتا مرة واحدة فقط
     } else {
         masterPassword = "";
         showToast("رمز المرور غير صحيح", "error");
@@ -1505,7 +1508,7 @@ function startClock() {
     }, 1000);
 }
 
-/* ─── Data Refresh ─── */
+/* ─── Data Refresh (Manual & Initial Only to prevent Quota Exhaustion) ─── */
 function refreshData(btnEl = null) {
     if(btnEl) {
         const origIcon = btnEl.innerHTML;
@@ -1513,6 +1516,7 @@ function refreshData(btnEl = null) {
         btnEl.disabled = true;
         setTimeout(()=> { btnEl.innerHTML = origIcon; btnEl.disabled = false; }, 3000);
     }
+    
     const old = document.getElementById('data-fetch-script');
     if (old) old.remove();
     const s = document.createElement('script');
@@ -1548,6 +1552,7 @@ window.renderData = function(data) {
         });
     }
 
+    // Calculate Performance efficiently
     driverPerformanceCache = calculateDriverPerformances(data.orders, data.drivers);
 
     let resDebts = {}, resUnpaidCounts = {}, driverDebts = {};
@@ -1578,57 +1583,44 @@ window.renderData = function(data) {
     try { smartRenderFilteredSection('RESTAURANT', data.restaurants, resDebts, resUnpaidCounts); } catch(e) { console.error("Res:", e); }
     try { smartRenderFilteredSection('DRIVER', data.drivers, driverDebts, null); } catch(e) { console.error("Driver:", e); }
 
-    // ✅ FIX 2.3 — Bug 3: تحديث خريطة المطاعم بناءً على الطلبات النشطة فعلياً
     if (map && restaurantMarkersLayer) {
-        updateRestaurantMarkersFromOrders();
+        data.restaurants.slice(1).forEach(r => {
+            const rName = r[1];
+            if (r[4] === 'active' && r[6] && r[7]) {
+                const lat = parseFloat(r[6]), lng = parseFloat(r[7]);
+                if (!isNaN(lat) && !isNaN(lng)) {
+                    if (liveResMarkers[rName]) {
+                        liveResMarkers[rName].setLatLng([lat, lng]);
+                    } else {
+                        const icon = L.divIcon({
+                            className: '',
+                            html: `<div class="res-marker"><i data-lucide="utensils" width="12" height="12"></i></div>`,
+                            iconSize: [24, 24], iconAnchor: [12, 12]
+                        });
+                        const m = L.marker([lat, lng], { icon, zIndexOffset: -100 })
+                            .bindPopup(`<div class="map-popup"><div class="map-popup-title">🍽 ${rName}</div><div class="map-popup-sub">مطعم شريك نشط</div></div>`);
+                        restaurantMarkersLayer.addLayer(m);
+                        liveResMarkers[rName] = m;
+                        if (typeof lucide !== 'undefined') lucide.createIcons({ root: m.getElement() });
+                    }
+                }
+            } else if (liveResMarkers[rName]) {
+                restaurantMarkersLayer.removeLayer(liveResMarkers[rName]);
+                delete liveResMarkers[rName];
+            }
+        });
     }
 
-    // ✅ FIX 2.3 — Bug 2: بعد وصول globalData، نحدّث الرادار لاستبدال الأسماء الافتراضية
-    if (liveFirebaseOrders.length > 0) {
-        try { smartRenderRadar(liveFirebaseOrders); } catch(e) {}
+    if (!isFirebaseListening) {
+        isFirebaseListening = true;
+        listenToFirebaseLocations();
+        listenToFirebaseOrders();
+    } else {
+        if (liveFirebaseOrders.length > 0) {
+            try { smartRenderRadar(liveFirebaseOrders); } catch(e) {}
+        }
     }
 };
-
-/* ═══════════════════════════════════════════
-   ✅ FIX 2.3 — Bug 3: دالة تحديث مطاعم الخريطة
-   المطاعم تظهر فقط إذا لديها طلبات نشطة حالياً
-═══════════════════════════════════════════ */
-function updateRestaurantMarkersFromOrders() {
-    if (!map || !restaurantMarkersLayer) return;
-
-    // بناء مجموعة أسماء المطاعم التي لديها طلبات نشطة الآن
-    const activeRestaurantNames = new Set(liveFirebaseOrders.map(o => o[1]).filter(Boolean));
-
-    // إزالة دبابيس المطاعم التي لم تعد لديها طلبات نشطة
-    Object.keys(liveResMarkers).forEach(rName => {
-        if (!activeRestaurantNames.has(rName)) {
-            restaurantMarkersLayer.removeLayer(liveResMarkers[rName]);
-            delete liveResMarkers[rName];
-        }
-    });
-
-    // إضافة دبابيس المطاعم ذات الطلبات النشطة (إذا لم تكن موجودة)
-    activeRestaurantNames.forEach(rName => {
-        if (liveResMarkers[rName]) return; // موجودة بالفعل
-
-        // البحث عن إحداثيات المطعم في globalData
-        const rData = globalData?.restaurants?.find(r => r[1] === rName);
-        if (!rData || !rData[6] || !rData[7]) return;
-
-        const lat = parseFloat(rData[6]), lng = parseFloat(rData[7]);
-        if (isNaN(lat) || isNaN(lng)) return;
-
-        const icon = L.divIcon({
-            className: '',
-            html: `<div class="res-marker">🍽</div>`,
-            iconSize: [24, 24], iconAnchor: [12, 12]
-        });
-        const m = L.marker([lat, lng], { icon, zIndexOffset: -100 })
-            .bindPopup(`<div class="map-popup"><div class="map-popup-title">🍽 ${rName}</div><div class="map-popup-sub">طلب نشط الآن</div></div>`);
-        restaurantMarkersLayer.addLayer(m);
-        liveResMarkers[rName] = m;
-    });
-}
 
 /* ─── Firebase Listeners ─── */
 function listenToFirebaseOrders() {
@@ -1640,24 +1632,26 @@ function listenToFirebaseOrders() {
 
         if (ordersObj) {
             Object.values(ordersObj).forEach(o => {
-                if (!o.restaurant || o.restaurant.trim() === "") return;
+                if (!o.restaurant || o.restaurant.trim() === "") return; 
+                
                 activeResNames.add(o.restaurant);
 
-                // ✅ FIX 2.3 — Bug 2: اسم كابتن افتراضي إذا globalData غير متاحة بعد
                 let details = "طلب توصيل";
                 if (globalData?.orders) {
                     const ex = globalData.orders.find(go => go[0] === o.id);
                     if (ex) details = ex[3];
                 }
-
+                
+                // استخراج المرفوضين
                 let rejectedByObj = o.rejected_by || {};
+                
                 let arr = [
                     o.id || '', o.restaurant || '', o.area || 'غير محدد',
                     details, o.price || 0, o.status || 'pending',
                     o.driverPhone || '', o.last_update || o.timestamp || '', o.photoUrl || '',
-                    rejectedByObj
+                    rejectedByObj // المرفوضين كعنصر عاشر
                 ];
-
+                
                 const ov = localOverrides.orders[arr[0]];
                 if (ov) {
                     if (now - ov.ts < 120000) {
@@ -1693,17 +1687,9 @@ function listenToFirebaseOrders() {
         }
 
         document.querySelectorAll('.val-orders').forEach(el => el.textContent = liveFirebaseOrders.length);
-        document.querySelectorAll('.val-res').forEach(el => el.textContent = activeResNames.size);
-
-        // ✅ FIX 2.3 — Bug 2: رسم الطلبات فوراً بدون انتظار globalData
-        // إذا globalData غير متاحة سيتم استخدام أسماء افتراضية
-        try { smartRenderRadar(liveFirebaseOrders); } catch(e) {}
-
-        // ✅ FIX 2.3 — Bug 3: تحديث دبابيس المطاعم بناءً على الطلبات النشطة
-        if (map && restaurantMarkersLayer) {
-            updateRestaurantMarkersFromOrders();
-        }
-
+        document.querySelectorAll('.val-res').forEach(el => el.textContent = activeResNames.size); // تحديث عداد المطاعم النشطة فقط
+        
+        if (globalData) { try { smartRenderRadar(liveFirebaseOrders); } catch(e) {} }
         updateHeatmap(liveFirebaseOrders);
     });
 }
@@ -1721,139 +1707,160 @@ function updateHeatmap(orders) {
     heatLayer.setLatLngs(pts);
 }
 
-/* ═══════════════════════════════════════════
-   ✅ FIX 2.3 — Bug 3: listenToFirebaseLocations
-   الكباتن غير النشطين (+3 دقائق) يُحذفون من الخريطة تماماً
-═══════════════════════════════════════════ */
 function listenToFirebaseLocations() {
     if (!map) return;
     db.ref('drivers_locations').on('value', snapshot => {
         const locs = snapshot.val();
         if (!locs) return;
-
+        
         let activeDriversCount = 0;
         const currentLocPhones = new Set();
         let needDriverUIRefresh = false;
-        const now = Date.now();
-
+        
         Object.keys(locs).forEach(phone => {
             const locData = locs[phone];
-
-            // ✅ FIX 2.3 — Bug 3: حساب ما إذا كان الكابتن نشطاً حقيقياً
-            let isActive = false;
-            if (locData.status === 'active' && locData.account_status !== 'banned') {
-                const idleMins = locData.last_update
-                    ? (now - new Date(locData.last_update)) / 60000
-                    : 999;
-                if (idleMins <= 3) {
-                    isActive = true;
-                    activeDriversCount++;
+            const isActive = locData.status === 'active';
+            
+            if (isActive) activeDriversCount++;
+            
+            const lat = parseFloat(locData.lat), lng = parseFloat(locData.lng);
+            if (!isNaN(lat) && !isNaN(lng)) {
+                currentLocPhones.add(phone);
+                
+                if (liveDriverMarkers[phone]) {
+                    liveDriverMarkers[phone].setLatLng([lat, lng]);
+                    updateMarkerStyle(liveDriverMarkers[phone], isActive, phone);
+                } else {
+                    if (isActive) {
+                        const driverName = globalData?.drivers.find(d => String(d[2]) === phone)?.[1] || phone;
+                        const icon = L.divIcon({
+                            className: '',
+                            html: `
+                                <div class="drv-marker drv-marker-active">
+                                    <div class="drv-label">${driverName.split(' ')[0]}</div>
+                                </div>`,
+                            iconSize: [22, 22], iconAnchor: [11, 11]
+                        });
+                        const m = L.marker([lat, lng], { icon }).bindPopup(`<div class="map-popup"><div class="map-popup-title">🏍 ${driverName}</div><div class="map-popup-sub">${phone}</div></div>`);
+                        driverClusterGroup.addLayer(m);
+                        liveDriverMarkers[phone] = m;
+                    }
                 }
             }
-
-            // ✅ FIX 2.3 — Bug 3: إذا لم يكن الكابتن نشطاً، لا نضيف دبوسه ونتخطاه تماماً
-            if (!isActive) return;
-
-            const lat = parseFloat(locData.lat), lng = parseFloat(locData.lng);
-            if (isNaN(lat) || isNaN(lng)) return;
-
-            currentLocPhones.add(phone);
-
-            if (liveDriverMarkers[phone]) {
-                // تحديث موقع الدبوس فقط (الكابتن نشط بالفعل)
-                liveDriverMarkers[phone].setLatLng([lat, lng]);
-            } else {
-                // ✅ FIX 2.3 — Bug 2: اسم افتراضي إذا globalData غير متاحة بعد
-                const driverName = globalData?.drivers?.find(d => String(d[2]) === phone)?.[1] || `كابتن (${phone.slice(-4)})`;
-                const icon = L.divIcon({
-                    className: '',
-                    html: `<div class="drv-marker drv-marker-active"><div class="drv-label">${driverName.split(' ')[0]}</div></div>`,
-                    iconSize: [22, 22], iconAnchor: [11, 11]
-                });
-                const m = L.marker([lat, lng], { icon })
-                    .bindPopup(`<div class="map-popup"><div class="map-popup-title">🏍 ${driverName}</div><div class="map-popup-sub">${phone}</div></div>`);
-                driverClusterGroup.addLayer(m);
-                liveDriverMarkers[phone] = m;
-            }
-
-            // تحديث حالة الكابتن في globalData
+            
+            // Sync status to local globalData instantly
             if (globalData && !localOverrides.drivers[phone]) {
-                const dData = globalData.drivers?.find(d => String(d[2]) === phone);
-                if (dData && dData[4] !== 'active') {
-                    dData[4] = 'active';
+                const dData = globalData.drivers.find(d => String(d[2]) === phone);
+                if(dData && dData[4] !== locData.status) {
+                    dData[4] = locData.status;
                     needDriverUIRefresh = true;
                 }
             }
         });
-
-        // ✅ FIX 2.3 — Bug 3: إزالة دبابيس جميع الكباتن غير النشطين من الخريطة
+        
+        // Remove offline markers
         Object.keys(liveDriverMarkers).forEach(phone => {
-            if (!currentLocPhones.has(phone)) {
+            if (!currentLocPhones.has(phone) || (locs[phone] && locs[phone].status !== 'active')) {
                 driverClusterGroup.removeLayer(liveDriverMarkers[phone]);
                 delete liveDriverMarkers[phone];
             }
         });
 
         document.querySelectorAll('.val-drivers').forEach(el => el.textContent = activeDriversCount);
-
+        
+        // Refresh driver cards and badges instantly
         if (needDriverUIRefresh) {
             triggerSearch('DRIVER');
             updateSectionBadges('DRIVER', globalData.drivers);
-            if (liveFirebaseOrders.length > 0) smartRenderRadar(liveFirebaseOrders);
         }
     });
 }
 
-/* ─── قائمة الكباتن الرافضين ─── */
+function updateMarkerStyle(marker, isActive, phone) {
+    const el = marker.getElement();
+    if(el) {
+        const div = el.querySelector('.drv-marker');
+        if(div) {
+            if(isActive) { div.classList.add('drv-marker-active'); div.classList.remove('drv-marker-inactive'); }
+            else { div.classList.add('drv-marker-inactive'); div.classList.remove('drv-marker-active'); }
+        }
+    }
+}
+
+// 🟢 دالة عرض قائمة الكباتن الذين رفضوا الطلب
 window.viewRejectedDrivers = function(orderId) {
     const order = liveFirebaseOrders.find(o => o[0] === orderId);
     if(!order || !order[9]) return alert("لا توجد بيانات لهذا الطلب.");
+    
     const rejectedObj = order[9];
     let rejectedPhones = Object.keys(rejectedObj).filter(p => p !== "init");
+    
     if(rejectedPhones.length === 0) return alert("لم يقم أي كابتن برفض هذا الطلب حتى الآن.");
+    
     let htmlList = `<div style="text-align:right; margin-top:10px;">`;
     rejectedPhones.forEach(phone => {
-        let driverName = globalData?.drivers?.find(d => String(d[2]) === phone)?.[1] || phone;
-        htmlList += `<div style="background:#f1f5f9; padding:8px 12px; border-radius:10px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;"><span style="font-weight:800; font-size:0.85rem; color:#0f172a;">${driverName}</span><a href="tel:${phone}" style="color:var(--primary);"><i data-lucide="phone-call" width="16" height="16"></i></a></div>`;
+        let driverName = phone;
+        if(globalData && globalData.drivers) {
+            const dInfo = globalData.drivers.find(d => String(d[2]) === phone);
+            if(dInfo) driverName = dInfo[1];
+        }
+        htmlList += `
+        <div style="background:#f1f5f9; padding:8px 12px; border-radius:10px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-weight:800; font-size:0.85rem; color:#0f172a;">${driverName}</span>
+            <a href="tel:${phone}" style="color:var(--primary);"><i data-lucide="phone-call" width="16" height="16"></i></a>
+        </div>`;
     });
     htmlList += `</div>`;
+    
+    // استخدام مودال الطوارئ لعرض القائمة بشكل سريع
     const modal = document.getElementById('emergencyModal');
     const card = modal.querySelector('.emergency-card');
-    card.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;"><h3 style="font-size:1.1rem; font-weight:900; color:var(--text-1); margin:0;">قائمة الرفض للطلب #${orderId}</h3><button class="inv-close" style="position:static;" onclick="closeEmergency()"><i data-lucide="x" width="16" height="16"></i></button></div>${htmlList}`;
+    card.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+            <h3 style="font-size:1.1rem; font-weight:900; color:var(--text-1); margin:0;">قائمة الرفض للطلب #${orderId}</h3>
+            <button class="inv-close" style="position:static;" onclick="closeEmergency()"><i data-lucide="x" width="16" height="16"></i></button>
+        </div>
+        ${htmlList}
+    `;
     lucide.createIcons({ root: card });
     modal.style.display = 'flex';
-};
+}
 
-/* ═══════════════════════════════════════════
-   ✅ FIX 2.3 — Bug 1: smartRenderRadar
-   الكروت القديمة تُحذف من DOM بـ el.remove() لا el.style.display='none'
-═══════════════════════════════════════════ */
+
+/* ─── Radar Render ─── */
 function smartRenderRadar(activeList) {
     const container = document.getElementById('smartOrdersContainer');
 
-    // بناء قائمة كباتن التعيين اليدوي من الدبابيس النشطة فعلياً على الخريطة
+    // 🟢 تعديل فلترة الكباتن المتاحين للتعيين اليدوي (نشط في فايربيس حقيقياً فقط)
     let newOpts = '<option value="" disabled selected>تعيين يدوي</option>';
-    // ✅ FIX 2.3 — Bug 2: دعم globalData الغائبة (كباتن بدون بيانات GAS)
-    Object.keys(liveDriverMarkers).forEach(phone => {
-        let driverName = globalData?.drivers?.find(d => String(d[2]) === phone)?.[1] || `كابتن (${phone.slice(-4)})`;
-        const p = driverPerformanceCache[phone] || { class: 'perf-yellow' };
-        const sym = p.class === 'perf-green' ? '🟢' : (p.class === 'perf-red' ? '🔴' : '🟡');
-        newOpts += `<option value="${phone}">${sym} ${driverName}</option>`;
-    });
+    if (globalData) {
+        // نأخذ الكباتن الذين لهم أيقونة زرقاء على الخريطة حالياً (نشط فعلياً)
+        const activeLivePhones = Object.keys(liveDriverMarkers).filter(phone => {
+            return liveDriverMarkers[phone].getElement().querySelector('.drv-marker-active') !== null;
+        });
+
+        activeLivePhones.forEach(phone => {
+            const dData = globalData.drivers.find(d => String(d[2]) === phone);
+            if(dData && dData[4] !== 'banned') {
+                const p = driverPerformanceCache[phone] || { class: 'perf-yellow' };
+                const sym = p.class === 'perf-green' ? '🟢' : (p.class === 'perf-red' ? '🔴' : '🟡');
+                newOpts += `<option value="${phone}">${sym} ${dData[1]}</option>`;
+            }
+        });
+    }
     activeDriversOptionsCache = newOpts;
 
-    let filtered = [];
-    if (currentRadarFilter === 'pending') {
-        filtered = activeList.filter(o => !o[6] || o[6] === "pending_driver" || o[6] === "system_routing" || o[6] === "manual_pending");
-    } else if (currentRadarFilter === 'active') {
-        filtered = activeList.filter(o => o[6] && o[6] !== "pending_driver" && o[6] !== "system_routing" && o[6] !== "manual_pending");
-    } else {
-        filtered = [...activeList];
-    }
+    let filtered = [...activeList];
+    if (currentRadarFilter === 'pending') filtered = filtered.filter(o => !o[6] || o[6] === "pending_driver" || o[6] === "system_routing");
+    if (currentRadarFilter === 'active')  filtered = filtered.filter(o => o[6] && o[6] !== "pending_driver" && o[6] !== "system_routing");
 
     if (filtered.length === 0) {
-        container.innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-icon"><i data-lucide="check-circle" width="32" height="32"></i></div><div class="empty-title">الرادار نظيف</div><div class="empty-sub">لا توجد طلبات مطابقة للفلتر</div></div>`;
-        // ✅ FIX 2.3 — Bug 1: مسح الكاش بالكامل عند التحول لحالة فارغة
+        container.innerHTML = `
+            <div class="empty-state" style="grid-column:1/-1;">
+                <div class="empty-icon"><i data-lucide="check-circle" width="32" height="32"></i></div>
+                <div class="empty-title">الرادار نظيف</div>
+                <div class="empty-sub">لا توجد طلبات نشطة حالياً</div>
+            </div>`;
         renderedOrdersCache = {};
         if (typeof lucide !== 'undefined') lucide.createIcons({ root: container });
         return;
@@ -1862,9 +1869,13 @@ function smartRenderRadar(activeList) {
     if (container.querySelector('.empty-state') || container.querySelector('.skeleton')) {
         container.innerHTML = '<div class="radar-grid" id="radarGrid"></div>';
     }
-
     let grid = document.getElementById('radarGrid');
+    if (!grid) {
+        container.innerHTML = '<div class="radar-grid" id="radarGrid"></div>';
+        grid = document.getElementById('radarGrid');
+    }
 
+    /* Group by driver */
     const grouped = {}, pending = [];
     filtered.forEach(o => {
         const dp = o[6];
@@ -1877,57 +1888,85 @@ function smartRenderRadar(activeList) {
     const getStatusInfo = (status, hasDriver, timeStr) => {
         const mins = Math.floor((new Date() - new Date(timeStr)) / 60000);
         if (!hasDriver || status === 'pending_driver' || status === 'manual_pending') {
-            if (hasDriver) return { cls: 'oc-ringing', sbCls: 'sbadge-warn', desc: '⏳ جاري الرنين', ringing: true };
+            if (hasDriver) {
+                if (mins > 1) return { cls: 'oc-ringing', sbCls: 'sbadge-warn',    desc: '⏳ جاري الرنين', ringing: true };
+                else          return { cls: 'oc-ringing', sbCls: 'sbadge-warn',    desc: '⏳ جاري الرنين', ringing: true };
+            }
             return { cls: 'oc-pending', sbCls: 'sbadge-danger', desc: '🔴 بانتظار كابتن', ringing: false };
         }
-        if (status === 'system_routing') return { cls: 'oc-pending', sbCls: 'sbadge-danger', desc: '🔴 بانتظار توجيه النظام', ringing: false };
-        if (status === 'picked_up' || status === 'في الطريق') return { cls: 'oc-active', sbCls: 'sbadge-success', desc: '🟢 بالطريق', ringing: false };
-        if (status === 'arrived_at_res') return { cls: 'oc-arrived', sbCls: 'sbadge-orange', desc: '🟠 في المطعم', ringing: false };
-        if (status === 'accepted' || status === 'heading') return { cls: 'oc-heading', sbCls: 'sbadge-blue', desc: '🔵 متوجه', ringing: false };
+        if (status === 'system_routing')                      return { cls: 'oc-pending', sbCls: 'sbadge-danger', desc: '🔴 بانتظار توجيه النظام', ringing: false };
+        if (status === 'picked_up' || status === 'في الطريق') return { cls: 'oc-active',  sbCls: 'sbadge-success', desc: '🟢 بالطريق', ringing: false };
+        if (status === 'arrived_at_res')                      return { cls: 'oc-arrived', sbCls: 'sbadge-orange',  desc: '🟠 في المطعم', ringing: false };
+        if (status === 'accepted' || status === 'heading')    return { cls: 'oc-heading', sbCls: 'sbadge-blue',    desc: '🔵 متوجه', ringing: false };
         return { cls: 'oc-heading', sbCls: 'sbadge-blue', desc: status, ringing: false };
     };
 
     const currentIds = new Set();
 
-    // كروت المزدوجين
+    /* Batch orders */
     Object.keys(grouped).forEach(dp => {
         const orders = grouped[dp];
         if (orders.length <= 1) return;
         const batchId = `batch-${dp}`;
         currentIds.add(batchId);
-        // ✅ FIX 2.3 — Bug 2: اسم افتراضي بدون globalData
-        const driverName = globalData?.drivers?.find(d => String(d[2]) === String(dp))?.[1] || `كابتن (${String(dp).slice(-4)})`;
+        const driverName = globalData?.drivers.find(d => String(d[2]) === String(dp))?.[1] || 'كابتن';
 
         let existing = document.getElementById(batchId);
         if (!existing) {
             let innerHtml = '';
-            orders.forEach(o => {
+            orders.forEach((o, i) => {
                 const sInfo = getStatusInfo(o[5], true, o[7]);
-                innerHtml += `<div class="batch-order-inner"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;"><span style="font-weight:900; font-size:0.85rem; color:var(--purple);">#${o[0]}</span><span class="sbadge ${sInfo.sbCls}">${sInfo.desc}</span></div><div style="display:flex; justify-content:space-between; font-size:0.76rem; font-weight:700; color:var(--text-2);"><span>🍽 ${o[1]}</span><span style="color:var(--success); font-weight:900;">${o[4]} د.ع</span></div><div style="display:flex; justify-content:flex-end; gap:6px; margin-top:8px;"><button class="oc-btn oc-btn-complete" onclick="adminActionOptUI('COMPLETE','ORDER','${o[0]}',this)"><i data-lucide="check-circle" width="16" height="16"></i></button><button class="oc-btn oc-btn-delete" onclick="adminActionOptUI('DELETE','ORDER','${o[0]}',this)"><i data-lucide="trash-2" width="16" height="16"></i></button></div></div>`;
+                innerHtml += `
+                <div class="batch-order-inner">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                        <span style="font-weight:900; font-size:0.85rem; color:var(--purple);">#${o[0]}</span>
+                        <span class="sbadge ${sInfo.sbCls}">${sInfo.desc}</span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; font-size:0.76rem; font-weight:700; color:var(--text-2);">
+                        <span>🍽 ${o[1]}</span><span style="color:var(--success); font-weight:900;">${o[4]} د.ع</span>
+                    </div>
+                    <div style="display:flex; justify-content:flex-end; gap:6px; margin-top:8px;">
+                        <button class="oc-btn oc-btn-complete" onclick="adminActionOptUI('COMPLETE','ORDER','${o[0]}',this)"><i data-lucide="check-circle" width="16" height="16"></i></button>
+                        <button class="oc-btn oc-btn-delete" onclick="adminActionOptUI('DELETE','ORDER','${o[0]}',this)"><i data-lucide="trash-2" width="16" height="16"></i></button>
+                    </div>
+                </div>`;
             });
-            const html = `<div id="${batchId}" class="order-card oc-batch batch-card"><div class="oc-header"><div><div class="oc-id" style="color:var(--purple);">🔗 مزدوج</div><div class="oc-time">${driverName}</div></div><button class="oc-btn-track" onclick="trackDriver('${dp}','${orders[0][1]}')"><i data-lucide="map-pin" width="13" height="13"></i> مسار</button></div>${innerHtml}</div>`;
+            const html = `
+            <div id="${batchId}" class="order-card oc-batch batch-card">
+                <div class="oc-header">
+                    <div>
+                        <div class="oc-id" style="color:var(--purple);">🔗 مزدوج</div>
+                        <div class="oc-time">${driverName}</div>
+                    </div>
+                    <button class="oc-btn-track" onclick="trackDriver('${dp}','${orders[0][1]}')"><i data-lucide="map-pin" width="13" height="13"></i> مسار</button>
+                </div>
+                ${innerHtml}
+            </div>`;
             grid.insertAdjacentHTML('beforeend', html);
             const el = document.getElementById(batchId);
             if (el && typeof lucide !== 'undefined') lucide.createIcons({ root: el });
         }
     });
 
-    // الكروت الفردية
+    /* Single orders */
     const allSingle = [...pending];
     Object.keys(grouped).forEach(dp => { if (grouped[dp].length === 1) allSingle.push(grouped[dp][0]); });
 
     allSingle.forEach(o => {
         const [orderId, restName, orderArea, , orderPrice, status, driverPhone, orderTimeStr, photoUrl, rejectedObj] = o;
         const hasDriver = (driverPhone && driverPhone !== "pending_driver" && driverPhone !== "manual_pending" && driverPhone !== "system_routing");
-        // ✅ FIX 2.3 — Bug 2: اسم افتراضي إذا globalData غير متاحة
         const driverName = hasDriver
-            ? (globalData?.drivers?.find(d => String(d[2]) === String(driverPhone))?.[1] || `كابتن (${String(driverPhone).slice(-4)})`)
-            : 'جاري البحث...';
+            ? (globalData?.drivers.find(d => String(d[2]) === String(driverPhone))?.[1] || 'كابتن جديد')
+            : 'جاري البحث في الرادار...';
         const sInfo = getStatusInfo(status, hasDriver, orderTimeStr);
         const diffMins = Math.floor((new Date() - new Date(orderTimeStr)) / 60000);
         const timeF = new Date(orderTimeStr).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
-
-        let rejectedCount = rejectedObj ? Object.keys(rejectedObj).filter(k => k !== "init").length : 0;
+        
+        // 🟢 2. بناء زر رؤية المرفوضين (إذا كان هناك مرفوضين غير init)
+        let rejectedCount = 0;
+        if(rejectedObj) { rejectedCount = Object.keys(rejectedObj).filter(k => k !== "init").length; }
+        
+        // ربط الهاش ليحدث الكارت إذا رفض كابتن جديد (زاد العدد)
         currentIds.add(orderId);
         const hash = `${status}-${driverPhone}-${diffMins}-${rejectedCount}`;
         let existing = document.getElementById(`oc-${orderId}`);
@@ -1938,8 +1977,10 @@ function smartRenderRadar(activeList) {
                 const sbEl = existing.querySelector('.status-badge-ui');
                 if (sbEl) { sbEl.className = `sbadge status-badge-ui ${sInfo.sbCls}`; sbEl.textContent = sInfo.desc; }
                 const dnEl = existing.querySelector('.driver-name-ui');
-                if (dnEl) dnEl.querySelector('span').textContent = driverName;
+                if (dnEl) { dnEl.querySelector('span').textContent = driverName; }
                 const ctrlEl = existing.querySelector('.driver-controls-ui');
+                
+                // تحديث أزرار التحكم
                 if (ctrlEl) {
                     let ctrl = '';
                     if (sInfo.ringing && hasDriver) ctrl += `<button class="oc-btn oc-btn-delete" style="width:auto;padding:0 10px;font-family:'Cairo',sans-serif;font-size:0.72rem;font-weight:800;" onclick="withdrawOrderOptUI('${orderId}','${driverPhone}',this)"><i data-lucide="user-minus" width="13" height="13"></i> سحب</button>`;
@@ -1949,7 +1990,12 @@ function smartRenderRadar(activeList) {
                         opts = opts.replace('تعيين يدوي', 'إعادة تعيين 🔄');
                     }
                     ctrl += `<select class="assign-select" onchange="assignDriverOptUI('${orderId}',this.value,this)">${opts}</select>`;
-                    if (rejectedCount > 0) ctrl += `<button class="btn-rejected-view" onclick="viewRejectedDrivers('${orderId}')"><i data-lucide="eye-off" width="14" height="14"></i> ${rejectedCount}</button>`;
+                    
+                    // إضافة زر المرفوضين إن وجد
+                    if(rejectedCount > 0) {
+                        ctrl += `<button class="btn-rejected-view" onclick="viewRejectedDrivers('${orderId}')"><i data-lucide="eye-off" width="14" height="14"></i> ${rejectedCount}</button>`;
+                    }
+                    
                     ctrlEl.innerHTML = ctrl;
                     if (typeof lucide !== 'undefined') lucide.createIcons({ root: ctrlEl });
                 }
@@ -1972,9 +2018,43 @@ function smartRenderRadar(activeList) {
             opts = opts.replace('تعيين يدوي', 'إعادة تعيين 🔄');
         }
         ctrl += `<select class="assign-select" onchange="assignDriverOptUI('${orderId}',this.value,this)">${opts}</select>`;
-        if (rejectedCount > 0) ctrl += `<button class="btn-rejected-view" onclick="viewRejectedDrivers('${orderId}')"><i data-lucide="eye-off" width="14" height="14"></i> ${rejectedCount}</button>`;
+        
+        if(rejectedCount > 0) {
+            ctrl += `<button class="btn-rejected-view" onclick="viewRejectedDrivers('${orderId}')"><i data-lucide="eye-off" width="14" height="14"></i> ${rejectedCount}</button>`;
+        }
 
-        const html = `<div id="oc-${orderId}" class="order-card ${sInfo.cls} flash-update">${diffMins > 3 && !hasDriver ? `<div class="delay-pill">${diffMins} دق تأخير</div>` : ''}<div class="oc-header" style="${diffMins > 3 && !hasDriver ? 'margin-top:28px;' : ''}"><div><div class="oc-id">#${orderId}</div><div class="oc-time">⏰ ${timeF}</div></div><div class="oc-actions"><span class="sbadge status-badge-ui ${sInfo.sbCls}">${sInfo.desc}</span>${hasDriver ? `<button class="oc-btn-track" onclick="trackDriver('${driverPhone}','${restName}')"><i data-lucide="map-pin" width="12" height="12"></i> مسار</button>` : ''}<button class="oc-btn oc-btn-complete" onclick="adminActionOptUI('COMPLETE','ORDER','${orderId}',this)"><i data-lucide="check-circle" width="15" height="15"></i></button><button class="oc-btn oc-btn-delete" onclick="adminActionOptUI('DELETE','ORDER','${orderId}',this)"><i data-lucide="trash-2" width="15" height="15"></i></button></div></div><div class="oc-body"><div class="oc-row"><div class="oc-res"><i data-lucide="store" width="14" height="14" style="color:var(--accent);"></i>${restName}</div><div class="oc-price">${orderPrice || 0} د.ع</div></div><div class="oc-driver-row"><div class="oc-driver-name driver-name-ui"><i data-lucide="bike" width="13" height="13" style="color:var(--primary); margin-left:4px;"></i><span>${driverName}</span></div><div class="oc-driver-controls driver-controls-ui">${callBtn}${ctrl}</div></div>${orderArea && orderArea !== 'غير محدد' ? `<div class="oc-area"><i data-lucide="map-pin" width="12" height="12"></i>${orderArea}</div>` : ''}</div></div>`;
+        const html = `
+        <div id="oc-${orderId}" class="order-card ${sInfo.cls} flash-update">
+            ${diffMins > 3 && !hasDriver ? `<div class="delay-pill">${diffMins} دق تأخير</div>` : ''}
+            <div class="oc-header" style="${diffMins > 3 && !hasDriver ? 'margin-top:28px;' : ''}">
+                <div>
+                    <div class="oc-id">#${orderId}</div>
+                    <div class="oc-time">⏰ ${timeF}</div>
+                </div>
+                <div class="oc-actions">
+                    <span class="sbadge status-badge-ui ${sInfo.sbCls}">${sInfo.desc}</span>
+                    ${hasDriver ? `<button class="oc-btn-track" onclick="trackDriver('${driverPhone}','${restName}')"><i data-lucide="map-pin" width="12" height="12"></i> مسار</button>` : ''}
+                    <button class="oc-btn oc-btn-complete" onclick="adminActionOptUI('COMPLETE','ORDER','${orderId}',this)"><i data-lucide="check-circle" width="15" height="15"></i></button>
+                    <button class="oc-btn oc-btn-delete" onclick="adminActionOptUI('DELETE','ORDER','${orderId}',this)"><i data-lucide="trash-2" width="15" height="15"></i></button>
+                </div>
+            </div>
+            <div class="oc-body">
+                <div class="oc-row">
+                    <div class="oc-res"><i data-lucide="store" width="14" height="14" style="color:var(--accent);"></i>${restName}</div>
+                    <div class="oc-price">${orderPrice || 0} د.ع</div>
+                </div>
+                <div class="oc-driver-row">
+                    <div class="oc-driver-name driver-name-ui">
+                        <i data-lucide="bike" width="13" height="13" style="color:var(--primary); margin-left:4px;"></i>
+                        <span>${driverName}</span>
+                    </div>
+                    <div class="oc-driver-controls driver-controls-ui">
+                        ${callBtn}${ctrl}
+                    </div>
+                </div>
+                ${orderArea && orderArea !== 'غير محدد' ? `<div class="oc-area"><i data-lucide="map-pin" width="12" height="12"></i>${orderArea}</div>` : ''}
+            </div>
+        </div>`;
 
         grid.insertAdjacentHTML('beforeend', html);
         const el = document.getElementById(`oc-${orderId}`);
@@ -1982,14 +2062,11 @@ function smartRenderRadar(activeList) {
         renderedOrdersCache[orderId] = hash;
     });
 
-    /* ✅ FIX 2.3 — Bug 1: الحذف النظيف من DOM باستخدام el.remove() بدلاً من display:none */
+    /* Remove stale */
     Object.keys(renderedOrdersCache).forEach(id => {
         if (!currentIds.has(id) && !currentIds.has(`batch-${id}`)) {
             const el = document.getElementById(`oc-${id}`) || document.getElementById(`batch-${id}`);
-            if (el) {
-                // حذف فوري ونظيف من DOM — لا إخفاء، لا تأخير
-                el.remove();
-            }
+            if (el) { el.remove(); } // ✅ استخدام remove() للتدمير الكامل للكارت من الـ DOM
             delete renderedOrdersCache[id];
         }
     });
@@ -2025,6 +2102,7 @@ function triggerSearch(type) {
 function applySectionFilter(type, filter, btn) {
     if (type === 'RESTAURANT') currentResSectionFilter = filter;
     else currentDriverSectionFilter = filter;
+    
     if(btn) {
         const grp = btn.closest('.filter-bar');
         if(grp) {
@@ -2032,6 +2110,7 @@ function applySectionFilter(type, filter, btn) {
             btn.classList.add('active');
         }
     }
+
     if (globalData) {
         const resDebts = {}, resUnpaid = {}, drvDebts = {};
         globalData.restaurants.slice(1).forEach(r => { resDebts[r[1]] = 0; resUnpaid[r[1]] = 0; });
@@ -2075,7 +2154,11 @@ function smartRenderFilteredSection(type, fullList, debtsMap, unpaidCounts) {
     });
 
     if (filtered.length === 0) {
-        container.innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-icon"><i data-lucide="search-x" width="28" height="28"></i></div><div class="empty-title">لا توجد نتائج</div><div class="empty-sub">لا يوجد ما يطابق البحث</div></div>`;
+        container.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">
+            <div class="empty-icon"><i data-lucide="search-x" width="28" height="28"></i></div>
+            <div class="empty-title">لا توجد نتائج</div>
+            <div class="empty-sub">لا يوجد ما يطابق البحث</div>
+        </div>`;
         if (typeof lucide !== 'undefined') lucide.createIcons({ root: container });
         if (type === 'RESTAURANT') renderedResCards = {}; else renderedDriverCards = {};
         return;
@@ -2098,7 +2181,9 @@ function smartRenderFilteredSection(type, fullList, debtsMap, unpaidCounts) {
         let spLabel = status === 'active' ? 'نشط' : status === 'inactive' ? 'استراحة' : (status === 'pending' || status === 'waiting') ? 'قيد الانتظار' : status === 'banned' ? 'موقوف' : status;
 
         let unpaidHtml = '';
-        if (type === 'RESTAURANT' && unpaidCounts?.[name] > 0) unpaidHtml = `<span class="unpaid-badge">${unpaidCounts[name]} طلب</span>`;
+        if (type === 'RESTAURANT' && unpaidCounts?.[name] > 0) {
+            unpaidHtml = `<span class="unpaid-badge">${unpaidCounts[name]} طلب</span>`;
+        }
 
         let perfHtml = '';
         if (type === 'DRIVER') {
@@ -2115,20 +2200,51 @@ function smartRenderFilteredSection(type, fullList, debtsMap, unpaidCounts) {
                 if (dEl) dEl.textContent = `${debt} د.ع`;
                 const upEl = existing.querySelector('.unpaid-wrap');
                 if (upEl) upEl.innerHTML = unpaidHtml;
+                
+                // إضافة الفلاش للتنبيه بتغير الحالة
                 existing.classList.add('flash-update');
                 setTimeout(()=> existing.classList.remove('flash-update'), 600);
+                
                 cache[safeId] = hash;
             }
             return;
         }
 
-        const html = `<div id="card-${type}-${safeId}" class="entity-card">${perfHtml}<div class="entity-card-top"><div class="entity-avatar"><i data-lucide="${icon}" width="22" height="22"></i></div><span class="status-pill ${spClass}">${spLabel}</span></div><div class="entity-name" style="margin-top: 8px;">${name}</div><div class="entity-phone">${phone}</div><div class="entity-debt" style="margin-top: 12px;"><div><div class="entity-debt-lbl">الديون المستحقة <span class="unpaid-wrap" style="display:inline;">${unpaidHtml}</span></div><div class="debt-val" style="font-size:1rem; font-weight:900; color:var(--danger);">${debt} د.ع</div></div></div><div class="entity-actions"><div class="ea-group"><button class="ea-btn ea-accept" title="تفعيل" onclick="adminActionOptUI('ACCEPT','${type}','${phone}',this)"><i data-lucide="check" width="16" height="16"></i></button><button class="ea-btn ea-pause" title="استراحة" onclick="adminActionOptUI('PAUSE','${type}','${phone}',this)"><i data-lucide="pause" width="16" height="16"></i></button><button class="ea-btn ea-ban" title="حظر" onclick="adminActionOptUI('DELETE','${type}','${phone}',this)"><i data-lucide="ban" width="16" height="16"></i></button></div><div class="ea-group"><button class="ea-btn ea-debt" title="تصفير الديون" onclick="resetDebtOptUI('${type}','${phone}',this)"><i data-lucide="banknote" width="16" height="16"></i></button><button class="ea-btn ea-call" title="اتصال" onclick="window.open('tel:${phone}')"><i data-lucide="phone-call" width="16" height="16"></i></button></div></div></div>`;
+        const html = `
+        <div id="card-${type}-${safeId}" class="entity-card">
+            ${perfHtml}
+            <div class="entity-card-top">
+                <div class="entity-avatar"><i data-lucide="${icon}" width="22" height="22"></i></div>
+                <span class="status-pill ${spClass}">${spLabel}</span>
+            </div>
+            <div class="entity-name" style="margin-top: 8px;">${name}</div>
+            <div class="entity-phone">${phone}</div>
+            <div class="entity-debt" style="margin-top: 12px;">
+                <div>
+                    <div class="entity-debt-lbl">الديون المستحقة <span class="unpaid-wrap" style="display:inline;">${unpaidHtml}</span></div>
+                    <div class="debt-val" style="font-size:1rem; font-weight:900; color:var(--danger);">${debt} د.ع</div>
+                </div>
+            </div>
+            <div class="entity-actions">
+                <div class="ea-group">
+                    <button class="ea-btn ea-accept" title="تفعيل" onclick="adminActionOptUI('ACCEPT','${type}','${phone}',this)"><i data-lucide="check" width="16" height="16"></i></button>
+                    <button class="ea-btn ea-pause"  title="استراحة" onclick="adminActionOptUI('PAUSE','${type}','${phone}',this)"><i data-lucide="pause" width="16" height="16"></i></button>
+                    <button class="ea-btn ea-ban"    title="حظر" onclick="adminActionOptUI('DELETE','${type}','${phone}',this)"><i data-lucide="ban" width="16" height="16"></i></button>
+                </div>
+                <div class="ea-group">
+                    <button class="ea-btn ea-debt"   title="تصفير الديون" onclick="resetDebtOptUI('${type}','${phone}',this)"><i data-lucide="banknote" width="16" height="16"></i></button>
+                    <button class="ea-btn ea-call"   title="اتصال" onclick="window.open('tel:${phone}')"><i data-lucide="phone-call" width="16" height="16"></i></button>
+                </div>
+            </div>
+        </div>`;
+
         container.insertAdjacentHTML('beforeend', html);
         const el = document.getElementById(`card-${type}-${safeId}`);
         if (el && typeof lucide !== 'undefined') lucide.createIcons({ root: el });
         cache[safeId] = hash;
     });
 
+    /* Remove stale */
     Object.keys(cache).forEach(id => {
         if (!currentIds.has(id)) {
             const el = document.getElementById(`card-${type}-${id}`);
@@ -2143,19 +2259,18 @@ function filterRadar(type, btn) {
     currentRadarFilter = type;
     document.querySelectorAll('#radarFilters .fp').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    // ✅ FIX 2.3 — Bug 1: مسح الكاش قبل إعادة الرسم لضمان ظهور كل الكروت
-    renderedOrdersCache = {};
-    const container = document.getElementById('smartOrdersContainer');
-    container.innerHTML = '<div class="radar-grid" id="radarGrid"></div>';
     if (liveFirebaseOrders.length > 0) smartRenderRadar(liveFirebaseOrders);
 }
 
-/* ─── Actions ─── */
+/* ─── Actions (Sovereign Control) ─── */
 function withdrawOrderOptUI(orderId, driverPhone, el) {
     if (!confirm("سحب الطلب من هذا الكابتن وإعادته للرادار؟")) return;
     el.disabled = true;
     localOverrides.orders[String(orderId)] = { status: 'pending_driver', driverPhone: 'pending_driver', ts: Date.now() };
+    
+    // سحب من Firebase فوراً
     db.ref(`active_orders/${orderId}`).update({ status: 'pending_driver', driverPhone: 'pending_driver' });
+    
     fetch(`${API_URL}?action=DECLINE_ORDER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}&pass=${masterPassword}`)
         .then(r => r.json()).then(res => { if (res.success) showToast("تم سحب الطلب"); })
         .catch(() => showToast("أمر مرسل للخلفية"));
@@ -2166,33 +2281,48 @@ function trackDriver(driverPhone, restName) {
     const driver = globalData.drivers.find(d => String(d[2]) === String(driverPhone));
     const restaurant = globalData.restaurants.find(r => r[1] === restName);
     if (!driver) return;
+
     let dLat = parseFloat(driver[5]), dLng = parseFloat(driver[6]);
     if (liveDriverMarkers[String(driverPhone)]) {
         const pos = liveDriverMarkers[String(driverPhone)].getLatLng();
         dLat = pos.lat; dLng = pos.lng;
     }
     if (isNaN(dLat) || isNaN(dLng)) return;
+
     if (trackPolyline) map.removeLayer(trackPolyline);
     let bounds = [[dLat, dLng]];
+
     if (restaurant?.[6] && restaurant?.[7]) {
         const rLat = parseFloat(restaurant[6]), rLng = parseFloat(restaurant[7]);
         if (!isNaN(rLat) && !isNaN(rLng)) {
             bounds.push([rLat, rLng]);
-            trackPolyline = L.polyline([[dLat, dLng], [rLat, rLng]], { color: 'var(--accent)', weight: 5, dashArray: '12, 12', className: 'path-animated' }).addTo(map);
+            trackPolyline = L.polyline([[dLat, dLng], [rLat, rLng]], {
+                color: 'var(--accent)', weight: 5, dashArray: '12, 12',
+                className: 'path-animated'
+            }).addTo(map);
             map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16, animate: true, duration: 1.2 });
         } else { map.flyTo([dLat, dLng], 16, { duration: 1.2 }); }
     } else { map.flyTo([dLat, dLng], 16, { duration: 1.2 }); }
+
     showTab(null, 'live');
-    setTimeout(() => { const liveTab = document.getElementById('tab-live'); if (liveTab) liveTab.scrollTop = 0; }, 100);
+    setTimeout(() => {
+        const liveTab = document.getElementById('tab-live');
+        if (liveTab) liveTab.scrollTop = 0;
+    }, 100);
 }
 
+// 🟢 التعيين اليدوي الفولاذي
 function assignDriverOptUI(orderId, driverPhone, el) {
     if (!driverPhone) return;
     el.disabled = true;
     const card = document.getElementById(`oc-${orderId}`);
     if (card) { card.style.transition = '.3s'; card.style.opacity = '0.5'; }
     localOverrides.orders[String(orderId)] = { status: 'manual_pending', driverPhone, ts: Date.now() };
+    
+    // التحديث في Firebase لحظياً
     db.ref(`active_orders/${orderId}`).update({ status: 'manual_pending', driverPhone: driverPhone, is_sovereign: true });
+
+    // إبلاغ السيرفر 
     fetch(`${API_URL}?action=ASSIGN_DRIVER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}&pass=${masterPassword}`)
         .then(r => r.json()).then(res => {
             if (!res.success) { showToast("خطأ", "error"); if (card) card.style.opacity = '1'; el.disabled = false; }
@@ -2202,6 +2332,7 @@ function assignDriverOptUI(orderId, driverPhone, el) {
 
 function resetDebtOptUI(type, id, el) {
     if (!confirm(`تأكيد تصفير ديون (${id})؟ سيتم مسحها من الإكسل وتصفير العداد.`)) return;
+    
     const card = el.closest('.entity-card');
     if(card) {
         card.classList.add('flash-update');
@@ -2210,6 +2341,7 @@ function resetDebtOptUI(type, id, el) {
         const upEl = card.querySelector('.unpaid-wrap');
         if(upEl) upEl.innerHTML = '';
     }
+    
     el.classList.add('btn-loading');
     el.disabled = true;
     fetch(`${API_URL}?action=RESET_DEBT&type=${type}&id=${id}&token=${API_TOKEN}&pass=${masterPassword}`)
@@ -2219,6 +2351,7 @@ function resetDebtOptUI(type, id, el) {
         }).catch(() => showToast("تم إرسال أمر التصفير"));
 }
 
+// 🟢 الإكمال والحذف القسري (يمسح Firebase لحظياً) + حماية واجهة المستخدم
 function adminActionOptUI(cmd, type, id, el) {
     const map_ = { ACCEPT: 'active', PAUSE: 'inactive', DELETE: 'deleted', COMPLETE: 'completed' };
     let newStatus = map_[cmd];
@@ -2229,6 +2362,8 @@ function adminActionOptUI(cmd, type, id, el) {
         if (type === 'ORDER') {
             const card = el.closest('.order-card') || el.closest('.batch-order-inner');
             if (card) { card.style.transition = '.3s'; card.style.opacity = '0'; card.style.transform = 'scale(0.95)'; setTimeout(() => card.remove(), 320); }
+            
+            // حذف/إكمال لحظي من Firebase لتفريغ الرادار فوراً
             db.ref(`active_orders/${id}`).remove().catch(()=>{});
         }
     }
@@ -2238,18 +2373,21 @@ function adminActionOptUI(cmd, type, id, el) {
         localOverrides.restaurants[String(id)] = { status: newStatus, ts: Date.now() };
         const item = globalData?.restaurants.find(r => String(r[2]) === String(id));
         if (item) item[4] = newStatus;
-        triggerSearch('RESTAURANT');
+        triggerSearch('RESTAURANT'); // تحديث UI فوري
         updateSectionBadges('RESTAURANT', globalData.restaurants);
     }
     if (type === 'DRIVER') {
         localOverrides.drivers[String(id)] = { status: newStatus, ts: Date.now() };
         const item = globalData?.drivers.find(d => String(d[2]) === String(id));
         if (item) item[4] = newStatus;
+        
+        // تحديث Firebase فوراً لخروج الكابتن إذا حظر
         if(newStatus === 'banned' || newStatus === 'inactive' || newStatus === 'active') {
             db.ref(`drivers_locations/${id}/account_status`).set(newStatus === 'banned' ? 'banned' : 'active');
             db.ref(`drivers_locations/${id}/status`).set(newStatus === 'banned' ? 'inactive' : newStatus);
         }
-        triggerSearch('DRIVER');
+        
+        triggerSearch('DRIVER'); // تحديث UI فوري
         updateSectionBadges('DRIVER', globalData.drivers);
     }
 
@@ -2261,11 +2399,11 @@ function adminActionOptUI(cmd, type, id, el) {
 /* ─── Archive ─── */
 function renderArchive() {
     if (!globalData) return;
-    const search    = document.getElementById('arcSearch').value.trim().toLowerCase();
-    const resFilter = document.getElementById('arcRes').value;
-    const drvFilter = document.getElementById('arcDriver').value;
-    const dateFrom  = document.getElementById('arcDateFrom').value;
-    const dateTo    = document.getElementById('arcDateTo').value;
+    const search     = document.getElementById('arcSearch').value.trim().toLowerCase();
+    const resFilter  = document.getElementById('arcRes').value;
+    const drvFilter  = document.getElementById('arcDriver').value;
+    const dateFrom   = document.getElementById('arcDateFrom').value;
+    const dateTo     = document.getElementById('arcDateTo').value;
 
     let html = '', totalOrders = 0, totalComm = 0, displayed = 0;
     const LIMIT = 150;
@@ -2275,11 +2413,15 @@ function renderArchive() {
         .reverse();
 
     completed.forEach(o => {
+        const [orderId,,restName,,price, details, status, driverPhone] = [o[0],,o[1],,o[4],o[3],o[5],o[6]];
         const restN = o[1], dp = o[6];
         let isoDate = '', fmtDate = '---';
         if (o[7]) {
             const d = new Date(o[7]);
-            if (!isNaN(d.getTime())) { isoDate = d.toISOString().split('T')[0]; fmtDate = d.toLocaleString('ar-EG'); }
+            if (!isNaN(d.getTime())) {
+                isoDate  = d.toISOString().split('T')[0];
+                fmtDate  = d.toLocaleString('ar-EG');
+            }
         }
         let match = true;
         if (search    && !String(o[0]).toLowerCase().includes(search) && !String(o[3]).toLowerCase().includes(search)) match = false;
@@ -2287,6 +2429,7 @@ function renderArchive() {
         if (drvFilter && String(dp) !== drvFilter) match = false;
         if (dateFrom  && isoDate && isoDate < dateFrom) match = false;
         if (dateTo    && isoDate && isoDate > dateTo)   match = false;
+
         if (!match) return;
         totalOrders++;
 
@@ -2295,6 +2438,7 @@ function renderArchive() {
         if (rData) { comm = parseFloat(rData[5]) || 0; payType = String(rData[8]); }
         totalComm += comm;
         const isSettled = (o[5] === 'settled');
+
         if (displayed >= LIMIT) return;
         displayed++;
 
@@ -2303,15 +2447,30 @@ function renderArchive() {
         const od = { id: o[0], date: fmtDate, res: restN, driver: driverName, details: o[3], price: o[4], comm, payType, isSettled };
         const ds = encodeURIComponent(JSON.stringify(od)).replace(/'/g, "%27");
 
-        html += `<tr onclick="openInvoice('${ds}')"><td style="color:var(--primary); font-weight:900; font-size:0.82rem;">${o[0] || '-'}</td><td style="font-size:0.76rem; color:var(--text-3);">${isoDate || '-'}</td><td style="font-weight:800; color:var(--text-1); max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${restN || '-'}</td><td style="color:var(--text-2); font-size:0.8rem;">${driverName}</td><td><span style="padding:4px 12px; border-radius:99px; font-size:0.72rem; font-weight:900; ${isSettled ? 'background:#f1f5f9; color:var(--text-3); border:1px solid var(--border);' : 'background:#e6faf3; color:var(--success); border:1px solid #a7f3d0;'}">${isSettled ? 'مسدد' : 'مكتمل'}</span></td></tr>`;
+        html += `<tr onclick="openInvoice('${ds}')">
+            <td style="color:var(--primary); font-weight:900; font-size:0.82rem;">${o[0] || '-'}</td>
+            <td style="font-size:0.76rem; color:var(--text-3);">${isoDate || '-'}</td>
+            <td style="font-weight:800; color:var(--text-1); max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${restN || '-'}</td>
+            <td style="color:var(--text-2); font-size:0.8rem;">${driverName}</td>
+            <td>
+                <span style="padding:4px 12px; border-radius:99px; font-size:0.72rem; font-weight:900; ${isSettled ? 'background:#f1f5f9; color:var(--text-3); border:1px solid var(--border);' : 'background:#e6faf3; color:var(--success); border:1px solid #a7f3d0;'}">
+                    ${isSettled ? 'مسدد' : 'مكتمل'}
+                </span>
+            </td>
+        </tr>`;
     });
 
-    if (totalOrders > LIMIT) html += `<tr><td colspan="5" style="text-align:center; padding:16px; color:var(--text-3); font-size:0.78rem; font-weight:700;">تم إخفاء ${totalOrders - LIMIT} طلب قديم — استخدم البحث</td></tr>`;
+    if (totalOrders > LIMIT) {
+        html += `<tr><td colspan="5" style="text-align:center; padding:16px; color:var(--text-3); font-size:0.78rem; font-weight:700;">تم إخفاء ${totalOrders - LIMIT} طلب قديم — استخدم البحث</td></tr>`;
+    }
 
     document.getElementById('arcTotalCount').textContent = totalOrders;
     document.getElementById('arcTotalComm').textContent  = totalComm;
 
-    const finalHtml = html || `<tr><td colspan="5"><div class="empty-state" style="padding:32px;"><div class="empty-icon"><i data-lucide="inbox" width="28" height="28"></i></div><div class="empty-title">لا توجد طلبات مطابقة</div></div></td></tr>`;
+    const finalHtml = html || `<tr><td colspan="5"><div class="empty-state" style="padding:32px;">
+        <div class="empty-icon"><i data-lucide="inbox" width="28" height="28"></i></div>
+        <div class="empty-title">لا توجد طلبات مطابقة</div>
+    </div></td></tr>`;
 
     if (lastArchiveHtml !== finalHtml) {
         document.getElementById('ordersTableBody').innerHTML = finalHtml;
@@ -2363,11 +2522,14 @@ function showTab(e, name) {
     document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active-tab'));
     document.querySelectorAll('.nav-item, .desktop-nav-link').forEach(n => n.classList.remove('active'));
     document.querySelectorAll('.b-nav-item').forEach(n => n.classList.remove('active'));
+
     document.getElementById('tab-' + name).classList.add('active-tab');
+
     document.querySelectorAll(`[onclick*="'${name}'"]`).forEach(el => {
         if (el.classList.contains('nav-item') || el.classList.contains('desktop-nav-link')) el.classList.add('active');
         if (el.classList.contains('b-nav-item')) el.classList.add('active');
     });
+
     if (typeof lucide !== 'undefined') lucide.createIcons();
     if (name === 'live' && map) setTimeout(() => map.invalidateSize(), 300);
 }
@@ -2375,12 +2537,30 @@ function showTab(e, name) {
 /* ─── Map Init ─── */
 function initMap() {
     const kirkuk = [35.468, 44.392];
-    map = L.map('adminMap', { zoomControl: false, attributionControl: false }).setView(kirkuk, 13);
+    map = L.map('adminMap', {
+        zoomControl: false,
+        attributionControl: false
+    }).setView(kirkuk, 13);
+
     L.control.zoom({ position: 'bottomleft' }).addTo(map);
-    L.control.attribution({ position: 'bottomright', prefix: false }).addAttribution('© OpenStreetMap').addTo(map);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 19, subdomains: 'abcd' }).addTo(map);
-    heatLayer = L.heatLayer([], { radius: 28, blur: 18, maxZoom: 14, gradient: { 0.3: '#fed7aa', 0.6: '#fb923c', 0.85: '#f97316', 1.0: '#ea580c' } }).addTo(map);
+    L.control.attribution({ position: 'bottomright', prefix: false })
+        .addAttribution('© OpenStreetMap')
+        .addTo(map);
+
+    /* Clean light tile */
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        maxZoom: 19,
+        subdomains: 'abcd'
+    }).addTo(map);
+
+    /* Heat map — orange gradient */
+    heatLayer = L.heatLayer([], {
+        radius: 28, blur: 18, maxZoom: 14,
+        gradient: { 0.3: '#fed7aa', 0.6: '#fb923c', 0.85: '#f97316', 1.0: '#ea580c' }
+    }).addTo(map);
+
     restaurantMarkersLayer = L.layerGroup().addTo(map);
+
     driverClusterGroup = L.markerClusterGroup({
         iconCreateFunction(cluster) {
             return L.divIcon({
@@ -2392,6 +2572,7 @@ function initMap() {
         maxClusterRadius: 50
     });
     map.addLayer(driverClusterGroup);
+
     setTimeout(() => map.invalidateSize(), 800);
 }
 </script>
