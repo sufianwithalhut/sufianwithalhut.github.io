@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 3.4 - الماسي: إطلاق الطلبات للنظام اللامركزي) ---
-        const CURRENT_APP_VERSION = "3.4"; 
+        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 3.5 - الماسي: الدروع الهندسية والاستقرار) ---
+        const CURRENT_APP_VERSION = "3.5"; 
         if (localStorage.getItem('hut_res_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة مكتشفة... جاري التحديث الإجباري لتسريع النظام!");
             localStorage.setItem('hut_res_app_version', CURRENT_APP_VERSION);
@@ -73,9 +73,21 @@
         #loadingOverlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(10px);
-            z-index: 9999; display: none; align-items: center; justify-content: center;
+            z-index: 30000; display: none; align-items: center; justify-content: center;
             flex-direction: column; color: white;
         }
+
+        /* ── Sync Badge ── */
+        #syncBadge {
+            position: fixed; bottom: max(12px, env(safe-area-inset-bottom));
+            left: 50%; transform: translateX(-50%);
+            background: rgba(15,23,42,.9); color: #fff; padding: 7px 16px;
+            border-radius: 20px; font-size: .74rem; font-weight: 800;
+            z-index: 10000; display: none; align-items: center; gap: 8px;
+            box-shadow: 0 6px 18px rgba(0,0,0,.25); backdrop-filter: blur(6px);
+        }
+        .sync-spin { width: 12px; height: 12px; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
         .app-header {
             background: var(--primary-blue); color: white;
@@ -158,6 +170,8 @@
 </head>
 <body>
 
+<div id="syncBadge"><div class="sync-spin"></div><span id="syncText">جاري الأرشفة في الخلفية...</span></div>
+
 <div id="loadingOverlay">
     <div class="spinner-grow text-warning" role="status"></div>
     <span class="mt-3 fw-bold" id="loadingText">جاري المزامنة مع النظام...</span>
@@ -234,7 +248,7 @@
                     </div>
                 </div>
 
-                <button class="btn-action" id="mainAuthBtn" onclick="authAction()">
+                <button class="btn-action" id="mainAuthBtn" onclick="initAudioAndAuth()">
                     دخول المنصة <i data-lucide="arrow-left"></i>
                 </button>
             </div>
@@ -403,7 +417,7 @@
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getDatabase, ref, onValue, update, set, get } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+    import { getDatabase, ref, onValue, update, set, get, serverTimestamp, onDisconnect } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
     if (typeof lucide !== 'undefined') lucide.createIcons();
 
@@ -439,14 +453,65 @@
     let pickerMap;
     let regLat = 35.468; 
     let regLng = 44.392;
-    let regPhone = ""; // سيتم تخزين هاتف المطعم هنا لحقنه في الطلب
+    let regPhone = ""; 
+    let isLocationFetched = false; // 🟢 حاجز الإحداثيات
 
     let lastActiveHtml = "";
     let lastArchiveHtml = "";
     let actionBlacklist = []; 
 
-    // مصفوفة الطلبات اللحظية لـ Firebase
     let liveActiveOrders = [];
+
+    // 🟢 صندوق الطلبات الاحتياطي (Offline Action Queue)
+    let offlineActionQueue = JSON.parse(localStorage.getItem('hut_res_offline_q') || '[]');
+    let isProcessingQueue = false;
+
+    function saveToOfflineQueue(url) {
+        offlineActionQueue.push({ url: url, timestamp: Date.now() });
+        localStorage.setItem('hut_res_offline_q', JSON.stringify(offlineActionQueue));
+        processOfflineQueue();
+    }
+
+    async function processOfflineQueue() {
+        if (isProcessingQueue || offlineActionQueue.length === 0 || !navigator.onLine) {
+            document.getElementById('syncBadge').style.display = 'none';
+            return;
+        }
+        
+        isProcessingQueue = true;
+        document.getElementById('syncBadge').style.display = 'flex';
+
+        let failedQueue = [];
+        for (let i = 0; i < offlineActionQueue.length; i++) {
+            const action = offlineActionQueue[i];
+            try {
+                await fetch(action.url, { method: 'GET', mode: 'no-cors', cache: 'no-store' });
+            } catch (err) { failedQueue.push(action); }
+        }
+
+        offlineActionQueue = failedQueue;
+        localStorage.setItem('hut_res_offline_q', JSON.stringify(offlineActionQueue));
+        document.getElementById('syncBadge').style.display = 'none';
+        isProcessingQueue = false;
+    }
+    setInterval(processOfflineQueue, 8000);
+
+    // 🟢 رفع الصور הפולاذي مع المحاولات
+    async function uploadImageWithRetry(base64Data, retries = 3) {
+        const formData = new FormData(); 
+        formData.append("image", base64Data);
+        for(let i = 0; i < retries; i++) {
+            try {
+                const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, { method: "POST", body: formData });
+                const data = await res.json();
+                if(data && data.data && data.data.url) return data.data.url;
+            } catch(e) {
+                if(i === retries - 1) throw e;
+                await new Promise(r => setTimeout(r, 2000)); // انتظار قبل الإعادة
+            }
+        }
+        throw new Error("Failed after retries");
+    }
 
     document.addEventListener('contextmenu', event => {
         const tag = event.target.tagName;
@@ -462,11 +527,13 @@
         
         pickerMap.on('move', function () { 
             regLat = pickerMap.getCenter().lat; regLng = pickerMap.getCenter().lng; 
+            isLocationFetched = true; // تم تحديده يدوياً
         });
 
         if(navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(pos => {
                 regLat = pos.coords.latitude; regLng = pos.coords.longitude;
+                isLocationFetched = true;
                 pickerMap.setView([regLat, regLng], 16);
             }, null, { timeout: 5000 });
         }
@@ -478,13 +545,13 @@
         const coordMatch = query.match(/@([0-9.-]+),([0-9.-]+)/);
         if (coordMatch && coordMatch.length >= 3) {
             const lat = parseFloat(coordMatch[1]); const lng = parseFloat(coordMatch[2]);
-            if(pickerMap) { pickerMap.flyTo([lat, lng], 16); regLat = lat; regLng = lng; } return;
+            if(pickerMap) { pickerMap.flyTo([lat, lng], 16); regLat = lat; regLng = lng; isLocationFetched = true; } return;
         }
         
         const plainCoordMatch = query.match(/^([0-9.-]+)[,\s]+([0-9.-]+)$/);
         if (plainCoordMatch && plainCoordMatch.length >= 3) {
             const lat = parseFloat(plainCoordMatch[1]); const lng = parseFloat(plainCoordMatch[2]);
-            if(pickerMap) { pickerMap.flyTo([lat, lng], 16); regLat = lat; regLng = lng; } return;
+            if(pickerMap) { pickerMap.flyTo([lat, lng], 16); regLat = lat; regLng = lng; isLocationFetched = true; } return;
         }
 
         window.showLoading(true, "جاري البحث عن الموقع...");
@@ -495,7 +562,7 @@
                 window.showLoading(false);
                 if (data && data.length > 0) {
                     const lat = parseFloat(data[0].lat); const lng = parseFloat(data[0].lon);
-                    if(pickerMap) { pickerMap.flyTo([lat, lng], 16); regLat = lat; regLng = lng; }
+                    if(pickerMap) { pickerMap.flyTo([lat, lng], 16); regLat = lat; regLng = lng; isLocationFetched = true; }
                 } else { alert("لم يتم العثور على المكان. حاول إدخال الإحداثيات مباشرة."); }
             }).catch(err => { window.showLoading(false); alert("حدث خطأ أثناء البحث."); });
     }
@@ -506,6 +573,7 @@
             navigator.geolocation.getCurrentPosition(pos => {
                 window.showLoading(false);
                 regLat = pos.coords.latitude; regLng = pos.coords.longitude;
+                isLocationFetched = true;
                 pickerMap.flyTo([regLat, regLng], 16);
             }, err => { window.showLoading(false); alert("يرجى التأكد من تشغيل الـ GPS."); }, { enableHighAccuracy: true, timeout: 10000 });
         }
@@ -629,7 +697,7 @@
                 if (diffHours < 24) {
                     document.getElementById('checkPhone').value = session.phone.startsWith('0') ? session.phone : '0' + session.phone;
                     currentResName = session.name; 
-                    regPhone = session.phone; // تخزين الهاتف للحقن
+                    regPhone = session.phone; 
                     enterDashboard(); return true;
                 }
             } catch(e) {}
@@ -644,12 +712,25 @@
             const savedPhone = localStorage.getItem('hut_res_phone');
             if(savedPhone) {
                 document.getElementById('checkPhone').value = savedPhone.startsWith('0') ? savedPhone : '0' + savedPhone;
-                window.authAction();
             }
         }
     };
 
-    window.logout = function() { if(confirm("هل تريد تسجيل الخروج؟ سيتم مسح الذاكرة المؤقتة.")) { localStorage.clear(); sessionStorage.clear(); location.reload(); } }
+    // 🟢 كسر صمت المتصفح لتمكين رنين الإشعارات
+    window.initAudioAndAuth = function() {
+        let wAudio = document.getElementById('welcomeSound');
+        if(wAudio) { wAudio.volume = 0; let p = wAudio.play(); if (p) p.then(() => { wAudio.pause(); wAudio.currentTime = 0; wAudio.volume = 1; }).catch(()=>{}); }
+        window.authAction();
+    }
+
+    window.logout = function() { 
+        if(confirm("هل تريد تسجيل الخروج؟ سيتم مسح الذاكرة المؤقتة.")) { 
+            const presenceRef = ref(db, `restaurants_locations/${regPhone}`);
+            update(presenceRef, { status: 'inactive', last_update: serverTimestamp() });
+            localStorage.clear(); sessionStorage.clear(); location.reload(); 
+        } 
+    }
+    
     window.showLoading = function(s, text = "جاري المعالجة...") { document.getElementById('loadingText').innerText = text; document.getElementById('loadingOverlay').style.display = s ? 'flex' : 'none'; }
 
     window.switchTab = function(mode, triggerSave = true) {
@@ -692,7 +773,7 @@
                 const img = new Image();
                 img.onload = function() {
                     const canvas = document.createElement('canvas');
-                    const MAX_WIDTH = 800; // دقة جيدة للرفع السريع
+                    const MAX_WIDTH = 800; 
                     let scaleSize = 1;
                     if(img.width > MAX_WIDTH) scaleSize = MAX_WIDTH / img.width;
                     canvas.width = img.width * scaleSize; canvas.height = img.height * scaleSize;
@@ -732,7 +813,7 @@
             const rawPriceListText = document.getElementById('regPriceList').value;
 
             if(!name || !area || !comm) return alert("يرجى ملء جميع التفاصيل، وتحديد موقعك على الخريطة.");
-            if(Math.abs(regLat - 35.468) < 0.001 && Math.abs(regLng - 44.392) < 0.001) return alert("الرجاء تحديد موقع مطعمك على الخريطة.");
+            if(Math.abs(regLat - 35.468) < 0.001 && Math.abs(regLng - 44.392) < 0.001 && !isLocationFetched) return alert("الرجاء تحديد موقع مطعمك على الخريطة بدقة.");
             
             const packedPriceList = parseCustomPriceList(rawPriceListText);
             window.showLoading(true, "جاري إرسال طلب الشراكة وحفظ اللستة...");
@@ -774,7 +855,7 @@
                 if(data.status === "active" || data.status === "inactive") {
                     clearInterval(waitingPollingTimer); localStorage.removeItem('hut_res_pending');
                     currentResName = data.name;
-                    regPhone = phone; // تخزين
+                    regPhone = phone; 
                     try { if (data.priceList && data.priceList.trim() !== "") myCustomPriceList = JSON.parse(data.priceList); } catch(e) {}
                     localStorage.setItem('hut_res_session', JSON.stringify({ phone: phone, name: data.name, timestamp: Date.now() }));
                     const wAudio = document.getElementById('welcomeSound'); if(wAudio) { wAudio.currentTime = 0; wAudio.play().catch(e=>{}); }
@@ -790,7 +871,7 @@
         window.showLoading(false);
         if(data.status === "active" || data.status === "inactive") {
             currentResName = data.name; localStorage.setItem('hut_res_phone', phone); localStorage.removeItem('hut_res_pending');
-            regPhone = phone; // تخزين
+            regPhone = phone; 
             try { if (data.priceList && data.priceList.trim() !== "") myCustomPriceList = JSON.parse(data.priceList); } catch(e) {}
             localStorage.setItem('hut_res_session', JSON.stringify({ phone: phone, name: data.name, timestamp: Date.now() }));
             enterDashboard();
@@ -812,9 +893,14 @@
         if (typeof lucide !== 'undefined') lucide.createIcons();
         window.buildCustomAreaDropdown(); restoreDraft(); 
         
+        // 🟢 تفعيل المطاعم المتزامنة (onDisconnect)
+        const presenceRef = ref(db, `restaurants_locations/${regPhone}`);
+        set(presenceRef, { status: 'active', name: currentResName, last_update: serverTimestamp() });
+        onDisconnect(presenceRef).update({ status: 'inactive', last_update: serverTimestamp() });
+
         fetchColdData(); 
         startHotDataListeners(); 
-        dataRefreshInterval = setInterval(fetchColdData, 180000); // 3 دقائق للأرشيف
+        dataRefreshInterval = setInterval(fetchColdData, 180000); 
     }
 
     function fetchColdData() {
@@ -828,7 +914,7 @@
                     if(resInfo && resInfo[6] && resInfo[7]) {
                         regLat = parseFloat(resInfo[6]);
                         regLng = parseFloat(resInfo[7]);
-                        // نحدث رقم الهاتف أيضاً تحسباً لتغييره من الإدارة
+                        isLocationFetched = true;
                         if (resInfo[2]) regPhone = resInfo[2]; 
                     }
                 }
@@ -844,7 +930,8 @@
             let newLiveOrders = [];
 
             Object.values(activeFbOrders).forEach(fbOrder => {
-                if(fbOrder.restaurant === currentResName) {
+                // 🟢 التصفية الآمنة برقم الهاتف بدلاً من الاسم
+                if(String(fbOrder.resPhone) === String(regPhone) || fbOrder.restaurant === currentResName) {
                     newLiveOrders.push({
                         id: fbOrder.id,
                         status: fbOrder.status,
@@ -871,14 +958,14 @@
             actionBlacklist.push(String(orderId));
             setTimeout(() => { actionBlacklist = actionBlacklist.filter(id => id !== String(orderId)); }, 5000);
 
-            // مسح من Firebase فوراً
-            const updates = {}; updates[`active_orders/${orderId}`] = null; update(ref(db), updates);
+            // 🟢 الإلغاء المراقب (تغيير الحالة وليس الحذف النهائي)
+            const updates = {}; 
+            updates[`active_orders/${orderId}/status`] = 'cancelled_by_res';
+            updates[`active_orders/${orderId}/last_update`] = serverTimestamp();
+            update(ref(db), updates);
 
-            // إبلاغ السيرفر للأرشيف
-            fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${orderId}&status=deleted&token=${API_TOKEN}`)
-            .then(res=>res.json()).then(response => {
-                if(!response.success) { alert("حدث خطأ. قد يكون الكابتن قد استلم الطلب للتو."); fetchColdData(); }
-            });
+            // إبلاغ السيرفر للأرشيف عبر الصندوق الاحتياطي
+            saveToOfflineQueue(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${orderId}&status=deleted&token=${API_TOKEN}`);
         }
     }
 
@@ -932,12 +1019,14 @@
         
         liveActiveOrders.forEach(o => {
             const status = o.status, orderId = o.id, orderArea = o.area, driverPhone = o.driverPhone, orderDateStr = o.timestamp;
-            if (actionBlacklist.includes(String(orderId))) return;
+            if (actionBlacklist.includes(String(orderId)) || status === 'cancelled_by_res') return;
 
             const orderDateObj = new Date(orderDateStr);
             const orderTimeStrFormat = orderDateObj.toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'});
             
             let driverName = 'جاري توجيه النظام...', step = 1, fillWidth = "0%", isCancelable = true; 
+            
+            // المطعم يمكنه إلغاء الطلب في أي وقت بناءً على طلبك، لم نغير isCancelable.
             if (status === 'picked_up' || status === 'في الطريق') isCancelable = false; 
 
             if (driverPhone && driverPhone !== "pending_driver" && driverPhone !== "manual_pending" && driverPhone !== "system_routing") {
@@ -977,8 +1066,14 @@
         }
     }
 
-    document.getElementById('orderForm').onsubmit = function(e) {
+    document.getElementById('orderForm').onsubmit = async function(e) {
         e.preventDefault();
+        
+        // 🟢 حاجز الإحداثيات الوهمية
+        if (!isLocationFetched && Math.abs(regLat - 35.468) < 0.001 && Math.abs(regLng - 44.392) < 0.001) {
+            return alert("الرجاء الانتظار حتى يتم تحميل إحداثيات المطعم من السيرفر أو حددها يدوياً.");
+        }
+
         let finalArea = document.getElementById('customerArea').value, areaWithHint = finalArea;
 
         if (finalArea === "أخرى") {
@@ -1004,60 +1099,61 @@
             btn.disabled = true;
             
             let base64ImageContent = base64Receipt.split(',')[1];
-            let formData = new FormData();
-            formData.append("image", base64ImageContent);
-
-            fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, { method: "POST", body: formData })
-            .then(res => res.json())
-            .then(data => {
-                if(data && data.data && data.data.url) {
-                    finalizeOrderPlacement(finalDetails, data.data.url, finalPrice, areaWithHint, btn, originalBtnHtml);
-                } else { throw new Error("ImgBB Error"); }
-            })
-            .catch(err => {
+            
+            try {
+                // 🟢 استخدام دالة الرفع المعززة بالمحاولات
+                const imageUrl = await uploadImageWithRetry(base64ImageContent);
+                finalizeOrderPlacement(finalDetails, imageUrl, finalPrice, areaWithHint, btn, originalBtnHtml);
+            } catch (err) {
                 btn.innerHTML = originalBtnHtml; btn.disabled = false;
-                alert("حدث خطأ أثناء رفع الصورة، تأكد من سرعة الإنترنت لديك.");
-            });
+                alert("حدث خطأ مستمر أثناء رفع الصورة، يرجى التأكد من استقرار شبكة الإنترنت لديك.");
+            }
         }
     };
 
-    // 🟢 8. إرسال الطلب للنظام اللامركزي (بدون بحث محلي)
     async function finalizeOrderPlacement(details, imageUrl, price, area, btn, originalBtnHtml) {
         btn.innerHTML = `<div class="spinner-border spinner-border-sm me-2"></div> جاري إطلاق الطلب للكباتن...`;
         btn.disabled = true;
 
         try {
             const uniqueFrontendId = "HUT-" + Math.floor(Date.now() / 1000);
-            const timestampIso = new Date().toISOString();
-
-            // رمي الطلب مباشرة في فايربيس (معلق للجميع) مع إحداثيات المطعم
-            await set(ref(db, 'active_orders/' + uniqueFrontendId), {
+            
+            // 🟢 استخدام كسر التجميد الزمني (10 ثوانٍ كحد أقصى للاتصال بقاعدة البيانات)
+            const dbPromise = set(ref(db, 'active_orders/' + uniqueFrontendId), {
                 id: uniqueFrontendId,
                 restaurant: currentResName,
                 area: area,
                 details: details,
                 status: "pending_driver",
-                driverPhone: "pending_driver", // ⚠️ الكباتن هم من سيتنافسون عليه الآن
+                driverPhone: "pending_driver",
                 price: price,
-                timestamp: timestampIso,
+                timestamp: serverTimestamp(), // 🟢 توقيت السيرفر الموحد
                 photoUrl: imageUrl,
-                last_update: timestampIso,
+                last_update: serverTimestamp(),
                 rejected_by: { "init": true },
                 resPhone: regPhone || "غير متوفر",
                 resLat: regLat || 0,
                 resLng: regLng || 0
             });
+            
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000));
+            
+            await Promise.race([dbPromise, timeoutPromise]);
 
-            // إبلاغ السيرفر بهدوء للأرشفة فقط
-            const payload = { action: 'NEW_ORDER', token: API_TOKEN, frontendId: uniqueFrontendId, restaurantName: currentResName, area: area, price: price, details: details, image: imageUrl };
-            fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) }).catch(e=>{});
+            // 🟢 الأرشفة عبر صندوق المهام الاحتياطي بدلاً من التجاهل
+            const payloadUrl = `${API_URL}?action=NEW_ORDER&token=${API_TOKEN}&frontendId=${uniqueFrontendId}&restaurantName=${encodeURIComponent(currentResName)}&area=${encodeURIComponent(area)}&price=${price}&details=${encodeURIComponent(details)}&image=${encodeURIComponent(imageUrl)}`;
+            saveToOfflineQueue(payloadUrl);
 
             btn.innerHTML = originalBtnHtml; btn.disabled = false;
             showSuccessMessage("تم إطلاق الطلب بنجاح! الكابتن الأقرب في طريقه لقبوله.");
 
         } catch (e) {
             btn.innerHTML = originalBtnHtml; btn.disabled = false;
-            alert("حدث خطأ أثناء الاتصال بالنظام.");
+            if(e.message === 'timeout') {
+                alert("تأخر السيرفر في الرد. يرجى التحقق من اتصال الإنترنت والمحاولة مجدداً.");
+            } else {
+                alert("حدث خطأ أثناء الاتصال بالنظام.");
+            }
         }
     }
 
@@ -1072,4 +1168,4 @@
     }
 </script>
 </body>
-              </html>
+</html>
