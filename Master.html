@@ -2004,6 +2004,80 @@ function smartRenderRadar(activeList) {
     });
 }
 
+/* ═══════════════════════════════════════════
+   🗂️ TAB NAVIGATION — showTab & filterRadar
+   هاتان الدالتان كانتا مفقودتين كلياً وهو سبب
+   عدم عمل التنقل بين التبويبات
+═══════════════════════════════════════════ */
+
+/**
+ * showTab(event, tabName)
+ * يُظهر التبويب المطلوب ويُخفي الباقين.
+ * يعمل على الموبايل (bottom-nav) والديسكتوب (sidebar).
+ * @param {Event|null} event  - حدث النقر (يمكن تمرير null)
+ * @param {string}     tabName - 'live' | 'orders' | 'restaurants' | 'drivers'
+ */
+function showTab(event, tabName) {
+    // ① إخفاء جميع التبويبات
+    document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active-tab'));
+
+    // ② إظهار التبويب المطلوب
+    const target = document.getElementById('tab-' + tabName);
+    if (target) {
+        target.classList.add('active-tab');
+        // إعادة التمرير للأعلى عند التبديل
+        setTimeout(() => { target.scrollTop = 0; }, 10);
+    }
+
+    // ③ تحديث شريط التنقل السفلي (موبايل)
+    document.querySelectorAll('.b-nav-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    // نجد العنصر الذي يستدعي showTab بنفس اسم التبويب
+    document.querySelectorAll('.b-nav-item').forEach(item => {
+        const onclick = item.getAttribute('onclick') || '';
+        if (onclick.includes("'" + tabName + "'")) {
+            item.classList.add('active');
+        }
+    });
+
+    // ④ تحديث شريط الـ sidebar (ديسكتوب)
+    document.querySelectorAll('.nav-item.desktop-nav-link').forEach(item => {
+        item.classList.remove('active');
+        const onclick = item.getAttribute('onclick') || '';
+        if (onclick.includes("'" + tabName + "'")) {
+            item.classList.add('active');
+        }
+    });
+
+    // ⑤ إصلاح حجم الخريطة عند العودة لتبويب الميدان
+    if (tabName === 'live' && map) {
+        setTimeout(() => map.invalidateSize(), TAB_TRANSITION_MS + 50);
+    }
+}
+
+/**
+ * filterRadar(filter, btn)
+ * يُفلتر الطلبات في الرادار الميداني.
+ * @param {string}      filter - 'all' | 'pending' | 'active'
+ * @param {HTMLElement} btn    - زر الفلتر الذي تم النقر عليه
+ */
+function filterRadar(filter, btn) {
+    currentRadarFilter = filter;
+
+    // تحديث حالة الأزرار
+    const filtersBar = document.getElementById('radarFilters');
+    if (filtersBar) {
+        filtersBar.querySelectorAll('.fp').forEach(b => b.classList.remove('active'));
+    }
+    if (btn) btn.classList.add('active');
+
+    // إعادة رسم الرادار بالفلتر الجديد
+    if (liveFirebaseOrders && liveFirebaseOrders.length >= 0) {
+        try { smartRenderRadar(liveFirebaseOrders); } catch(e) { console.error('filterRadar:', e); }
+    }
+}
+
 /* ─── Section Badges ─── */
 function updateSectionBadges(type, list) {
     const p = type === 'RESTAURANT' ? 'res' : 'driver';
