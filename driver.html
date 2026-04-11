@@ -2,11 +2,11 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 9.1 (متوافق مع V34.1: تعامل مع السيادية والموقع المحسّن) ---
-        const CURRENT_APP_VERSION = "9.1"; 
+        // --- إصدار 9.2 (دعم الرسائل الإدارية + إصلاح عرض البطاقات المتعددة) ---
+        const CURRENT_APP_VERSION = "9.2"; 
         
         if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
-            console.log("نسخة V34.1... جاري التطهير والاستعداد!");
+            console.log("نسخة V9.2... جاري التحديث!");
             localStorage.setItem('hut_app_version', CURRENT_APP_VERSION);
             if ('caches' in window) { caches.keys().then(names => { names.forEach(name => caches.delete(name)); }); }
             if ('serviceWorker' in navigator) { navigator.serviceWorker.getRegistrations().then(regs => { regs.forEach(r => r.unregister()); }); }
@@ -15,7 +15,7 @@
     </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>كباتن سفيان | نظام الحوت V34.1</title>
+    <title>كباتن سفيان | نظام الحوت V9.2</title>
     
     <meta name="theme-color" content="#1e3a8a">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -26,6 +26,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
     
     <style>
+        /* (جميع الأنماط كما هي بدون تغيير) */
         :root { 
             --primary-blue: #1e3a8a; 
             --accent-blue: #3b82f6; 
@@ -187,16 +188,22 @@
 <audio id="alertSound" loop src="https://actions.google.com/sounds/v1/alarms/submarine_dive_horn.ogg"></audio>
 <audio id="doubleOrderSound" loop src="https://actions.google.com/sounds/v1/alarms/bugle_tune.ogg"></audio>
 <audio id="cancelSound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg"></audio>
-<audio id="welcomeSound" src="https://actions.google.com/sounds/v1/water/water_drop.ogg"></audio> 
+<audio id="welcomeSound" src="https://actions.google.com/sounds/v1/water/water_drop.ogg"></audio>
+<!-- أصوات الرسائل الإدارية (اختيارية) -->
+<audio id="prayerSound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg"></audio>
+<audio id="cleanSound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg"></audio>
+<audio id="trustSound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg"></audio>
+<audio id="generalSound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg"></audio>
 
 <div id="loginSection" class="login-wrapper">
+    <!-- (نفس واجهة تسجيل الدخول) -->
     <div class="text-center mb-5 w-100">
         <div class="d-inline-block p-4 bg-white rounded-circle shadow-sm mb-4">
             <svg class="svg-icon" style="width: 50px; height: 50px; color: var(--primary-blue);" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><polyline points="9 12 11 14 15 10"></polyline></svg>
         </div>
         <h2 class="fw-black m-0" style="color: var(--primary-blue);">مكتب سفيان للشركاء</h2>
         <p class="text-muted fw-bold mb-0">المنصة الرسمية للكباتن</p>
-        <p class="text-muted fw-bold" style="font-size: 0.85rem;">بالتعاون مع نظام الحوت V34.1</p>
+        <p class="text-muted fw-bold" style="font-size: 0.85rem;">بالتعاون مع نظام الحوت V9.2</p>
     </div>
 
     <div class="login-card" id="authBox">
@@ -240,6 +247,7 @@
 </div>
 
 <div id="dashboardPage" class="hidden-section">
+    <!-- (نفس واجهة dashboard) -->
     <div class="dash-header">
         <div class="d-flex justify-content-between align-items-start">
             <div>
@@ -301,6 +309,7 @@
 </div>
 
 <div id="ledgerModal" class="hidden-section">
+    <!-- (نفس مودال السجل) -->
     <div class="ledger-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
         <h3 class="fw-black m-0" style="color: var(--primary-blue);">سجل اليوم</h3>
         <button class="btn btn-light rounded-circle p-2 border" onclick="window.closeLedger()">
@@ -315,6 +324,7 @@
 </div>
 
 <div id="orderAlertOverlay" class="hidden-section">
+    <!-- (نفس overlay الطلب الجديد) -->
     <div>
         <div class="alert-pulse">
             <svg class="svg-icon" style="color: var(--primary-blue); width: 40px; height: 40px;" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
@@ -353,7 +363,6 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getDatabase, ref, onValue, update, get, increment } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-    // 🚀 الرابط الجديد للسيرفر V34.1
     const API_URL = "https://script.google.com/macros/s/AKfycbzKDBjgPxmt_iDCphkjB6EY-cnag_aqwxrdNDrY9uqBRbTZYsqGWl4TJn4pANS8OVYm/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
@@ -369,15 +378,15 @@
 
     let driverData = null, countdownInterval, currentOrderData = null, activeOrders = [], isRegistering = false, isOnline = true;
     let wakeLock = null, waitingPollingTimer = null, heartbeatInterval = null;
-    let lastLocUpdateTs = 0, lastSentLat = 0, lastSentLng = 0, lastActiveHtml = "";
+    let lastLocUpdateTs = 0, lastSentLat = 0, lastSentLng = 0, lastActiveHtml = "", lastOrderCount = 0;
 
     let offlineActionQueue = JSON.parse(localStorage.getItem('hut_offline_queue') || '[]');
     let isProcessingQueue = false;
 
-    // 🟢 Web Audio API (Pinger) - النبضة الميكروية لمنع نوم المتصفح كلياً
+    // Web Audio API pinger
     let audioCtx = null;
     function unlockAudio() {
-        const audios = ['alertSound', 'doubleOrderSound', 'cancelSound', 'welcomeSound'];
+        const audios = ['alertSound', 'doubleOrderSound', 'cancelSound', 'welcomeSound', 'prayerSound', 'cleanSound', 'trustSound', 'generalSound'];
         audios.forEach(id => {
             const a = document.getElementById(id);
             if(a) { a.play().then(() => { a.pause(); a.currentTime = 0; }).catch(()=>{}); }
@@ -405,6 +414,7 @@
     document.addEventListener('touchstart', unlockAudio);
     document.addEventListener('click', unlockAudio);
 
+    // ... (الدوال المساعدة calculateDistanceMeters, saveToOfflineQueue, processOfflineQueue, safeFetchUpdate, showToast, openSafeLink, openSmartWhatsapp, muteAlarmOnly, الخ - كما هي بدون تغيير)
     function calculateDistanceMeters(lat1, lon1, lat2, lon2) {
         if (!lat1 || !lon1 || !lat2 || !lon2) return 9999;
         const R = 6371e3;
@@ -476,7 +486,7 @@
         try { document.getElementById('alertSound').pause(); document.getElementById('doubleOrderSound').pause(); } catch(e) {}
     }
 
-    function showToast(msg, type = 'success') {
+    function showToast(msg, type = 'success', bgColor = null) {
         const container = document.getElementById('toast-container');
         if (!container) {
             const cont = document.createElement('div');
@@ -485,7 +495,8 @@
             document.body.appendChild(cont);
         }
         const toast = document.createElement('div');
-        toast.style.cssText = `background: ${type === 'success' ? '#10b981' : '#ef4444'}; color: white; padding: 15px 20px; border-radius: 20px; font-weight: 800; font-size: 0.95rem; box-shadow: 0 10px 25px rgba(0,0,0,0.25); text-align: center; animation: slideDown 0.3s forwards; line-height: 1.4;`;
+        const defaultBg = type === 'success' ? '#10b981' : '#ef4444';
+        toast.style.cssText = `background: ${bgColor || defaultBg}; color: white; padding: 15px 20px; border-radius: 20px; font-weight: 800; font-size: 0.95rem; box-shadow: 0 10px 25px rgba(0,0,0,0.25); text-align: center; animation: slideDown 0.3s forwards; line-height: 1.4;`;
         toast.innerHTML = msg;
         document.getElementById('toast-container').appendChild(toast);
         setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 5000);
@@ -518,7 +529,7 @@
     function releaseWakeLock() { if (wakeLock !== null) { wakeLock.release().then(() => { wakeLock = null; }); } }
 
     window.initAudioAndAuth = function() {
-        ['alertSound', 'doubleOrderSound', 'cancelSound', 'welcomeSound'].forEach(id => {
+        ['alertSound', 'doubleOrderSound', 'cancelSound', 'welcomeSound', 'prayerSound', 'cleanSound', 'trustSound', 'generalSound'].forEach(id => {
             let audio = document.getElementById(id);
             if (audio) { audio.volume = 0; let p = audio.play(); if (p !== undefined) { p.then(() => { audio.pause(); audio.currentTime = 0; audio.volume = 1; }).catch(e => { }); } }
         });
@@ -750,6 +761,37 @@
         }
     }
 
+    // 🆕 دالة عرض الرسائل الإدارية
+    function showDriverMessage(type, content, msgId) {
+        // صوت حسب النوع
+        const soundMap = {
+            prayer: 'prayerSound',
+            clean: 'cleanSound',
+            trust: 'trustSound',
+            general: 'generalSound'
+        };
+        const audioId = soundMap[type] || 'generalSound';
+        const audio = document.getElementById(audioId);
+        if (audio) { audio.currentTime = 0; audio.play().catch(()=>{}); }
+
+        // لون الخلفية حسب النوع
+        const bgMap = {
+            prayer: '#8b5cf6',
+            clean: '#10b981',
+            trust: '#f59e0b',
+            general: '#3b82f6'
+        };
+        const bgColor = bgMap[type] || bgMap.general;
+
+        // عرض رسالة Toast
+        showToast(`📢 ${content}`, 'info', bgColor);
+
+        // تحديث حالة القراءة في Firebase
+        if (msgId) {
+            update(ref(db, `driver_messages/${driverData.phone}/${msgId}`), { read: true });
+        }
+    }
+
     function startHotDataListeners() {
         const accountRef = ref(db, `drivers_locations/${driverData.phone}/account_status`);
         onValue(accountRef, (snapshot) => {
@@ -784,6 +826,19 @@
             document.getElementById('ledgerList').innerHTML = ledgerHtmlString || '<div class="text-center text-muted fw-bold py-4">لا توجد رحلات مكتملة اليوم.</div>';
         });
 
+        // 🆕 مستمع الرسائل السريعة
+        const messagesRef = ref(db, `driver_messages/${driverData.phone}`);
+        onValue(messagesRef, (snapshot) => {
+            const messages = snapshot.val();
+            if (messages) {
+                Object.entries(messages).forEach(([msgId, msg]) => {
+                    if (!msg.read) {
+                        showDriverMessage(msg.type, msg.content, msgId);
+                    }
+                });
+            }
+        });
+
         const ordersRef = ref(db, 'active_orders');
         onValue(ordersRef, (snapshot) => {
             const activeFbOrders = snapshot.val() || {};
@@ -807,7 +862,6 @@
                     if (!fbOrder.restaurant || fbOrder.restaurant.trim() === "" || fbOrder.restaurant === "undefined") return;
 
                     let safeFbPhone = String(fbOrder.driverPhone || "").replace(/^0+/, '').trim();
-                    // دعم حالتي pending_driver و manual_pending
                     let isTargetedForMe = (safeFbPhone === myId) && (fbOrder.status === "pending_driver" || fbOrder.status === "manual_pending");
 
                     let notAlreadyAccepted = !activeOrders.find(o => String(o.id) === String(fbOrder.id));
@@ -854,7 +908,6 @@
     }
 
     window.declineOrder = function() {
-        // منع تجاهل الطلب السيادي
         if (currentOrderData && currentOrderData.is_sovereign) {
             alert("⚠️ هذا الطلب تعيين إداري مباشر ولا يمكن تجاهله. يجب عليك قبوله أو الاتصال بالدعم.");
             return;
@@ -886,7 +939,6 @@
         window.muteAlarmOnly();
         
         const id = currentOrderData.id;
-        // تحديث الحالة إلى accepted مع الحفاظ على is_sovereign إذا كان موجوداً
         const updates = { status: 'accepted', driverPhone: driverData.phone };
         update(ref(db, `active_orders/${id}`), updates);
         
@@ -934,12 +986,15 @@
         if (acceptBtn) { acceptBtn.innerHTML = `قبول الطلب فوراً <svg class="svg-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>`; acceptBtn.disabled = false; }
     }
 
+    // ✅ إصلاح عرض البطاقات: تحديث دائم دون الاعتماد على lastActiveHtml فقط
     function displayActiveOrders() {
         let box = document.getElementById('activeOrderBox');
         if (activeOrders.length === 0) {
             document.getElementById('searchingStatus').classList.remove('hidden-section');
             box.classList.add('hidden-section');
-            lastActiveHtml = 'empty'; return;
+            lastActiveHtml = 'empty';
+            lastOrderCount = 0;
+            return;
         }
 
         document.getElementById('searchingStatus').classList.add('hidden-section');
@@ -972,7 +1027,7 @@
             let custMatch = safeDetails.match(/(07[0-9]{8,9})/);
             let custPhoneNum = custMatch ? String(custMatch[0]) : null;
             let waCustHtml = custPhoneNum ? `<button class="btn-action-pill whatsapp" onclick="window.openSmartWhatsapp('${custPhoneNum}', '${order.resName}', '${order.area}', '${order.id}')">${svgWa} رسالة للزبون</button>` : '';
-            let badgeHtml = isDouble ? `<div class="order-badge double">طلب مزدوج (${index + 1} de ${activeOrders.length})</div>` : `<div class="order-badge">طلب حصري</div>`;
+            let badgeHtml = isDouble ? `<div class="order-badge double">طلب مزدوج (${index + 1} من ${activeOrders.length})</div>` : `<div class="order-badge">طلب حصري</div>`;
             let photoBtnHtml = (order.photoUrl && String(order.photoUrl).startsWith("http")) ? `<button class="btn-photo-view" onclick="window.openSafeLink('${order.photoUrl}')">${svgImg} عرض صورة الوصل</button>` : '';
 
             html += `
@@ -1022,7 +1077,12 @@
             </div>`;
         });
         
-        if (lastActiveHtml !== html) { box.innerHTML = html; lastActiveHtml = html; }
+        // تحديث دائم عند تغير عدد الطلبات أو المحتوى
+        if (lastActiveHtml !== html || lastOrderCount !== activeOrders.length) {
+            box.innerHTML = html;
+            lastActiveHtml = html;
+            lastOrderCount = activeOrders.length;
+        }
     }
 
     function updateOrderTimers() {
