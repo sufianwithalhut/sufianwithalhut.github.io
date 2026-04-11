@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 8.3 (إصلاح التعيين اليدوي السيادي، الذاكرة الوهمية، والنافذة المعلقة) ---
-        const CURRENT_APP_VERSION = "8.3"; 
+        // --- إصدار 8.4 (الحل النهائي: بقاء الخلفية حية، إرسال GPS فوري، منع نوم التطبيق) ---
+        const CURRENT_APP_VERSION = "8.4"; 
         
         if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة... جاري تطهير الكاش!");
@@ -353,7 +353,6 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getDatabase, ref, onValue, update, get, increment } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-    // 🟢 السيرفر الماسي V5.0 (محرك متصاعد)
     const API_URL = "https://script.google.com/macros/s/AKfycbzpFlhfS3u1WMraQNaVmFP3Bv0VboX0jNCdyZnAE4ej_NQtQYWzYHRNxxsiJ7SikVx1/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
@@ -374,15 +373,22 @@
     let offlineActionQueue = JSON.parse(localStorage.getItem('hut_offline_queue') || '[]');
     let isProcessingQueue = false;
 
-    // 🟢 فك قفل الصوت الإجباري
+    // 🟢 فك قفل الصوت الإجباري - التحديث الجديد لمنع توقف الخلفية
     function unlockAudio() {
-        const audios = ['keepAliveAudio', 'alertSound', 'doubleOrderSound', 'cancelSound', 'welcomeSound'];
+        const audios = ['alertSound', 'doubleOrderSound', 'cancelSound', 'welcomeSound'];
         audios.forEach(id => {
             const a = document.getElementById(id);
             if(a) {
                 a.play().then(() => { a.pause(); a.currentTime = 0; }).catch(()=>{});
             }
         });
+        
+        // 🚀 تشغيل الصوت الصامت بدون إيقافه لضمان بقاء التطبيق حياً
+        const keepAlive = document.getElementById('keepAliveAudio');
+        if(keepAlive && isOnline) {
+            keepAlive.play().catch(()=>{});
+        }
+
         document.removeEventListener('touchstart', unlockAudio);
         document.removeEventListener('click', unlockAudio);
     }
@@ -390,7 +396,7 @@
     document.addEventListener('click', unlockAudio);
 
     function calculateDistanceMeters(lat1, lon1, lat2, lon2) {
-        if (!lat1 || !lon1) return 9999;
+        if (!lat1 || !lon1 || !lat2 || !lon2) return 9999;
         const R = 6371e3;
         const p1 = lat1 * Math.PI/180;
         const p2 = lat2 * Math.PI/180;
@@ -641,7 +647,18 @@
         if (isOnline) {
             badge.className = "status-badge online"; badge.innerHTML = `متاح للطلبات`;
             document.getElementById('searchingStatus').classList.remove('offline-mode');
-            updateFirebaseLocationStatus('active');
+            
+            // 🚀 استدعاء فوري للموقع عند العودة للاتصال
+            if(navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(pos => {
+                    lastSentLat = pos.coords.latitude;
+                    lastSentLng = pos.coords.longitude;
+                    updateFirebaseLocationStatus('active');
+                }, err => {
+                    updateFirebaseLocationStatus('active');
+                }, { enableHighAccuracy: true, timeout: 5000 });
+            } else { updateFirebaseLocationStatus('active'); }
+
             requestWakeLock(); if (silentAudio) silentAudio.play().catch(e=>{}); 
             if(!heartbeatInterval) heartbeatInterval = setInterval(sendHeartbeat, 30000); 
             displayActiveOrders();
@@ -683,6 +700,19 @@
         startHotDataListeners(); 
         
         if (navigator.geolocation) {
+            // 🚀 حقنة المزامنة الفورية: إجبار الهاتف على جلب الموقع حالاً بمجرد فتح التطبيق لتجنب خطأ الـ 9999 كم
+            navigator.geolocation.getCurrentPosition(pos => {
+                lastLocUpdateTs = Date.now();
+                lastSentLat = pos.coords.latitude;
+                lastSentLng = pos.coords.longitude;
+                if(driverData) {
+                   driverData.currentLat = pos.coords.latitude;
+                   driverData.currentLng = pos.coords.longitude;
+                }
+                updateFirebaseLocationStatus(isOnline ? 'active' : 'inactive');
+            }, err => { document.getElementById('permissionOverlay').classList.remove('hidden-section'); }, { enableHighAccuracy: true, timeout: 10000 });
+
+            // الاستمرار في التتبع
             navigator.geolocation.watchPosition(
                 pos => {
                     document.getElementById('permissionOverlay').classList.add('hidden-section');
@@ -727,7 +757,6 @@
         localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders)); 
         displayActiveOrders();
         
-        // Fix Stuck Ringing Overlay if the withdrawn order was currently ringing!
         if (currentOrderData && String(currentOrderData.id) === String(orderId)) {
             clearInterval(countdownInterval);
             document.getElementById('orderAlertOverlay').classList.add('hidden-section');
@@ -737,7 +766,6 @@
     }
 
     function startHotDataListeners() {
-        // مراقبة الحظر
         const accountRef = ref(db, `drivers_locations/${driverData.phone}/account_status`);
         onValue(accountRef, (snapshot) => {
             const status = snapshot.val();
@@ -747,7 +775,6 @@
             }
         });
 
-        // 🚀 مراقبة المحفظة اللحظية
         const ledgerRef = ref(db, `ledgers/drivers/${driverData.phone}`);
         onValue(ledgerRef, (snapshot) => {
             const ledger = snapshot.val() || { completed_orders: 0, debt: 0 };
@@ -755,7 +782,6 @@
             document.getElementById('statDebt').innerHTML = `${ledger.debt || 0} <small class="fs-6">د.ع</small>`;
         });
 
-        // 🚀 مراقبة سجل اليوم اللحظي (Daily Ledger)
         const todayStr = new Date().toISOString().split('T')[0];
         const dailyLedgerRef = ref(db, `daily_ledgers/${driverData.phone}/${todayStr}`);
         onValue(dailyLedgerRef, (snapshot) => {
@@ -773,7 +799,6 @@
             document.getElementById('ledgerList').innerHTML = ledgerHtmlString || '<div class="text-center text-muted fw-bold py-4">لا توجد رحلات مكتملة اليوم.</div>';
         });
 
-        // مراقبة الطلبات النشطة والرادار
         const ordersRef = ref(db, 'active_orders');
         onValue(ordersRef, (snapshot) => {
             const activeFbOrders = snapshot.val() || {};
@@ -864,6 +889,13 @@
         clearInterval(countdownInterval);
         window.muteAlarmOnly();
         
+        // 🚀 تحديث فايربيس في اللحظة صفر (Atomic Fast Update) لمنع تعليق لوحة الماستر
+        const id = currentOrderData.id;
+        update(ref(db, `active_orders/${id}`), { 
+            status: 'accepted',
+            driverPhone: driverData.phone 
+        });
+        
         setTimeout(async () => {
             try {
                 if (!currentOrderData.resPhone || !currentOrderData.resLat) {
@@ -912,11 +944,6 @@
         activeOrders.push(newO);
         localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
         displayActiveOrders();
-        
-        const updates = {};
-        updates[`active_orders/${newO.id}/status`] = 'accepted';
-        updates[`active_orders/${newO.id}/driverPhone`] = driverData.phone;
-        update(ref(db), updates);
         
         const acceptBtn = document.getElementById('btnAcceptMain');
         if (acceptBtn) { 
