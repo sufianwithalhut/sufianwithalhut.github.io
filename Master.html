@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <script>
-        // --- الإصدار 6.1 (متوافق مع V34.1: دعم الطلبات السيادية والرابط الجديد) ---
-        const CURRENT_APP_VERSION = "6.1";
+        // --- الإصدار 6.2 (تحسينات Spiderfy + تقييم نجوم + Ticker ذكي) ---
+        const CURRENT_APP_VERSION = "6.2";
         const VERSION_KEY = 'hut_master_app_version';
         try {
             if (localStorage.getItem(VERSION_KEY) !== CURRENT_APP_VERSION) {
                 localStorage.setItem(VERSION_KEY, CURRENT_APP_VERSION);
                 if (localStorage.getItem(VERSION_KEY) === CURRENT_APP_VERSION) {
-                    console.log("نسخة إدارة سيادية V34.1... جاري التحديث!");
+                    console.log("نسخة إدارة V34.1 محسّنة... جاري التحديث!");
                     if ('caches' in window) {
                         caches.keys().then(function(names) {
                             for (let name of names) caches.delete(name);
@@ -437,6 +437,30 @@
                 z-index: 1;
             }
             .map-floating-header, .map-floating-stats, .sheet-handle { display: none !important; }
+        }
+
+        /* --- تقييم النجوم للكباتن --- */
+        .driver-rating {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--primary-light);
+            padding: 6px 12px;
+            border-radius: 30px;
+            margin-bottom: 10px;
+        }
+        .stars {
+            color: #fbbf24;
+            font-size: 15px;
+            letter-spacing: 2px;
+        }
+        .level {
+            font-weight: 800;
+            font-size: 11px;
+            color: var(--primary-dark);
+            background: rgba(255,255,255,0.6);
+            padding: 2px 8px;
+            border-radius: 20px;
         }
 
         .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
@@ -1481,8 +1505,13 @@ let lastArchiveHtml = '';
 let liveLedgers = { drivers: {}, restaurants: {} };
 let isFullscreen = false;
 
-// 🚀 المصفوفة الحارة للكباتن الحقيقيين المتصلين فقط (تُحدث باستمرار من Firebase)
+// 🚀 المصفوفة الحارة للكباتن الحقيقيين المتصلين فقط
 let activeRealDriversSet = new Set();
+
+// 📰 شريط الأخبار الذكي
+let tickerMessages = [];
+let tickerIndex = 0;
+let tickerInterval = null;
 
 const firebaseConfig = {
     apiKey: "AIzaSyAo1rmqUzieYZU3RIwXOAN87GkpNrp-_Hc",
@@ -1647,6 +1676,8 @@ window.renderData = function(data) {
         listenToFirebaseLedgers();
         dataRefreshInterval = setInterval(refreshData, 300000); 
     }
+
+    if (globalData) updateTicker();
 };
 
 /* ─── Firebase Listeners ─── */
@@ -1656,13 +1687,11 @@ function listenToFirebaseLedgers() {
         let totalRevenue = 0;
         if(liveLedgers.restaurants) { Object.values(liveLedgers.restaurants).forEach(r => { totalRevenue += (r.debt || 0); }); }
         
-        const ticker = document.getElementById('tickerText');
-        if(ticker) ticker.innerHTML = `<span>💰 إجمالي ديون وعمولات الميدان اليوم: <b class="text-success">${totalRevenue} د.ع</b></span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span>🚀 محرك الرادار المركزي متصل ويعمل بكفاءة</span>`;
-        
         if (globalData) {
             triggerSearch('DRIVER');
             triggerSearch('RESTAURANT');
         }
+        updateTicker();
     });
 }
 
@@ -1727,7 +1756,6 @@ function listenToFirebaseOrders() {
             if (em?.style.display === 'flex') closeEmergency();
         }
 
-        // تحديث إحصائية الطلبات النشطة والمطاعم
         document.querySelectorAll('.val-orders').forEach(el => el.textContent = liveFirebaseOrders.length);
         const activeResNames = [...new Set(liveFirebaseOrders.map(o => o[1]))];
         document.querySelectorAll('.val-res').forEach(el => el.textContent = activeResNames.length);
@@ -1735,6 +1763,7 @@ function listenToFirebaseOrders() {
         if (globalData) { try { smartRenderRadar(liveFirebaseOrders); } catch(e) {} }
         updateHeatmap(liveFirebaseOrders);
         updateRestaurantMarkers(liveFirebaseOrders);
+        updateTicker();
     });
 }
 
@@ -1772,7 +1801,6 @@ function listenToFirebaseLocations() {
         if (!locs) return;
         const now = Date.now();
         
-        // 🚀 إعادة بناء القائمة الحية في كل مرة ينبض فيها فايربيس
         activeRealDriversSet.clear();
 
         Object.keys(locs).forEach(phone => {
@@ -1782,7 +1810,6 @@ function listenToFirebaseLocations() {
                 const idleMins = d.last_update ? (now - new Date(d.last_update).getTime())/60000 : 0;
                 const isGhost = idleMins > 45; 
                 
-                // 🚀 إضافة الكابتن الحقيقي فقط للقائمة المعتمدة
                 if(!isGhost) {
                     activeRealDriversSet.add(String(phone).replace(/^0+/, '').trim());
                 }
@@ -1798,24 +1825,65 @@ function listenToFirebaseLocations() {
                         html: `<div class="drv-marker ${isGhost ? 'drv-ghost' : 'drv-active'}">${isGhost?'👻':'🛵'}</div>`,
                         iconSize: [32, 32], iconAnchor: [16, 16]
                     });
-                    liveDriverMarkers[phone] = L.marker([lat, lng], {icon}).addTo(map).bindPopup(`<b style="font-family:Cairo">${escHtml(name)}</b>`);
+                    const marker = L.marker([lat, lng], {icon}).bindPopup(`<b style="font-family:Cairo">${escHtml(name)}</b>`);
+                    driverClusterGroup.addLayer(marker);
+                    liveDriverMarkers[phone] = marker;
                 }
             } else if (liveDriverMarkers[phone]) {
-                map.removeLayer(liveDriverMarkers[phone]); delete liveDriverMarkers[phone];
+                driverClusterGroup.removeLayer(liveDriverMarkers[phone]);
+                delete liveDriverMarkers[phone];
             }
         });
 
-        // 🚀 تحديث عداد الكباتن الحقيقيين
         document.querySelectorAll('.val-drivers').forEach(el => el.textContent = activeRealDriversSet.size);
         
-        // 🚀 تحديث قائمة زر التعيين اليدوي فوراً
         if (globalData) { try { smartRenderRadar(liveFirebaseOrders); } catch(e) {} }
         
-        // 🚀 تحديث قائمة إدارة الأسطول إذا كنا في تبويبها
         if (globalData && document.getElementById('tab-drivers').classList.contains('active-tab')) {
             triggerSearch('DRIVER');
         }
+        updateTicker();
     });
+}
+
+/* ─── شريط الأخبار الذكي ─── */
+function updateTicker() {
+    if (!globalData) return;
+
+    const pending = liveFirebaseOrders.filter(o => !o[6] || o[6] === 'pending_driver' || o[6] === 'system_routing').length;
+    const activeDrivers = activeRealDriversSet.size;
+    const totalDebt = Object.values(liveLedgers.restaurants || {}).reduce((sum, r) => sum + (r.debt || 0), 0);
+    const activeOrdersCount = liveFirebaseOrders.length;
+
+    const baseMessages = [
+        `📦 الطلبات النشطة: ${activeOrdersCount} | 🚚 كباتن: ${activeDrivers} | 🍽️ مطاعم: ${document.querySelector('.val-res')?.textContent || 0}`,
+        `💰 إجمالي عمولات اليوم: ${totalDebt} د.ع`,
+        `⏳ طلبات بانتظار كابتن: ${pending}`,
+        `🕒 ${new Date().toLocaleTimeString('ar-EG')} - ${new Date().toLocaleDateString('ar-EG')}`
+    ];
+
+    db.ref('system_alerts').limitToLast(1).on('value', snap => {
+        const alerts = snap.val();
+        if (alerts) {
+            const lastAlert = Object.values(alerts).pop();
+            if (lastAlert && !lastAlert.read) {
+                baseMessages.unshift(`🚨 ${lastAlert.message}`);
+            }
+        }
+        tickerMessages = baseMessages;
+    });
+
+    if (tickerInterval) clearInterval(tickerInterval);
+    tickerInterval = setInterval(() => {
+        if (tickerMessages.length) {
+            tickerIndex = (tickerIndex + 1) % tickerMessages.length;
+            const el = document.getElementById('tickerText');
+            if (el) el.innerHTML = tickerMessages[tickerIndex];
+        }
+    }, 8000);
+
+    const el = document.getElementById('tickerText');
+    if (el) el.innerHTML = baseMessages[0];
 }
 
 /* ─── Map Fullscreen & Tracking UI ─── */
@@ -1852,7 +1920,6 @@ function smartRenderRadar(activeList) {
     if (globalData) {
         globalData.drivers.slice(1).forEach(d => {
             const rawPhone = String(d[2]).replace(/^0+/, '').trim();
-            // 🚀 فلترة صارمة: يظهر في القائمة فقط إذا كان في مجموعة الكباتن الحقيقيين
             if (activeRealDriversSet.has(rawPhone)) {
                 const completed = liveLedgers.drivers?.[String(d[2])]?.completed_orders || 0;
                 let sym = '🟡';
@@ -1894,7 +1961,6 @@ function smartRenderRadar(activeList) {
         let opts = activeDriversOptionsCache;
 
         if (isSovereign) {
-            // للطلبات السيادية: لا نعرض زر السحب أو التعيين
             ctrl += `<span class="sbadge sbadge-purple" style="padding:6px 12px;">👑 سيادي</span>`;
             return ctrl;
         }
@@ -1930,7 +1996,6 @@ function smartRenderRadar(activeList) {
         return { cls: 'oc-heading', sbCls: 'sbadge-blue', desc: status, ringing: false };
     };
 
-    // حساب عدد الطلبات لكل كابتن لمعرفة الطلبات المزدوجة
     const driverOrderCount = {};
     filtered.forEach(o => {
         const dp = o[6];
@@ -2039,7 +2104,6 @@ function smartRenderRadar(activeList) {
         renderedOrdersCache[orderId] = hash;
     });
 
-    /* Remove stale */
     Object.keys(renderedOrdersCache).forEach(id => {
         if (!currentIds.has(id)) {
             const el = document.getElementById(`oc-${id}`);
@@ -2144,7 +2208,6 @@ function updateSectionBadges(type, list) {
         c.all++;
         if (s === 'pending' || s === 'waiting') c.pending++;
         
-        // 🚀 تعديل خطير لفلتر الكباتن "بالميدان": نحسب المتصلين حقيقةً فقط
         if (type === 'DRIVER' && s === 'active') {
             const rawPhone = String(item[2]).replace(/^0+/, '').trim();
             if(activeRealDriversSet.has(rawPhone)) c.active++;
@@ -2202,8 +2265,6 @@ function smartRenderFilteredSection(type, fullList) {
         
         if (filter === 'all') filtered.push(item);
         else if (filter === 'pending' && (s === 'pending' || s === 'waiting')) filtered.push(item);
-        
-        // 🚀 فلترة الكباتن في الميدان تعتمد على الاتصال الحقيقي فقط!
         else if (filter === 'active' && type === 'DRIVER') {
             if(s === 'active' && activeRealDriversSet.has(rawPhone)) filtered.push(item);
         }
@@ -2243,10 +2304,16 @@ function smartRenderFilteredSection(type, fullList) {
 
         let perfHtml = '';
         if (type === 'DRIVER') {
-            let pClass = 'perf-red';
-            if(compCount >= 100) pClass = 'perf-green';
-            else if(compCount >= 30) pClass = 'perf-yellow';
-            perfHtml = `<div class="perf-dot ${pClass}"></div>`;
+            let stars = '', level = '';
+            if (compCount >= 100)       { stars = '⭐⭐⭐⭐⭐'; level = 'خبير'; }
+            else if (compCount >= 50)   { stars = '⭐⭐⭐⭐';   level = 'محترف'; }
+            else if (compCount >= 30)   { stars = '⭐⭐⭐';     level = 'نشط'; }
+            else if (compCount >= 10)   { stars = '⭐⭐';       level = 'مبتدئ'; }
+            else                        { stars = '⭐';         level = 'جديد'; }
+            perfHtml = `<div class="driver-rating" title="${level} (${compCount} طلب)">
+                <span class="stars">${stars}</span>
+                <span class="level">${level}</span>
+            </div>`;
         }
 
         let existing = document.getElementById(`card-${type}-${safeId}`);
@@ -2258,10 +2325,6 @@ function smartRenderFilteredSection(type, fullList) {
                 if (dEl) dEl.textContent = `${debt} د.ع`;
                 const cEl = existing.querySelector('.entity-debt-lbl');
                 if (cEl) cEl.innerHTML = `طلبات منجزة: <span class="unpaid-wrap" style="color:var(--text-1); font-weight:900;">${compCount}</span>`;
-                if (type === 'DRIVER') {
-                    const pd = existing.querySelector('.perf-dot');
-                    if(pd) pd.className = `perf-dot ${compCount>=100?'perf-green':(compCount>=30?'perf-yellow':'perf-red')}`;
-                }
                 cache[safeId] = hash;
             }
             return;
@@ -2300,7 +2363,6 @@ function smartRenderFilteredSection(type, fullList) {
         cache[safeId] = hash;
     });
 
-    /* Remove stale */
     Object.keys(cache).forEach(id => {
         if (!currentIds.has(id)) {
             const el = document.getElementById(`card-${type}-${id}`);
@@ -2321,7 +2383,7 @@ function withdrawOrderOptUI(orderId, driverPhone, el) {
         status: 'pending_driver',
         driverPhone: 'system_routing',
         last_update: now,
-        last_offered_to: driverPhone, // تطبيق عقوبة التجاهل
+        last_offered_to: driverPhone,
         last_offered_time: now,
         is_sovereign: false
     }).then(() => {
@@ -2337,7 +2399,6 @@ function withdrawOrderOptUI(orderId, driverPhone, el) {
 function assignDriverOptUI(orderId, driverPhone, el) {
     if (!driverPhone) return;
     el.disabled = true;
-    // FIX: keep spinner reference so we can remove it when done
     const spinnerEl = document.createElement('div');
     spinnerEl.className = 'spinner-mini';
     spinnerEl.style.cssText = 'border-top-color:var(--primary); margin-right:5px; display:inline-block;';
@@ -2357,11 +2418,11 @@ function assignDriverOptUI(orderId, driverPhone, el) {
 
     fetch(`${API_URL}?action=ASSIGN_DRIVER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}&pass=${masterPassword}`)
         .then(r => r.json()).then(res => {
-            spinnerEl.remove(); // FIX: remove spinner on success
+            spinnerEl.remove();
             if (!res.success) { showToast("خطأ", "error"); if (card) card.style.opacity = '1'; el.disabled = false; }
             else showToast("تم التعيين السيادي بنجاح!");
         }).catch(() => {
-            spinnerEl.remove(); // FIX: remove spinner on error too
+            spinnerEl.remove();
             showToast("تم الإرسال");
         });
 }
@@ -2385,7 +2446,7 @@ function forceComplete(orderId) {
         if (String(payType).includes('مناصفة')) driverDebtInc = comm / 2;
 
         let updates = {};
-        updates[`active_orders/${orderId}`] = null; // Delete from radar
+        updates[`active_orders/${orderId}`] = null;
         
         if(driverPhone && driverPhone !== 'system_routing' && driverPhone !== 'pending_driver') {
             updates[`ledgers/drivers/${driverPhone}/completed_orders`] = firebase.database.ServerValue.increment(1);
@@ -2623,7 +2684,11 @@ function initMap() {
                 iconSize: L.point(38, 38)
             });
         },
-        maxClusterRadius: 50
+        maxClusterRadius: 50,
+        spiderfyOnMaxZoom: true,
+        showCoverageOnHover: false,
+        zoomToBoundsOnClick: true,
+        spiderfyDistanceMultiplier: 1.5
     });
     map.addLayer(driverClusterGroup);
 
