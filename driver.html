@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 8.4 (الحل النهائي: بقاء الخلفية حية، إرسال GPS فوري، منع نوم التطبيق) ---
-        const CURRENT_APP_VERSION = "8.4"; 
+        // --- إصدار 8.5 (النسخة الحاسمة: ولاء مطلق للسيرفر + إزالة جدار الرفض المخفي) ---
+        const CURRENT_APP_VERSION = "8.5"; 
         
         if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة... جاري تطهير الكاش!");
@@ -353,6 +353,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getDatabase, ref, onValue, update, get, increment } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
+    // 🟢 السيرفر الماسي V5.0
     const API_URL = "https://script.google.com/macros/s/AKfycbzpFlhfS3u1WMraQNaVmFP3Bv0VboX0jNCdyZnAE4ej_NQtQYWzYHRNxxsiJ7SikVx1/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
@@ -373,21 +374,17 @@
     let offlineActionQueue = JSON.parse(localStorage.getItem('hut_offline_queue') || '[]');
     let isProcessingQueue = false;
 
-    // 🟢 فك قفل الصوت الإجباري - التحديث الجديد لمنع توقف الخلفية
+    // 🟢 فك قفل الصوت وتأمين الخلفية
     function unlockAudio() {
         const audios = ['alertSound', 'doubleOrderSound', 'cancelSound', 'welcomeSound'];
         audios.forEach(id => {
             const a = document.getElementById(id);
-            if(a) {
-                a.play().then(() => { a.pause(); a.currentTime = 0; }).catch(()=>{});
-            }
+            if(a) { a.play().then(() => { a.pause(); a.currentTime = 0; }).catch(()=>{}); }
         });
         
-        // 🚀 تشغيل الصوت الصامت بدون إيقافه لضمان بقاء التطبيق حياً
+        // تشغيل الصوت الصامت بدون إيقافه لضمان بقاء التطبيق حياً
         const keepAlive = document.getElementById('keepAliveAudio');
-        if(keepAlive && isOnline) {
-            keepAlive.play().catch(()=>{});
-        }
+        if(keepAlive && isOnline) { keepAlive.play().catch(()=>{}); }
 
         document.removeEventListener('touchstart', unlockAudio);
         document.removeEventListener('click', unlockAudio);
@@ -427,9 +424,8 @@
         let failedQueue = [];
         for (let i = 0; i < offlineActionQueue.length; i++) {
             const action = offlineActionQueue[i];
-            try {
-                await fetch(action.url, { method: 'GET', mode: 'no-cors', cache: 'no-store' });
-            } catch (err) { failedQueue.push(action); }
+            try { await fetch(action.url, { method: 'GET', mode: 'no-cors', cache: 'no-store' }); } 
+            catch (err) { failedQueue.push(action); }
         }
 
         offlineActionQueue = failedQueue;
@@ -648,15 +644,12 @@
             badge.className = "status-badge online"; badge.innerHTML = `متاح للطلبات`;
             document.getElementById('searchingStatus').classList.remove('offline-mode');
             
-            // 🚀 استدعاء فوري للموقع عند العودة للاتصال
+            // 🚀 حقنة مزامنة الموقع السريعة
             if(navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(pos => {
-                    lastSentLat = pos.coords.latitude;
-                    lastSentLng = pos.coords.longitude;
+                    lastSentLat = pos.coords.latitude; lastSentLng = pos.coords.longitude;
                     updateFirebaseLocationStatus('active');
-                }, err => {
-                    updateFirebaseLocationStatus('active');
-                }, { enableHighAccuracy: true, timeout: 5000 });
+                }, err => { updateFirebaseLocationStatus('active'); }, { enableHighAccuracy: true, timeout: 5000 });
             } else { updateFirebaseLocationStatus('active'); }
 
             requestWakeLock(); if (silentAudio) silentAudio.play().catch(e=>{}); 
@@ -675,11 +668,7 @@
     function sendHeartbeat() {
         if (!isOnline || !driverData || !lastSentLat) return;
         const updates = {};
-        updates[`drivers_locations/${driverData.phone}`] = { 
-            lat: lastSentLat, lng: lastSentLng, 
-            status: "active", 
-            last_update: new Date().toISOString() 
-        };
+        updates[`drivers_locations/${driverData.phone}`] = { lat: lastSentLat, lng: lastSentLng, status: "active", last_update: new Date().toISOString() };
         update(ref(db), updates);
     }
 
@@ -700,26 +689,17 @@
         startHotDataListeners(); 
         
         if (navigator.geolocation) {
-            // 🚀 حقنة المزامنة الفورية: إجبار الهاتف على جلب الموقع حالاً بمجرد فتح التطبيق لتجنب خطأ الـ 9999 كم
             navigator.geolocation.getCurrentPosition(pos => {
-                lastLocUpdateTs = Date.now();
-                lastSentLat = pos.coords.latitude;
-                lastSentLng = pos.coords.longitude;
-                if(driverData) {
-                   driverData.currentLat = pos.coords.latitude;
-                   driverData.currentLng = pos.coords.longitude;
-                }
+                lastLocUpdateTs = Date.now(); lastSentLat = pos.coords.latitude; lastSentLng = pos.coords.longitude;
+                if(driverData) { driverData.currentLat = pos.coords.latitude; driverData.currentLng = pos.coords.longitude; }
                 updateFirebaseLocationStatus(isOnline ? 'active' : 'inactive');
             }, err => { document.getElementById('permissionOverlay').classList.remove('hidden-section'); }, { enableHighAccuracy: true, timeout: 10000 });
 
-            // الاستمرار في التتبع
             navigator.geolocation.watchPosition(
                 pos => {
                     document.getElementById('permissionOverlay').classList.add('hidden-section');
-                    driverData.currentLat = pos.coords.latitude; 
-                    driverData.currentLng = pos.coords.longitude;
+                    driverData.currentLat = pos.coords.latitude; driverData.currentLng = pos.coords.longitude;
                     const now = Date.now();
-                    
                     let isHeadingToCustomer = activeOrders.some(o => o.state === 'picked_up');
                     
                     if (!isHeadingToCustomer) { 
@@ -728,10 +708,7 @@
                         
                         if (dist >= 30 || timeElapsed > 180000) {
                             if (timeElapsed > 10000) {  
-                                lastLocUpdateTs = now; 
-                                lastSentLat = pos.coords.latitude;
-                                lastSentLng = pos.coords.longitude;
-                                
+                                lastLocUpdateTs = now; lastSentLat = pos.coords.latitude; lastSentLng = pos.coords.longitude;
                                 updateFirebaseLocationStatus(isOnline ? 'active' : 'inactive');
                             }
                         }
@@ -799,11 +776,13 @@
             document.getElementById('ledgerList').innerHTML = ledgerHtmlString || '<div class="text-center text-muted fw-bold py-4">لا توجد رحلات مكتملة اليوم.</div>';
         });
 
+        // 🛡️ المراقبة المركزية والقرار المطلق للسيرفر
         const ordersRef = ref(db, 'active_orders');
         onValue(ordersRef, (snapshot) => {
             const activeFbOrders = snapshot.val() || {};
             const myId = String(driverData.phone).replace(/^0+/, '').trim();
             
+            // 1. مسح الطلبات التي سحبها السيرفر أو الإدارة
             for (let i = activeOrders.length - 1; i >= 0; i--) {
                 const myOrder = activeOrders[i];
                 const fbOrder = activeFbOrders[myOrder.id];
@@ -811,40 +790,50 @@
                     forceRemoveActiveOrder("تم حذف هذا الطلب أو إنهاءه.", myOrder.id);
                 } else {
                     let fbDriverPhone = String(fbOrder.driverPhone || "").replace(/^0+/, '').trim();
-                    if (fbDriverPhone !== myId) {
+                    if (fbDriverPhone !== myId && fbOrder.status !== 'completed') {
                         forceRemoveActiveOrder("تم سحب الطلب وتعيينه لكابتن آخر.", myOrder.id);
                     }
                 }
             }
 
-            if(isOnline && activeOrders.length < 2 && document.getElementById('orderAlertOverlay').classList.contains('hidden-section')) {
+            // 2. استقبال الطلبات الجديدة (إلغاء جدار الرفض المخفي)
+            if (isOnline) {
                 Object.values(activeFbOrders).forEach(fbOrder => {
                     if (!fbOrder.restaurant || fbOrder.restaurant.trim() === "" || fbOrder.restaurant === "undefined") return;
 
                     let safeFbPhone = String(fbOrder.driverPhone || "").replace(/^0+/, '').trim();
                     let isTargetedForMe = (safeFbPhone === myId) && (fbOrder.status === "pending_driver" || fbOrder.status === "manual_pending");
 
-                    if(isTargetedForMe) {
-                        if (!activeOrders.find(o => String(o.id) === String(fbOrder.id))) {
-                            currentOrderData = {
-                                id: fbOrder.id, resName: fbOrder.restaurant, area: fbOrder.area || "غير محدد",
-                                price: fbOrder.price || 0, details: fbOrder.details || "", photoUrl: fbOrder.photoUrl || "",
-                                resLat: fbOrder.resLat, resLng: fbOrder.resLng, resPhone: fbOrder.resPhone,
-                                comm: fbOrder.comm || 0, payType: fbOrder.payType || "المطعم يدفع",
-                                is_sovereign: fbOrder.is_sovereign || false
-                            };
-                            currentOrderData.expireTime = Date.now() + 60000; 
-                            
-                            document.getElementById('alertTitleText').innerText = activeOrders.length > 0 ? "طلب مزدوج!" : "طلب جديد!";
-                            document.getElementById('alertSovereignText').innerText = currentOrderData.is_sovereign ? "⚠️ تعيين إداري مباشر" : "";
-                            document.getElementById('alertResName').innerText = fbOrder.restaurant; 
-                            document.getElementById('alertArea').innerText = fbOrder.area || "غير محدد";
-                            
-                            document.getElementById('orderAlertOverlay').classList.remove('hidden-section');
-                            if (window.AndroidRadar) { window.AndroidRadar.triggerOrderAlarm(); } else { let audio = document.getElementById(activeOrders.length > 0 ? 'doubleOrderSound' : 'alertSound'); audio.currentTime = 0; audio.play().catch(e => {}); }
-                            
-                            startCountdown();
+                    // التأكد من أن الطلب ليس موجوداً لدي مسبقاً، ولا يرن حالياً
+                    let notAlreadyAccepted = !activeOrders.find(o => String(o.id) === String(fbOrder.id));
+                    let notCurrentlyRinging = !(currentOrderData && String(currentOrderData.id) === String(fbOrder.id));
+
+                    if(isTargetedForMe && notAlreadyAccepted && notCurrentlyRinging) {
+                        
+                        currentOrderData = {
+                            id: fbOrder.id, resName: fbOrder.restaurant, area: fbOrder.area || "غير محدد",
+                            price: fbOrder.price || 0, details: fbOrder.details || "", photoUrl: fbOrder.photoUrl || "",
+                            resLat: fbOrder.resLat, resLng: fbOrder.resLng, resPhone: fbOrder.resPhone,
+                            comm: fbOrder.comm || 0, payType: fbOrder.payType || "المطعم يدفع",
+                            is_sovereign: fbOrder.is_sovereign || false
+                        };
+                        
+                        const orderAge = fbOrder.last_update ? (Date.now() - new Date(fbOrder.last_update).getTime()) : 0;
+                        currentOrderData.expireTime = Date.now() + Math.max(10000, 60000 - orderAge); 
+                        
+                        document.getElementById('alertTitleText').innerText = activeOrders.length > 0 ? "طلب مزدوج!" : "طلب جديد!";
+                        document.getElementById('alertSovereignText').innerText = currentOrderData.is_sovereign ? "⚠️ تعيين إداري مباشر" : "";
+                        document.getElementById('alertResName').innerText = fbOrder.restaurant; 
+                        document.getElementById('alertArea').innerText = fbOrder.area || "غير محدد";
+                        
+                        document.getElementById('orderAlertOverlay').classList.remove('hidden-section');
+                        if (window.AndroidRadar) { window.AndroidRadar.triggerOrderAlarm(); } 
+                        else { 
+                            let audio = document.getElementById(activeOrders.length > 0 ? 'doubleOrderSound' : 'alertSound'); 
+                            audio.currentTime = 0; audio.play().catch(e => { console.log(e); }); 
                         }
+                        
+                        startCountdown();
                     }
                 });
             }
@@ -889,12 +878,9 @@
         clearInterval(countdownInterval);
         window.muteAlarmOnly();
         
-        // 🚀 تحديث فايربيس في اللحظة صفر (Atomic Fast Update) لمنع تعليق لوحة الماستر
+        // 🚀 تحديث فايربيس في اللحظة صفر
         const id = currentOrderData.id;
-        update(ref(db, `active_orders/${id}`), { 
-            status: 'accepted',
-            driverPhone: driverData.phone 
-        });
+        update(ref(db, `active_orders/${id}`), { status: 'accepted', driverPhone: driverData.phone });
         
         setTimeout(async () => {
             try {
@@ -903,19 +889,13 @@
                     const data = await r.json();
                     const resInfo = data.restaurants.find(r => r[1] === currentOrderData.resName);
                     if (resInfo) {
-                        currentOrderData.resPhone = resInfo[2]; 
-                        currentOrderData.resArea = resInfo[3];
-                        currentOrderData.resLat = resInfo[6]; 
-                        currentOrderData.resLng = resInfo[7];
+                        currentOrderData.resPhone = resInfo[2]; currentOrderData.resArea = resInfo[3];
+                        currentOrderData.resLat = resInfo[6]; currentOrderData.resLng = resInfo[7];
                         currentOrderData.comm = parseFloat(resInfo[5]) || 0;
                         currentOrderData.payType = resInfo[8] || "المطعم يدفع";
-                    } else {
-                        currentOrderData.resPhone = "غير متوفر";
-                    }
+                    } else { currentOrderData.resPhone = "غير متوفر"; }
                 }
-            } catch (e) {
-                if (!currentOrderData.resPhone) currentOrderData.resPhone = "غير متوفر";
-            }
+            } catch (e) { if (!currentOrderData.resPhone) currentOrderData.resPhone = "غير متوفر"; }
             
             finalizeAccept();
         }, 1500); 
@@ -925,31 +905,24 @@
         document.getElementById('orderAlertOverlay').classList.add('hidden-section');
         
         const newO = { 
-            id: currentOrderData.id, 
-            resName: currentOrderData.resName, 
-            resArea: currentOrderData.resArea || currentOrderData.area, 
-            details: String(currentOrderData.details), 
-            price: parseFloat(currentOrderData.price) || 0, 
-            area: currentOrderData.area, 
-            state: 'heading', 
-            photoUrl: currentOrderData.photoUrl, 
-            resPhone: currentOrderData.resPhone, 
-            resLat: currentOrderData.resLat, 
-            resLng: currentOrderData.resLng, 
-            comm: currentOrderData.comm || 0,
-            payType: currentOrderData.payType || "المطعم يدفع",
-            acceptedTime: Date.now() 
+            id: currentOrderData.id, resName: currentOrderData.resName, resArea: currentOrderData.resArea || currentOrderData.area, 
+            details: String(currentOrderData.details), price: parseFloat(currentOrderData.price) || 0, area: currentOrderData.area, 
+            state: 'heading', photoUrl: currentOrderData.photoUrl, resPhone: currentOrderData.resPhone, 
+            resLat: currentOrderData.resLat, resLng: currentOrderData.resLng, comm: currentOrderData.comm || 0,
+            payType: currentOrderData.payType || "المطعم يدفع", acceptedTime: Date.now() 
         };
         
         activeOrders.push(newO);
         localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
         displayActiveOrders();
         
+        const updates = {};
+        updates[`active_orders/${newO.id}/status`] = 'accepted';
+        updates[`active_orders/${newO.id}/driverPhone`] = driverData.phone;
+        update(ref(db), updates);
+        
         const acceptBtn = document.getElementById('btnAcceptMain');
-        if (acceptBtn) { 
-            acceptBtn.innerHTML = `قبول الطلب فوراً <svg class="svg-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>`; 
-            acceptBtn.disabled = false; 
-        }
+        if (acceptBtn) { acceptBtn.innerHTML = `قبول الطلب فوراً <svg class="svg-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>`; acceptBtn.disabled = false; }
     }
 
     function displayActiveOrders() {
@@ -968,7 +941,6 @@
 
         activeOrders.forEach((order, index) => {
             let stateTitle = order.state === 'heading' ? "متوجه للمطعم" : order.state === 'arrived' ? "في المطعم" : "في الطريق للزبون";
-            
             let btnAction = order.state === 'heading' ? "arrive" : order.state === 'arrived' ? "pickup" : "finish";
             let btnText = order.state === 'heading' ? "تأكيد الوصول للمطعم" : order.state === 'arrived' ? "تأكيد استلام الطلب" : "تأكيد تسليم الطلب";
             let btnClass = order.state === 'heading' ? "heading" : order.state === 'arrived' ? "arrived" : "picked";
@@ -987,16 +959,10 @@
             let resPhoneStr = order.resPhone ? String(order.resPhone) : "";
             let resPhoneNum = resPhoneStr ? (resPhoneStr.startsWith('0') ? resPhoneStr : '0' + resPhoneStr) : null;
             let waRes = resPhoneStr ? (resPhoneStr.startsWith('0') ? '964' + resPhoneStr.substring(1) : resPhoneStr) : null;
-            
             let safeDetails = String(order.details || "");
             let custMatch = safeDetails.match(/(07[0-9]{8,9})/);
             let custPhoneNum = custMatch ? String(custMatch[0]) : null;
-            
-            let waCustHtml = '';
-            if(custPhoneNum) {
-                waCustHtml = `<button class="btn-action-pill whatsapp" onclick="window.openSmartWhatsapp('${custPhoneNum}', '${order.resName}', '${order.area}', '${order.id}')">${svgWa} رسالة للزبون</button>`;
-            }
-
+            let waCustHtml = custPhoneNum ? `<button class="btn-action-pill whatsapp" onclick="window.openSmartWhatsapp('${custPhoneNum}', '${order.resName}', '${order.area}', '${order.id}')">${svgWa} رسالة للزبون</button>` : '';
             let badgeHtml = isDouble ? `<div class="order-badge double">طلب مزدوج (${index + 1} من ${activeOrders.length})</div>` : `<div class="order-badge">طلب حصري</div>`;
             let photoBtnHtml = (order.photoUrl && String(order.photoUrl).startsWith("http")) ? `<button class="btn-photo-view" onclick="window.openSafeLink('${order.photoUrl}')">${svgImg} عرض صورة الوصل</button>` : '';
 
@@ -1009,9 +975,7 @@
                     </div>
                     <div class="d-flex flex-column align-items-end gap-2">
                         <div class="order-price">${order.price} <small>د.ع</small></div>
-                        <a href="#" onclick="window.openSafeLink('https://wa.me/9647828942660'); return false;" class="btn-support-mini">
-                            ${svgSupport} الدعم الفني
-                        </a>
+                        <a href="#" onclick="window.openSafeLink('https://wa.me/9647828942660'); return false;" class="btn-support-mini">${svgSupport} الدعم الفني</a>
                     </div>
                 </div>
                 
@@ -1029,7 +993,6 @@
                             </div>
                         </div>
                     </div>
-                    
                     <div class="route-point dropoff">
                         <div class="point-content">
                             <div class="point-title">التسليم إلى (${order.area})</div>
@@ -1057,7 +1020,6 @@
         activeOrders.forEach(order => {
             const timerEl = document.getElementById(`timer-${order.id}`);
             if (!timerEl) return;
-            
             const startTime = order.acceptedTime || Date.now(); 
             const totalAllowedMs = 20 * 60 * 1000; 
             const elapsedMs = Date.now() - startTime;
@@ -1067,7 +1029,6 @@
             const absMs = Math.abs(remainingMs);
             const minutes = Math.floor(absMs / 60000);
             const seconds = Math.floor((absMs % 60000) / 1000);
-            
             const formattedTime = (isNegative ? "-" : "") + String(minutes).padStart(2, '0') + ":" + String(seconds).padStart(2, '0');
             
             timerEl.innerHTML = `${svgTimer} ${formattedTime}`;
@@ -1097,15 +1058,13 @@
 
         if (action === 'arrive') {
             order.state = 'arrived';
-            const updates = {}; updates[`active_orders/${id}/status`] = 'arrived_at_res'; update(ref(db), updates);
-            localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders)); 
-            displayActiveOrders(); 
+            update(ref(db, `active_orders/${id}`), { status: 'arrived_at_res' });
+            localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders)); displayActiveOrders(); 
         } 
         else if (action === 'pickup') {
             order.state = 'picked_up'; order.pickupTime = Date.now();
-            const updates = {}; updates[`active_orders/${id}/status`] = 'picked_up'; update(ref(db), updates);
-            localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders)); 
-            displayActiveOrders(); 
+            update(ref(db, `active_orders/${id}`), { status: 'picked_up' });
+            localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders)); displayActiveOrders(); 
         } 
         else if (action === 'finish') {
             if (Date.now() - order.pickupTime < 120000) { btnElement.innerHTML = origHtml; btnElement.disabled = false; return; }
@@ -1114,19 +1073,12 @@
             if (card) { card.style.transition = '0.3s'; card.style.opacity = '0'; card.style.transform = 'scale(0.95)'; }
             
             setTimeout(() => {
-                // 1. حساب الديون اللحظية
                 let driverDebtIncrease = 0;
                 let resDebtIncrease = parseFloat(order.comm) || 0;
-                
-                if (order.payType && order.payType.includes('مناصفة')) {
-                    driverDebtIncrease = resDebtIncrease / 2;
-                }
+                if (order.payType && order.payType.includes('مناصفة')) { driverDebtIncrease = resDebtIncrease / 2; }
 
-                // 2. تحديث المحافظ اللحظية الذرية (Atomic Update)
                 let updates = {};
-                
-                updates[`active_orders/${id}/status`] = 'completed'; // تغيير الحالة فقط في فايربيس للمطعم
-                
+                updates[`active_orders/${id}/status`] = 'completed'; 
                 updates[`ledgers/drivers/${driverData.phone}/completed_orders`] = increment(1);
                 updates[`ledgers/drivers/${driverData.phone}/debt`] = increment(driverDebtIncrease);
                 
@@ -1136,23 +1088,14 @@
                     updates[`ledgers/restaurants/${safeResPhone}/debt`] = increment(resDebtIncrease);
                 }
 
-                // 3. تحديث سجل اليوم اللحظي للكابتن
                 const todayStr = new Date().toISOString().split('T')[0];
-                updates[`daily_ledgers/${driverData.phone}/${todayStr}/${id}`] = {
-                    orderId: id,
-                    resName: order.resName,
-                    area: order.area,
-                    price: order.price,
-                    timestamp: Date.now()
-                };
+                updates[`daily_ledgers/${driverData.phone}/${todayStr}/${id}`] = { orderId: id, resName: order.resName, area: order.area, price: order.price, timestamp: Date.now() };
 
                 update(ref(db), updates);
 
-                // إزالة الطلب من شاشة الكابتن
                 activeOrders = activeOrders.filter(o => String(o.id) !== String(id));
                 localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
                 displayActiveOrders();
-                
             }, 300);
         }
     };
