@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 8.2 (تحديث: إصلاح جذري لمشكلة عدم وصول الطلبات - Leading Zeros Fix) ---
-        const CURRENT_APP_VERSION = "8.2"; 
+        // --- إصدار 8.3 (إصلاح التعيين اليدوي السيادي، الذاكرة الوهمية، والنافذة المعلقة) ---
+        const CURRENT_APP_VERSION = "8.3"; 
         
         if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة... جاري تطهير الكاش!");
@@ -320,6 +320,7 @@
             <svg class="svg-icon" style="color: var(--primary-blue); width: 40px; height: 40px;" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
         </div>
         <h1 class="fw-black mb-1" id="alertTitleText">طلب جديد!</h1>
+        <p class="fw-bold text-warning mb-0 mt-2" id="alertSovereignText" style="font-size:1.1rem;"></p>
     </div>
     <div class="timer-container">
         <svg class="timer-svg"><circle class="timer-circle" id="timerCircle" cx="80" cy="80" r="75"></circle></svg>
@@ -551,7 +552,7 @@
     function authAction() {
         let rawPhone = document.getElementById('driverPhone').value.trim();
         if (!rawPhone) return alert("يرجى إدخال رقم الهاتف");
-        let phone = rawPhone.startsWith('0') ? rawPhone.substring(1) : rawPhone;
+        let phone = rawPhone.replace(/^0+/, '');
         
         if (isRegistering) {
             const name = document.getElementById('driverName').value.trim();
@@ -600,7 +601,7 @@
     window.checkWaitingStatus = function(isManual = false) {
         let rawPhone = document.getElementById('driverPhone').value.trim() || localStorage.getItem('hut_driver_pending');
         if (!rawPhone) return;
-        let phone = rawPhone.startsWith('0') ? rawPhone.substring(1) : rawPhone;
+        let phone = rawPhone.replace(/^0+/, '');
         if (isManual) { document.getElementById('waitingStatusText').innerText = "جاري التحقق اليدوي..."; }
         
         fetch(`${API_URL}?action=checkDriver&phone=${phone}&token=${API_TOKEN}`)
@@ -723,7 +724,16 @@
         document.getElementById('cancelAlertText').innerText = `الطلب #${orderId}: ${msg}`;
         document.getElementById('cancelAlertOverlay').classList.remove('hidden-section');
         activeOrders = activeOrders.filter(o => String(o.id) !== String(orderId));
-        localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders)); displayActiveOrders();
+        localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders)); 
+        displayActiveOrders();
+        
+        // Fix Stuck Ringing Overlay if the withdrawn order was currently ringing!
+        if (currentOrderData && String(currentOrderData.id) === String(orderId)) {
+            clearInterval(countdownInterval);
+            document.getElementById('orderAlertOverlay').classList.add('hidden-section');
+            window.muteAlarmOnly();
+            currentOrderData = null;
+        }
     }
 
     function startHotDataListeners() {
@@ -767,14 +777,18 @@
         const ordersRef = ref(db, 'active_orders');
         onValue(ordersRef, (snapshot) => {
             const activeFbOrders = snapshot.val() || {};
+            const myId = String(driverData.phone).replace(/^0+/, '').trim();
             
             for (let i = activeOrders.length - 1; i >= 0; i--) {
                 const myOrder = activeOrders[i];
                 const fbOrder = activeFbOrders[myOrder.id];
                 if (!fbOrder) {
                     forceRemoveActiveOrder("تم حذف هذا الطلب أو إنهاءه.", myOrder.id);
-                } else if (String(fbOrder.driverPhone) !== String(driverData.phone)) {
-                    forceRemoveActiveOrder("تم سحب الطلب وتعيينه لكابتن آخر.", myOrder.id);
+                } else {
+                    let fbDriverPhone = String(fbOrder.driverPhone || "").replace(/^0+/, '').trim();
+                    if (fbDriverPhone !== myId) {
+                        forceRemoveActiveOrder("تم سحب الطلب وتعيينه لكابتن آخر.", myOrder.id);
+                    }
                 }
             }
 
@@ -783,8 +797,7 @@
                     if (!fbOrder.restaurant || fbOrder.restaurant.trim() === "" || fbOrder.restaurant === "undefined") return;
 
                     let safeFbPhone = String(fbOrder.driverPhone || "").replace(/^0+/, '').trim();
-                    let safeMyPhone = String(driverData.phone || "").replace(/^0+/, '').trim();
-                    let isTargetedForMe = (safeFbPhone === safeMyPhone) && fbOrder.status === "pending_driver";
+                    let isTargetedForMe = (safeFbPhone === myId) && (fbOrder.status === "pending_driver" || fbOrder.status === "manual_pending");
 
                     if(isTargetedForMe) {
                         if (!activeOrders.find(o => String(o.id) === String(fbOrder.id))) {
@@ -792,11 +805,13 @@
                                 id: fbOrder.id, resName: fbOrder.restaurant, area: fbOrder.area || "غير محدد",
                                 price: fbOrder.price || 0, details: fbOrder.details || "", photoUrl: fbOrder.photoUrl || "",
                                 resLat: fbOrder.resLat, resLng: fbOrder.resLng, resPhone: fbOrder.resPhone,
-                                comm: fbOrder.comm || 0, payType: fbOrder.payType || "المطعم يدفع" // تم التقاط العمولات
+                                comm: fbOrder.comm || 0, payType: fbOrder.payType || "المطعم يدفع",
+                                is_sovereign: fbOrder.is_sovereign || false
                             };
                             currentOrderData.expireTime = Date.now() + 60000; 
                             
                             document.getElementById('alertTitleText').innerText = activeOrders.length > 0 ? "طلب مزدوج!" : "طلب جديد!";
+                            document.getElementById('alertSovereignText').innerText = currentOrderData.is_sovereign ? "⚠️ تعيين إداري مباشر" : "";
                             document.getElementById('alertResName').innerText = fbOrder.restaurant; 
                             document.getElementById('alertArea').innerText = fbOrder.area || "غير محدد";
                             
@@ -820,6 +835,10 @@
     }
 
     window.declineOrder = function() {
+        if (currentOrderData && currentOrderData.is_sovereign) {
+            alert("لا يمكنك تجاهل تعيين إداري مباشر!");
+            return;
+        }
         clearInterval(countdownInterval);
         document.getElementById('orderAlertOverlay').classList.add('hidden-section');
         window.muteAlarmOnly();
