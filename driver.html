@@ -2,11 +2,11 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 9.0 (الوحش الكاسر: إجبار الرنين + تجاوز قيود الكاش + ربط بالسيرفر الجديد) ---
-        const CURRENT_APP_VERSION = "9.0"; 
+        // --- إصدار 9.1 (متوافق مع V34.1: تعامل مع السيادية والموقع المحسّن) ---
+        const CURRENT_APP_VERSION = "9.1"; 
         
         if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
-            console.log("نسخة الوحش الكاسر... جاري التطهير والاستعداد!");
+            console.log("نسخة V34.1... جاري التطهير والاستعداد!");
             localStorage.setItem('hut_app_version', CURRENT_APP_VERSION);
             if ('caches' in window) { caches.keys().then(names => { names.forEach(name => caches.delete(name)); }); }
             if ('serviceWorker' in navigator) { navigator.serviceWorker.getRegistrations().then(regs => { regs.forEach(r => r.unregister()); }); }
@@ -15,7 +15,7 @@
     </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>كباتن سفيان | نظام الحوت</title>
+    <title>كباتن سفيان | نظام الحوت V34.1</title>
     
     <meta name="theme-color" content="#1e3a8a">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -196,7 +196,7 @@
         </div>
         <h2 class="fw-black m-0" style="color: var(--primary-blue);">مكتب سفيان للشركاء</h2>
         <p class="text-muted fw-bold mb-0">المنصة الرسمية للكباتن</p>
-        <p class="text-muted fw-bold" style="font-size: 0.85rem;">بالتعاون مع نظام الحوت</p>
+        <p class="text-muted fw-bold" style="font-size: 0.85rem;">بالتعاون مع نظام الحوت V34.1</p>
     </div>
 
     <div class="login-card" id="authBox">
@@ -353,8 +353,8 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getDatabase, ref, onValue, update, get, increment } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-    // 🚀 الرابط الجديد للسيرفر V34.1 (متزامن الآن!)
-    const API_URL = "https://script.google.com/macros/s/AKfycbw7tjYN_FuYBuA7w82r_NMiGs69cWsGTfmWpjyx5IzherF0k7CVX1X4fRJUYwShEUw3/exec";
+    // 🚀 الرابط الجديد للسيرفر V34.1
+    const API_URL = "https://script.google.com/macros/s/AKfycbzKDBjgPxmt_iDCphkjB6EY-cnag_aqwxrdNDrY9uqBRbTZYsqGWl4TJn4pANS8OVYm/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
     const firebaseConfig = {
@@ -807,6 +807,7 @@
                     if (!fbOrder.restaurant || fbOrder.restaurant.trim() === "" || fbOrder.restaurant === "undefined") return;
 
                     let safeFbPhone = String(fbOrder.driverPhone || "").replace(/^0+/, '').trim();
+                    // دعم حالتي pending_driver و manual_pending
                     let isTargetedForMe = (safeFbPhone === myId) && (fbOrder.status === "pending_driver" || fbOrder.status === "manual_pending");
 
                     let notAlreadyAccepted = !activeOrders.find(o => String(o.id) === String(fbOrder.id));
@@ -826,7 +827,7 @@
                         currentOrderData.expireTime = Date.now() + Math.max(10000, 60000 - orderAge); 
                         
                         document.getElementById('alertTitleText').innerText = activeOrders.length > 0 ? "طلب إضافي!" : "طلب جديد!";
-                        document.getElementById('alertSovereignText').innerText = currentOrderData.is_sovereign ? "⚠️ تعيين إداري مباشر" : "";
+                        document.getElementById('alertSovereignText').innerText = currentOrderData.is_sovereign ? "⚠️ تعيين إداري مباشر (لا يمكن تجاهله)" : "";
                         document.getElementById('alertResName').innerText = fbOrder.restaurant; 
                         document.getElementById('alertArea').innerText = fbOrder.area || "غير محدد";
                         
@@ -853,8 +854,9 @@
     }
 
     window.declineOrder = function() {
+        // منع تجاهل الطلب السيادي
         if (currentOrderData && currentOrderData.is_sovereign) {
-            alert("لا يمكنك تجاهل تعيين إداري مباشر!");
+            alert("⚠️ هذا الطلب تعيين إداري مباشر ولا يمكن تجاهله. يجب عليك قبوله أو الاتصال بالدعم.");
             return;
         }
         clearInterval(countdownInterval);
@@ -868,7 +870,8 @@
             updates[`active_orders/${currentOrderData.id}/driverPhone`] = "system_routing";
             updates[`active_orders/${currentOrderData.id}/last_update`] = now;
             updates[`active_orders/${currentOrderData.id}/last_offered_to`] = driverData.phone;
-            updates[`active_orders/${currentOrderData.id}/last_offered_time`] = now; 
+            updates[`active_orders/${currentOrderData.id}/last_offered_time`] = now;
+            updates[`active_orders/${currentOrderData.id}/is_sovereign`] = false; 
             update(ref(db), updates);
             currentOrderData = null;
         }
@@ -883,7 +886,9 @@
         window.muteAlarmOnly();
         
         const id = currentOrderData.id;
-        update(ref(db, `active_orders/${id}`), { status: 'accepted', driverPhone: driverData.phone });
+        // تحديث الحالة إلى accepted مع الحفاظ على is_sovereign إذا كان موجوداً
+        const updates = { status: 'accepted', driverPhone: driverData.phone };
+        update(ref(db, `active_orders/${id}`), updates);
         
         setTimeout(async () => {
             try {
@@ -912,7 +917,8 @@
             details: String(currentOrderData.details), price: parseFloat(currentOrderData.price) || 0, area: currentOrderData.area, 
             state: 'heading', photoUrl: currentOrderData.photoUrl, resPhone: currentOrderData.resPhone, 
             resLat: currentOrderData.resLat, resLng: currentOrderData.resLng, comm: currentOrderData.comm || 0,
-            payType: currentOrderData.payType || "المطعم يدفع", acceptedTime: Date.now() 
+            payType: currentOrderData.payType || "المطعم يدفع", acceptedTime: Date.now(),
+            is_sovereign: currentOrderData.is_sovereign || false
         };
         
         activeOrders.push(newO);
