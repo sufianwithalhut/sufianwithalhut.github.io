@@ -2,7 +2,7 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 9.0 (الوحش الكاسر: ولاء مطلق للسيرفر + نبضات عنيفة + تجاوز النوم كلياً) ---
+        // --- إصدار 9.0 (الوحش الكاسر: إجبار الرنين + تجاوز قيود الكاش + ربط بالسيرفر الجديد) ---
         const CURRENT_APP_VERSION = "9.0"; 
         
         if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
@@ -183,6 +183,12 @@
     <button class="btn btn-light btn-lg rounded-pill px-5 fw-bold text-danger" onclick="closeCancelAlert()">حسناً، فهمت</button>
 </div>
 
+<audio id="keepAliveAudio" loop src="data:audio/wav;base64,UklGRjIAAABXQVZFZm10IBIAAAABAAEAQB8AAEAfAAABAAgAAABkYXRhDAAAAAA="></audio>
+<audio id="alertSound" loop src="https://actions.google.com/sounds/v1/alarms/submarine_dive_horn.ogg"></audio>
+<audio id="doubleOrderSound" loop src="https://actions.google.com/sounds/v1/alarms/bugle_tune.ogg"></audio>
+<audio id="cancelSound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg"></audio>
+<audio id="welcomeSound" src="https://actions.google.com/sounds/v1/water/water_drop.ogg"></audio> 
+
 <div id="loginSection" class="login-wrapper">
     <div class="text-center mb-5 w-100">
         <div class="d-inline-block p-4 bg-white rounded-circle shadow-sm mb-4">
@@ -347,7 +353,8 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getDatabase, ref, onValue, update, get, increment } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-    const API_URL = "https://script.google.com/macros/s/AKfycbzpFlhfS3u1WMraQNaVmFP3Bv0VboX0jNCdyZnAE4ej_NQtQYWzYHRNxxsiJ7SikVx1/exec";
+    // 🚀 الرابط الجديد للسيرفر V34.1 (متزامن الآن!)
+    const API_URL = "https://script.google.com/macros/s/AKfycbw7tjYN_FuYBuA7w82r_NMiGs69cWsGTfmWpjyx5IzherF0k7CVX1X4fRJUYwShEUw3/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
     const firebaseConfig = {
@@ -367,7 +374,7 @@
     let offlineActionQueue = JSON.parse(localStorage.getItem('hut_offline_queue') || '[]');
     let isProcessingQueue = false;
 
-    // 🟢 Web Audio API (Pinger) - خدعة النبضة الميكروية لمنع نوم المتصفح كلياً
+    // 🟢 Web Audio API (Pinger) - النبضة الميكروية لمنع نوم المتصفح كلياً
     let audioCtx = null;
     function unlockAudio() {
         const audios = ['alertSound', 'doubleOrderSound', 'cancelSound', 'welcomeSound'];
@@ -384,12 +391,12 @@
                     const gain = audioCtx.createGain();
                     osc.connect(gain);
                     gain.connect(audioCtx.destination);
-                    osc.frequency.value = 20000; // Frequency above human hearing
+                    osc.frequency.value = 20000; 
                     gain.gain.value = 0.01;
                     osc.start();
                     osc.stop(audioCtx.currentTime + 0.01);
                 }
-            }, 5000); // 5 seconds micro-ping
+            }, 5000);
         }
 
         document.removeEventListener('touchstart', unlockAudio);
@@ -654,7 +661,6 @@
             badge.className = "status-badge online"; badge.innerHTML = `متاح للطلبات`;
             document.getElementById('searchingStatus').classList.remove('offline-mode');
             
-            // 🚀 حقنة مزامنة الموقع السريعة
             if(navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(pos => {
                     lastSentLat = pos.coords.latitude; lastSentLng = pos.coords.longitude;
@@ -677,7 +683,6 @@
 
     function sendHeartbeat() {
         if (!isOnline || !driverData) return;
-        // 🚀 إرسال النبضة عنوة كل 20 ثانية للحفاظ على الحرارة
         if (!lastSentLat && navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(pos => {
                 lastSentLat = pos.coords.latitude; lastSentLng = pos.coords.longitude;
@@ -699,7 +704,7 @@
     function startSystem() {
         if (isOnline) { 
             requestWakeLock(); 
-            heartbeatInterval = setInterval(sendHeartbeat, 20000); // 20-second aggressive ping
+            heartbeatInterval = setInterval(sendHeartbeat, 20000); 
         }
         startHotDataListeners(); 
         
@@ -779,7 +784,6 @@
             document.getElementById('ledgerList').innerHTML = ledgerHtmlString || '<div class="text-center text-muted fw-bold py-4">لا توجد رحلات مكتملة اليوم.</div>';
         });
 
-        // 🛡️ المراقبة المركزية والقرار المطلق للسيرفر
         const ordersRef = ref(db, 'active_orders');
         onValue(ordersRef, (snapshot) => {
             const activeFbOrders = snapshot.val() || {};
@@ -808,7 +812,6 @@
                     let notAlreadyAccepted = !activeOrders.find(o => String(o.id) === String(fbOrder.id));
                     let notCurrentlyRinging = !(currentOrderData && String(currentOrderData.id) === String(fbOrder.id));
 
-                    // 🚀 وحش كاسر: تجاهل أي قواعد محلية للذاكرة! إذا استهدفك السيرفر، اقبل!
                     if(isTargetedForMe && notAlreadyAccepted && notCurrentlyRinging) {
                         
                         currentOrderData = {
@@ -831,7 +834,7 @@
                         if (window.AndroidRadar) { window.AndroidRadar.triggerOrderAlarm(); } 
                         else { 
                             let audio = document.getElementById(activeOrders.length > 0 ? 'doubleOrderSound' : 'alertSound'); 
-                            audio.currentTime = 0; audio.play().catch(e => { console.log(e); }); 
+                            audio.currentTime = 0; audio.play().catch(e => { }); 
                         }
                         
                         startCountdown();
@@ -865,7 +868,7 @@
             updates[`active_orders/${currentOrderData.id}/driverPhone`] = "system_routing";
             updates[`active_orders/${currentOrderData.id}/last_update`] = now;
             updates[`active_orders/${currentOrderData.id}/last_offered_to`] = driverData.phone;
-            updates[`active_orders/${currentOrderData.id}/last_offered_time`] = now;
+            updates[`active_orders/${currentOrderData.id}/last_offered_time`] = now; 
             update(ref(db), updates);
             currentOrderData = null;
         }
@@ -879,7 +882,6 @@
         clearInterval(countdownInterval);
         window.muteAlarmOnly();
         
-        // 🚀 تحديث فايربيس في اللحظة صفر
         const id = currentOrderData.id;
         update(ref(db, `active_orders/${id}`), { status: 'accepted', driverPhone: driverData.phone });
         
@@ -964,7 +966,7 @@
             let custMatch = safeDetails.match(/(07[0-9]{8,9})/);
             let custPhoneNum = custMatch ? String(custMatch[0]) : null;
             let waCustHtml = custPhoneNum ? `<button class="btn-action-pill whatsapp" onclick="window.openSmartWhatsapp('${custPhoneNum}', '${order.resName}', '${order.area}', '${order.id}')">${svgWa} رسالة للزبون</button>` : '';
-            let badgeHtml = isDouble ? `<div class="order-badge double">طلب مزدوج (${index + 1} من ${activeOrders.length})</div>` : `<div class="order-badge">طلب حصري</div>`;
+            let badgeHtml = isDouble ? `<div class="order-badge double">طلب مزدوج (${index + 1} de ${activeOrders.length})</div>` : `<div class="order-badge">طلب حصري</div>`;
             let photoBtnHtml = (order.photoUrl && String(order.photoUrl).startsWith("http")) ? `<button class="btn-photo-view" onclick="window.openSafeLink('${order.photoUrl}')">${svgImg} عرض صورة الوصل</button>` : '';
 
             html += `
