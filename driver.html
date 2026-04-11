@@ -2,11 +2,11 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 8.5 (النسخة الحاسمة: ولاء مطلق للسيرفر + إزالة جدار الرفض المخفي) ---
-        const CURRENT_APP_VERSION = "8.5"; 
+        // --- إصدار 9.0 (الوحش الكاسر: ولاء مطلق للسيرفر + نبضات عنيفة + تجاوز النوم كلياً) ---
+        const CURRENT_APP_VERSION = "9.0"; 
         
         if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
-            console.log("نسخة جديدة... جاري تطهير الكاش!");
+            console.log("نسخة الوحش الكاسر... جاري التطهير والاستعداد!");
             localStorage.setItem('hut_app_version', CURRENT_APP_VERSION);
             if ('caches' in window) { caches.keys().then(names => { names.forEach(name => caches.delete(name)); }); }
             if ('serviceWorker' in navigator) { navigator.serviceWorker.getRegistrations().then(regs => { regs.forEach(r => r.unregister()); }); }
@@ -183,12 +183,6 @@
     <button class="btn btn-light btn-lg rounded-pill px-5 fw-bold text-danger" onclick="closeCancelAlert()">حسناً، فهمت</button>
 </div>
 
-<audio id="keepAliveAudio" loop src="data:audio/wav;base64,UklGRjIAAABXQVZFZm10IBIAAAABAAEAQB8AAEAfAAABAAgAAABkYXRhDAAAAAA="></audio>
-<audio id="alertSound" loop src="https://actions.google.com/sounds/v1/alarms/submarine_dive_horn.ogg"></audio>
-<audio id="doubleOrderSound" loop src="https://actions.google.com/sounds/v1/alarms/bugle_tune.ogg"></audio>
-<audio id="cancelSound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg"></audio>
-<audio id="welcomeSound" src="https://actions.google.com/sounds/v1/water/water_drop.ogg"></audio> 
-
 <div id="loginSection" class="login-wrapper">
     <div class="text-center mb-5 w-100">
         <div class="d-inline-block p-4 bg-white rounded-circle shadow-sm mb-4">
@@ -353,7 +347,6 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getDatabase, ref, onValue, update, get, increment } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-    // 🟢 السيرفر الماسي V5.0
     const API_URL = "https://script.google.com/macros/s/AKfycbzpFlhfS3u1WMraQNaVmFP3Bv0VboX0jNCdyZnAE4ej_NQtQYWzYHRNxxsiJ7SikVx1/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
@@ -374,7 +367,8 @@
     let offlineActionQueue = JSON.parse(localStorage.getItem('hut_offline_queue') || '[]');
     let isProcessingQueue = false;
 
-    // 🟢 فك قفل الصوت وتأمين الخلفية
+    // 🟢 Web Audio API (Pinger) - خدعة النبضة الميكروية لمنع نوم المتصفح كلياً
+    let audioCtx = null;
     function unlockAudio() {
         const audios = ['alertSound', 'doubleOrderSound', 'cancelSound', 'welcomeSound'];
         audios.forEach(id => {
@@ -382,9 +376,21 @@
             if(a) { a.play().then(() => { a.pause(); a.currentTime = 0; }).catch(()=>{}); }
         });
         
-        // تشغيل الصوت الصامت بدون إيقافه لضمان بقاء التطبيق حياً
-        const keepAlive = document.getElementById('keepAliveAudio');
-        if(keepAlive && isOnline) { keepAlive.play().catch(()=>{}); }
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            setInterval(() => {
+                if(isOnline && audioCtx) {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.frequency.value = 20000; // Frequency above human hearing
+                    gain.gain.value = 0.01;
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.01);
+                }
+            }, 5000); // 5 seconds micro-ping
+        }
 
         document.removeEventListener('touchstart', unlockAudio);
         document.removeEventListener('click', unlockAudio);
@@ -505,10 +511,15 @@
     function releaseWakeLock() { if (wakeLock !== null) { wakeLock.release().then(() => { wakeLock = null; }); } }
 
     window.initAudioAndAuth = function() {
-        ['keepAliveAudio', 'alertSound', 'doubleOrderSound', 'cancelSound', 'welcomeSound'].forEach(id => {
+        ['alertSound', 'doubleOrderSound', 'cancelSound', 'welcomeSound'].forEach(id => {
             let audio = document.getElementById(id);
             if (audio) { audio.volume = 0; let p = audio.play(); if (p !== undefined) { p.then(() => { audio.pause(); audio.currentTime = 0; audio.volume = 1; }).catch(e => { }); } }
         });
+        
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
         if ("Notification" in window && Notification.permission !== "granted") { Notification.requestPermission(); }
         if (navigator.geolocation) { navigator.geolocation.getCurrentPosition(function(pos) {}, function(err) {}, { enableHighAccuracy: true, maximumAge: 0 }); }
         authAction();
@@ -639,7 +650,6 @@
     window.toggleOnlineStatus = function() {
         isOnline = document.getElementById('onlineToggle').checked;
         const badge = document.getElementById('onlineStatusBadge');
-        let silentAudio = document.getElementById('keepAliveAudio');
         if (isOnline) {
             badge.className = "status-badge online"; badge.innerHTML = `متاح للطلبات`;
             document.getElementById('searchingStatus').classList.remove('offline-mode');
@@ -652,24 +662,30 @@
                 }, err => { updateFirebaseLocationStatus('active'); }, { enableHighAccuracy: true, timeout: 5000 });
             } else { updateFirebaseLocationStatus('active'); }
 
-            requestWakeLock(); if (silentAudio) silentAudio.play().catch(e=>{}); 
-            if(!heartbeatInterval) heartbeatInterval = setInterval(sendHeartbeat, 30000); 
+            requestWakeLock(); 
+            if(!heartbeatInterval) heartbeatInterval = setInterval(sendHeartbeat, 20000); 
             displayActiveOrders();
         } else {
             badge.className = "status-badge offline"; badge.innerHTML = `في استراحة`;
             document.getElementById('searchingStatus').classList.add('offline-mode');
             updateFirebaseLocationStatus('inactive');
-            releaseWakeLock(); if (silentAudio) silentAudio.pause(); 
+            releaseWakeLock(); 
             if(heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
             displayActiveOrders();
         }
     }
 
     function sendHeartbeat() {
-        if (!isOnline || !driverData || !lastSentLat) return;
-        const updates = {};
-        updates[`drivers_locations/${driverData.phone}`] = { lat: lastSentLat, lng: lastSentLng, status: "active", last_update: new Date().toISOString() };
-        update(ref(db), updates);
+        if (!isOnline || !driverData) return;
+        // 🚀 إرسال النبضة عنوة كل 20 ثانية للحفاظ على الحرارة
+        if (!lastSentLat && navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(pos => {
+                lastSentLat = pos.coords.latitude; lastSentLng = pos.coords.longitude;
+                updateFirebaseLocationStatus('active');
+            });
+        } else {
+            updateFirebaseLocationStatus('active');
+        }
     }
 
     function updateFirebaseLocationStatus(statusStr) {
@@ -683,8 +699,7 @@
     function startSystem() {
         if (isOnline) { 
             requestWakeLock(); 
-            let silentAudio = document.getElementById('keepAliveAudio'); if (silentAudio) silentAudio.play().catch(e=>{}); 
-            heartbeatInterval = setInterval(sendHeartbeat, 30000); 
+            heartbeatInterval = setInterval(sendHeartbeat, 20000); // 20-second aggressive ping
         }
         startHotDataListeners(); 
         
@@ -699,20 +714,8 @@
                 pos => {
                     document.getElementById('permissionOverlay').classList.add('hidden-section');
                     driverData.currentLat = pos.coords.latitude; driverData.currentLng = pos.coords.longitude;
-                    const now = Date.now();
-                    let isHeadingToCustomer = activeOrders.some(o => o.state === 'picked_up');
-                    
-                    if (!isHeadingToCustomer) { 
-                        const dist = calculateDistanceMeters(lastSentLat, lastSentLng, pos.coords.latitude, pos.coords.longitude);
-                        const timeElapsed = now - lastLocUpdateTs;
-                        
-                        if (dist >= 30 || timeElapsed > 180000) {
-                            if (timeElapsed > 10000) {  
-                                lastLocUpdateTs = now; lastSentLat = pos.coords.latitude; lastSentLng = pos.coords.longitude;
-                                updateFirebaseLocationStatus(isOnline ? 'active' : 'inactive');
-                            }
-                        }
-                    }
+                    lastSentLat = pos.coords.latitude; lastSentLng = pos.coords.longitude;
+                    updateFirebaseLocationStatus(isOnline ? 'active' : 'inactive');
                 }, 
                 err => { document.getElementById('permissionOverlay').classList.remove('hidden-section'); }, 
                 { enableHighAccuracy: true, maximumAge: 5000 }
@@ -782,7 +785,6 @@
             const activeFbOrders = snapshot.val() || {};
             const myId = String(driverData.phone).replace(/^0+/, '').trim();
             
-            // 1. مسح الطلبات التي سحبها السيرفر أو الإدارة
             for (let i = activeOrders.length - 1; i >= 0; i--) {
                 const myOrder = activeOrders[i];
                 const fbOrder = activeFbOrders[myOrder.id];
@@ -796,7 +798,6 @@
                 }
             }
 
-            // 2. استقبال الطلبات الجديدة (إلغاء جدار الرفض المخفي)
             if (isOnline) {
                 Object.values(activeFbOrders).forEach(fbOrder => {
                     if (!fbOrder.restaurant || fbOrder.restaurant.trim() === "" || fbOrder.restaurant === "undefined") return;
@@ -804,10 +805,10 @@
                     let safeFbPhone = String(fbOrder.driverPhone || "").replace(/^0+/, '').trim();
                     let isTargetedForMe = (safeFbPhone === myId) && (fbOrder.status === "pending_driver" || fbOrder.status === "manual_pending");
 
-                    // التأكد من أن الطلب ليس موجوداً لدي مسبقاً، ولا يرن حالياً
                     let notAlreadyAccepted = !activeOrders.find(o => String(o.id) === String(fbOrder.id));
                     let notCurrentlyRinging = !(currentOrderData && String(currentOrderData.id) === String(fbOrder.id));
 
+                    // 🚀 وحش كاسر: تجاهل أي قواعد محلية للذاكرة! إذا استهدفك السيرفر، اقبل!
                     if(isTargetedForMe && notAlreadyAccepted && notCurrentlyRinging) {
                         
                         currentOrderData = {
@@ -821,7 +822,7 @@
                         const orderAge = fbOrder.last_update ? (Date.now() - new Date(fbOrder.last_update).getTime()) : 0;
                         currentOrderData.expireTime = Date.now() + Math.max(10000, 60000 - orderAge); 
                         
-                        document.getElementById('alertTitleText').innerText = activeOrders.length > 0 ? "طلب مزدوج!" : "طلب جديد!";
+                        document.getElementById('alertTitleText').innerText = activeOrders.length > 0 ? "طلب إضافي!" : "طلب جديد!";
                         document.getElementById('alertSovereignText').innerText = currentOrderData.is_sovereign ? "⚠️ تعيين إداري مباشر" : "";
                         document.getElementById('alertResName').innerText = fbOrder.restaurant; 
                         document.getElementById('alertArea').innerText = fbOrder.area || "غير محدد";
