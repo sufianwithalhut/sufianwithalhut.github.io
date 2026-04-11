@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <script>
-        // --- الإصدار 5.6 (اللوحة السيادية - معالجة جذرية للتنقل السلس و CORS) ---
-        const CURRENT_APP_VERSION = "5.6";
+        // --- الإصدار 5.7 (اللوحة السيادية - الرابط الجديد + فصل الطلبات المزدوجة جذرياً) ---
+        const CURRENT_APP_VERSION = "5.7";
         const VERSION_KEY = 'hut_master_app_version';
         try {
             if (localStorage.getItem(VERSION_KEY) !== CURRENT_APP_VERSION) {
@@ -198,10 +198,9 @@
         .auth-btn:hover  { transform: translateY(-1px); box-shadow: 0 12px 32px rgba(59,158,221,0.35); }
         .auth-btn:active { transform: scale(0.97); box-shadow: var(--s-xs); }
 
-        /* 🟢 FIX: Main Dashboard Layout for smooth switching without breaking map */
+        /* 🟢 Main Dashboard Layout */
         #mainDashboard { display: flex; height: 100%; width: 100%; overflow: hidden; padding-top: 35px; position: relative; }
 
-        /* Desktop default: tabs toggled with display */
         .admin-tab { display: none; }
         .admin-tab.active-tab { display: block; }
 
@@ -254,7 +253,6 @@
 
             .admin-tab::-webkit-scrollbar { display: none; }
 
-            /* Mobile: smooth opacity transitions with absolute overlay */
             .admin-tab {
                 position: absolute;
                 top: 35px; bottom: var(--nav-h);
@@ -530,7 +528,6 @@
         .oc-active::after   { background: var(--success); }
         .oc-heading::after  { background: var(--primary); }
         .oc-arrived::after  { background: var(--accent); }
-        .oc-batch::after    { background: var(--purple); }
 
         .oc-pending { animation: urgentPulse 2.2s ease-in-out infinite; }
         @keyframes urgentPulse {
@@ -549,7 +546,7 @@
             padding-bottom: 12px; margin-bottom: 12px;
             border-bottom: 1px solid var(--border);
         }
-        .oc-id { font-size: 1rem; font-weight: 900; color: var(--text-1); }
+        .oc-id { font-size: 1rem; font-weight: 900; color: var(--text-1); display: flex; align-items: center; }
         .oc-time { font-size: 0.7rem; font-weight: 700; color: var(--text-3); margin-top: 3px; }
 
         .oc-actions { display: flex; align-items: center; gap: 6px; }
@@ -640,13 +637,6 @@
         .sbadge-success { background: #e6faf3; color: var(--success); border: 1px solid #a7f3d0; }
         .sbadge-blue    { background: var(--primary-light); color: var(--primary-dark); border: 1px solid rgba(59,158,221,0.2); }
         .sbadge-orange  { background: var(--accent-light); color: var(--accent-dark); border: 1px solid #fed7aa; }
-
-        .batch-card { background: #f8f6ff; border-color: #e0d9f7; }
-        .batch-order-inner {
-            background: var(--surface);
-            border-radius: var(--r-sm);
-            padding: 10px 12px; margin-top: 8px;
-        }
 
         .entity-card {
             background: var(--surface);
@@ -1464,7 +1454,7 @@ const TAB_TRANSITION_MS = 350;
 /* ═══════════════════════════════════════════
    🔗 CONFIG
 ═══════════════════════════════════════════ */
-const API_URL   = "https://script.google.com/macros/s/AKfycbxt4vA6cbF7sCRg196WYQoc26mR2yc9JelqotDzVdLDEEPjFtXDDXVbT7l_FwbZTANA/exec";
+const API_URL   = "https://script.google.com/macros/s/AKfycbzpFlhfS3u1WMraQNaVmFP3Bv0VboX0jNCdyZnAE4ej_NQtQYWzYHRNxxsiJ7SikVx1/exec";
 const API_TOKEN = "HUT_SECURE_99";
 
 let map, heatLayer, driverClusterGroup, trackPolyline = null;
@@ -1869,16 +1859,6 @@ function smartRenderRadar(activeList) {
         grid = document.getElementById('radarGrid');
     }
 
-    /* Group by driver */
-    const grouped = {}, pending = [];
-    filtered.forEach(o => {
-        const dp = o[6];
-        if (dp && dp !== "pending_driver" && dp !== "manual_pending" && dp !== "system_routing") {
-            if (!grouped[dp]) grouped[dp] = [];
-            grouped[dp].push(o);
-        } else { pending.push(o); }
-    });
-
     function buildDriverControls(orderId, driverPhone, hasDriver, sInfo) {
         let ctrl = '';
         let opts = activeDriversOptionsCache;
@@ -1895,7 +1875,6 @@ function smartRenderRadar(activeList) {
     }
 
     const getStatusInfo = (status, hasDriver, timeStr) => {
-        // mins removed — was declared but never used
         if (!hasDriver || status === 'pending_driver' || status === 'manual_pending') {
             if (hasDriver) {
                 return { cls: 'oc-ringing', sbCls: 'sbadge-warn', desc: '⏳ جاري الرنين', ringing: true };
@@ -1909,57 +1888,18 @@ function smartRenderRadar(activeList) {
         return { cls: 'oc-heading', sbCls: 'sbadge-blue', desc: status, ringing: false };
     };
 
-    const currentIds = new Set();
-
-    /* Batch orders */
-    Object.keys(grouped).forEach(dp => {
-        const orders = grouped[dp];
-        if (orders.length <= 1) return;
-        const batchId = `batch-${dp}`;
-        currentIds.add(batchId);
-        const driverName = globalData?.drivers.find(d => String(d[2]) === String(dp))?.[1] || 'كابتن';
-
-        let existing = document.getElementById(batchId);
-        if (!existing) {
-            let innerHtml = '';
-            orders.forEach((o, i) => {
-                const sInfo = getStatusInfo(o[5], true, o[7]);
-                innerHtml += `
-                <div class="batch-order-inner">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                        <span style="font-weight:900; font-size:0.85rem; color:var(--purple);">#${o[0]}</span>
-                        <span class="sbadge ${sInfo.sbCls}">${sInfo.desc}</span>
-                    </div>
-                    <div style="display:flex; justify-content:space-between; font-size:0.76rem; font-weight:700; color:var(--text-2);">
-                        <span>🍽 ${o[1]}</span><span style="color:var(--success); font-weight:900;">${o[4]} د.ع</span>
-                    </div>
-                    <div style="display:flex; justify-content:flex-end; gap:6px; margin-top:8px;">
-                        <button class="oc-btn oc-btn-complete" onclick="adminActionOptUI('COMPLETE','ORDER','${o[0]}',this)"><i data-lucide="check-circle" width="16" height="16"></i></button>
-                        <button class="oc-btn oc-btn-delete" onclick="adminActionOptUI('DELETE','ORDER','${o[0]}',this)"><i data-lucide="trash-2" width="16" height="16"></i></button>
-                    </div>
-                </div>`;
-            });
-            const html = `
-            <div id="${batchId}" class="order-card oc-batch batch-card">
-                <div class="oc-header">
-                    <div>
-                        <div class="oc-id" style="color:var(--purple);">🔗 مزدوج</div>
-                        <div class="oc-time">${driverName}</div>
-                    </div>
-                    <button class="oc-btn-track" onclick="trackDriver('${dp}','${orders[0][1]}')"><i data-lucide="map-pin" width="13" height="13"></i> مسار</button>
-                </div>
-                ${innerHtml}
-            </div>`;
-            grid.insertAdjacentHTML('beforeend', html);
-            safeIcon(batchId);
+    // حساب عدد الطلبات لكل كابتن لمعرفة الطلبات المزدوجة
+    const driverOrderCount = {};
+    filtered.forEach(o => {
+        const dp = o[6];
+        if (dp && dp !== "pending_driver" && dp !== "manual_pending" && dp !== "system_routing") {
+            driverOrderCount[dp] = (driverOrderCount[dp] || 0) + 1;
         }
     });
 
-    /* Single orders */
-    const allSingle = [...pending];
-    Object.keys(grouped).forEach(dp => { if (grouped[dp].length === 1) allSingle.push(grouped[dp][0]); });
+    const currentIds = new Set();
 
-    allSingle.forEach(o => {
+    filtered.forEach(o => {
         const [orderId, restName, orderArea, , orderPrice, status, driverPhone, orderTimeStr] = o;
         const hasDriver = (driverPhone && driverPhone !== "pending_driver" && driverPhone !== "manual_pending" && driverPhone !== "system_routing");
         const driverName = hasDriver
@@ -1968,9 +1908,11 @@ function smartRenderRadar(activeList) {
         const sInfo = getStatusInfo(status, hasDriver, orderTimeStr);
         const diffMins = Math.floor((new Date() - new Date(orderTimeStr)) / 60000);
         const timeF = new Date(orderTimeStr).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+        const isDouble = hasDriver && driverOrderCount[driverPhone] > 1;
 
         currentIds.add(orderId);
-        const hash = `${status}-${driverPhone}-${diffMins}`;
+        // hash includes isDouble so it updates if the driver picks up another order
+        const hash = `${status}-${driverPhone}-${diffMins}-${isDouble}`;
         let existing = document.getElementById(`oc-${orderId}`);
 
         let rejectHtml = '';
@@ -1979,18 +1921,24 @@ function smartRenderRadar(activeList) {
             rejectHtml = `<br><div class="reject-tag"><i data-lucide="user-x" width="10" height="10"></i> رفضه: ${rName}</div>`;
         }
 
+        let doubleBadge = isDouble ? `<span class="sbadge" style="background:var(--purple); color:#fff; margin-right:5px; font-size:0.65rem;">مزدوج</span>` : '';
+
         if (existing) {
             if (renderedOrdersCache[orderId] !== hash) {
                 existing.className = `order-card ${sInfo.cls} flash-update`;
                 const sbEl = existing.querySelector('.status-badge-ui');
                 if (sbEl) { sbEl.className = `sbadge status-badge-ui ${sInfo.sbCls}`; sbEl.textContent = sInfo.desc; }
-                const dnEl = existing.querySelector('.driver-name-ui');
-                if (dnEl) { dnEl.querySelector('span').textContent = driverName; }
+                const dnEl = existing.querySelector('.driver-name-ui span');
+                if (dnEl) { dnEl.textContent = driverName; }
                 const ctrlEl = existing.querySelector('.driver-controls-ui');
                 if (ctrlEl) {
                     const ctrl = buildDriverControls(orderId, driverPhone, hasDriver, sInfo);
                     ctrlEl.innerHTML = ctrl;
                     safeIcon('oc-' + orderId);
+                }
+                const titleEl = existing.querySelector('.oc-id');
+                if (titleEl) {
+                    titleEl.innerHTML = `#${orderId} ${doubleBadge}`;
                 }
                 const delayEl = existing.querySelector('.delay-pill');
                 if (diffMins > 3 && !hasDriver) {
@@ -2014,7 +1962,7 @@ function smartRenderRadar(activeList) {
             ${diffMins > 3 && !hasDriver ? `<div class="delay-pill">${diffMins} دق تأخير</div>` : ''}
             <div class="oc-header" style="${diffMins > 3 && !hasDriver ? 'margin-top:28px;' : ''}">
                 <div>
-                    <div class="oc-id">#${orderId}</div>
+                    <div class="oc-id" style="display:flex; align-items:center;">#${orderId} ${doubleBadge}</div>
                     <div class="oc-time">⏰ ${timeF}</div>
                 </div>
                 <div class="oc-actions">
@@ -2049,8 +1997,8 @@ function smartRenderRadar(activeList) {
 
     /* Remove stale */
     Object.keys(renderedOrdersCache).forEach(id => {
-        if (!currentIds.has(id) && !currentIds.has(`batch-${id}`)) {
-            const el = document.getElementById(`oc-${id}`) || document.getElementById(`batch-${id}`);
+        if (!currentIds.has(id)) {
+            const el = document.getElementById(`oc-${id}`);
             if (el) { el.style.transition = '.25s'; el.style.opacity = '0'; el.style.transform = 'scale(0.95)'; setTimeout(() => el.remove(), 260); }
             delete renderedOrdersCache[id];
         }
