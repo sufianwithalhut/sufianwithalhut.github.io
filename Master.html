@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <script>
-        // --- الإصدار 5.7 (اللوحة السيادية - الرابط الجديد + فصل الطلبات المزدوجة جذرياً) ---
-        const CURRENT_APP_VERSION = "5.7";
+        // --- الإصدار 5.8 (تحديث الإحصائيات الحارة: طلبات فعلية، كباتن حقيقيون، مطاعم نشطة فقط) ---
+        const CURRENT_APP_VERSION = "5.8";
         const VERSION_KEY = 'hut_master_app_version';
         try {
             if (localStorage.getItem(VERSION_KEY) !== CURRENT_APP_VERSION) {
@@ -1627,11 +1627,6 @@ window.renderData = function(data) {
         });
     }
 
-    const countDrivers = data.drivers.filter(d => d[4] === 'active').length;
-    const countRes     = data.restaurants.filter(r => r[4] === 'active').length;
-    document.querySelectorAll('.val-drivers').forEach(el => el.textContent = countDrivers);
-    document.querySelectorAll('.val-res').forEach(el => el.textContent = countRes);
-
     try { renderArchive(); } catch(e) { console.error("Archive:", e); }
     try { updateSectionBadges('RESTAURANT', data.restaurants); } catch(e) {}
     try { updateSectionBadges('DRIVER', data.drivers); } catch(e) {}
@@ -1658,7 +1653,7 @@ function listenToFirebaseLedgers() {
         if(liveLedgers.restaurants) { Object.values(liveLedgers.restaurants).forEach(r => { totalRevenue += (r.debt || 0); }); }
         
         const ticker = document.getElementById('tickerText');
-        if(ticker) ticker.innerHTML = `<span>💰 إجمالي ديون وعمولات الميدان اليوم: <b class="text-success">${totalRevenue} د.ع</b></span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span>🚀 محرك الرادار المركزي (V4.1) متصل ويعمل بكفاءة</span>`;
+        if(ticker) ticker.innerHTML = `<span>💰 إجمالي ديون وعمولات الميدان اليوم: <b class="text-success">${totalRevenue} د.ع</b></span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span>🚀 محرك الرادار المركزي متصل ويعمل بكفاءة</span>`;
         
         if (globalData) {
             triggerSearch('DRIVER');
@@ -1690,7 +1685,7 @@ function listenToFirebaseOrders() {
                     o.is_sovereign || false, o.last_update || '', o.last_offered_to || ''
                 ];
                 
-                // ✅ كسر الجليد: إذا قال فايربيس أن الطلب تم قبوله أو تحرك، قم بتدمير الذاكرة المؤقتة فوراً!
+                // ✅ كسر الجليد لتحديث الذاكرة المؤقتة
                 if (['accepted', 'heading', 'arrived_at_res', 'picked_up', 'completed'].includes(o.status)) {
                     delete localOverrides.orders[arr[0]];
                 }
@@ -1729,7 +1724,13 @@ function listenToFirebaseOrders() {
             if (em?.style.display === 'flex') closeEmergency();
         }
 
+        // ✅ 1. تحديث إحصائية "الطلبات النشطة" (الحقيقية في الرادار الآن)
         document.querySelectorAll('.val-orders').forEach(el => el.textContent = liveFirebaseOrders.length);
+        
+        // ✅ 3. تحديث إحصائية "المطاعم التي لديها طلبات حالية فقط"
+        const activeResNames = [...new Set(liveFirebaseOrders.map(o => o[1]))];
+        document.querySelectorAll('.val-res').forEach(el => el.textContent = activeResNames.length);
+
         if (globalData) { try { smartRenderRadar(liveFirebaseOrders); } catch(e) {} }
         updateHeatmap(liveFirebaseOrders);
         updateRestaurantMarkers(liveFirebaseOrders);
@@ -1769,12 +1770,18 @@ function listenToFirebaseLocations() {
         const locs = snapshot.val();
         if (!locs) return;
         const now = Date.now();
+        let activeRealDriversCount = 0; // عداد الكباتن الحقيقيين
+
         Object.keys(locs).forEach(phone => {
             const d = locs[phone];
             if (d.status === 'active' && d.lat && d.lng) {
                 const lat = parseFloat(d.lat), lng = parseFloat(d.lng);
                 const idleMins = d.last_update ? (now - new Date(d.last_update).getTime())/60000 : 0;
                 const isGhost = idleMins > 45; // 👻 Ghost Detector Logic
+                
+                // ✅ 2. تحديث إحصائية "الكباتن النشطين حقا" (ليسو أشباحاً)
+                if(!isGhost) activeRealDriversCount++;
+
                 if (liveDriverMarkers[phone]) {
                     liveDriverMarkers[phone].setLatLng([lat, lng]);
                     const iconEl = liveDriverMarkers[phone].getElement();
@@ -1792,6 +1799,9 @@ function listenToFirebaseLocations() {
                 map.removeLayer(liveDriverMarkers[phone]); delete liveDriverMarkers[phone];
             }
         });
+
+        // 🚀 تحديث عداد الكباتن في واجهة الماستر
+        document.querySelectorAll('.val-drivers').forEach(el => el.textContent = activeRealDriversCount);
     });
 }
 
