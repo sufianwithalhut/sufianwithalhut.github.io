@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
+    <meta charset="UTF-8">
     <script>
         // --- الإصدار 5.6 (اللوحة السيادية - معالجة جذرية للتنقل السلس و CORS) ---
         const CURRENT_APP_VERSION = "5.6";
@@ -27,7 +28,6 @@
             console.warn('تعذّر التحقق من الإصدار:', e.message);
         }
     </script>
-    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>مكتب سفيان | الإدارة العليا</title>
     <meta name="theme-color" content="#f0f7ff">
@@ -201,14 +201,9 @@
         /* 🟢 FIX: Main Dashboard Layout for smooth switching without breaking map */
         #mainDashboard { display: flex; height: 100%; width: 100%; overflow: hidden; padding-top: 35px; position: relative; }
 
-        .admin-tab { 
-            position: absolute; top: 35px; bottom: var(--nav-h); left: 0; right: 0;
-            opacity: 0; visibility: hidden; transition: opacity 0.3s ease;
-            overflow-y: auto; overflow-x: hidden; background: var(--primary-mist);
-        }
-        .admin-tab.active-tab { 
-            opacity: 1; visibility: visible; z-index: 10;
-        }
+        /* Desktop default: tabs toggled with display */
+        .admin-tab { display: none; }
+        .admin-tab.active-tab { display: block; }
 
         @media (max-width: 768px) {
             .sidebar, .desktop-header { display: none !important; }
@@ -259,7 +254,24 @@
 
             .admin-tab::-webkit-scrollbar { display: none; }
 
-            #tab-live.active-tab { display: flex; flex-direction: column; overflow: hidden; }
+            /* Mobile: smooth opacity transitions with absolute overlay */
+            .admin-tab {
+                position: absolute;
+                top: 35px; bottom: var(--nav-h);
+                left: 0; right: 0;
+                display: block !important;
+                opacity: 0; visibility: hidden; pointer-events: none;
+                transition: opacity 0.3s ease;
+                overflow-y: auto; overflow-x: hidden;
+                background: var(--primary-mist);
+                -webkit-overflow-scrolling: touch;
+                scrollbar-width: none;
+            }
+            .admin-tab.active-tab {
+                opacity: 1; visibility: visible; pointer-events: auto; z-index: 10;
+            }
+
+            #tab-live.active-tab { display: flex !important; flex-direction: column; overflow: hidden; }
             .map-wrapper {
                 position: relative;
                 width: 100%; flex: 1; min-height: 40vh;
@@ -1883,7 +1895,7 @@ function smartRenderRadar(activeList) {
     }
 
     const getStatusInfo = (status, hasDriver, timeStr) => {
-        const mins = Math.floor((new Date() - new Date(timeStr)) / 60000);
+        // mins removed — was declared but never used
         if (!hasDriver || status === 'pending_driver' || status === 'manual_pending') {
             if (hasDriver) {
                 return { cls: 'oc-ringing', sbCls: 'sbadge-warn', desc: '⏳ جاري الرنين', ringing: true };
@@ -2043,6 +2055,122 @@ function smartRenderRadar(activeList) {
             delete renderedOrdersCache[id];
         }
     });
+}
+
+/* ═══════════════════════════════════════════════════════════
+   🗂️  TAB NAVIGATION  —  switchTab / showTab / filterRadar
+   هذه الدوال كانت مفقودة كلياً وهي سبب عدم عمل التنقل
+═══════════════════════════════════════════════════════════ */
+
+/** لبّ التبديل: يُخفي كل التبويبات ويُظهر المطلوب */
+function _activateTab(tabName) {
+    document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active-tab'));
+    const target = document.getElementById('tab-' + tabName);
+    if (target) {
+        target.classList.add('active-tab');
+        setTimeout(() => { target.scrollTop = 0; }, 50);
+    }
+    // إصلاح حجم الخريطة عند العودة لتبويب الميدان
+    if (tabName === 'live' && typeof map !== 'undefined' && map) {
+        setTimeout(() => map.invalidateSize(), TAB_TRANSITION_MS + 50);
+    }
+}
+
+/** يُحدّث حالة active في شريطَي التنقل (موبايل + ديسكتوب) */
+function _updateNavActive(tabName) {
+    // شريط التنقل السفلي (موبايل)
+    document.querySelectorAll('.b-nav-item').forEach(item => {
+        const oc = item.getAttribute('onclick') || '';
+        item.classList.toggle('active', oc.includes("'" + tabName + "'"));
+    });
+    // الشريط الجانبي (ديسكتوب)
+    document.querySelectorAll('.nav-item.desktop-nav-link').forEach(item => {
+        const oc = item.getAttribute('onclick') || '';
+        item.classList.toggle('active', oc.includes("'" + tabName + "'"));
+    });
+}
+
+/**
+ * switchTab(tabName, el)  — يُستدعى من زر الميدان (live)
+ * @param {string}      tabName - اسم التبويب
+ * @param {HTMLElement} el      - العنصر الذي نُقر عليه (this)
+ */
+function switchTab(tabName, el) {
+    _activateTab(tabName);
+    _updateNavActive(tabName);
+}
+
+/**
+ * showTab(event, tabName)  — يُستدعى من باقي أزرار التنقل
+ * @param {Event}  event   - حدث النقر
+ * @param {string} tabName - اسم التبويب
+ */
+function showTab(event, tabName) {
+    _activateTab(tabName);
+    _updateNavActive(tabName);
+}
+
+/**
+ * filterRadar(filter, btn)  — يُفلتر بطاقات الرادار الميداني
+ * @param {string}      filter - 'all' | 'pending' | 'active'
+ * @param {HTMLElement} btn    - زر الفلتر المضغوط
+ */
+function filterRadar(filter, btn) {
+    currentRadarFilter = filter;
+    document.getElementById('radarFilters')?.querySelectorAll('.fp')
+        .forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    try { smartRenderRadar(liveFirebaseOrders); } catch(e) { console.error('filterRadar:', e); }
+}
+
+/**
+ * trackDriver(driverPhone, restName)
+ * يرسم مسار الكابتن على الخريطة ويبرز موقعه
+ */
+function trackDriver(driverPhone, restName) {
+    if (!map || !globalData) return;
+    const driver     = globalData.drivers.find(d => String(d[D.PHONE]) === String(driverPhone));
+    const restaurant = globalData.restaurants.find(r => r[R.NAME] === restName);
+    if (!driver) return;
+
+    // نحاول أخذ الموقع الحي أولاً من طبقة الماركرز
+    let dLat = parseFloat(driver[D.LAT]), dLng = parseFloat(driver[D.LNG]);
+    if (liveDriverMarkers[String(driverPhone)]) {
+        const pos = liveDriverMarkers[String(driverPhone)].getLatLng();
+        dLat = pos.lat; dLng = pos.lng;
+    }
+    if (isNaN(dLat) || isNaN(dLng)) return;
+
+    // تخفيف سطوع باقي الماركرز
+    Object.values(liveDriverMarkers).forEach(m => m.setOpacity(0.3));
+    Object.values(liveResMarkers).forEach(m => m.setOpacity(0.3));
+    if (liveDriverMarkers[String(driverPhone)]) liveDriverMarkers[String(driverPhone)].setOpacity(1);
+
+    // حذف المسار القديم إن وُجد
+    if (trackPolyline) { map.removeLayer(trackPolyline); trackPolyline = null; }
+
+    let bounds = [[dLat, dLng]];
+    const rLat = restaurant ? parseFloat(restaurant[R.LAT]) : NaN;
+    const rLng = restaurant ? parseFloat(restaurant[R.LNG]) : NaN;
+
+    if (!isNaN(rLat) && !isNaN(rLng)) {
+        bounds.push([rLat, rLng]);
+        if (liveResMarkers[restName]) liveResMarkers[restName].setOpacity(1);
+        trackPolyline = L.polyline([[dLat, dLng], [rLat, rLng]], {
+            color: '#f97316', weight: 5, dashArray: '12, 12',
+            className: 'path-animated'
+        }).addTo(map);
+        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16, animate: true, duration: 1.2 });
+    } else {
+        map.flyTo([dLat, dLng], 16, { duration: 1.2 });
+    }
+
+    // إظهار زر إلغاء التتبع
+    document.getElementById('btnCancelTrack').style.display = 'flex';
+
+    // التنقل لتبويب الميدان
+    _activateTab('live');
+    _updateNavActive('live');
 }
 
 /* ─── Section Badges ─── */
@@ -2234,7 +2362,11 @@ function withdrawOrderOptUI(orderId, driverPhone, el) {
 function assignDriverOptUI(orderId, driverPhone, el) {
     if (!driverPhone) return;
     el.disabled = true;
-    el.insertAdjacentHTML('afterend', '<div class="spinner-mini" style="border-top-color:var(--primary); margin-right:5px;"></div>');
+    // FIX: keep spinner reference so we can remove it when done
+    const spinnerEl = document.createElement('div');
+    spinnerEl.className = 'spinner-mini';
+    spinnerEl.style.cssText = 'border-top-color:var(--primary); margin-right:5px; display:inline-block;';
+    el.insertAdjacentElement('afterend', spinnerEl);
     
     const card = document.getElementById(`oc-${orderId}`);
     if (card) { card.style.transition = '.3s'; card.style.opacity = '0.5'; }
@@ -2250,21 +2382,27 @@ function assignDriverOptUI(orderId, driverPhone, el) {
 
     fetch(`${API_URL}?action=ASSIGN_DRIVER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}&pass=${masterPassword}`)
         .then(r => r.json()).then(res => {
+            spinnerEl.remove(); // FIX: remove spinner on success
             if (!res.success) { showToast("خطأ", "error"); if (card) card.style.opacity = '1'; el.disabled = false; }
             else showToast("تم التعيين السيادي بنجاح!");
-        }).catch(() => showToast("تم الإرسال"));
+        }).catch(() => {
+            spinnerEl.remove(); // FIX: remove spinner on error too
+            showToast("تم الإرسال");
+        });
 }
 
 function forceComplete(orderId) {
     if(!confirm("تأكيد إكمال الطلب قسرياً؟ سيتم تسجيله في حساب الكابتن والمطعم.")) return;
     
-    const oData = liveFirebaseOrders.find(x => x.id === orderId);
+    // FIX: liveFirebaseOrders entries are arrays — use schema indices, not object properties
+    const oData = liveFirebaseOrders.find(x => x[O.ID] === orderId);
     if(oData) {
-        const driverPhone = oData.driverPhone;
-        const price = parseFloat(oData.price) || 0;
-        const resName = oData.restaurant;
+        const driverPhone = oData[O.DRIVER_PHONE];
+        const price       = parseFloat(oData[O.PRICE]) || 0;
+        const resName     = oData[O.REST_NAME];
+        const area        = oData[O.AREA];
         
-        const rData = globalData.restaurants.find(r => r[R.NAME] === resName);
+        const rData = globalData?.restaurants.find(r => r[R.NAME] === resName);
         const comm = rData ? (parseFloat(rData[R.COMMISSION]) || 0) : 0;
         const payType = rData ? (rData[R.PAY_TYPE] || "المطعم يدفع") : "المطعم يدفع";
         const resPhone = rData ? rData[R.PHONE] : null;
@@ -2279,7 +2417,7 @@ function forceComplete(orderId) {
             updates[`ledgers/drivers/${driverPhone}/completed_orders`] = firebase.database.ServerValue.increment(1);
             updates[`ledgers/drivers/${driverPhone}/debt`] = firebase.database.ServerValue.increment(driverDebtInc);
             const todayStr = new Date().toISOString().split('T')[0];
-            updates[`daily_ledgers/${driverPhone}/${todayStr}/${orderId}`] = { orderId, resName, area: oData.area, price, timestamp: Date.now() };
+            updates[`daily_ledgers/${driverPhone}/${todayStr}/${orderId}`] = { orderId, resName, area, price, timestamp: Date.now() };
         }
         if(resPhone) {
             updates[`ledgers/restaurants/${resPhone}/completed_orders`] = firebase.database.ServerValue.increment(1);
