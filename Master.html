@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <script>
-        // --- الإصدار 5.8 (تحديث الإحصائيات الحارة: طلبات فعلية، كباتن حقيقيون، مطاعم نشطة فقط) ---
-        const CURRENT_APP_VERSION = "5.8";
+        // --- الإصدار 5.9 (فلترة صارمة: الكباتن المتصلين فعلياً في قوائم التعيين وإدارة الأسطول) ---
+        const CURRENT_APP_VERSION = "5.9";
         const VERSION_KEY = 'hut_master_app_version';
         try {
             if (localStorage.getItem(VERSION_KEY) !== CURRENT_APP_VERSION) {
@@ -1443,7 +1443,7 @@ function safeIcon(containerId) {
 }
 
 /* ═══════════════════════════════════════════
-   📐 DATA SCHEMA — FIX #7: No more magic numbers
+   📐 DATA SCHEMA
 ═══════════════════════════════════════════ */
 const O = { ID:0, REST_NAME:1, AREA:2, DETAILS:3, PRICE:4, STATUS:5, DRIVER_PHONE:6, TIME:7 };
 const R = { ID:0, NAME:1, PHONE:2, AREA:3, STATUS:4, COMMISSION:5, LAT:6, LNG:7, PAY_TYPE:8 };
@@ -1479,6 +1479,9 @@ let dataRefreshInterval = null;
 let lastArchiveHtml = '';
 let liveLedgers = { drivers: {}, restaurants: {} };
 let isFullscreen = false;
+
+// 🚀 المصفوفة الحارة للكباتن الحقيقيين المتصلين فقط (تُحدث باستمرار من Firebase)
+let activeRealDriversSet = new Set();
 
 const firebaseConfig = {
     apiKey: "AIzaSyAo1rmqUzieYZU3RIwXOAN87GkpNrp-_Hc",
@@ -1685,7 +1688,6 @@ function listenToFirebaseOrders() {
                     o.is_sovereign || false, o.last_update || '', o.last_offered_to || ''
                 ];
                 
-                // ✅ كسر الجليد لتحديث الذاكرة المؤقتة
                 if (['accepted', 'heading', 'arrived_at_res', 'picked_up', 'completed'].includes(o.status)) {
                     delete localOverrides.orders[arr[0]];
                 }
@@ -1724,10 +1726,8 @@ function listenToFirebaseOrders() {
             if (em?.style.display === 'flex') closeEmergency();
         }
 
-        // ✅ 1. تحديث إحصائية "الطلبات النشطة" (الحقيقية في الرادار الآن)
+        // تحديث إحصائية الطلبات النشطة والمطاعم
         document.querySelectorAll('.val-orders').forEach(el => el.textContent = liveFirebaseOrders.length);
-        
-        // ✅ 3. تحديث إحصائية "المطاعم التي لديها طلبات حالية فقط"
         const activeResNames = [...new Set(liveFirebaseOrders.map(o => o[1]))];
         document.querySelectorAll('.val-res').forEach(el => el.textContent = activeResNames.length);
 
@@ -1770,17 +1770,21 @@ function listenToFirebaseLocations() {
         const locs = snapshot.val();
         if (!locs) return;
         const now = Date.now();
-        let activeRealDriversCount = 0; // عداد الكباتن الحقيقيين
+        
+        // 🚀 إعادة بناء القائمة الحية في كل مرة ينبض فيها فايربيس
+        activeRealDriversSet.clear();
 
         Object.keys(locs).forEach(phone => {
             const d = locs[phone];
             if (d.status === 'active' && d.lat && d.lng) {
                 const lat = parseFloat(d.lat), lng = parseFloat(d.lng);
                 const idleMins = d.last_update ? (now - new Date(d.last_update).getTime())/60000 : 0;
-                const isGhost = idleMins > 45; // 👻 Ghost Detector Logic
+                const isGhost = idleMins > 45; 
                 
-                // ✅ 2. تحديث إحصائية "الكباتن النشطين حقا" (ليسو أشباحاً)
-                if(!isGhost) activeRealDriversCount++;
+                // 🚀 إضافة الكابتن الحقيقي فقط للقائمة المعتمدة
+                if(!isGhost) {
+                    activeRealDriversSet.add(String(phone).replace(/^0+/, '').trim());
+                }
 
                 if (liveDriverMarkers[phone]) {
                     liveDriverMarkers[phone].setLatLng([lat, lng]);
@@ -1800,8 +1804,16 @@ function listenToFirebaseLocations() {
             }
         });
 
-        // 🚀 تحديث عداد الكباتن في واجهة الماستر
-        document.querySelectorAll('.val-drivers').forEach(el => el.textContent = activeRealDriversCount);
+        // 🚀 تحديث عداد الكباتن الحقيقيين
+        document.querySelectorAll('.val-drivers').forEach(el => el.textContent = activeRealDriversSet.size);
+        
+        // 🚀 تحديث قائمة زر التعيين اليدوي فوراً
+        if (globalData) { try { smartRenderRadar(liveFirebaseOrders); } catch(e) {} }
+        
+        // 🚀 تحديث قائمة إدارة الأسطول إذا كنا في تبويبها
+        if (globalData && document.getElementById('tab-drivers').classList.contains('active-tab')) {
+            triggerSearch('DRIVER');
+        }
     });
 }
 
@@ -1838,7 +1850,9 @@ function smartRenderRadar(activeList) {
     let newOpts = '<option value="" disabled selected>تعيين يدوي</option>';
     if (globalData) {
         globalData.drivers.slice(1).forEach(d => {
-            if (d[4] === 'active') {
+            const rawPhone = String(d[2]).replace(/^0+/, '').trim();
+            // 🚀 فلترة صارمة: يظهر في القائمة فقط إذا كان في مجموعة الكباتن الحقيقيين
+            if (activeRealDriversSet.has(rawPhone)) {
                 const completed = liveLedgers.drivers?.[String(d[2])]?.completed_orders || 0;
                 let sym = '🟡';
                 if(completed >= 100) sym = '🟢';
@@ -2022,10 +2036,8 @@ function smartRenderRadar(activeList) {
 
 /* ═══════════════════════════════════════════════════════════
    🗂️  TAB NAVIGATION  —  switchTab / showTab / filterRadar
-   هذه الدوال كانت مفقودة كلياً وهي سبب عدم عمل التنقل
 ═══════════════════════════════════════════════════════════ */
 
-/** لبّ التبديل: يُخفي كل التبويبات ويُظهر المطلوب */
 function _activateTab(tabName) {
     document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active-tab'));
     const target = document.getElementById('tab-' + tabName);
@@ -2033,51 +2045,32 @@ function _activateTab(tabName) {
         target.classList.add('active-tab');
         setTimeout(() => { target.scrollTop = 0; }, 50);
     }
-    // إصلاح حجم الخريطة عند العودة لتبويب الميدان
     if (tabName === 'live' && typeof map !== 'undefined' && map) {
         setTimeout(() => map.invalidateSize(), TAB_TRANSITION_MS + 50);
     }
 }
 
-/** يُحدّث حالة active في شريطَي التنقل (موبايل + ديسكتوب) */
 function _updateNavActive(tabName) {
-    // شريط التنقل السفلي (موبايل)
     document.querySelectorAll('.b-nav-item').forEach(item => {
         const oc = item.getAttribute('onclick') || '';
         item.classList.toggle('active', oc.includes("'" + tabName + "'"));
     });
-    // الشريط الجانبي (ديسكتوب)
     document.querySelectorAll('.nav-item.desktop-nav-link').forEach(item => {
         const oc = item.getAttribute('onclick') || '';
         item.classList.toggle('active', oc.includes("'" + tabName + "'"));
     });
 }
 
-/**
- * switchTab(tabName, el)  — يُستدعى من زر الميدان (live)
- * @param {string}      tabName - اسم التبويب
- * @param {HTMLElement} el      - العنصر الذي نُقر عليه (this)
- */
 function switchTab(tabName, el) {
     _activateTab(tabName);
     _updateNavActive(tabName);
 }
 
-/**
- * showTab(event, tabName)  — يُستدعى من باقي أزرار التنقل
- * @param {Event}  event   - حدث النقر
- * @param {string} tabName - اسم التبويب
- */
 function showTab(event, tabName) {
     _activateTab(tabName);
     _updateNavActive(tabName);
 }
 
-/**
- * filterRadar(filter, btn)  — يُفلتر بطاقات الرادار الميداني
- * @param {string}      filter - 'all' | 'pending' | 'active'
- * @param {HTMLElement} btn    - زر الفلتر المضغوط
- */
 function filterRadar(filter, btn) {
     currentRadarFilter = filter;
     document.getElementById('radarFilters')?.querySelectorAll('.fp')
@@ -2086,17 +2079,12 @@ function filterRadar(filter, btn) {
     try { smartRenderRadar(liveFirebaseOrders); } catch(e) { console.error('filterRadar:', e); }
 }
 
-/**
- * trackDriver(driverPhone, restName)
- * يرسم مسار الكابتن على الخريطة ويبرز موقعه
- */
 function trackDriver(driverPhone, restName) {
     if (!map || !globalData) return;
     const driver     = globalData.drivers.find(d => String(d[D.PHONE]) === String(driverPhone));
     const restaurant = globalData.restaurants.find(r => r[R.NAME] === restName);
     if (!driver) return;
 
-    // نحاول أخذ الموقع الحي أولاً من طبقة الماركرز
     let dLat = parseFloat(driver[D.LAT]), dLng = parseFloat(driver[D.LNG]);
     if (liveDriverMarkers[String(driverPhone)]) {
         const pos = liveDriverMarkers[String(driverPhone)].getLatLng();
@@ -2104,12 +2092,10 @@ function trackDriver(driverPhone, restName) {
     }
     if (isNaN(dLat) || isNaN(dLng)) return;
 
-    // تخفيف سطوع باقي الماركرز
     Object.values(liveDriverMarkers).forEach(m => m.setOpacity(0.3));
     Object.values(liveResMarkers).forEach(m => m.setOpacity(0.3));
     if (liveDriverMarkers[String(driverPhone)]) liveDriverMarkers[String(driverPhone)].setOpacity(1);
 
-    // حذف المسار القديم إن وُجد
     if (trackPolyline) { map.removeLayer(trackPolyline); trackPolyline = null; }
 
     let bounds = [[dLat, dLng]];
@@ -2128,10 +2114,7 @@ function trackDriver(driverPhone, restName) {
         map.flyTo([dLat, dLng], 16, { duration: 1.2 });
     }
 
-    // إظهار زر إلغاء التتبع
     document.getElementById('btnCancelTrack').style.display = 'flex';
-
-    // التنقل لتبويب الميدان
     _activateTab('live');
     _updateNavActive('live');
 }
@@ -2145,7 +2128,14 @@ function updateSectionBadges(type, list) {
         if (s === 'deleted') return;
         c.all++;
         if (s === 'pending' || s === 'waiting') c.pending++;
-        if (s === 'active')   c.active++;
+        
+        // 🚀 تعديل خطير لفلتر الكباتن "بالميدان": نحسب المتصلين حقيقةً فقط
+        if (type === 'DRIVER' && s === 'active') {
+            const rawPhone = String(item[2]).replace(/^0+/, '').trim();
+            if(activeRealDriversSet.has(rawPhone)) c.active++;
+        } 
+        else if (s === 'active') { c.active++; }
+        
         if (s === 'inactive') c.inactive++;
         if (s === 'banned')   c.banned++;
     });
@@ -2190,10 +2180,18 @@ function smartRenderFilteredSection(type, fullList) {
     let filtered = [];
     fullList.slice(1).forEach(item => {
         const s = item[4], n = String(item[1]).toLowerCase(), ph = String(item[2]).toLowerCase();
+        const rawPhone = String(item[2]).replace(/^0+/, '').trim();
+        
         if (s === 'deleted') return;
         if (searchQ && !n.includes(searchQ) && !ph.includes(searchQ)) return;
+        
         if (filter === 'all') filtered.push(item);
         else if (filter === 'pending' && (s === 'pending' || s === 'waiting')) filtered.push(item);
+        
+        // 🚀 فلترة الكباتن في الميدان تعتمد على الاتصال الحقيقي فقط!
+        else if (filter === 'active' && type === 'DRIVER') {
+            if(s === 'active' && activeRealDriversSet.has(rawPhone)) filtered.push(item);
+        }
         else if (filter === s) filtered.push(item);
     });
 
@@ -2216,7 +2214,6 @@ function smartRenderFilteredSection(type, fullList) {
         const safeId = String(phone).replace(/[^a-zA-Z0-9]/g, '');
         currentIds.add(safeId);
         
-        // 🚀 Read from Real-time Ledger
         const ledger = type === 'RESTAURANT' ? (liveLedgers.restaurants?.[phone] || {debt:0, completed_orders:0}) : (liveLedgers.drivers?.[phone] || {debt:0, completed_orders:0});
         const debt = ledger.debt || 0;
         const compCount = ledger.completed_orders || 0;
@@ -2357,7 +2354,6 @@ function assignDriverOptUI(orderId, driverPhone, el) {
 function forceComplete(orderId) {
     if(!confirm("تأكيد إكمال الطلب قسرياً؟ سيتم تسجيله في حساب الكابتن والمطعم.")) return;
     
-    // FIX: liveFirebaseOrders entries are arrays — use schema indices, not object properties
     const oData = liveFirebaseOrders.find(x => x[O.ID] === orderId);
     if(oData) {
         const driverPhone = oData[O.DRIVER_PHONE];
