@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <script>
-        // --- الإصدار 6.0 (تحديث الرابط السيادي الجديد + الإحصائيات الحارة الصارمة) ---
-        const CURRENT_APP_VERSION = "6.0";
+        // --- الإصدار 6.1 (متوافق مع V34.1: دعم الطلبات السيادية والرابط الجديد) ---
+        const CURRENT_APP_VERSION = "6.1";
         const VERSION_KEY = 'hut_master_app_version';
         try {
             if (localStorage.getItem(VERSION_KEY) !== CURRENT_APP_VERSION) {
                 localStorage.setItem(VERSION_KEY, CURRENT_APP_VERSION);
                 if (localStorage.getItem(VERSION_KEY) === CURRENT_APP_VERSION) {
-                    console.log("نسخة إدارة سيادية جديدة مكتشفة... جاري التحديث!");
+                    console.log("نسخة إدارة سيادية V34.1... جاري التحديث!");
                     if ('caches' in window) {
                         caches.keys().then(function(names) {
                             for (let name of names) caches.delete(name);
@@ -29,7 +29,7 @@
         }
     </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>مكتب سفيان | الإدارة العليا</title>
+    <title>مكتب سفيان | الإدارة العليا V34.1</title>
     <meta name="theme-color" content="#f0f7ff">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -528,6 +528,7 @@
         .oc-active::after   { background: var(--success); }
         .oc-heading::after  { background: var(--primary); }
         .oc-arrived::after  { background: var(--accent); }
+        .oc-sovereign::after { background: var(--purple); }
 
         .oc-pending { animation: urgentPulse 2.2s ease-in-out infinite; }
         @keyframes urgentPulse {
@@ -637,6 +638,7 @@
         .sbadge-success { background: #e6faf3; color: var(--success); border: 1px solid #a7f3d0; }
         .sbadge-blue    { background: var(--primary-light); color: var(--primary-dark); border: 1px solid rgba(59,158,221,0.2); }
         .sbadge-orange  { background: var(--accent-light); color: var(--accent-dark); border: 1px solid #fed7aa; }
+        .sbadge-purple  { background: #f3e8ff; color: var(--purple); border: 1px solid #d8b4fe; }
 
         .entity-card {
             background: var(--surface);
@@ -993,7 +995,6 @@
         }
         @keyframes spin { to { transform: rotate(360deg); } }
         
-        /* Spinner for Optimistic UI */
         .spinner-mini {
             width: 16px; height: 16px;
             border: 2px solid rgba(0,0,0,0.2);
@@ -1153,7 +1154,7 @@
             <i data-lucide="building-2" width="32" height="32" color="#fff"></i>
         </div>
         <div class="auth-title">مكتب سفيان</div>
-        <div class="auth-sub">الإدارة العليا — نظام الحوت</div>
+        <div class="auth-sub">الإدارة العليا — نظام الحوت V34.1</div>
         <input type="password" id="masterPass" class="auth-input" placeholder="رمز المرور الآمن" autocomplete="off" onkeypress="if(event.key==='Enter') checkAuth()">
         <button class="auth-btn" onclick="checkAuth()">تسجيل الدخول</button>
     </div>
@@ -1428,7 +1429,7 @@
 if (typeof lucide !== 'undefined') lucide.createIcons();
 
 /* ═══════════════════════════════════════════
-   🛡️ SECURITY UTIL — FIX #6: XSS protection
+   🛡️ SECURITY UTIL — XSS protection
 ═══════════════════════════════════════════ */
 function escHtml(str) {
     if (str === null || str === undefined) return '';
@@ -1445,7 +1446,7 @@ function safeIcon(containerId) {
 /* ═══════════════════════════════════════════
    📐 DATA SCHEMA
 ═══════════════════════════════════════════ */
-const O = { ID:0, REST_NAME:1, AREA:2, DETAILS:3, PRICE:4, STATUS:5, DRIVER_PHONE:6, TIME:7 };
+const O = { ID:0, REST_NAME:1, AREA:2, DETAILS:3, PRICE:4, STATUS:5, DRIVER_PHONE:6, TIME:7, PHOTO:8, IS_SOVEREIGN:9, LAST_UPDATE:10, LAST_OFFERED:11 };
 const R = { ID:0, NAME:1, PHONE:2, AREA:3, STATUS:4, COMMISSION:5, LAT:6, LNG:7, PAY_TYPE:8 };
 const D = { ID:0, NAME:1, PHONE:2, AREA:3, STATUS:4, LAT:5, LNG:6 };
 
@@ -1454,7 +1455,7 @@ const TAB_TRANSITION_MS = 350;
 /* ═══════════════════════════════════════════
    🔗 CONFIG
 ═══════════════════════════════════════════ */
-const API_URL   = "https://script.google.com/macros/s/AKfycbw7tjYN_FuYBuA7w82r_NMiGs69cWsGTfmWpjyx5IzherF0k7CVX1X4fRJUYwShEUw3/exec";
+const API_URL   = "https://script.google.com/macros/s/AKfycbzKDBjgPxmt_iDCphkjB6EY-cnag_aqwxrdNDrY9uqBRbTZYsqGWl4TJn4pANS8OVYm/exec";
 const API_TOKEN = "HUT_SECURE_99";
 
 let map, heatLayer, driverClusterGroup, trackPolyline = null;
@@ -1864,8 +1865,8 @@ function smartRenderRadar(activeList) {
     activeDriversOptionsCache = newOpts;
 
     let filtered = [...activeList];
-    if (currentRadarFilter === 'pending') filtered = filtered.filter(o => !o[6] || o[6] === "pending_driver" || o[6] === "system_routing");
-    if (currentRadarFilter === 'active')  filtered = filtered.filter(o => o[6] && o[6] !== "pending_driver" && o[6] !== "system_routing");
+    if (currentRadarFilter === 'pending') filtered = filtered.filter(o => !o[6] || o[6] === "pending_driver" || o[6] === "system_routing" || o[6] === "manual_pending");
+    if (currentRadarFilter === 'active')  filtered = filtered.filter(o => o[6] && o[6] !== "pending_driver" && o[6] !== "system_routing" && o[6] !== "manual_pending");
 
     if (filtered.length === 0) {
         container.innerHTML = `
@@ -1888,9 +1889,15 @@ function smartRenderRadar(activeList) {
         grid = document.getElementById('radarGrid');
     }
 
-    function buildDriverControls(orderId, driverPhone, hasDriver, sInfo) {
+    function buildDriverControls(orderId, driverPhone, hasDriver, sInfo, isSovereign) {
         let ctrl = '';
         let opts = activeDriversOptionsCache;
+
+        if (isSovereign) {
+            // للطلبات السيادية: لا نعرض زر السحب أو التعيين
+            ctrl += `<span class="sbadge sbadge-purple" style="padding:6px 12px;">👑 سيادي</span>`;
+            return ctrl;
+        }
 
         if (sInfo.ringing && hasDriver) {
             ctrl += `<button class="oc-btn oc-btn-delete" style="width:auto;padding:0 10px;font-family:'Cairo',sans-serif;font-size:0.72rem;font-weight:800;" onclick="withdrawOrderOptUI('${escHtml(orderId)}','${escHtml(driverPhone)}',this)"><i data-lucide="user-minus" width="13" height="13"></i> سحب</button>`;
@@ -1903,7 +1910,13 @@ function smartRenderRadar(activeList) {
         return ctrl;
     }
 
-    const getStatusInfo = (status, hasDriver, timeStr) => {
+    const getStatusInfo = (status, hasDriver, timeStr, isSovereign) => {
+        if (isSovereign) {
+            if (status === 'manual_pending') {
+                return { cls: 'oc-sovereign', sbCls: 'sbadge-purple', desc: '👑 تعيين سيادي', ringing: false };
+            }
+            return { cls: 'oc-sovereign', sbCls: 'sbadge-purple', desc: '👑 سيادي', ringing: false };
+        }
         if (!hasDriver || status === 'pending_driver' || status === 'manual_pending') {
             if (hasDriver) {
                 return { cls: 'oc-ringing', sbCls: 'sbadge-warn', desc: '⏳ جاري الرنين', ringing: true };
@@ -1929,19 +1942,18 @@ function smartRenderRadar(activeList) {
     const currentIds = new Set();
 
     filtered.forEach(o => {
-        const [orderId, restName, orderArea, , orderPrice, status, driverPhone, orderTimeStr] = o;
+        const [orderId, restName, orderArea, , orderPrice, status, driverPhone, orderTimeStr, , isSovereign] = o;
         const hasDriver = (driverPhone && driverPhone !== "pending_driver" && driverPhone !== "manual_pending" && driverPhone !== "system_routing");
         const driverName = hasDriver
             ? (globalData?.drivers.find(d => String(d[2]) === String(driverPhone))?.[1] || 'كابتن جديد')
             : 'جاري البحث في الرادار...';
-        const sInfo = getStatusInfo(status, hasDriver, orderTimeStr);
+        const sInfo = getStatusInfo(status, hasDriver, orderTimeStr, isSovereign);
         const diffMins = Math.floor((new Date() - new Date(orderTimeStr)) / 60000);
         const timeF = new Date(orderTimeStr).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
         const isDouble = hasDriver && driverOrderCount[driverPhone] > 1;
 
         currentIds.add(orderId);
-        // hash includes isDouble so it updates if the driver picks up another order
-        const hash = `${status}-${driverPhone}-${diffMins}-${isDouble}`;
+        const hash = `${status}-${driverPhone}-${diffMins}-${isDouble}-${isSovereign}`;
         let existing = document.getElementById(`oc-${orderId}`);
 
         let rejectHtml = '';
@@ -1951,6 +1963,7 @@ function smartRenderRadar(activeList) {
         }
 
         let doubleBadge = isDouble ? `<span class="sbadge" style="background:var(--purple); color:#fff; margin-right:5px; font-size:0.65rem;">مزدوج</span>` : '';
+        let sovereignBadge = isSovereign ? `<span class="sbadge sbadge-purple" style="margin-right:5px;">👑 سيادي</span>` : '';
 
         if (existing) {
             if (renderedOrdersCache[orderId] !== hash) {
@@ -1961,13 +1974,13 @@ function smartRenderRadar(activeList) {
                 if (dnEl) { dnEl.textContent = driverName; }
                 const ctrlEl = existing.querySelector('.driver-controls-ui');
                 if (ctrlEl) {
-                    const ctrl = buildDriverControls(orderId, driverPhone, hasDriver, sInfo);
+                    const ctrl = buildDriverControls(orderId, driverPhone, hasDriver, sInfo, isSovereign);
                     ctrlEl.innerHTML = ctrl;
                     safeIcon('oc-' + orderId);
                 }
                 const titleEl = existing.querySelector('.oc-id');
                 if (titleEl) {
-                    titleEl.innerHTML = `#${orderId} ${doubleBadge}`;
+                    titleEl.innerHTML = `#${orderId} ${doubleBadge} ${sovereignBadge}`;
                 }
                 const delayEl = existing.querySelector('.delay-pill');
                 if (diffMins > 3 && !hasDriver) {
@@ -1983,7 +1996,7 @@ function smartRenderRadar(activeList) {
             return;
         }
 
-        const ctrl = buildDriverControls(orderId, driverPhone, hasDriver, sInfo);
+        const ctrl = buildDriverControls(orderId, driverPhone, hasDriver, sInfo, isSovereign);
         let callBtn = (hasDriver && !sInfo.ringing) ? `<button class="btn-call-sm" onclick="window.open('tel:${escHtml(driverPhone)}')"><i data-lucide="phone" width="14" height="14"></i></button>` : '';
 
         const html = `
@@ -1991,14 +2004,16 @@ function smartRenderRadar(activeList) {
             ${diffMins > 3 && !hasDriver ? `<div class="delay-pill">${diffMins} دق تأخير</div>` : ''}
             <div class="oc-header" style="${diffMins > 3 && !hasDriver ? 'margin-top:28px;' : ''}">
                 <div>
-                    <div class="oc-id" style="display:flex; align-items:center;">#${orderId} ${doubleBadge}</div>
+                    <div class="oc-id" style="display:flex; align-items:center;">#${orderId} ${doubleBadge} ${sovereignBadge}</div>
                     <div class="oc-time">⏰ ${timeF}</div>
                 </div>
                 <div class="oc-actions">
                     <span class="sbadge status-badge-ui ${sInfo.sbCls}">${sInfo.desc}</span>
-                    ${hasDriver ? `<button class="oc-btn-track" onclick="trackDriver('${driverPhone}','${restName}')"><i data-lucide="map-pin" width="12" height="12"></i> مسار</button>` : ''}
+                    ${hasDriver && !isSovereign ? `<button class="oc-btn-track" onclick="trackDriver('${driverPhone}','${restName}')"><i data-lucide="map-pin" width="12" height="12"></i> مسار</button>` : ''}
+                    ${!isSovereign ? `
                     <button class="oc-btn oc-btn-complete" onclick="adminActionOptUI('COMPLETE','ORDER','${orderId}',this)"><i data-lucide="check-circle" width="15" height="15"></i></button>
                     <button class="oc-btn oc-btn-delete" onclick="adminActionOptUI('DELETE','ORDER','${orderId}',this)"><i data-lucide="trash-2" width="15" height="15"></i></button>
+                    ` : ''}
                 </div>
             </div>
             <div class="oc-body">
@@ -2316,7 +2331,7 @@ function withdrawOrderOptUI(orderId, driverPhone, el) {
         el.disabled = false;
     });
     
-    fetch(`${API_URL}?action=DECLINE_ORDER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}&pass=${masterPassword}`).catch(()=>{});
+    fetch(`${API_URL}?action=DECLINE_ORDER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}`).catch(()=>{});
 }
 
 function assignDriverOptUI(orderId, driverPhone, el) {
