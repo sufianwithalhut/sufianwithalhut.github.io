@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 5.6 (منع النوم + ذاكرة تخزين 7 أيام) ---
-        const CURRENT_APP_VERSION = "5.6"; 
+        // --- إصدار 5.7 (تجربة فائقة السرعة - مزامنة صامتة) ---
+        const CURRENT_APP_VERSION = "5.7"; 
         if (localStorage.getItem('hut_res_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة مكتشفة... جاري التحديث الإجباري!");
             localStorage.setItem('hut_res_app_version', CURRENT_APP_VERSION);
@@ -165,6 +165,7 @@
 <audio id="welcomeSound" src="https://actions.google.com/sounds/v1/water/water_drop.ogg"></audio>
 
 <div id="loginSection" class="container py-5">
+    <!-- نفس كود تسجيل الدخول بدون تغيير -->
     <div class="text-center mb-5">
         <div class="d-inline-block p-4 bg-white rounded-circle shadow-sm mb-4">
             <i data-lucide="store" size="50" color="#1e3a8a"></i>
@@ -449,15 +450,14 @@
         if (!audioCtx) {
             try {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                // تشغيل نبضة صامتة كل 5 ثوانٍ
                 setInterval(() => {
                     if (audioCtx && audioCtx.state === 'running') {
                         const osc = audioCtx.createOscillator();
                         const gain = audioCtx.createGain();
                         osc.connect(gain);
                         gain.connect(audioCtx.destination);
-                        osc.frequency.value = 20000; // تردد غير مسموع
-                        gain.gain.value = 0.01;       // مستوى صوت منخفض جداً
+                        osc.frequency.value = 20000;
+                        gain.gain.value = 0.01;
                         osc.start();
                         osc.stop(audioCtx.currentTime + 0.01);
                     }
@@ -878,7 +878,7 @@
         }
     };
 
-    // ========== لوحة التحكم ==========
+    // ========== لوحة التحكم (تحميل فوري + مزامنة صامتة) ==========
     async function enterDashboard() {
         document.getElementById('loginSection').classList.add('hidden-section'); 
         document.getElementById('orderSection').classList.remove('hidden-section');
@@ -886,48 +886,43 @@
         document.getElementById('resPhoneDisplay').innerText = "شريك معتمد - الحوت";
         if (typeof lucide !== 'undefined') lucide.createIcons();
         
-        // تحميل فوري من الذاكرة المحلية
+        // 🟢 تحميل فوري من الذاكرة المحلية دون أي مؤشر تحميل
         const hasCached = loadPriceListFromCache();
         if (hasCached) {
             window.buildCustomAreaDropdown();
             restoreDraft();
         }
         
-        // جلب البيانات من السيرفر في الخلفية
-        window.showLoading(true, "جاري مزامنة البيانات...");
-        
-        try {
-            const res = await fetch(`${API_URL}?action=getGlobalData&token=${API_TOKEN}`);
-            const data = await res.json();
-            
-            if (data && data.restaurants) {
-                const resInfo = data.restaurants.find(r => r[1] === currentResName);
-                if (resInfo) {
-                    if (resInfo[6] && resInfo[7]) {
-                        regLat = parseFloat(resInfo[6]);
-                        regLng = parseFloat(resInfo[7]);
-                    }
-                    if (resInfo[2]) regPhone = resInfo[2];
-                    
-                    if (resInfo[12] && resInfo[12].trim() !== "") {
-                        try {
-                            const freshList = JSON.parse(resInfo[12]);
-                            if (JSON.stringify(freshList) !== JSON.stringify(myCustomPriceList)) {
-                                myCustomPriceList = freshList;
-                                savePriceListToCache(myCustomPriceList);
-                                window.buildCustomAreaDropdown();
-                            }
-                        } catch(e) { console.warn("خطأ في parsing priceList", e); }
+        // 🟢 جلب البيانات من السيرفر بصمت في الخلفية (بدون showLoading)
+        fetch(`${API_URL}?action=getGlobalData&token=${API_TOKEN}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data && data.restaurants) {
+                    const resInfo = data.restaurants.find(r => r[1] === currentResName);
+                    if (resInfo) {
+                        if (resInfo[6] && resInfo[7]) {
+                            regLat = parseFloat(resInfo[6]);
+                            regLng = parseFloat(resInfo[7]);
+                        }
+                        if (resInfo[2]) regPhone = resInfo[2];
+                        
+                        if (resInfo[12] && resInfo[12].trim() !== "") {
+                            try {
+                                const freshList = JSON.parse(resInfo[12]);
+                                if (JSON.stringify(freshList) !== JSON.stringify(myCustomPriceList)) {
+                                    myCustomPriceList = freshList;
+                                    savePriceListToCache(myCustomPriceList);
+                                    window.buildCustomAreaDropdown();
+                                }
+                            } catch(e) {}
+                        }
                     }
                 }
-            }
-            if (data && data.drivers) globalDriversInfo = data.drivers;
-        } catch(e) {
-            console.warn("تعذر جلب بيانات المطعم من السيرفر", e);
-        } finally {
-            window.showLoading(false);
-        }
+                if (data && data.drivers) globalDriversInfo = data.drivers;
+            })
+            .catch(e => console.warn("تعذر جلب بيانات المطعم من السيرفر", e));
         
+        // إذا لم تكن هناك بيانات مخزنة مسبقاً، نبني القائمة الآن
         if (!hasCached) {
             window.buildCustomAreaDropdown();
             restoreDraft();
