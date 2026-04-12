@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <script>
-        // --- الإصدار 6.2 (تحسينات Spiderfy + تقييم نجوم + Ticker ذكي) ---
-        const CURRENT_APP_VERSION = "6.2";
+        // --- الإصدار 6.3 (تحسينات التناسق الكامل + إصلاحات الأمان والأداء) ---
+        const CURRENT_APP_VERSION = "6.3";
         const VERSION_KEY = 'hut_master_app_version';
         try {
             if (localStorage.getItem(VERSION_KEY) !== CURRENT_APP_VERSION) {
                 localStorage.setItem(VERSION_KEY, CURRENT_APP_VERSION);
                 if (localStorage.getItem(VERSION_KEY) === CURRENT_APP_VERSION) {
-                    console.log("نسخة إدارة V34.1 محسّنة... جاري التحديث!");
+                    console.log("نسخة إدارة V34.1 متناسقة... جاري التحديث!");
                     if ('caches' in window) {
                         caches.keys().then(function(names) {
                             for (let name of names) caches.delete(name);
@@ -1134,6 +1134,31 @@
         .custom-cluster-icon > div {
             background: linear-gradient(135deg, var(--primary), var(--primary-dark)) !important;
         }
+        
+        /* 🆕 مؤشر الاتصال بـ Firebase */
+        #firebaseConnectionStatus {
+            position: fixed;
+            bottom: calc(var(--nav-h) + 20px);
+            right: 20px;
+            background: var(--surface);
+            border-radius: var(--r-full);
+            padding: 8px 16px;
+            box-shadow: var(--s-md);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 800;
+            font-size: 0.8rem;
+            z-index: 1005;
+            border: 1px solid var(--border);
+        }
+        .conn-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--success);
+        }
+        .conn-dot.offline { background: var(--danger); }
     </style>
 </head>
 <body>
@@ -1161,8 +1186,17 @@
         <button class="msg-btn" onclick="sendBroadcast('prayer')">
             <span style="font-size:1.5rem;">🕌</span> <span>حان الآن موعد الصلاة، تقبل الله طاعاتكم.</span>
         </button>
+        <button class="msg-btn" onclick="sendBroadcast('tasbih')">
+            <span style="font-size:1.5rem;">📿</span> <span>سبحان الله وبحمده، سبحان الله العظيم.</span>
+        </button>
+        <button class="msg-btn" onclick="sendBroadcast('tawhid')">
+            <span style="font-size:1.5rem;">☝️</span> <span>لا إله إلا الله وحده لا شريك له، له الملك وله الحمد وهو على كل شيء قدير.</span>
+        </button>
+        <button class="msg-btn" onclick="sendBroadcast('rizq')">
+            <span style="font-size:1.5rem;">🌾</span> <span>اللهم ارزقنا الرزق الحلال الطيب وبارك لنا فيه.</span>
+        </button>
         <button class="msg-btn" onclick="sendBroadcast('clean')">
-            <span style="font-size:1.5rem;">🧼</span> <span>يرجى الحفاظ على نظافة الصندوق، الدراجة، والمظهر.</span>
+            <span style="font-size:1.5rem;">🧼</span> <span>يرجى الحفاظ على نظافة الصندوق، الدراجة، والمظهر العام.</span>
         </button>
         <button class="msg-btn" onclick="sendBroadcast('trust')">
             <span style="font-size:1.5rem;">✨</span> <span>توكلوا على الله، يوم عمل موفق ورزق حلال للجميع.</span>
@@ -1324,6 +1358,12 @@
                             <i data-lucide="download" width="16" height="16"></i> تصدير
                         </button>
                     </div>
+                    <!-- 🆕 زر تحديث الأرشيف يدوياً -->
+                    <div class="col-12 col-md-1">
+                        <button class="arch-export-btn" style="background:var(--success); border-color:var(--success); width:100%; justify-content:center;" onclick="forceArchiveRefresh(event)" title="تحديث الأرشيف الآن">
+                            <i data-lucide="refresh-cw" width="16" height="16"></i>
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -1446,6 +1486,12 @@
     </div>
 </div>
 
+<!-- 🆕 مؤشر اتصال Firebase -->
+<div id="firebaseConnectionStatus">
+    <span class="conn-dot" id="connDot"></span>
+    <span id="connText">متصل بقاعدة البيانات</span>
+</div>
+
 <script>
 /* ═══════════════════════════════════════════
    🔵 INIT LUCIDE
@@ -1453,13 +1499,19 @@
 if (typeof lucide !== 'undefined') lucide.createIcons();
 
 /* ═══════════════════════════════════════════
-   🛡️ SECURITY UTIL — XSS protection
+   🛡️ SECURITY UTIL — XSS protection (محسّن)
 ═══════════════════════════════════════════ */
 function escHtml(str) {
     if (str === null || str === undefined) return '';
     const d = document.createElement('div');
     d.textContent = String(str);
     return d.innerHTML;
+}
+
+// 🆕 دالة مساعدة لتهريب علامات التنصيص في onclick
+function escJs(str) {
+    if (str === null || str === undefined) return '';
+    return String(str).replace(/'/g, "\\'").replace(/"/g, '&quot;');
 }
 
 function safeIcon(containerId) {
@@ -1470,7 +1522,7 @@ function safeIcon(containerId) {
 /* ═══════════════════════════════════════════
    📐 DATA SCHEMA
 ═══════════════════════════════════════════ */
-const O = { ID:0, REST_NAME:1, AREA:2, DETAILS:3, PRICE:4, STATUS:5, DRIVER_PHONE:6, TIME:7, PHOTO:8, IS_SOVEREIGN:9, LAST_UPDATE:10, LAST_OFFERED:11 };
+const O = { ID:0, REST_NAME:1, AREA:2, DETAILS:3, PRICE:4, STATUS:5, DRIVER_PHONE:6, TIME:7, PHOTO:8, IS_OVEREIGN:9, LAST_UPDATE:10, LAST_OFFERED:11 };
 const R = { ID:0, NAME:1, PHONE:2, AREA:3, STATUS:4, COMMISSION:5, LAT:6, LNG:7, PAY_TYPE:8 };
 const D = { ID:0, NAME:1, PHONE:2, AREA:3, STATUS:4, LAT:5, LNG:6 };
 
@@ -1513,6 +1565,10 @@ let tickerMessages = [];
 let tickerIndex = 0;
 let tickerInterval = null;
 
+// 🆕 مستمعات Firebase لتتبع الاتصال
+let firebaseListeners = [];
+let isFirebaseConnected = true;
+
 const firebaseConfig = {
     apiKey: "AIzaSyAo1rmqUzieYZU3RIwXOAN87GkpNrp-_Hc",
     authDomain: "sufyan-delivery.firebaseapp.com",
@@ -1524,6 +1580,20 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
+
+// 🆕 مراقبة حالة الاتصال بـ Firebase
+const connectedRef = db.ref('.info/connected');
+connectedRef.on('value', (snap) => {
+    isFirebaseConnected = snap.val() === true;
+    const dot = document.getElementById('connDot');
+    const text = document.getElementById('connText');
+    if (dot) {
+        dot.className = isFirebaseConnected ? 'conn-dot' : 'conn-dot offline';
+    }
+    if (text) {
+        text.textContent = isFirebaseConnected ? 'متصل بقاعدة البيانات' : 'غير متصل - جاري إعادة المحاولة...';
+    }
+});
 
 /* ─── Toast ─── */
 function showToast(msg, type = 'success') {
@@ -1557,15 +1627,25 @@ function closeModal(id) {
 }
 
 function sendBroadcast(type) {
+    // 🆕 تأكيد قبل الإرسال للرسائل الدينية
+    if (['prayer', 'tasbih', 'tawhid', 'rizq'].includes(type)) {
+        if (!confirm('هل أنت متأكد من إرسال هذه الرسالة لجميع الكباتن؟')) return;
+    }
     const msgs = {
         prayer: "🕌 حان الآن موعد الصلاة، تقبل الله طاعاتكم.",
+        tasbih: "📿 سبحان الله وبحمده، سبحان الله العظيم.",
+        tawhid: "☝️ لا إله إلا الله وحده لا شريك له، له الملك وله الحمد وهو على كل شيء قدير.",
+        rizq: "🌾 اللهم ارزقنا الرزق الحلال الطيب وبارك لنا فيه.",
         clean: "🧼 تذكير: يرجى الحفاظ على نظافة صندوق التوصيل، الدراجة، والمظهر العام.",
         trust: "✨ توكلوا على الله، يوم عمل موفق ورزق حلال للجميع."
     };
-    db.ref('system_broadcast').set({ msg: msgs[type], ts: Date.now() });
-    showToast("تم إرسال البث لجميع الكباتن بنجاح");
-    if("vibrate" in navigator) navigator.vibrate(100);
-    closeModal('broadcastModal');
+    db.ref('system_broadcast').set({ msg: msgs[type], ts: Date.now() })
+        .then(() => {
+            showToast("تم إرسال البث لجميع الكباتن بنجاح");
+            if("vibrate" in navigator) navigator.vibrate(100);
+            closeModal('broadcastModal');
+        })
+        .catch(() => showToast("فشل إرسال البث", "error"));
 }
 
 /* ─── Auth ─── */
@@ -1574,7 +1654,6 @@ async function checkAuth() {
     if (!pass) { showToast("الرجاء إدخال رمز المرور", "error"); return; }
     masterPassword = encodeURIComponent(pass);
     const btn = document.querySelector('.auth-btn');
-    btn.textContent = '';
     btn.classList.add('btn-loading');
     btn.disabled = true;
 
@@ -1592,7 +1671,6 @@ async function checkAuth() {
         masterPassword = "";
         showToast(err.name === 'AbortError' ? "تأخر السيرفر، تحقق من الإنترنت" : "فشل الاتصال بالخادم", "error");
     } finally {
-        btn.textContent = 'تسجيل الدخول';
         btn.classList.remove('btn-loading');
         btn.disabled = false;
     }
@@ -1629,10 +1707,12 @@ async function refreshData() {
     try {
         const url = `${API_URL}?action=getGlobalData&token=${API_TOKEN}&ts=${Date.now()}`;
         const res = await fetch(url);
+        if (!res.ok) throw new Error('Network response was not ok');
         const data = await res.json();
         renderData(data);
     } catch (e) {
         console.error("فشل تحديث البيانات:", e);
+        showToast("فشل تحديث البيانات من الخادم", "error");
     }
 }
 
@@ -1653,10 +1733,10 @@ window.renderData = function(data) {
 
     if (document.getElementById('arcRes').options.length === 1) {
         data.restaurants.slice(1).forEach(r => {
-            document.getElementById('arcRes').innerHTML += `<option value="${r[1]}">${r[1]}</option>`;
+            document.getElementById('arcRes').innerHTML += `<option value="${escHtml(r[1])}">${escHtml(r[1])}</option>`;
         });
         data.drivers.slice(1).forEach(d => {
-            document.getElementById('arcDriver').innerHTML += `<option value="${String(d[2])}">${d[1]}</option>`;
+            document.getElementById('arcDriver').innerHTML += `<option value="${escHtml(String(d[2]))}">${escHtml(d[1])}</option>`;
         });
     }
 
@@ -1682,21 +1762,22 @@ window.renderData = function(data) {
 
 /* ─── Firebase Listeners ─── */
 function listenToFirebaseLedgers() {
-    db.ref('ledgers').on('value', snap => {
+    const ref = db.ref('ledgers');
+    const callback = snap => {
         liveLedgers = snap.val() || { drivers:{}, restaurants:{} };
-        let totalRevenue = 0;
-        if(liveLedgers.restaurants) { Object.values(liveLedgers.restaurants).forEach(r => { totalRevenue += (r.debt || 0); }); }
-        
         if (globalData) {
             triggerSearch('DRIVER');
             triggerSearch('RESTAURANT');
         }
         updateTicker();
-    });
+    };
+    ref.on('value', callback);
+    firebaseListeners.push({ ref, callback });
 }
 
 function listenToFirebaseOrders() {
-    db.ref('active_orders').on('value', snapshot => {
+    const ref = db.ref('active_orders');
+    const callback = snapshot => {
         const ordersObj = snapshot.val();
         let newActive = [], pendingCount = 0, hasEmergency = false;
         const now = Date.now();
@@ -1711,11 +1792,12 @@ function listenToFirebaseOrders() {
                     if (ex) details = ex[3];
                 }
                 
+                // استخدام is_overeign (مطابق لقاعدة البيانات الفعلية)
                 let arr = [
                     o.id || '', o.restaurant || '', o.area || 'غير محدد',
                     details, o.price || 0, o.status || 'pending',
                     o.driverPhone || '', o.last_update || o.timestamp || '', o.photoUrl || '',
-                    o.is_sovereign || false, o.last_update || '', o.last_offered_to || ''
+                    o.is_overeign || false, o.last_update || '', o.last_offered_to || ''
                 ];
                 
                 if (['accepted', 'heading', 'arrived_at_res', 'picked_up', 'completed'].includes(o.status)) {
@@ -1764,7 +1846,9 @@ function listenToFirebaseOrders() {
         updateHeatmap(liveFirebaseOrders);
         updateRestaurantMarkers(liveFirebaseOrders);
         updateTicker();
-    });
+    };
+    ref.on('value', callback);
+    firebaseListeners.push({ ref, callback });
 }
 
 function updateHeatmap(orders) {
@@ -1796,7 +1880,8 @@ function updateRestaurantMarkers(orders) {
 
 function listenToFirebaseLocations() {
     if (!map) return;
-    db.ref('drivers_locations').on('value', snapshot => {
+    const ref = db.ref('drivers_locations');
+    const callback = snapshot => {
         const locs = snapshot.val();
         if (!locs) return;
         const now = Date.now();
@@ -1843,10 +1928,12 @@ function listenToFirebaseLocations() {
             triggerSearch('DRIVER');
         }
         updateTicker();
-    });
+    };
+    ref.on('value', callback);
+    firebaseListeners.push({ ref, callback });
 }
 
-/* ─── شريط الأخبار الذكي ─── */
+/* ─── شريط الأخبار الذكي (محسّن) ─── */
 function updateTicker() {
     if (!globalData) return;
 
@@ -1855,10 +1942,32 @@ function updateTicker() {
     const totalDebt = Object.values(liveLedgers.restaurants || {}).reduce((sum, r) => sum + (r.debt || 0), 0);
     const activeOrdersCount = liveFirebaseOrders.length;
 
+    // أكثر منطقة طلباً
+    const areaCounts = {};
+    liveFirebaseOrders.forEach(o => { if(o[2]) areaCounts[o[2]] = (areaCounts[o[2]] || 0) + 1; });
+    let topArea = 'غير متوفر', topAreaCount = 0;
+    Object.entries(areaCounts).forEach(([area, cnt]) => { if(cnt > topAreaCount) { topArea = area; topAreaCount = cnt; } });
+
+    // أكثر مطعم نشط
+    const resCounts = {};
+    liveFirebaseOrders.forEach(o => { if(o[1]) resCounts[o[1]] = (resCounts[o[1]] || 0) + 1; });
+    let topRes = 'غير متوفر', topResCount = 0;
+    Object.entries(resCounts).forEach(([res, cnt]) => { if(cnt > topResCount) { topRes = res; topResCount = cnt; } });
+
+    // أكثر كابتن طلبات نشطة
+    const driverCounts = {};
+    liveFirebaseOrders.forEach(o => { if(o[6] && o[6] !== 'system_routing' && o[6] !== 'pending_driver') driverCounts[o[6]] = (driverCounts[o[6]] || 0) + 1; });
+    let topDriver = 'غير متوفر', topDriverCount = 0;
+    Object.entries(driverCounts).forEach(([d, cnt]) => { if(cnt > topDriverCount) { topDriver = d; topDriverCount = cnt; } });
+    const topDriverName = globalData.drivers.find(d => String(d[2]) === String(topDriver))?.[1] || topDriver;
+
     const baseMessages = [
         `📦 الطلبات النشطة: ${activeOrdersCount} | 🚚 كباتن: ${activeDrivers} | 🍽️ مطاعم: ${document.querySelector('.val-res')?.textContent || 0}`,
         `💰 إجمالي عمولات اليوم: ${totalDebt} د.ع`,
         `⏳ طلبات بانتظار كابتن: ${pending}`,
+        `📍 أكثر منطقة: ${topArea} (${topAreaCount} طلب)`,
+        `🏪 أكثر مطعم: ${topRes} (${topResCount} طلب)`,
+        `🛵 أكثر كابتن طلبات: ${topDriverName} (${topDriverCount})`,
         `🕒 ${new Date().toLocaleTimeString('ar-EG')} - ${new Date().toLocaleDateString('ar-EG')}`
     ];
 
@@ -1880,7 +1989,7 @@ function updateTicker() {
             const el = document.getElementById('tickerText');
             if (el) el.innerHTML = tickerMessages[tickerIndex];
         }
-    }, 8000);
+    }, 6000); // تحديث كل 6 ثوانٍ
 
     const el = document.getElementById('tickerText');
     if (el) el.innerHTML = baseMessages[0];
@@ -1912,7 +2021,7 @@ function cancelTracking() {
     map.setView([35.468, 44.392], 13, {animate: true});
 }
 
-/* ─── Radar Render ─── */
+/* ─── Radar Render (محسّن مع XSS protection) ─── */
 function smartRenderRadar(activeList) {
     const container = document.getElementById('smartOrdersContainer');
 
@@ -1925,7 +2034,7 @@ function smartRenderRadar(activeList) {
                 let sym = '🟡';
                 if(completed >= 100) sym = '🟢';
                 else if(completed < 30) sym = '🔴';
-                newOpts += `<option value="${String(d[2])}">${sym} ${d[1]}</option>`;
+                newOpts += `<option value="${escHtml(String(d[2]))}">${sym} ${escHtml(d[1])}</option>`;
             }
         });
     }
@@ -1959,6 +2068,8 @@ function smartRenderRadar(activeList) {
     function buildDriverControls(orderId, driverPhone, hasDriver, sInfo, isSovereign) {
         let ctrl = '';
         let opts = activeDriversOptionsCache;
+        const safeOrderId = escJs(orderId);
+        const safeDriverPhone = escJs(driverPhone);
 
         if (isSovereign) {
             ctrl += `<span class="sbadge sbadge-purple" style="padding:6px 12px;">👑 سيادي</span>`;
@@ -1966,13 +2077,13 @@ function smartRenderRadar(activeList) {
         }
 
         if (sInfo.ringing && hasDriver) {
-            ctrl += `<button class="oc-btn oc-btn-delete" style="width:auto;padding:0 10px;font-family:'Cairo',sans-serif;font-size:0.72rem;font-weight:800;" onclick="withdrawOrderOptUI('${escHtml(orderId)}','${escHtml(driverPhone)}',this)"><i data-lucide="user-minus" width="13" height="13"></i> سحب</button>`;
+            ctrl += `<button class="oc-btn oc-btn-delete" style="width:auto;padding:0 10px;font-family:'Cairo',sans-serif;font-size:0.72rem;font-weight:800;" onclick="withdrawOrderOptUI('${safeOrderId}','${safeDriverPhone}',this)"><i data-lucide="user-minus" width="13" height="13"></i> سحب</button>`;
         }
         if (hasDriver && !sInfo.ringing) {
-            ctrl += `<button class="btn-call-sm" onclick="window.open('tel:${escHtml(driverPhone)}')"><i data-lucide="phone" width="14" height="14"></i></button>`;
+            ctrl += `<button class="btn-call-sm" onclick="window.open('tel:${safeDriverPhone}')"><i data-lucide="phone" width="14" height="14"></i></button>`;
             opts = opts.replace('تعيين يدوي', 'إعادة تعيين 🔄');
         }
-        ctrl += `<select class="assign-select" onchange="assignDriverOptUI('${escHtml(orderId)}',this.value,this)">${opts}</select>`;
+        ctrl += `<select class="assign-select" onchange="assignDriverOptUI('${safeOrderId}',this.value,this)">${opts}</select>`;
         return ctrl;
     }
 
@@ -2017,6 +2128,11 @@ function smartRenderRadar(activeList) {
         const timeF = new Date(orderTimeStr).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
         const isDouble = hasDriver && driverOrderCount[driverPhone] > 1;
 
+        const safeOrderId = escJs(orderId);
+        const safeDriverPhone = escJs(driverPhone);
+        const safeRestName = escJs(restName);
+        const safeOrderArea = escJs(orderArea);
+
         currentIds.add(orderId);
         const hash = `${status}-${driverPhone}-${diffMins}-${isDouble}-${isSovereign}`;
         let existing = document.getElementById(`oc-${orderId}`);
@@ -2024,7 +2140,7 @@ function smartRenderRadar(activeList) {
         let rejectHtml = '';
         if (!hasDriver && o[11]) {
             const rName = globalData?.drivers.find(d => String(d[2]) === String(o[11]))?.[1] || o[11];
-            rejectHtml = `<br><div class="reject-tag"><i data-lucide="user-x" width="10" height="10"></i> رفضه: ${rName}</div>`;
+            rejectHtml = `<br><div class="reject-tag"><i data-lucide="user-x" width="10" height="10"></i> رفضه: ${escHtml(rName)}</div>`;
         }
 
         let doubleBadge = isDouble ? `<span class="sbadge" style="background:var(--purple); color:#fff; margin-right:5px; font-size:0.65rem;">مزدوج</span>` : '';
@@ -2050,11 +2166,11 @@ function smartRenderRadar(activeList) {
                 const delayEl = existing.querySelector('.delay-pill');
                 if (diffMins > 3 && !hasDriver) {
                     if (delayEl) delayEl.textContent = `${diffMins} دق تأخير`;
-                    else existing.insertAdjacentHTML('afterbegin', `<div class="delay-pill">${diffMins} دق تأخير</div>`);
+                    else existing.insertAdjacentHTML('afterbegin', `<div class="delay-pill">${diffMins} דק تأخير</div>`);
                 } else if (delayEl) delayEl.remove();
                 
                 const areaEl = existing.querySelector('.oc-area');
-                if(areaEl) areaEl.innerHTML = `<i data-lucide="map-pin" width="12" height="12"></i>${orderArea} ${rejectHtml}`;
+                if(areaEl) areaEl.innerHTML = `<i data-lucide="map-pin" width="12" height="12"></i>${safeOrderArea} ${rejectHtml}`;
 
                 renderedOrdersCache[orderId] = hash;
             }
@@ -2062,7 +2178,7 @@ function smartRenderRadar(activeList) {
         }
 
         const ctrl = buildDriverControls(orderId, driverPhone, hasDriver, sInfo, isSovereign);
-        let callBtn = (hasDriver && !sInfo.ringing) ? `<button class="btn-call-sm" onclick="window.open('tel:${escHtml(driverPhone)}')"><i data-lucide="phone" width="14" height="14"></i></button>` : '';
+        let callBtn = (hasDriver && !sInfo.ringing) ? `<button class="btn-call-sm" onclick="window.open('tel:${safeDriverPhone}')"><i data-lucide="phone" width="14" height="14"></i></button>` : '';
 
         const html = `
         <div id="oc-${orderId}" class="order-card ${sInfo.cls} flash-update">
@@ -2074,28 +2190,28 @@ function smartRenderRadar(activeList) {
                 </div>
                 <div class="oc-actions">
                     <span class="sbadge status-badge-ui ${sInfo.sbCls}">${sInfo.desc}</span>
-                    ${hasDriver && !isSovereign ? `<button class="oc-btn-track" onclick="trackDriver('${driverPhone}','${restName}')"><i data-lucide="map-pin" width="12" height="12"></i> مسار</button>` : ''}
+                    ${hasDriver && !isSovereign ? `<button class="oc-btn-track" onclick="trackDriver('${safeDriverPhone}','${safeRestName}')"><i data-lucide="map-pin" width="12" height="12"></i> مسار</button>` : ''}
                     ${!isSovereign ? `
-                    <button class="oc-btn oc-btn-complete" onclick="adminActionOptUI('COMPLETE','ORDER','${orderId}',this)"><i data-lucide="check-circle" width="15" height="15"></i></button>
-                    <button class="oc-btn oc-btn-delete" onclick="adminActionOptUI('DELETE','ORDER','${orderId}',this)"><i data-lucide="trash-2" width="15" height="15"></i></button>
+                    <button class="oc-btn oc-btn-complete" onclick="forceComplete('${safeOrderId}')"><i data-lucide="check-circle" width="15" height="15"></i></button>
+                    <button class="oc-btn oc-btn-delete" onclick="adminActionOptUI('DELETE','ORDER','${safeOrderId}',this)"><i data-lucide="trash-2" width="15" height="15"></i></button>
                     ` : ''}
                 </div>
             </div>
             <div class="oc-body">
                 <div class="oc-row">
-                    <div class="oc-res"><i data-lucide="store" width="14" height="14" style="color:var(--accent);"></i>${restName}</div>
+                    <div class="oc-res"><i data-lucide="store" width="14" height="14" style="color:var(--accent);"></i>${safeRestName}</div>
                     <div class="oc-price">${orderPrice || 0} د.ع</div>
                 </div>
                 <div class="oc-driver-row">
                     <div class="oc-driver-name driver-name-ui">
                         <i data-lucide="bike" width="13" height="13" style="color:var(--primary); margin-left:4px;"></i>
-                        <span>${driverName}</span>
+                        <span>${escHtml(driverName)}</span>
                     </div>
                     <div class="oc-driver-controls driver-controls-ui">
                         ${callBtn}${ctrl}
                     </div>
                 </div>
-                ${orderArea && orderArea !== 'غير محدد' ? `<div class="oc-area"><i data-lucide="map-pin" width="12" height="12"></i>${orderArea} ${rejectHtml}</div>` : ''}
+                ${orderArea && orderArea !== 'غير محدد' ? `<div class="oc-area"><i data-lucide="map-pin" width="12" height="12"></i>${safeOrderArea} ${rejectHtml}</div>` : ''}
             </div>
         </div>`;
 
@@ -2244,7 +2360,7 @@ function applySectionFilter(type, filter, btn) {
     }
 }
 
-/* ─── Entity Cards ─── */
+/* ─── Entity Cards (مع إصلاح الديون وتطبيع الهاتف) ─── */
 function smartRenderFilteredSection(type, fullList) {
     const filter  = type === 'RESTAURANT' ? currentResSectionFilter : currentDriverSectionFilter;
     const searchQ = type === 'RESTAURANT'
@@ -2290,7 +2406,11 @@ function smartRenderFilteredSection(type, fullList) {
         const safeId = String(phone).replace(/[^a-zA-Z0-9]/g, '');
         currentIds.add(safeId);
         
-        const ledger = type === 'RESTAURANT' ? (liveLedgers.restaurants?.[phone] || {debt:0, completed_orders:0}) : (liveLedgers.drivers?.[phone] || {debt:0, completed_orders:0});
+        // 🟢 إصلاح الديون: تطبيع رقم الهاتف (إزالة الصفر البادئ)
+        const normalizedPhone = String(phone).replace(/^0+/, '').trim();
+        const ledger = type === 'RESTAURANT' 
+            ? (liveLedgers.restaurants?.[normalizedPhone] || {debt:0, completed_orders:0})
+            : (liveLedgers.drivers?.[normalizedPhone] || {debt:0, completed_orders:0});
         const debt = ledger.debt || 0;
         const compCount = ledger.completed_orders || 0;
 
@@ -2330,6 +2450,10 @@ function smartRenderFilteredSection(type, fullList) {
             return;
         }
 
+        const safeName = escHtml(name);
+        const safePhone = escHtml(phone);
+        const safePhoneJs = escJs(phone);
+
         const html = `
         <div id="card-${type}-${safeId}" class="entity-card">
             ${perfHtml}
@@ -2337,8 +2461,8 @@ function smartRenderFilteredSection(type, fullList) {
                 <div class="entity-avatar"><i data-lucide="${escHtml(icon)}" width="22" height="22"></i></div>
                 <span class="status-pill ${spClass}">${escHtml(spLabel)}</span>
             </div>
-            <div class="entity-name" style="margin-top: 8px;">${escHtml(name)}</div>
-            <div class="entity-phone">${escHtml(phone)}</div>
+            <div class="entity-name" style="margin-top: 8px;">${safeName}</div>
+            <div class="entity-phone">${safePhone}</div>
             <div class="entity-debt" style="margin-top: 12px;">
                 <div>
                     <div class="entity-debt-lbl">طلبات منجزة: <span class="unpaid-wrap" style="color:var(--text-1); font-weight:900;">${escHtml(compCount)}</span></div>
@@ -2347,13 +2471,13 @@ function smartRenderFilteredSection(type, fullList) {
             </div>
             <div class="entity-actions">
                 <div class="ea-group">
-                    <button class="ea-btn ea-accept" title="تفعيل" onclick="adminActionOptUI('ACCEPT','${type}','${escHtml(phone)}',this)"><i data-lucide="check" width="16" height="16"></i></button>
-                    <button class="ea-btn ea-pause"  title="استراحة" onclick="adminActionOptUI('PAUSE','${type}','${escHtml(phone)}',this)"><i data-lucide="pause" width="16" height="16"></i></button>
-                    <button class="ea-btn ea-ban"    title="حظر" onclick="adminActionOptUI('DELETE','${type}','${escHtml(phone)}',this)"><i data-lucide="ban" width="16" height="16"></i></button>
+                    <button class="ea-btn ea-accept" title="تفعيل" onclick="adminActionOptUI('ACCEPT','${type}','${safePhoneJs}',this)"><i data-lucide="check" width="16" height="16"></i></button>
+                    <button class="ea-btn ea-pause"  title="استراحة" onclick="adminActionOptUI('PAUSE','${type}','${safePhoneJs}',this)"><i data-lucide="pause" width="16" height="16"></i></button>
+                    <button class="ea-btn ea-ban"    title="حظر" onclick="adminActionOptUI('DELETE','${type}','${safePhoneJs}',this)"><i data-lucide="ban" width="16" height="16"></i></button>
                 </div>
                 <div class="ea-group">
-                    <button class="ea-btn ea-debt"   title="تصفير الديون" onclick="resetDebtOptUI('${type}','${escHtml(phone)}',this)"><i data-lucide="banknote" width="16" height="16"></i></button>
-                    <button class="ea-btn ea-call"   title="اتصال" onclick="window.open('tel:${escHtml(phone)}')"><i data-lucide="phone-call" width="16" height="16"></i></button>
+                    <button class="ea-btn ea-debt"   title="تصفير الديون" onclick="resetDebtOptUI('${type}','${safePhoneJs}',this)"><i data-lucide="banknote" width="16" height="16"></i></button>
+                    <button class="ea-btn ea-call"   title="اتصال" onclick="window.open('tel:${safePhoneJs}')"><i data-lucide="phone-call" width="16" height="16"></i></button>
                 </div>
             </div>
         </div>`;
@@ -2385,7 +2509,7 @@ function withdrawOrderOptUI(orderId, driverPhone, el) {
         last_update: now,
         last_offered_to: driverPhone,
         last_offered_time: now,
-        is_sovereign: false
+        is_overeign: false
     }).then(() => {
         showToast("تم سحب الطلب بنجاح");
     }).catch(() => {
@@ -2413,7 +2537,7 @@ function assignDriverOptUI(orderId, driverPhone, el) {
         status: 'manual_pending',
         driverPhone: driverPhone,
         last_update: now,
-        is_sovereign: true
+        is_overeign: true
     });
 
     fetch(`${API_URL}?action=ASSIGN_DRIVER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}&pass=${masterPassword}`)
@@ -2451,7 +2575,7 @@ function forceComplete(orderId) {
         if(driverPhone && driverPhone !== 'system_routing' && driverPhone !== 'pending_driver') {
             updates[`ledgers/drivers/${driverPhone}/completed_orders`] = firebase.database.ServerValue.increment(1);
             updates[`ledgers/drivers/${driverPhone}/debt`] = firebase.database.ServerValue.increment(driverDebtInc);
-            const todayStr = new Date().toISOString().split('T')[0];
+            const todayStr = getLocalDateString();
             updates[`daily_ledgers/${driverPhone}/${todayStr}/${orderId}`] = { orderId, resName, area, price, timestamp: Date.now() };
         }
         if(resPhone) {
@@ -2469,15 +2593,28 @@ function forceComplete(orderId) {
     }
 }
 
+// 🆕 دالة مساعدة للحصول على تاريخ اليوم بالتوقيت المحلي
+function getLocalDateString() {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
 function resetDebtOptUI(type, id, el) {
     if (!confirm(`تأكيد تصفير ديون (${id})؟ سيتم مسحها من الإكسل وتصفير العداد في Firebase.`)) return;
     el.classList.add('btn-loading');
     el.disabled = true;
     fetch(`${API_URL}?action=RESET_DEBT&type=${type}&id=${id}&token=${API_TOKEN}&pass=${masterPassword}`)
         .then(r => r.json()).then(res => {
-            if (res.success) { showToast("تم التصفير بنجاح"); el.classList.remove('btn-loading'); el.disabled = false; refreshData(); }
-            else { showToast("خطأ أثناء التصفير", "error"); el.classList.remove('btn-loading'); el.disabled = false; }
-        }).catch(() => showToast("تم إرسال أمر التصفير"));
+            if (res.success) { showToast("تم التصفير بنجاح"); refreshData(); }
+            else { showToast("خطأ أثناء التصفير", "error"); }
+        }).catch(() => showToast("تم إرسال أمر التصفير"))
+        .finally(() => {
+            el.classList.remove('btn-loading');
+            el.disabled = false;
+        });
 }
 
 function adminActionOptUI(cmd, type, id, el) {
@@ -2541,7 +2678,7 @@ function renderArchive() {
         if (o[O.TIME]) {
             const d = new Date(o[O.TIME]);
             if (!isNaN(d.getTime())) {
-                isoDate = d.toISOString().split('T')[0];
+                isoDate = d.toISOString().split('T')[0]; // للفلترة فقط
                 fmtDate = d.toLocaleString('ar-EG');
             }
         }
@@ -2601,6 +2738,28 @@ function renderArchive() {
     }
 }
 
+/* 🆕 تحديث الأرشيف يدوياً */
+async function forceArchiveRefresh(event) {
+    const btn = event.currentTarget;
+    btn.classList.add('btn-loading');
+    btn.disabled = true;
+    try {
+        const res = await fetch(`${API_URL}?action=RUN_NIGHTLY_ARCHIVE&token=${API_TOKEN}&pass=${masterPassword}`);
+        const data = await res.json();
+        if (data.success) {
+            showToast(`✅ تم تحديث الأرشيف! (${data.archivedCount || 0} طلب)`);
+            await refreshData();
+        } else {
+            showToast("فشل تحديث الأرشيف", "error");
+        }
+    } catch (e) {
+        showToast("خطأ في الاتصال", "error");
+    } finally {
+        btn.classList.remove('btn-loading');
+        btn.disabled = false;
+    }
+}
+
 /* ─── Invoice ─── */
 function openInvoice(dataStr) {
     const d = JSON.parse(decodeURIComponent(dataStr));
@@ -2644,7 +2803,7 @@ function exportExcel() {
     const blobUrl = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = blobUrl;
-    a.download = `تقرير_الحوت_${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `تقرير_الحوت_${getLocalDateString()}.csv`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -2693,6 +2852,22 @@ function initMap() {
     map.addLayer(driverClusterGroup);
 
     setTimeout(() => map.invalidateSize(), 350 + 50);
+}
+
+// 🆕 تنظيف المستمعين عند الخروج (اختياري، يمكن استدعاؤه عند تسجيل الخروج)
+function cleanupFirebaseListeners() {
+    firebaseListeners.forEach(({ ref, callback }) => {
+        ref.off('value', callback);
+    });
+    firebaseListeners = [];
+    if (dataRefreshInterval) {
+        clearInterval(dataRefreshInterval);
+        dataRefreshInterval = null;
+    }
+    if (tickerInterval) {
+        clearInterval(tickerInterval);
+        tickerInterval = null;
+    }
 }
 </script>
 </body>
