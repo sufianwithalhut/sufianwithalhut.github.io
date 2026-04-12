@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 5.4 (ذاكرة محلية لقائمة الأسعار - صلاحية 7 أيام) ---
-        const CURRENT_APP_VERSION = "5.4"; 
+        // --- إصدار 5.6 (منع النوم + ذاكرة تخزين 7 أيام) ---
+        const CURRENT_APP_VERSION = "5.6"; 
         if (localStorage.getItem('hut_res_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة مكتشفة... جاري التحديث الإجباري!");
             localStorage.setItem('hut_res_app_version', CURRENT_APP_VERSION);
@@ -261,7 +261,6 @@
         <div class="d-flex justify-content-between align-items-center container">
             <div class="text-end">
                 <h3 class="fw-black m-0" id="resTitle">جاري التحميل...</h3>
-                <!-- نص مكتب سفيان -->
                 <div class="fw-bold opacity-75" style="font-size: 0.9rem;">مكتب سفيان</div>
                 <small class="opacity-75 fw-bold" id="resPhoneDisplay"></small>
             </div>
@@ -326,7 +325,6 @@
                             </div>
                         </div>
 
-                        <!-- حقل السعر - يظهر فقط في الوضع اليدوي -->
                         <div class="mb-4" id="orderPriceContainer">
                             <label class="form-label">إجمالي الحساب (للكابتن)</label>
                             <input type="number" id="orderPrice" class="custom-input" placeholder="مثال: 15000 (دينار)" autocomplete="off" oninput="saveDraft()">
@@ -445,6 +443,33 @@
 
     let liveActiveOrders = [];
 
+    // 🟢 Web Audio API (Pinger) - منع نوم المتصفح
+    let audioCtx = null;
+    function unlockAudio() {
+        if (!audioCtx) {
+            try {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                // تشغيل نبضة صامتة كل 5 ثوانٍ
+                setInterval(() => {
+                    if (audioCtx && audioCtx.state === 'running') {
+                        const osc = audioCtx.createOscillator();
+                        const gain = audioCtx.createGain();
+                        osc.connect(gain);
+                        gain.connect(audioCtx.destination);
+                        osc.frequency.value = 20000; // تردد غير مسموع
+                        gain.gain.value = 0.01;       // مستوى صوت منخفض جداً
+                        osc.start();
+                        osc.stop(audioCtx.currentTime + 0.01);
+                    }
+                }, 5000);
+            } catch(e) { console.warn("Web Audio API غير مدعوم"); }
+        }
+        document.removeEventListener('touchstart', unlockAudio);
+        document.removeEventListener('click', unlockAudio);
+    }
+    document.addEventListener('touchstart', unlockAudio);
+    document.addEventListener('click', unlockAudio);
+
     document.addEventListener('contextmenu', event => {
         const tag = event.target.tagName;
         if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') event.preventDefault();
@@ -548,14 +573,13 @@
 
     function clearDraft() { sessionStorage.removeItem('hut_order_draft'); }
 
-    // ========== قائمة المناطق والأسعار (مع ذاكرة تخزين مؤقت 7 أيام) ==========
+    // ========== قائمة المناطق والأسعار (ذاكرة تخزين 7 أيام) ==========
     function loadPriceListFromCache() {
         const cached = localStorage.getItem('hut_res_price_list');
         if (!cached) return false;
         try {
             const data = JSON.parse(cached);
             const now = Date.now();
-            // صلاحية 7 أيام
             if (data.timestamp && (now - data.timestamp) < 7 * 24 * 60 * 60 * 1000) {
                 myCustomPriceList = data.list;
                 return true;
@@ -565,10 +589,7 @@
     }
 
     function savePriceListToCache(list) {
-        const data = {
-            list: list,
-            timestamp: Date.now()
-        };
+        const data = { list: list, timestamp: Date.now() };
         localStorage.setItem('hut_res_price_list', JSON.stringify(data));
     }
 
@@ -857,7 +878,7 @@
         }
     };
 
-    // ========== لوحة التحكم (تجلب قائمة الأسعار من الإكسل مع دعم الذاكرة المحلية) ==========
+    // ========== لوحة التحكم ==========
     async function enterDashboard() {
         document.getElementById('loginSection').classList.add('hidden-section'); 
         document.getElementById('orderSection').classList.remove('hidden-section');
@@ -865,14 +886,14 @@
         document.getElementById('resPhoneDisplay').innerText = "شريك معتمد - الحوت";
         if (typeof lucide !== 'undefined') lucide.createIcons();
         
-        // 🟢 الخطوة 1: محاولة تحميل قائمة الأسعار من الذاكرة المحلية فوراً
+        // تحميل فوري من الذاكرة المحلية
         const hasCached = loadPriceListFromCache();
         if (hasCached) {
             window.buildCustomAreaDropdown();
             restoreDraft();
         }
         
-        // 🟢 الخطوة 2: جلب البيانات من السيرفر في الخلفية لتحديث المعلومات بصمت
+        // جلب البيانات من السيرفر في الخلفية
         window.showLoading(true, "جاري مزامنة البيانات...");
         
         try {
@@ -888,7 +909,6 @@
                     }
                     if (resInfo[2]) regPhone = resInfo[2];
                     
-                    // 🟢 تحديث قائمة الأسعار بصمت
                     if (resInfo[12] && resInfo[12].trim() !== "") {
                         try {
                             const freshList = JSON.parse(resInfo[12]);
@@ -908,7 +928,6 @@
             window.showLoading(false);
         }
         
-        // إذا لم تكن هناك بيانات مخزنة مسبقاً، نبني القائمة الآن
         if (!hasCached) {
             window.buildCustomAreaDropdown();
             restoreDraft();
