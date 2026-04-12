@@ -2,11 +2,11 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 9.1 (متوافق مع V34.1: تعامل مع السيادية والموقع المحسّن) ---
-        const CURRENT_APP_VERSION = "9.1"; 
+        // --- إصدار 9.3 (متوافق مع V34.1: دعم استقبال البث السيادي من الإدارة) ---
+        const CURRENT_APP_VERSION = "9.3"; 
         
         if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
-            console.log("نسخة V34.1... جاري التطهير والاستعداد!");
+            console.log("نسخة V34.1... جاري التحديث للإصدار 9.3!");
             localStorage.setItem('hut_app_version', CURRENT_APP_VERSION);
             if ('caches' in window) { caches.keys().then(names => { names.forEach(name => caches.delete(name)); }); }
             if ('serviceWorker' in navigator) { navigator.serviceWorker.getRegistrations().then(regs => { regs.forEach(r => r.unregister()); }); }
@@ -353,7 +353,6 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getDatabase, ref, onValue, update, get, increment } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-    // 🚀 الرابط الجديد للسيرفر V34.1
     const API_URL = "https://script.google.com/macros/s/AKfycbzKDBjgPxmt_iDCphkjB6EY-cnag_aqwxrdNDrY9uqBRbTZYsqGWl4TJn4pANS8OVYm/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
@@ -374,7 +373,6 @@
     let offlineActionQueue = JSON.parse(localStorage.getItem('hut_offline_queue') || '[]');
     let isProcessingQueue = false;
 
-    // 🟢 Web Audio API (Pinger) - النبضة الميكروية لمنع نوم المتصفح كلياً
     let audioCtx = null;
     function unlockAudio() {
         const audios = ['alertSound', 'doubleOrderSound', 'cancelSound', 'welcomeSound'];
@@ -807,7 +805,6 @@
                     if (!fbOrder.restaurant || fbOrder.restaurant.trim() === "" || fbOrder.restaurant === "undefined") return;
 
                     let safeFbPhone = String(fbOrder.driverPhone || "").replace(/^0+/, '').trim();
-                    // دعم حالتي pending_driver و manual_pending
                     let isTargetedForMe = (safeFbPhone === myId) && (fbOrder.status === "pending_driver" || fbOrder.status === "manual_pending");
 
                     let notAlreadyAccepted = !activeOrders.find(o => String(o.id) === String(fbOrder.id));
@@ -843,6 +840,35 @@
                 });
             }
         });
+
+        // 🆕 مستمع البث السيادي من الإدارة
+        const broadcastRef = ref(db, 'system_broadcast');
+        onValue(broadcastRef, (snapshot) => {
+            const data = snapshot.val();
+            if (data && data.msg) {
+                const msgAge = data.ts ? Date.now() - data.ts : 0;
+                if (msgAge < 10000) {
+                    showBroadcastModal(data.msg);
+                }
+            }
+        });
+    }
+
+    // 🆕 دالة عرض نافذة البث
+    function showBroadcastModal(message) {
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:50000; display:flex; align-items:center; justify-content:center; padding:20px;';
+        overlay.innerHTML = `
+            <div style="background:white; border-radius:30px; padding:30px; max-width:350px; text-align:center;">
+                <i data-lucide="megaphone" width="48" height="48" style="color:var(--primary-blue); margin-bottom:15px;"></i>
+                <h3 style="font-weight:900; color:var(--primary-blue);">تنبيه الإدارة</h3>
+                <p style="font-size:1.1rem; margin:20px 0;">${message}</p>
+                <button onclick="this.closest('div').parentElement.remove()" style="background:var(--primary-blue); color:white; border:none; padding:12px 24px; border-radius:20px; font-weight:bold;">حسناً</button>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+        if (typeof lucide !== 'undefined') lucide.createIcons({ root: overlay });
+        setTimeout(() => overlay.remove(), 8000);
     }
 
     function startCountdown() {
@@ -854,7 +880,6 @@
     }
 
     window.declineOrder = function() {
-        // منع تجاهل الطلب السيادي
         if (currentOrderData && currentOrderData.is_sovereign) {
             alert("⚠️ هذا الطلب تعيين إداري مباشر ولا يمكن تجاهله. يجب عليك قبوله أو الاتصال بالدعم.");
             return;
@@ -886,7 +911,6 @@
         window.muteAlarmOnly();
         
         const id = currentOrderData.id;
-        // تحديث الحالة إلى accepted مع الحفاظ على is_sovereign إذا كان موجوداً
         const updates = { status: 'accepted', driverPhone: driverData.phone };
         update(ref(db, `active_orders/${id}`), updates);
         
@@ -1087,7 +1111,9 @@
                 if (order.payType && order.payType.includes('مناصفة')) { driverDebtIncrease = resDebtIncrease / 2; }
 
                 let updates = {};
-                updates[`active_orders/${id}/status`] = 'completed'; 
+                updates[`active_orders/${id}/status`] = 'completed';
+                updates[`active_orders/${id}/status_ar`] = 'مكتمل';
+                
                 updates[`ledgers/drivers/${driverData.phone}/completed_orders`] = increment(1);
                 updates[`ledgers/drivers/${driverData.phone}/debt`] = increment(driverDebtIncrease);
                 
@@ -1113,4 +1139,4 @@
     window.closeLedger = function() { document.getElementById('ledgerModal').classList.add('hidden-section'); }
 </script>
 </body>
-</html>​
+</html>
