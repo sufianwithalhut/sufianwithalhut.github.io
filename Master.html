@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <script>
-        // --- الإصدار 6.3 (تحسينات التناسق الكامل + إصلاحات الأمان والأداء) ---
-        const CURRENT_APP_VERSION = "6.3";
+        // --- الإصدار 6.4 (إصلاحات الرادار: إخفاء المكتملة + إظهار الأزرار للسيادي + تحسين التفاعلية) ---
+        const CURRENT_APP_VERSION = "6.4";
         const VERSION_KEY = 'hut_master_app_version';
         try {
             if (localStorage.getItem(VERSION_KEY) !== CURRENT_APP_VERSION) {
                 localStorage.setItem(VERSION_KEY, CURRENT_APP_VERSION);
                 if (localStorage.getItem(VERSION_KEY) === CURRENT_APP_VERSION) {
-                    console.log("نسخة إدارة V34.1 متناسقة... جاري التحديث!");
+                    console.log("نسخة إدارة V34.1 محسّنة... جاري التحديث!");
                     if ('caches' in window) {
                         caches.keys().then(function(names) {
                             for (let name of names) caches.delete(name);
@@ -1775,6 +1775,7 @@ function listenToFirebaseLedgers() {
     firebaseListeners.push({ ref, callback });
 }
 
+// 🟢 1. تعديل مستمع الطلبات: استبعاد المكتملة
 function listenToFirebaseOrders() {
     const ref = db.ref('active_orders');
     const callback = snapshot => {
@@ -1785,6 +1786,8 @@ function listenToFirebaseOrders() {
         if (ordersObj) {
             Object.values(ordersObj).forEach(o => {
                 if (!o.restaurant || o.restaurant.trim() === "") return; 
+                // 🟢 تجاهل الطلبات المكتملة نهائياً من الرادار
+                if (o.status === 'completed' || o.status === 'مكتمل') return;
 
                 let details = "طلب توصيل";
                 if (globalData?.orders) {
@@ -1792,7 +1795,6 @@ function listenToFirebaseOrders() {
                     if (ex) details = ex[3];
                 }
                 
-                // استخدام is_overeign (مطابق لقاعدة البيانات الفعلية)
                 let arr = [
                     o.id || '', o.restaurant || '', o.area || 'غير محدد',
                     details, o.price || 0, o.status || 'pending',
@@ -1800,7 +1802,7 @@ function listenToFirebaseOrders() {
                     o.is_overeign || false, o.last_update || '', o.last_offered_to || ''
                 ];
                 
-                if (['accepted', 'heading', 'arrived_at_res', 'picked_up', 'completed'].includes(o.status)) {
+                if (['accepted', 'heading', 'arrived_at_res', 'picked_up'].includes(o.status)) {
                     delete localOverrides.orders[arr[0]];
                 }
 
@@ -2021,7 +2023,7 @@ function cancelTracking() {
     map.setView([35.468, 44.392], 13, {animate: true});
 }
 
-/* ─── Radar Render (محسّن مع XSS protection) ─── */
+/* ─── Radar Render (محسّن مع XSS protection وإظهار الأزرار للسيادي) ─── */
 function smartRenderRadar(activeList) {
     const container = document.getElementById('smartOrdersContainer');
 
@@ -2071,8 +2073,11 @@ function smartRenderRadar(activeList) {
         const safeOrderId = escJs(orderId);
         const safeDriverPhone = escJs(driverPhone);
 
+        // 🟢 للسيادي: لا نضيف زر السحب، لكن باقي الأزرار ستظهر في الـ HTML
         if (isSovereign) {
-            ctrl += `<span class="sbadge sbadge-purple" style="padding:6px 12px;">👑 سيادي</span>`;
+            // نضيف فقط شارة السيادية (تمت إضافتها مسبقاً)، ولا نضيف أزرار إضافية هنا
+            // ولكننا نضيف القائمة المنسدلة للتعيين اليدوي (قد يرغب المدير في إعادة تعيين سيادي لآخر)
+            ctrl += `<select class="assign-select" onchange="assignDriverOptUI('${safeOrderId}',this.value,this)">${opts.replace('تعيين يدوي', 'إعادة تعيين 🔄')}</select>`;
             return ctrl;
         }
 
@@ -2166,7 +2171,7 @@ function smartRenderRadar(activeList) {
                 const delayEl = existing.querySelector('.delay-pill');
                 if (diffMins > 3 && !hasDriver) {
                     if (delayEl) delayEl.textContent = `${diffMins} دق تأخير`;
-                    else existing.insertAdjacentHTML('afterbegin', `<div class="delay-pill">${diffMins} דק تأخير</div>`);
+                    else existing.insertAdjacentHTML('afterbegin', `<div class="delay-pill">⚠️ تأخير ${diffMins} دقيقة</div>`);
                 } else if (delayEl) delayEl.remove();
                 
                 const areaEl = existing.querySelector('.oc-area');
@@ -2182,7 +2187,7 @@ function smartRenderRadar(activeList) {
 
         const html = `
         <div id="oc-${orderId}" class="order-card ${sInfo.cls} flash-update">
-            ${diffMins > 3 && !hasDriver ? `<div class="delay-pill">${diffMins} دق تأخير</div>` : ''}
+            ${diffMins > 3 && !hasDriver ? `<div class="delay-pill">⚠️ تأخير ${diffMins} دقيقة</div>` : ''}
             <div class="oc-header" style="${diffMins > 3 && !hasDriver ? 'margin-top:28px;' : ''}">
                 <div>
                     <div class="oc-id" style="display:flex; align-items:center;">#${orderId} ${doubleBadge} ${sovereignBadge}</div>
@@ -2190,11 +2195,9 @@ function smartRenderRadar(activeList) {
                 </div>
                 <div class="oc-actions">
                     <span class="sbadge status-badge-ui ${sInfo.sbCls}">${sInfo.desc}</span>
-                    ${hasDriver && !isSovereign ? `<button class="oc-btn-track" onclick="trackDriver('${safeDriverPhone}','${safeRestName}')"><i data-lucide="map-pin" width="12" height="12"></i> مسار</button>` : ''}
-                    ${!isSovereign ? `
+                    ${hasDriver ? `<button class="oc-btn-track" onclick="trackDriver('${safeDriverPhone}','${safeRestName}')"><i data-lucide="map-pin" width="12" height="12"></i> مسار</button>` : ''}
                     <button class="oc-btn oc-btn-complete" onclick="forceComplete('${safeOrderId}')"><i data-lucide="check-circle" width="15" height="15"></i></button>
                     <button class="oc-btn oc-btn-delete" onclick="adminActionOptUI('DELETE','ORDER','${safeOrderId}',this)"><i data-lucide="trash-2" width="15" height="15"></i></button>
-                    ` : ''}
                 </div>
             </div>
             <div class="oc-body">
