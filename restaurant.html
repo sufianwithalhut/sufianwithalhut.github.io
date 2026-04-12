@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 5.0 - ربط بالسيرفر الجديد AI Dispatcher) ---
-        const CURRENT_APP_VERSION = "5.0"; 
+        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 5.3 - تكامل مثالي) ---
+        const CURRENT_APP_VERSION = "5.3"; 
         if (localStorage.getItem('hut_res_app_version') !== CURRENT_APP_VERSION) {
             console.log("نسخة جديدة مكتشفة... جاري التحديث الإجباري لتسريع النظام!");
             localStorage.setItem('hut_res_app_version', CURRENT_APP_VERSION);
@@ -62,7 +62,6 @@
             padding-bottom: env(safe-area-inset-bottom);
         }
 
-        /* 🟢 السماح بتحديد النص واللصق فقط داخل حقول الإدخال */
         input, textarea, select {
             user-select: text !important;
             -webkit-user-select: text !important;
@@ -325,9 +324,10 @@
                             </div>
                         </div>
 
-                        <div class="mb-4">
+                        <!-- حقل السعر - يظهر فقط في الوضع اليدوي -->
+                        <div class="mb-4" id="orderPriceContainer">
                             <label class="form-label">إجمالي الحساب (للكابتن)</label>
-                            <input type="number" id="orderPrice" class="custom-input" placeholder="مثال: 15000 (دينار)" autocomplete="off" required oninput="saveDraft()">
+                            <input type="number" id="orderPrice" class="custom-input" placeholder="مثال: 15000 (دينار)" autocomplete="off" oninput="saveDraft()">
                         </div>
 
                         <div id="manualSection">
@@ -407,7 +407,6 @@
 
     if (typeof lucide !== 'undefined') lucide.createIcons();
 
-    // 🚀 الرابط الجديد للسيرفر (AI Dispatcher V34.1)
     const API_URL = "https://script.google.com/macros/s/AKfycbzKDBjgPxmt_iDCphkjB6EY-cnag_aqwxrdNDrY9uqBRbTZYsqGWl4TJn4pANS8OVYm/exec";
     const API_TOKEN = "HUT_SECURE_99";
     const IMGBB_KEY = "546047e6407dd77fc9518dd37e27cda2"; 
@@ -449,6 +448,7 @@
         if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') event.preventDefault();
     });
 
+    // ========== دوال الخريطة ==========
     window.initPickerMap = function() {
         if (!document.getElementById('pickerMap')) return;
         if(pickerMap) { setTimeout(() => { pickerMap.invalidateSize(); }, 500); return; }
@@ -507,6 +507,7 @@
         }
     }
 
+    // ========== دوال المسودة ==========
     window.saveDraft = function() {
         const draft = {
             mode: currentOrderMode, area: document.getElementById('customerArea').value,
@@ -545,6 +546,7 @@
 
     function clearDraft() { sessionStorage.removeItem('hut_order_draft'); }
 
+    // ========== قائمة المناطق والأسعار ==========
     window.buildCustomAreaDropdown = function() {
         const select = document.getElementById('customerArea');
         select.innerHTML = '<option value="" disabled selected>-- اختر منطقة الزبون --</option>';
@@ -559,7 +561,10 @@
         if(draftStr) {
             try {
                 const draft = JSON.parse(draftStr);
-                if(draft.area && document.querySelector(`#customerArea option[value="${draft.area}"]`)) { select.value = draft.area; window.showSelectedPrice(); }
+                if(draft.area && document.querySelector(`#customerArea option[value="${draft.area}"]`)) { 
+                    select.value = draft.area; 
+                    window.showSelectedPrice(); 
+                }
             } catch(e) {}
         }
     }
@@ -570,8 +575,10 @@
         const customSec = document.getElementById('customAreaSection');
 
         if (areaName === "أخرى") {
-            priceHint.classList.add('hidden-section'); customSec.classList.remove('hidden-section');
-            if (typeof lucide !== 'undefined') lucide.createIcons(); return;
+            priceHint.classList.add('hidden-section'); 
+            customSec.classList.remove('hidden-section');
+            if (typeof lucide !== 'undefined') lucide.createIcons(); 
+            return;
         } else {
             customSec.classList.add('hidden-section');
         }
@@ -615,6 +622,7 @@
         return JSON.stringify(resultObj);
     }
 
+    // ========== الجلسة وتسجيل الدخول ==========
     function checkSavedSession() {
         const sessionStr = localStorage.getItem('hut_res_session');
         const pendingStr = localStorage.getItem('hut_res_pending');
@@ -645,29 +653,42 @@
         }
     };
 
-    window.logout = function() { if(confirm("هل تريد تسجيل الخروج؟ سيتم مسح الذاكرة المؤقتة.")) { localStorage.clear(); sessionStorage.clear(); location.reload(); } }
-    window.showLoading = function(s, text = "جاري المعالجة...") { document.getElementById('loadingText').innerText = text; document.getElementById('loadingOverlay').style.display = s ? 'flex' : 'none'; }
+    window.logout = function() { 
+        if(confirm("هل تريد تسجيل الخروج؟ سيتم مسح الذاكرة المؤقتة.")) { 
+            localStorage.clear(); sessionStorage.clear(); location.reload(); 
+        } 
+    }
+    
+    window.showLoading = function(s, text = "جاري المعالجة...") { 
+        document.getElementById('loadingText').innerText = text; 
+        document.getElementById('loadingOverlay').style.display = s ? 'flex' : 'none'; 
+    }
 
     window.switchTab = function(mode, triggerSave = true) {
         currentOrderMode = mode;
-        document.getElementById('tabManual').classList.remove('active'); document.getElementById('tabPhoto').classList.remove('active');
+        document.getElementById('tabManual').classList.remove('active'); 
+        document.getElementById('tabPhoto').classList.remove('active');
+        const priceContainer = document.getElementById('orderPriceContainer');
         
         if (mode === 'manual') {
             document.getElementById('tabManual').classList.add('active');
             document.getElementById('manualSection').classList.remove('hidden-section');
             document.getElementById('photoSection').classList.add('hidden-section');
             document.getElementById('customerPhone').required = true;
+            priceContainer.classList.remove('hidden-section');
         } else {
             document.getElementById('tabPhoto').classList.add('active');
             document.getElementById('photoSection').classList.remove('hidden-section');
             document.getElementById('manualSection').classList.add('hidden-section');
             document.getElementById('customerPhone').required = false;
+            priceContainer.classList.add('hidden-section');
         }
         if (triggerSave) window.saveDraft();
     }
 
     window.switchListTab = function(tab) {
-        document.getElementById('tabLiveOrders').classList.remove('active'); document.getElementById('tabTodayArchive').classList.remove('active');
+        document.getElementById('tabLiveOrders').classList.remove('active'); 
+        document.getElementById('tabTodayArchive').classList.remove('active');
         
         if (tab === 'live') {
             document.getElementById('tabLiveOrders').classList.add('active');
@@ -752,7 +773,8 @@
     }
 
     function showWaitingRoom() {
-        document.getElementById('authBox').classList.add('hidden-section'); document.getElementById('waitingBox').classList.remove('hidden-section');
+        document.getElementById('authBox').classList.add('hidden-section'); 
+        document.getElementById('waitingBox').classList.remove('hidden-section');
         if(waitingPollingTimer) clearInterval(waitingPollingTimer);
         waitingPollingTimer = setInterval(() => window.checkWaitingStatus(false), 15000); 
     }
@@ -773,7 +795,6 @@
                     regPhone = phone; 
                     try { if (data.priceList && data.priceList.trim() !== "") myCustomPriceList = JSON.parse(data.priceList); } catch(e) {}
                     
-                    // حفظ معلومات الدفع للمحفظة
                     let pType = data.payType || 'المطعم يدفع';
                     let cRate = parseFloat(data.comm) || 0;
                     localStorage.setItem('hut_res_session', JSON.stringify({ phone: phone, name: data.name, payType: pType, comm: cRate, timestamp: Date.now() }));
@@ -811,32 +832,51 @@
         }
     };
 
-    function enterDashboard() {
-        document.getElementById('loginSection').classList.add('hidden-section'); document.getElementById('orderSection').classList.remove('hidden-section');
-        document.getElementById('resTitle').innerText = currentResName; document.getElementById('resPhoneDisplay').innerText = "شريك معتمد - الحوت";
+    // ========== لوحة التحكم (تجلب قائمة الأسعار من الإكسل) ==========
+    async function enterDashboard() {
+        document.getElementById('loginSection').classList.add('hidden-section'); 
+        document.getElementById('orderSection').classList.remove('hidden-section');
+        document.getElementById('resTitle').innerText = currentResName; 
+        document.getElementById('resPhoneDisplay').innerText = "شريك معتمد - الحوت";
         if (typeof lucide !== 'undefined') lucide.createIcons();
-        window.buildCustomAreaDropdown(); restoreDraft(); 
         
-        startHotDataListeners(); 
+        window.showLoading(true, "جاري تحميل قائمة المناطق والأسعار...");
         
-        // جلب الإحداثيات وقائمة الكباتن فقط لمرة واحدة (لتوجيه الطلبات) وليس لجلب الإحصائيات
-        fetch(`${API_URL}?action=getGlobalData&token=${API_TOKEN}`)
-            .then(res => res.json())
-            .then(data => {
-                if(data && data.drivers) globalDriversInfo = data.drivers;
-                if(data && data.restaurants) {
-                    const resInfo = data.restaurants.find(r => r[1] === currentResName);
-                    if(resInfo && resInfo[6] && resInfo[7]) {
+        try {
+            const res = await fetch(`${API_URL}?action=getGlobalData&token=${API_TOKEN}`);
+            const data = await res.json();
+            
+            if (data && data.restaurants) {
+                const resInfo = data.restaurants.find(r => r[1] === currentResName);
+                if (resInfo) {
+                    if (resInfo[6] && resInfo[7]) {
                         regLat = parseFloat(resInfo[6]);
                         regLng = parseFloat(resInfo[7]);
-                        if (resInfo[2]) regPhone = resInfo[2]; 
+                    }
+                    if (resInfo[2]) regPhone = resInfo[2];
+                    
+                    // 🟢 تحميل قائمة الأسعار الخاصة بالمطعم
+                    if (resInfo[12] && resInfo[12].trim() !== "") {
+                        try {
+                            myCustomPriceList = JSON.parse(resInfo[12]);
+                        } catch(e) { myCustomPriceList = {}; }
                     }
                 }
-            });
+            }
+            if (data && data.drivers) globalDriversInfo = data.drivers;
+        } catch(e) {
+            console.warn("تعذر جلب بيانات المطعم من السيرفر", e);
+        } finally {
+            window.showLoading(false);
+        }
+        
+        // بناء القائمة المنسدلة بعد تحميل myCustomPriceList
+        window.buildCustomAreaDropdown(); 
+        restoreDraft(); 
+        startHotDataListeners(); 
     }
 
     function startHotDataListeners() {
-        // 1. مراقبة الطلبات الحية
         const ordersRef = ref(db, 'active_orders');
         onValue(ordersRef, (snapshot) => {
             const activeFbOrders = snapshot.val() || {};
@@ -885,7 +925,6 @@
             }
         });
 
-        // 2. 🚀 مراقبة المحفظة اللحظية (الديون والطلبات)
         let safeResPhone = regPhone;
         if (!safeResPhone) {
              const sessionStr = localStorage.getItem('hut_res_session');
@@ -920,8 +959,6 @@
             setTimeout(() => { actionBlacklist = actionBlacklist.filter(id => id !== String(orderId)); }, 5000);
 
             const updates = {}; updates[`active_orders/${orderId}`] = null; update(ref(db), updates);
-
-            // نرسل للسيرفر لكي يؤرشفه كمحذوف ليلاً
             fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${orderId}&status=deleted&token=${API_TOKEN}`).catch(()=>{});
         }
     }
@@ -976,6 +1013,7 @@
         }
     }
 
+    // ========== إرسال الطلب ==========
     document.getElementById('orderForm').onsubmit = function(e) {
         e.preventDefault();
         let finalArea = document.getElementById('customerArea').value, areaWithHint = finalArea;
@@ -984,16 +1022,32 @@
             let cName = document.getElementById('customAreaName').value.trim(), cPrice = document.getElementById('customAreaPrice').value.trim();
             if(!cName || !cPrice) return alert("يرجى إدخال اسم المنطقة الجديدة وسعر التوصيل.");
             areaWithHint = `${cName} (توصيل: ${cPrice})`;
-        } else if (!finalArea && currentOrderMode === 'manual') { return alert("يرجى اختيار منطقة الزبون من القائمة."); } 
-        else if (myCustomPriceList[finalArea]) { areaWithHint = `${finalArea} (توصيل: ${myCustomPriceList[finalArea]})`; }
+        } else if (!finalArea) { 
+            return alert("يرجى اختيار منطقة الزبون من القائمة."); 
+        } else if (myCustomPriceList[finalArea]) { 
+            areaWithHint = `${finalArea} (توصيل: ${myCustomPriceList[finalArea]})`; 
+        }
 
-        let finalDetails = "", finalPrice = parseFloat(document.getElementById('orderPrice').value) || 0; 
+        let finalDetails = "", finalPrice = 0; 
         const btn = document.getElementById('submitOrderBtn');
         const originalBtnHtml = btn.innerHTML;
 
+        // تحديد السعر حسب الوضع
+        if (currentOrderMode === 'photo') {
+            if (finalArea === "أخرى") {
+                finalPrice = parseFloat(document.getElementById('customAreaPrice').value) || 0;
+            } else {
+                finalPrice = myCustomPriceList[finalArea] || 0;
+            }
+        } else {
+            finalPrice = parseFloat(document.getElementById('orderPrice').value) || 0;
+            if (finalPrice === 0) return alert("يرجى إدخال إجمالي الحساب.");
+        }
+
         if (currentOrderMode === 'manual') {
             const custPhone = document.getElementById('customerPhone').value.trim(), extra = document.getElementById('customerDetails').value.trim();
-            if (!custPhone) return alert("يرجى كتابة رقم الزبون."); finalDetails = `الهاتف: ${custPhone} | ${extra}`;
+            if (!custPhone) return alert("يرجى كتابة رقم الزبون."); 
+            finalDetails = `الهاتف: ${custPhone} | ${extra}`;
             finalizeOrderPlacement(finalDetails, "", finalPrice, areaWithHint, btn, originalBtnHtml);
         } else {
             if (!base64Receipt) return alert("يرجى التقاط صورة للوصل أولاً.");
@@ -1020,7 +1074,6 @@
         }
     };
 
-    // 🟢 توجيه الطلب المركزي (تحديث AI Dispatcher V34.1)
     async function finalizeOrderPlacement(details, imageUrl, price, area, btn, originalBtnHtml) {
         btn.innerHTML = `<div class="spinner-border spinner-border-sm me-2"></div> جاري إرسال الطلب للرادار المركزي...`;
         btn.disabled = true;
@@ -1028,9 +1081,6 @@
         try {
             const uniqueFrontendId = "HUT-" + Math.floor(Date.now() / 1000);
             const timestampIso = new Date().toISOString();
-
-            // 🚀 V34.1: نضع الحقل driverPhone = "system_routing" و is_sovereign = false
-            // ليقوم المحرك بالتقاطه وتوزيعه فوراً
             const finalDriver = "system_routing"; 
 
             let safeResPhone = regPhone;
@@ -1045,7 +1095,6 @@
                 safePayType = sData.payType || 'المطعم يدفع';
             }
 
-            // الحقن الذري في Firebase
             await set(ref(db, 'active_orders/' + uniqueFrontendId), {
                 id: uniqueFrontendId,
                 restaurant: currentResName,
@@ -1062,11 +1111,11 @@
                 resLng: regLng || 0,
                 comm: safeComm,
                 payType: safePayType,
-                is_sovereign: false,    // 🆕 حماية: ليس طلباً سيادياً (يسمح للمحرك بالتوزيع)
-                last_offered_to: null    // 🆕 لم يُعرض على أحد بعد
+                is_sovereign: false,
+                last_offered_to: null
             });
 
-            // إرسال للسيرفر (لأغراض السجلات والإحصائيات)
+            // إرسال للسيرفر في الخلفية (لا ننتظره)
             const payload = { action: 'NEW_ORDER', token: API_TOKEN, frontendId: uniqueFrontendId, restaurantName: currentResName, area: area, price: price, details: details, image: imageUrl };
             fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) }).catch(e=>{});
 
@@ -1083,8 +1132,10 @@
         document.getElementById('orderStatusBox').classList.remove('hidden-section');
         document.getElementById('statusMsg').innerHTML = `<span class="fw-bold">${msgText}</span><br><span class="text-warning small fw-bold">الطلب الآن نشط ومحمي في الرادار 📡</span>`;
         
-        document.getElementById('customerPhone').value = ""; document.getElementById('customerDetails').value = ""; document.getElementById('orderPrice').value = ""; document.getElementById('customAreaName').value = ""; document.getElementById('customAreaPrice').value = "";
-        document.getElementById('priceHint').classList.add('hidden-section'); document.getElementById('customerArea').selectedIndex = 0; document.getElementById('customAreaSection').classList.add('hidden-section');
+        document.getElementById('customerPhone').value = ""; document.getElementById('customerDetails').value = ""; 
+        document.getElementById('orderPrice').value = ""; document.getElementById('customAreaName').value = ""; document.getElementById('customAreaPrice').value = "";
+        document.getElementById('priceHint').classList.add('hidden-section'); document.getElementById('customerArea').selectedIndex = 0; 
+        document.getElementById('customAreaSection').classList.add('hidden-section');
         window.removePhoto(); clearDraft();
         setTimeout(() => { document.getElementById('orderStatusBox').classList.add('hidden-section'); }, 6000);
     }
