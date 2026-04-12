@@ -2,10 +2,10 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- نظام التحديث الإجباري وتطهير الكاش (إصدار 5.3 - تكامل مثالي) ---
-        const CURRENT_APP_VERSION = "5.3"; 
+        // --- إصدار 5.4 (ذاكرة محلية لقائمة الأسعار + نص مكتب سفيان) ---
+        const CURRENT_APP_VERSION = "5.4"; 
         if (localStorage.getItem('hut_res_app_version') !== CURRENT_APP_VERSION) {
-            console.log("نسخة جديدة مكتشفة... جاري التحديث الإجباري لتسريع النظام!");
+            console.log("نسخة جديدة مكتشفة... جاري التحديث الإجباري!");
             localStorage.setItem('hut_res_app_version', CURRENT_APP_VERSION);
             if ('caches' in window) {
                 caches.keys().then(function(names) {
@@ -261,6 +261,8 @@
         <div class="d-flex justify-content-between align-items-center container">
             <div class="text-end">
                 <h3 class="fw-black m-0" id="resTitle">جاري التحميل...</h3>
+                <!-- 🆕 نص مكتب سفيان -->
+                <div class="fw-bold opacity-75" style="font-size: 0.9rem;">مكتب سفيان</div>
                 <small class="opacity-75 fw-bold" id="resPhoneDisplay"></small>
             </div>
             <button class="btn btn-sm btn-outline-light rounded-pill px-3 fw-bold" onclick="logout()"><i data-lucide="power" size="14" class="me-1"></i> خروج</button>
@@ -546,7 +548,30 @@
 
     function clearDraft() { sessionStorage.removeItem('hut_order_draft'); }
 
-    // ========== قائمة المناطق والأسعار ==========
+    // ========== قائمة المناطق والأسعار (مع ذاكرة تخزين مؤقت) ==========
+    function loadPriceListFromCache() {
+        const cached = localStorage.getItem('hut_res_price_list');
+        if (!cached) return false;
+        try {
+            const data = JSON.parse(cached);
+            const now = Date.now();
+            // صلاحية 24 ساعة
+            if (data.timestamp && (now - data.timestamp) < 24 * 60 * 60 * 1000) {
+                myCustomPriceList = data.list;
+                return true;
+            }
+        } catch(e) {}
+        return false;
+    }
+
+    function savePriceListToCache(list) {
+        const data = {
+            list: list,
+            timestamp: Date.now()
+        };
+        localStorage.setItem('hut_res_price_list', JSON.stringify(data));
+    }
+
     window.buildCustomAreaDropdown = function() {
         const select = document.getElementById('customerArea');
         select.innerHTML = '<option value="" disabled selected>-- اختر منطقة الزبون --</option>';
@@ -832,7 +857,7 @@
         }
     };
 
-    // ========== لوحة التحكم (تجلب قائمة الأسعار من الإكسل) ==========
+    // ========== لوحة التحكم (تجلب قائمة الأسعار من الإكسل مع دعم الذاكرة المحلية) ==========
     async function enterDashboard() {
         document.getElementById('loginSection').classList.add('hidden-section'); 
         document.getElementById('orderSection').classList.remove('hidden-section');
@@ -840,7 +865,15 @@
         document.getElementById('resPhoneDisplay').innerText = "شريك معتمد - الحوت";
         if (typeof lucide !== 'undefined') lucide.createIcons();
         
-        window.showLoading(true, "جاري تحميل قائمة المناطق والأسعار...");
+        // 🟢 الخطوة 1: محاولة تحميل قائمة الأسعار من الذاكرة المحلية فوراً
+        const hasCached = loadPriceListFromCache();
+        if (hasCached) {
+            window.buildCustomAreaDropdown();
+            restoreDraft(); // يعتمد على myCustomPriceList
+        }
+        
+        // 🟢 الخطوة 2: جلب البيانات من السيرفر في الخلفية لتحديث المعلومات
+        window.showLoading(true, "جاري مزامنة البيانات...");
         
         try {
             const res = await fetch(`${API_URL}?action=getGlobalData&token=${API_TOKEN}`);
@@ -855,11 +888,16 @@
                     }
                     if (resInfo[2]) regPhone = resInfo[2];
                     
-                    // 🟢 تحميل قائمة الأسعار الخاصة بالمطعم
+                    // 🟢 تحديث قائمة الأسعار
                     if (resInfo[12] && resInfo[12].trim() !== "") {
                         try {
-                            myCustomPriceList = JSON.parse(resInfo[12]);
-                        } catch(e) { myCustomPriceList = {}; }
+                            const freshList = JSON.parse(resInfo[12]);
+                            if (JSON.stringify(freshList) !== JSON.stringify(myCustomPriceList)) {
+                                myCustomPriceList = freshList;
+                                savePriceListToCache(myCustomPriceList);
+                                window.buildCustomAreaDropdown();
+                            }
+                        } catch(e) { console.warn("خطأ في parsing priceList", e); }
                     }
                 }
             }
@@ -870,9 +908,12 @@
             window.showLoading(false);
         }
         
-        // بناء القائمة المنسدلة بعد تحميل myCustomPriceList
-        window.buildCustomAreaDropdown(); 
-        restoreDraft(); 
+        // إذا لم تكن هناك بيانات مخزنة مسبقاً، نبني القائمة الآن
+        if (!hasCached) {
+            window.buildCustomAreaDropdown();
+            restoreDraft();
+        }
+        
         startHotDataListeners(); 
     }
 
@@ -1032,7 +1073,6 @@
         const btn = document.getElementById('submitOrderBtn');
         const originalBtnHtml = btn.innerHTML;
 
-        // تحديد السعر حسب الوضع
         if (currentOrderMode === 'photo') {
             if (finalArea === "أخرى") {
                 finalPrice = parseFloat(document.getElementById('customAreaPrice').value) || 0;
@@ -1115,7 +1155,6 @@
                 last_offered_to: null
             });
 
-            // إرسال للسيرفر في الخلفية (لا ننتظره)
             const payload = { action: 'NEW_ORDER', token: API_TOKEN, frontendId: uniqueFrontendId, restaurantName: currentResName, area: area, price: price, details: details, image: imageUrl };
             fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) }).catch(e=>{});
 
