@@ -2,10 +2,9 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 5.8 (نظام تنبيهات الوصول + تصحيح الأرقام + حماية الأرشيف) ---
-        const CURRENT_APP_VERSION = "5.8"; 
+        // --- إصدار 5.9 (تصميم هادئ لتنبيه الوصول + إصلاح زر الإلغاء) ---
+        const CURRENT_APP_VERSION = "5.9"; 
         if (localStorage.getItem('hut_res_app_version') !== CURRENT_APP_VERSION) {
-            console.log("نسخة جديدة مكتشفة... جاري التحديث الإجباري!");
             localStorage.setItem('hut_res_app_version', CURRENT_APP_VERSION);
             if ('caches' in window) {
                 caches.keys().then(function(names) {
@@ -76,19 +75,49 @@
             flex-direction: column; color: white;
         }
 
-        /* --- نافذة وصول الكابتن الجديدة --- */
+        /* 🟢 نافذة وصول الكابتن الجديدة - خضراء بالكامل وهادئة 🟢 */
         #arrivalOverlay {
-            position: fixed; inset: 0; background: rgba(15, 23, 42, 0.9);
-            z-index: 10000; display: none; align-items: center; justify-content: center; padding: 20px;
-            backdrop-filter: blur(8px); animation: fadeIn 0.3s;
+            position: fixed; inset: 0; background: #d1fae5; /* أخضر فاتح جداً */
+            z-index: 10000; display: none; flex-direction: column; align-items: center; justify-content: center; padding: 20px;
+            animation: fadeIn 0.3s ease-out;
         }
-        .arrival-card {
-            background: white; border-radius: 30px; width: 100%; max-width: 400px;
-            padding: 30px; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,0.3);
-            border: 4px solid var(--success);
+        .arrival-content {
+            text-align: center;
+            width: 100%;
+            max-width: 400px;
         }
-        .arrival-icon { width: 80px; height: 80px; background: #e6faf3; color: var(--success); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; animation: bounce 1s infinite; }
-        @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+        .arrival-icon-wrapper {
+            margin-bottom: 25px;
+            color: #059669; /* أخضر غامق */
+        }
+        .arrival-title {
+            font-size: 2.5rem;
+            font-weight: 900;
+            color: #064e3b;
+            margin-bottom: 15px;
+        }
+        .arrival-text {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #047857;
+            margin-bottom: 40px;
+            line-height: 1.5;
+        }
+        .btn-dismiss-arrival {
+            background: #059669;
+            color: white;
+            border: none;
+            border-radius: 20px;
+            padding: 20px;
+            font-weight: 900;
+            font-size: 1.3rem;
+            width: 100%;
+            box-shadow: 0 10px 25px rgba(5, 150, 105, 0.3);
+            transition: transform 0.2s;
+        }
+        .btn-dismiss-arrival:active {
+            transform: scale(0.95);
+        }
 
         .app-header {
             background: var(--primary-blue); color: white;
@@ -158,7 +187,7 @@
         .success-toast { background: var(--success); color: white; border-radius: 20px; padding: 20px; margin-top: 20px; display: flex; align-items: center; gap: 15px; animation: slideUp 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
         
         @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
         #pickerMap { height: 250px; border-radius: 18px; border: 2px solid #cbd5e1; z-index: 1; position: relative; }
         .map-crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -100%); z-index: 1000; pointer-events: none; width: 40px; height: 40px; }
@@ -177,11 +206,13 @@
 </div>
 
 <div id="arrivalOverlay">
-    <div class="arrival-card">
-        <div class="arrival-icon"><i data-lucide="bike" size="40"></i></div>
-        <h2 class="fw-black mb-2" style="color: var(--primary-blue);">وصل الكابتن!</h2>
-        <p class="fw-bold text-muted mb-4" id="arrivalMsg">الكابتن متواجد الآن عند باب المطعم.</p>
-        <button class="btn-action w-100" style="background: var(--success);" onclick="dismissArrival()">حسناً، فهمت <i data-lucide="check" class="ms-2"></i></button>
+    <div class="arrival-content">
+        <div class="arrival-icon-wrapper">
+            <i data-lucide="store" size="80"></i>
+        </div>
+        <h2 class="arrival-title">وصل الكابتن!</h2>
+        <p class="arrival-text" id="arrivalMsg">الكابتن متواجد الآن في المطعم<br>الرجاء تسليمه الطلب.</p>
+        <button class="btn-dismiss-arrival" onclick="dismissArrival()">الطلب جاهز للتسليم ✔️</button>
     </div>
 </div>
 
@@ -466,10 +497,8 @@
     let actionBlacklist = []; 
     let liveActiveOrders = [];
 
-    // 🟢 مصفوفة لتتبع تنبيهات الوصول لعدم تكرارها
     let dismissedArrivals = {}; 
 
-    // 🟢 دالة تنظيف وتصحيح رقم الهاتف
     function sanitizePhone(phone) {
         if (!phone) return "";
         let p = phone.toString().trim();
@@ -486,7 +515,6 @@
         return p;
     }
 
-    // 🟢 دالة إغلاق إشعار وصول الكابتن
     window.dismissArrival = function() {
         document.getElementById('arrivalOverlay').style.display = 'none';
         const arrSound = document.getElementById('arrivalSound');
@@ -496,7 +524,6 @@
         }
     }
 
-    // 🟢 Web Audio API (Pinger) - منع نوم المتصفح
     let audioCtx = null;
     function unlockAudio() {
         if (!audioCtx) {
@@ -527,7 +554,6 @@
         if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') event.preventDefault();
     });
 
-    // ========== دوال الخريطة ==========
     window.initPickerMap = function() {
         if (!document.getElementById('pickerMap')) return;
         if(pickerMap) { setTimeout(() => { pickerMap.invalidateSize(); }, 500); return; }
@@ -586,7 +612,6 @@
         }
     }
 
-    // ========== دوال المسودة ==========
     window.saveDraft = function() {
         const draft = {
             mode: currentOrderMode, area: document.getElementById('customerArea').value,
@@ -625,7 +650,6 @@
 
     function clearDraft() { sessionStorage.removeItem('hut_order_draft'); }
 
-    // ========== قائمة المناطق والأسعار (ذاكرة تخزين 7 أيام) ==========
     function loadPriceListFromCache() {
         const cached = localStorage.getItem('hut_res_price_list');
         if (!cached) return false;
@@ -720,7 +744,6 @@
         return JSON.stringify(resultObj);
     }
 
-    // ========== الجلسة وتسجيل الدخول ==========
     function checkSavedSession() {
         const sessionStr = localStorage.getItem('hut_res_session');
         const pendingStr = localStorage.getItem('hut_res_pending');
@@ -1028,7 +1051,7 @@
                                 const dInfo = globalDriversInfo.find(d => String(d[2]) === String(fbOrder.driverPhone));
                                 if(dInfo) dName = dInfo[1];
                             }
-                            document.getElementById('arrivalMsg').innerText = `الكابتن (${dName}) متواجد الآن عند باب المطعم لاستلام الطلب #${fbOrder.id}`;
+                            document.getElementById('arrivalMsg').innerHTML = `الكابتن (${dName}) متواجد الآن في المطعم<br>الرجاء تسليمه الطلب #${fbOrder.id}.`;
                             document.getElementById('arrivalOverlay').style.display = 'flex';
                             document.getElementById('arrivalSound').play().catch(e=>{});
                             dismissedArrivals[fbOrder.id] = true;
@@ -1071,18 +1094,23 @@
         }
     }
 
-    // 🟢 منع الحذف الخاطئ
+    // 🟢 حل مشكلة زر الحذف (اختفاء سلس ثم إرسال إلى Firebase)
     window.cancelOrderGrace = function(orderId) {
         if(confirm("هل أنت متأكد من إلغاء هذا الطلب؟ سيتم سحبه من الرادار فوراً.")) {
+            // 1. إخفاء الكارت فوراً من واجهة المستخدم (تأثير سلس)
             const card = document.getElementById(`order-${orderId}`);
             if(card) {
-                card.style.transition = '0.3s ease-out'; card.style.opacity = '0'; card.style.transform = 'scale(0.95)';
+                card.style.transition = '0.3s ease-out'; 
+                card.style.opacity = '0'; 
+                card.style.transform = 'scale(0.95)';
                 setTimeout(() => card.style.display = 'none', 300);
             }
+            
+            // 2. وضع الطلب في قائمة سوداء مؤقتة لمنع إعادة رسمه
             actionBlacklist.push(String(orderId));
             setTimeout(() => { actionBlacklist = actionBlacklist.filter(id => id !== String(orderId)); }, 5000);
 
-            // التعديل هنا: تحديث الحالة بدلاً من الحذف
+            // 3. تحديث الحالة في Firebase (لا نقوم بحذفه ليذهب للأرشيف)
             const updates = {};
             updates[`active_orders/${orderId}/status`] = 'deleted';
             updates[`active_orders/${orderId}/status_ar`] = 'ملغي';
@@ -1173,7 +1201,6 @@
         }
 
         if (currentOrderMode === 'manual') {
-            // 🟢 استخدام دالة التنظيف
             const rawPhone = document.getElementById('customerPhone').value;
             const custPhone = sanitizePhone(rawPhone);
             const extra = document.getElementById('customerDetails').value.trim();
