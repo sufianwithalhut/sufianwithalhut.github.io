@@ -1358,7 +1358,6 @@
                             <i data-lucide="download" width="16" height="16"></i> تصدير
                         </button>
                     </div>
-                    <!-- 🆕 زر تحديث الأرشيف يدوياً -->
                     <div class="col-12 col-md-1">
                         <button class="arch-export-btn" style="background:var(--success); border-color:var(--success); width:100%; justify-content:center;" onclick="forceArchiveRefresh(event)" title="تحديث الأرشيف الآن">
                             <i data-lucide="refresh-cw" width="16" height="16"></i>
@@ -1486,7 +1485,6 @@
     </div>
 </div>
 
-<!-- 🆕 مؤشر اتصال Firebase -->
 <div id="firebaseConnectionStatus">
     <span class="conn-dot" id="connDot"></span>
     <span id="connText">متصل بقاعدة البيانات</span>
@@ -2573,7 +2571,9 @@ function forceComplete(orderId) {
         if (String(payType).includes('مناصفة')) driverDebtInc = comm / 2;
 
         let updates = {};
-        updates[`active_orders/${orderId}`] = null;
+        // 🟢 التعديل هنا: تحديث الحالة بدلاً من حذف الطلب
+        updates[`active_orders/${orderId}/status`] = 'completed';
+        updates[`active_orders/${orderId}/status_ar`] = 'مكتمل';
         
         if(driverPhone && driverPhone !== 'system_routing' && driverPhone !== 'pending_driver') {
             updates[`ledgers/drivers/${driverPhone}/completed_orders`] = firebase.database.ServerValue.increment(1);
@@ -2590,7 +2590,8 @@ function forceComplete(orderId) {
         fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${orderId}&status=completed&token=${API_TOKEN}&pass=${masterPassword}`).catch(()=>{});
         showToast("تم الإكمال وإضافة الأموال للمحافظ!");
     } else {
-        db.ref(`active_orders/${orderId}`).remove();
+        // 🟢 التعديل هنا أيضاً: تحديث بدلاً من الحذف
+        db.ref(`active_orders/${orderId}`).update({status: 'completed', status_ar: 'مكتمل'});
         fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${orderId}&status=completed&token=${API_TOKEN}&pass=${masterPassword}`).catch(()=>{});
         showToast("تم الإكمال (بدون إضافة للمحفظة لعدم توفر البيانات)");
     }
@@ -2630,8 +2631,12 @@ function adminActionOptUI(cmd, type, id, el) {
         if (type === 'ORDER') {
             const card = el.closest('.order-card') || el.closest('.batch-order-inner');
             if (card) { card.style.transition = '.3s'; card.style.opacity = '0'; card.style.transform = 'scale(0.95)'; setTimeout(() => card.remove(), 320); }
-            if (cmd === 'COMPLETE' || cmd === 'DELETE') {
-                db.ref(`active_orders/${id}`).remove().catch(()=>{});
+            
+            // 🟢 التعديل هنا: تحديث الحالة بدلاً من remove()
+            if (cmd === 'COMPLETE') {
+                db.ref(`active_orders/${id}`).update({status: 'completed', status_ar: 'مكتمل'}).catch(()=>{});
+            } else if (cmd === 'DELETE') {
+                db.ref(`active_orders/${id}`).update({status: 'deleted', status_ar: 'محذوف'}).catch(()=>{});
             }
         }
     }
