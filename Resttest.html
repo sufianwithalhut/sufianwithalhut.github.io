@@ -2,9 +2,10 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 5.9 (تصميم هادئ لتنبيه الوصول + إصلاح زر الإلغاء) ---
-        const CURRENT_APP_VERSION = "5.9"; 
+        // --- إصدار 6.0 (شاشة وصول ساكنة وصامتة + إصلاح جذري لزر الإلغاء) ---
+        const CURRENT_APP_VERSION = "6.0"; 
         if (localStorage.getItem('hut_res_app_version') !== CURRENT_APP_VERSION) {
+            console.log("نسخة جديدة مكتشفة... جاري التحديث الإجباري!");
             localStorage.setItem('hut_res_app_version', CURRENT_APP_VERSION);
             if ('caches' in window) {
                 caches.keys().then(function(names) {
@@ -75,48 +76,18 @@
             flex-direction: column; color: white;
         }
 
-        /* 🟢 نافذة وصول الكابتن الجديدة - خضراء بالكامل وهادئة 🟢 */
+        /* 🟢 نافذة وصول الكابتن الجديدة - خضراء ساكنة ومودرن 🟢 */
         #arrivalOverlay {
-            position: fixed; inset: 0; background: #d1fae5; /* أخضر فاتح جداً */
-            z-index: 10000; display: none; flex-direction: column; align-items: center; justify-content: center; padding: 20px;
-            animation: fadeIn 0.3s ease-out;
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: var(--success); z-index: 45000; color: white; 
+            display: flex; flex-direction: column; justify-content: center; 
+            align-items: center; padding: 20px; text-align: center; 
+            animation: fadeIn 0.3s;
         }
-        .arrival-content {
-            text-align: center;
-            width: 100%;
-            max-width: 400px;
-        }
-        .arrival-icon-wrapper {
-            margin-bottom: 25px;
-            color: #059669; /* أخضر غامق */
-        }
-        .arrival-title {
-            font-size: 2.5rem;
-            font-weight: 900;
-            color: #064e3b;
-            margin-bottom: 15px;
-        }
-        .arrival-text {
-            font-size: 1.2rem;
-            font-weight: 700;
-            color: #047857;
-            margin-bottom: 40px;
-            line-height: 1.5;
-        }
-        .btn-dismiss-arrival {
-            background: #059669;
-            color: white;
-            border: none;
-            border-radius: 20px;
-            padding: 20px;
-            font-weight: 900;
-            font-size: 1.3rem;
-            width: 100%;
-            box-shadow: 0 10px 25px rgba(5, 150, 105, 0.3);
-            transition: transform 0.2s;
-        }
-        .btn-dismiss-arrival:active {
-            transform: scale(0.95);
+        .arrival-pulse-static { 
+            width: 90px; height: 90px; background: white; border-radius: 50%; 
+            display: flex; align-items: center; justify-content: center; 
+            margin-bottom: 20px; box-shadow: 0 0 0 15px rgba(255,255,255,0.2); 
         }
 
         .app-header {
@@ -205,19 +176,16 @@
     <span class="mt-3 fw-bold" id="loadingText">جاري المزامنة مع النظام...</span>
 </div>
 
-<div id="arrivalOverlay">
-    <div class="arrival-content">
-        <div class="arrival-icon-wrapper">
-            <i data-lucide="store" size="80"></i>
-        </div>
-        <h2 class="arrival-title">وصل الكابتن!</h2>
-        <p class="arrival-text" id="arrivalMsg">الكابتن متواجد الآن في المطعم<br>الرجاء تسليمه الطلب.</p>
-        <button class="btn-dismiss-arrival" onclick="dismissArrival()">الطلب جاهز للتسليم ✔️</button>
+<div id="arrivalOverlay" class="hidden-section">
+    <div class="arrival-pulse-static">
+        <i data-lucide="store" style="color: var(--success); width: 40px; height: 40px;"></i>
     </div>
+    <h1 class="fw-black mb-3 text-white">وصل الكابتن!</h1>
+    <h4 class="fw-bold mb-4 text-white" id="arrivalMsg" style="line-height: 1.5;">الكابتن متواجد الآن عند باب المطعم.</h4>
+    <button class="btn btn-light btn-lg rounded-pill px-5 fw-bold" style="color: var(--success); background: white; border: none;" onclick="dismissArrival()">الطلب جاهز للتسليم</button>
 </div>
 
 <audio id="welcomeSound" src="https://actions.google.com/sounds/v1/water/water_drop.ogg"></audio>
-<audio id="arrivalSound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" loop></audio>
 
 <div id="loginSection" class="container py-5">
     <div class="text-center mb-5">
@@ -515,13 +483,9 @@
         return p;
     }
 
+    // 🟢 إغلاق نافذة الوصول بدون صوت
     window.dismissArrival = function() {
-        document.getElementById('arrivalOverlay').style.display = 'none';
-        const arrSound = document.getElementById('arrivalSound');
-        if(arrSound) {
-            arrSound.pause();
-            arrSound.currentTime = 0;
-        }
+        document.getElementById('arrivalOverlay').classList.add('hidden-section');
     }
 
     let audioCtx = null;
@@ -1051,9 +1015,8 @@
                                 const dInfo = globalDriversInfo.find(d => String(d[2]) === String(fbOrder.driverPhone));
                                 if(dInfo) dName = dInfo[1];
                             }
-                            document.getElementById('arrivalMsg').innerHTML = `الكابتن (${dName}) متواجد الآن في المطعم<br>الرجاء تسليمه الطلب #${fbOrder.id}.`;
-                            document.getElementById('arrivalOverlay').style.display = 'flex';
-                            document.getElementById('arrivalSound').play().catch(e=>{});
+                            document.getElementById('arrivalMsg').innerHTML = `الكابتن (${dName}) متواجد الآن عند باب المطعم<br>الرجاء تسليمه الطلب #${fbOrder.id}.`;
+                            document.getElementById('arrivalOverlay').classList.remove('hidden-section');
                             dismissedArrivals[fbOrder.id] = true;
                         }
                     }
@@ -1094,10 +1057,10 @@
         }
     }
 
-    // 🟢 حل مشكلة زر الحذف (اختفاء سلس ثم إرسال إلى Firebase)
+    // 🟢 حل مشكلة زر الحذف (اختفاء سلس ثم إرسال إلى Firebase بشكل آمن)
     window.cancelOrderGrace = function(orderId) {
         if(confirm("هل أنت متأكد من إلغاء هذا الطلب؟ سيتم سحبه من الرادار فوراً.")) {
-            // 1. إخفاء الكارت فوراً من واجهة المستخدم (تأثير سلس)
+            // إخفاء الكارت محلياً
             const card = document.getElementById(`order-${orderId}`);
             if(card) {
                 card.style.transition = '0.3s ease-out'; 
@@ -1106,15 +1069,14 @@
                 setTimeout(() => card.style.display = 'none', 300);
             }
             
-            // 2. وضع الطلب في قائمة سوداء مؤقتة لمنع إعادة رسمه
             actionBlacklist.push(String(orderId));
             setTimeout(() => { actionBlacklist = actionBlacklist.filter(id => id !== String(orderId)); }, 5000);
 
-            // 3. تحديث الحالة في Firebase (لا نقوم بحذفه ليذهب للأرشيف)
-            const updates = {};
-            updates[`active_orders/${orderId}/status`] = 'deleted';
-            updates[`active_orders/${orderId}/status_ar`] = 'ملغي';
-            update(ref(db), updates);
+            // تحديث دقيق لحالة العقدة بشكل مباشر ومؤكد
+            update(ref(db, 'active_orders/' + orderId), {
+                status: 'deleted',
+                status_ar: 'ملغي'
+            }).catch(e => console.error("Firebase Update Error:", e));
 
             fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${orderId}&status=deleted&token=${API_TOKEN}`).catch(()=>{});
         }
