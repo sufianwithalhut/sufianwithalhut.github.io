@@ -2,9 +2,10 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 5.8 (نظام تنبيهات الوصول + تصحيح الأرقام + حماية الأرشيف) ---
-        const CURRENT_APP_VERSION = "5.8"; 
+        // --- إصدار 5.7 (تجربة فائقة السرعة - مزامنة صامتة) ---
+        const CURRENT_APP_VERSION = "5.7"; 
         if (localStorage.getItem('hut_res_app_version') !== CURRENT_APP_VERSION) {
+            console.log("نسخة جديدة مكتشفة... جاري التحديث الإجباري!");
             localStorage.setItem('hut_res_app_version', CURRENT_APP_VERSION);
             if ('caches' in window) {
                 caches.keys().then(function(names) {
@@ -75,20 +76,6 @@
             flex-direction: column; color: white;
         }
 
-        /* --- نافذة وصول الكابتن الجديدة --- */
-        #arrivalOverlay {
-            position: fixed; inset: 0; background: rgba(15, 23, 42, 0.9);
-            z-index: 10000; display: none; align-items: center; justify-content: center; padding: 20px;
-            backdrop-filter: blur(8px); animation: fadeIn 0.3s;
-        }
-        .arrival-card {
-            background: white; border-radius: 30px; width: 100%; max-width: 400px;
-            padding: 30px; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,0.3);
-            border: 4px solid var(--success);
-        }
-        .arrival-icon { width: 80px; height: 80px; background: #e6faf3; color: var(--success); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; animation: bounce 1s infinite; }
-        @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
-
         .app-header {
             background: var(--primary-blue); color: white;
             padding: 40px 20px 80px 20px; border-bottom-left-radius: 40px; border-bottom-right-radius: 40px;
@@ -157,7 +144,7 @@
         .success-toast { background: var(--success); color: white; border-radius: 20px; padding: 20px; margin-top: 20px; display: flex; align-items: center; gap: 15px; animation: slideUp 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
         
         @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
 
         #pickerMap { height: 250px; border-radius: 18px; border: 2px solid #cbd5e1; z-index: 1; position: relative; }
         .map-crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -100%); z-index: 1000; pointer-events: none; width: 40px; height: 40px; }
@@ -175,19 +162,10 @@
     <span class="mt-3 fw-bold" id="loadingText">جاري المزامنة مع النظام...</span>
 </div>
 
-<div id="arrivalOverlay">
-    <div class="arrival-card">
-        <div class="arrival-icon"><i data-lucide="bike" size="40"></i></div>
-        <h2 class="fw-black mb-2" style="color: var(--primary-blue);">وصل الكابتن!</h2>
-        <p class="fw-bold text-muted mb-4" id="arrivalMsg">الكابتن متواجد الآن عند باب المطعم.</p>
-        <button class="btn-action w-100" style="background: var(--success);" onclick="dismissArrival()">حسناً، فهمت <i data-lucide="check" class="ms-2"></i></button>
-    </div>
-</div>
-
 <audio id="welcomeSound" src="https://actions.google.com/sounds/v1/water/water_drop.ogg"></audio>
-<audio id="arrivalSound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" loop></audio>
 
 <div id="loginSection" class="container py-5">
+    <!-- نفس كود تسجيل الدخول بدون تغيير -->
     <div class="text-center mb-5">
         <div class="d-inline-block p-4 bg-white rounded-circle shadow-sm mb-4">
             <i data-lucide="store" size="50" color="#1e3a8a"></i>
@@ -284,7 +262,8 @@
         <div class="d-flex justify-content-between align-items-center container">
             <div class="text-end">
                 <h3 class="fw-black m-0" id="resTitle">جاري التحميل...</h3>
-                <div class="fw-bold opacity-75" style="font-size: 0.9rem;">مكتب سفيان | نظام الحوت</div>
+                <div class="fw-bold opacity-75" style="font-size: 0.9rem;">مكتب سفيان</div>
+                <small class="opacity-75 fw-bold" id="resPhoneDisplay"></small>
             </div>
             <button class="btn btn-sm btn-outline-light rounded-pill px-3 fw-bold" onclick="logout()"><i data-lucide="power" size="14" class="me-1"></i> خروج</button>
         </div>
@@ -462,7 +441,6 @@
     let lastActiveHtml = "";
     let lastArchiveHtml = "";
     let actionBlacklist = []; 
-    let dismissedArrivals = {}; // 🟢 متتبع الإشعارات المقروءة
 
     let liveActiveOrders = [];
 
@@ -496,34 +474,6 @@
         const tag = event.target.tagName;
         if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') event.preventDefault();
     });
-
-    // 🟢 1. دالة ذكية لتنظيف وتصحيح رقم الهاتف
-    function sanitizePhone(phone) {
-        if (!phone) return "";
-        let p = phone.toString().trim();
-        // تحويل الأرقام العربية والفارسية
-        const ar = ['٠','١','٢','٣','٤','٥','٦','٧','٨','٩'];
-        const fa = ['۰','۱','۲','۳','۴','۵','۶','۷','۸','۹'];
-        for (let i = 0; i < 10; i++) {
-            p = p.replace(new RegExp(ar[i], 'g'), String(i)).replace(new RegExp(fa[i], 'g'), String(i));
-        }
-        // إزالة أي شيء ليس رقماً أو علامة +
-        p = p.replace(/[^\d+]/g, '');
-        // معالجة رموز الدولة
-        if (p.startsWith('+964')) p = '0' + p.substring(4);
-        else if (p.startsWith('00964')) p = '0' + p.substring(5);
-        else if (p.startsWith('964')) p = '0' + p.substring(3);
-        // التأكد من الصفر البادئ للأرقام المحلية المكونة من 10 خانات بدون صفر
-        if (p.length === 10 && !p.startsWith('0')) p = '0' + p;
-        return p;
-    }
-
-    // 🟢 2. دالة إغلاق إشعار وصول الكابتن
-    window.dismissArrival = function() {
-        document.getElementById('arrivalOverlay').style.display = 'none';
-        document.getElementById('arrivalSound').pause();
-        document.getElementById('arrivalSound').currentTime = 0;
-    }
 
     // ========== دوال الخريطة ==========
     window.initPickerMap = function() {
@@ -1007,7 +957,7 @@
                              }
                              todayArchiveHtml += `<div class="archive-item"><div><span class="fw-black text-dark">#${fbOrder.id}</span><div class="small text-muted fw-bold">الكابتن: ${dName}</div></div><div class="text-end"><span class="fw-black text-success">${priceVal} <small class="fs-6">د.ع</small></span><div class="small text-muted">${orderTimeStrFormat}</div></div></div>`;
                          }
-                    } else if (fbOrder.status !== 'deleted') {
+                    } else {
                         newLiveOrders.push({
                             id: fbOrder.id,
                             status: fbOrder.status,
@@ -1015,15 +965,6 @@
                             timestamp: fbOrder.timestamp,
                             area: fbOrder.area
                         });
-                        
-                        // 🟢 منطق إشعار وصول الكابتن الجديد
-                        if (fbOrder.status === 'arrived_at_res' && !dismissedArrivals[fbOrder.id]) {
-                            const dName = globalDriversInfo.find(d => String(d[2]) === String(fbOrder.driverPhone))?.[1] || "الكابتن";
-                            document.getElementById('arrivalMsg').innerText = `الكابتن (${dName}) وصل للمطعم لاستلام الطلب #${fbOrder.id}`;
-                            document.getElementById('arrivalOverlay').style.display = 'flex';
-                            document.getElementById('arrivalSound').play().catch(e=>{});
-                            dismissedArrivals[fbOrder.id] = true; 
-                        }
                     }
                 }
             });
@@ -1062,7 +1003,6 @@
         }
     }
 
-    // 🟢 3. تعديل دالة الإلغاء لمنع الحذف الخاطئ للأرشيف
     window.cancelOrderGrace = function(orderId) {
         if(confirm("هل أنت متأكد من إلغاء هذا الطلب؟ سيتم سحبه من الرادار فوراً.")) {
             const card = document.getElementById(`order-${orderId}`);
@@ -1073,12 +1013,7 @@
             actionBlacklist.push(String(orderId));
             setTimeout(() => { actionBlacklist = actionBlacklist.filter(id => id !== String(orderId)); }, 5000);
 
-            // ✅ التحديث بدلاً من الحذف
-            const updates = {}; 
-            updates[`active_orders/${orderId}/status`] = 'deleted'; 
-            updates[`active_orders/${orderId}/status_ar`] = 'ملغي'; 
-            update(ref(db), updates);
-            
+            const updates = {}; updates[`active_orders/${orderId}`] = null; update(ref(db), updates);
             fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${orderId}&status=deleted&token=${API_TOKEN}`).catch(()=>{});
         }
     }
@@ -1133,7 +1068,7 @@
         }
     }
 
-    // 🟢 4. تعديل عملية الإرسال لاستخدام التصحيح التلقائي للهاتف
+    // ========== إرسال الطلب ==========
     document.getElementById('orderForm').onsubmit = function(e) {
         e.preventDefault();
         let finalArea = document.getElementById('customerArea').value, areaWithHint = finalArea;
@@ -1164,14 +1099,9 @@
         }
 
         if (currentOrderMode === 'manual') {
-            const rawPhone = document.getElementById('customerPhone').value;
-            const cleanPhone = sanitizePhone(rawPhone); // ✅ تنظيف الرقم هنا
-            
-            if (cleanPhone.length < 10) return alert("رقم هاتف الزبون غير صحيح، يرجى التأكد منه."); 
-            
-            const extra = document.getElementById('customerDetails').value.trim();
-            finalDetails = `الهاتف: ${cleanPhone} | ${extra}`; // ✅ استخدام الرقم النظيف
-            
+            const custPhone = document.getElementById('customerPhone').value.trim(), extra = document.getElementById('customerDetails').value.trim();
+            if (!custPhone) return alert("يرجى كتابة رقم الزبون."); 
+            finalDetails = `الهاتف: ${custPhone} | ${extra}`;
             finalizeOrderPlacement(finalDetails, "", finalPrice, areaWithHint, btn, originalBtnHtml);
         } else {
             if (!base64Receipt) return alert("يرجى التقاط صورة للوصل أولاً.");
@@ -1264,4 +1194,4 @@
     }
 </script>
 </body>
-</html>
+</html>​
