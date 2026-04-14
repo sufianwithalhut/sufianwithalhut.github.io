@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <script>
-        // --- الإصدار 6.4 (إصلاحات الرادار: إخفاء المكتملة + إظهار الأزرار للسيادي + تحسين التفاعلية) ---
-        const CURRENT_APP_VERSION = "6.4";
+        // --- الإصدار 6.5 (إصلاحات الرادار: استقرار الأزرار اللحظية للاتصال، التتبع، والسيادة) ---
+        const CURRENT_APP_VERSION = "6.5";
         const VERSION_KEY = 'hut_master_app_version';
         try {
             if (localStorage.getItem(VERSION_KEY) !== CURRENT_APP_VERSION) {
@@ -1625,7 +1625,6 @@ function closeModal(id) {
 }
 
 function sendBroadcast(type) {
-    // 🆕 تأكيد قبل الإرسال للرسائل الدينية
     if (['prayer', 'tasbih', 'tawhid', 'rizq'].includes(type)) {
         if (!confirm('هل أنت متأكد من إرسال هذه الرسالة لجميع الكباتن؟')) return;
     }
@@ -1773,7 +1772,6 @@ function listenToFirebaseLedgers() {
     firebaseListeners.push({ ref, callback });
 }
 
-// 🟢 1. تعديل مستمع الطلبات: استبعاد المكتملة
 function listenToFirebaseOrders() {
     const ref = db.ref('active_orders');
     const callback = snapshot => {
@@ -1784,7 +1782,6 @@ function listenToFirebaseOrders() {
         if (ordersObj) {
             Object.values(ordersObj).forEach(o => {
                 if (!o.restaurant || o.restaurant.trim() === "") return; 
-                // 🟢 تجاهل الطلبات المكتملة نهائياً من الرادار
                 if (o.status === 'completed' || o.status === 'مكتمل') return;
 
                 let details = "طلب توصيل";
@@ -1942,19 +1939,16 @@ function updateTicker() {
     const totalDebt = Object.values(liveLedgers.restaurants || {}).reduce((sum, r) => sum + (r.debt || 0), 0);
     const activeOrdersCount = liveFirebaseOrders.length;
 
-    // أكثر منطقة طلباً
     const areaCounts = {};
     liveFirebaseOrders.forEach(o => { if(o[2]) areaCounts[o[2]] = (areaCounts[o[2]] || 0) + 1; });
     let topArea = 'غير متوفر', topAreaCount = 0;
     Object.entries(areaCounts).forEach(([area, cnt]) => { if(cnt > topAreaCount) { topArea = area; topAreaCount = cnt; } });
 
-    // أكثر مطعم نشط
     const resCounts = {};
     liveFirebaseOrders.forEach(o => { if(o[1]) resCounts[o[1]] = (resCounts[o[1]] || 0) + 1; });
     let topRes = 'غير متوفر', topResCount = 0;
     Object.entries(resCounts).forEach(([res, cnt]) => { if(cnt > topResCount) { topRes = res; topResCount = cnt; } });
 
-    // أكثر كابتن طلبات نشطة
     const driverCounts = {};
     liveFirebaseOrders.forEach(o => { if(o[6] && o[6] !== 'system_routing' && o[6] !== 'pending_driver') driverCounts[o[6]] = (driverCounts[o[6]] || 0) + 1; });
     let topDriver = 'غير متوفر', topDriverCount = 0;
@@ -1989,7 +1983,7 @@ function updateTicker() {
             const el = document.getElementById('tickerText');
             if (el) el.innerHTML = tickerMessages[tickerIndex];
         }
-    }, 6000); // تحديث كل 6 ثوانٍ
+    }, 6000); 
 
     const el = document.getElementById('tickerText');
     if (el) el.innerHTML = baseMessages[0];
@@ -2021,7 +2015,7 @@ function cancelTracking() {
     map.setView([35.468, 44.392], 13, {animate: true});
 }
 
-/* ─── Radar Render (محسّن مع XSS protection وإظهار الأزرار للسيادي) ─── */
+/* ─── Radar Render (تم إصلاح مشاكل اختفاء أزرار الاتصال والسيادي) ─── */
 function smartRenderRadar(activeList) {
     const container = document.getElementById('smartOrdersContainer');
 
@@ -2065,27 +2059,28 @@ function smartRenderRadar(activeList) {
         grid = document.getElementById('radarGrid');
     }
 
+    // 🟢 1. دمج جميع أزرار تحكم السائق لتكون ثابتة ولا تختفي
     function buildDriverControls(orderId, driverPhone, hasDriver, sInfo, isSovereign) {
         let ctrl = '';
         let opts = activeDriversOptionsCache;
         const safeOrderId = escJs(orderId);
         const safeDriverPhone = escJs(driverPhone);
 
-        // 🟢 للسيادي: لا نضيف زر السحب، لكن باقي الأزرار ستظهر في الـ HTML
-        if (isSovereign) {
-            // نضيف فقط شارة السيادية (تمت إضافتها مسبقاً)، ولا نضيف أزرار إضافية هنا
-            // ولكننا نضيف القائمة المنسدلة للتعيين اليدوي (قد يرغب المدير في إعادة تعيين سيادي لآخر)
-            ctrl += `<select class="assign-select" onchange="assignDriverOptUI('${safeOrderId}',this.value,this)">${opts.replace('تعيين يدوي', 'إعادة تعيين 🔄')}</select>`;
-            return ctrl;
-        }
-
-        if (sInfo.ringing && hasDriver) {
-            ctrl += `<button class="oc-btn oc-btn-delete" style="width:auto;padding:0 10px;font-family:'Cairo',sans-serif;font-size:0.72rem;font-weight:800;" onclick="withdrawOrderOptUI('${safeOrderId}','${safeDriverPhone}',this)"><i data-lucide="user-minus" width="13" height="13"></i> سحب</button>`;
-        }
+        // زر الاتصال (دائماً يظهر إذا كان هناك سائق وليس في حالة رنين فقط)
         if (hasDriver && !sInfo.ringing) {
             ctrl += `<button class="btn-call-sm" onclick="window.open('tel:${safeDriverPhone}')"><i data-lucide="phone" width="14" height="14"></i></button>`;
-            opts = opts.replace('تعيين يدوي', 'إعادة تعيين 🔄');
         }
+
+        // زر السحب (سحب الطلب) للإدارة الصلاحية لسحبه
+        if (sInfo.ringing && hasDriver && !isSovereign) {
+            ctrl += `<button class="oc-btn oc-btn-delete" style="width:auto;padding:0 10px;font-family:'Cairo',sans-serif;font-size:0.72rem;font-weight:800;" onclick="withdrawOrderOptUI('${safeOrderId}','${safeDriverPhone}',this)"><i data-lucide="user-minus" width="13" height="13"></i> سحب</button>`;
+        }
+
+        // تغيير نص القائمة للسيادي أو إذا كان الطلب قيد التنفيذ
+        if (isSovereign || (hasDriver && !sInfo.ringing)) {
+             opts = activeDriversOptionsCache.replace('تعيين يدوي', 'إعادة تعيين 🔄');
+        }
+        
         ctrl += `<select class="assign-select" onchange="assignDriverOptUI('${safeOrderId}',this.value,this)">${opts}</select>`;
         return ctrl;
     }
@@ -2156,12 +2151,29 @@ function smartRenderRadar(activeList) {
                 if (sbEl) { sbEl.className = `sbadge status-badge-ui ${sInfo.sbCls}`; sbEl.textContent = sInfo.desc; }
                 const dnEl = existing.querySelector('.driver-name-ui span');
                 if (dnEl) { dnEl.textContent = driverName; }
+                
+                // تحديث الأزرار المدمجة
                 const ctrlEl = existing.querySelector('.driver-controls-ui');
                 if (ctrlEl) {
-                    const ctrl = buildDriverControls(orderId, driverPhone, hasDriver, sInfo, isSovereign);
-                    ctrlEl.innerHTML = ctrl;
+                    ctrlEl.innerHTML = buildDriverControls(orderId, driverPhone, hasDriver, sInfo, isSovereign);
                     safeIcon('oc-' + orderId);
                 }
+
+                // 🟢 2. إضافة وتحديث زر التتبع (المسار) ديناميكياً
+                const actionsEl = existing.querySelector('.oc-actions');
+                if (actionsEl) {
+                    const oldTrackBtn = actionsEl.querySelector('.oc-btn-track');
+                    if (oldTrackBtn) oldTrackBtn.remove();
+                    
+                    if (hasDriver) {
+                        const trackBtnHtml = `<button class="oc-btn-track" onclick="trackDriver('${safeDriverPhone}','${safeRestName}')"><i data-lucide="map-pin" width="12" height="12"></i> مسار</button>`;
+                        const completeBtn = actionsEl.querySelector('.oc-btn-complete');
+                        if (completeBtn) completeBtn.insertAdjacentHTML('beforebegin', trackBtnHtml);
+                        else actionsEl.insertAdjacentHTML('afterbegin', trackBtnHtml);
+                    }
+                    safeIcon('oc-' + orderId);
+                }
+
                 const titleEl = existing.querySelector('.oc-id');
                 if (titleEl) {
                     titleEl.innerHTML = `#${orderId} ${doubleBadge} ${sovereignBadge}`;
@@ -2181,7 +2193,6 @@ function smartRenderRadar(activeList) {
         }
 
         const ctrl = buildDriverControls(orderId, driverPhone, hasDriver, sInfo, isSovereign);
-        let callBtn = (hasDriver && !sInfo.ringing) ? `<button class="btn-call-sm" onclick="window.open('tel:${safeDriverPhone}')"><i data-lucide="phone" width="14" height="14"></i></button>` : '';
 
         const html = `
         <div id="oc-${orderId}" class="order-card ${sInfo.cls} flash-update">
@@ -2209,7 +2220,7 @@ function smartRenderRadar(activeList) {
                         <span>${escHtml(driverName)}</span>
                     </div>
                     <div class="oc-driver-controls driver-controls-ui">
-                        ${callBtn}${ctrl}
+                        ${ctrl}
                     </div>
                 </div>
                 ${orderArea && orderArea !== 'غير محدد' ? `<div class="oc-area"><i data-lucide="map-pin" width="12" height="12"></i>${safeOrderArea} ${rejectHtml}</div>` : ''}
@@ -2407,7 +2418,6 @@ function smartRenderFilteredSection(type, fullList) {
         const safeId = String(phone).replace(/[^a-zA-Z0-9]/g, '');
         currentIds.add(safeId);
         
-        // 🟢 إصلاح الديون: تطبيع رقم الهاتف (إزالة الصفر البادئ)
         const normalizedPhone = String(phone).replace(/^0+/, '').trim();
         const ledger = type === 'RESTAURANT' 
             ? (liveLedgers.restaurants?.[normalizedPhone] || {debt:0, completed_orders:0})
@@ -2571,7 +2581,6 @@ function forceComplete(orderId) {
         if (String(payType).includes('مناصفة')) driverDebtInc = comm / 2;
 
         let updates = {};
-        // 🟢 التعديل هنا: تحديث الحالة بدلاً من حذف الطلب
         updates[`active_orders/${orderId}/status`] = 'completed';
         updates[`active_orders/${orderId}/status_ar`] = 'مكتمل';
         
@@ -2590,14 +2599,12 @@ function forceComplete(orderId) {
         fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${orderId}&status=completed&token=${API_TOKEN}&pass=${masterPassword}`).catch(()=>{});
         showToast("تم الإكمال وإضافة الأموال للمحافظ!");
     } else {
-        // 🟢 التعديل هنا أيضاً: تحديث بدلاً من الحذف
         db.ref(`active_orders/${orderId}`).update({status: 'completed', status_ar: 'مكتمل'});
         fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${orderId}&status=completed&token=${API_TOKEN}&pass=${masterPassword}`).catch(()=>{});
         showToast("تم الإكمال (بدون إضافة للمحفظة لعدم توفر البيانات)");
     }
 }
 
-// 🆕 دالة مساعدة للحصول على تاريخ اليوم بالتوقيت المحلي
 function getLocalDateString() {
     const d = new Date();
     const year = d.getFullYear();
@@ -2632,7 +2639,6 @@ function adminActionOptUI(cmd, type, id, el) {
             const card = el.closest('.order-card') || el.closest('.batch-order-inner');
             if (card) { card.style.transition = '.3s'; card.style.opacity = '0'; card.style.transform = 'scale(0.95)'; setTimeout(() => card.remove(), 320); }
             
-            // 🟢 التعديل هنا: تحديث الحالة بدلاً من remove()
             if (cmd === 'COMPLETE') {
                 db.ref(`active_orders/${id}`).update({status: 'completed', status_ar: 'مكتمل'}).catch(()=>{});
             } else if (cmd === 'DELETE') {
