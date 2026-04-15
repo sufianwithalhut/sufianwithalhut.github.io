@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <script>
-        // --- الإصدار 6.5 (إصلاحات الرادار: استقرار الأزرار اللحظية للاتصال، التتبع، والسيادة) ---
-        const CURRENT_APP_VERSION = "6.5";
+        // --- الإصدار 6.7 (إصلاحات شاملة: sovereign، logout، تحسين forceComplete، تحقق masterPassword) ---
+        const CURRENT_APP_VERSION = "6.7";
         const VERSION_KEY = 'hut_master_app_version';
         try {
             if (localStorage.getItem(VERSION_KEY) !== CURRENT_APP_VERSION) {
@@ -1254,6 +1254,14 @@
                 <span>إدارة الأسطول</span>
             </div>
         </nav>
+        <!-- 🆕 زر تسجيل الخروج -->
+        <div style="margin-top: auto; padding: 20px 0;">
+            <button class="btn w-100 fw-bold d-flex align-items-center justify-content-center gap-2" 
+                    style="background: var(--surface); border: 1px solid var(--border); color: var(--danger); border-radius: 16px; padding: 12px;"
+                    onclick="performLogout()">
+                <i data-lucide="log-out" width="18" height="18"></i> تسجيل الخروج
+            </button>
+        </div>
     </aside>
 
     <main class="main-content">
@@ -1520,7 +1528,7 @@ function safeIcon(containerId) {
 /* ═══════════════════════════════════════════
    📐 DATA SCHEMA
 ═══════════════════════════════════════════ */
-const O = { ID:0, REST_NAME:1, AREA:2, DETAILS:3, PRICE:4, STATUS:5, DRIVER_PHONE:6, TIME:7, PHOTO:8, IS_OVEREIGN:9, LAST_UPDATE:10, LAST_OFFERED:11 };
+const O = { ID:0, REST_NAME:1, AREA:2, DETAILS:3, PRICE:4, STATUS:5, DRIVER_PHONE:6, TIME:7, PHOTO:8, IS_SOVEREIGN:9, LAST_UPDATE:10, LAST_OFFERED:11 };
 const R = { ID:0, NAME:1, PHONE:2, AREA:3, STATUS:4, COMMISSION:5, LAT:6, LNG:7, PAY_TYPE:8 };
 const D = { ID:0, NAME:1, PHONE:2, AREA:3, STATUS:4, LAT:5, LNG:6 };
 
@@ -1576,7 +1584,14 @@ const firebaseConfig = {
     messagingSenderId: "941542380637",
     appId: "1:941542380637:web:9623fa6e627817ffeba9b4"
 };
-firebase.initializeApp(firebaseConfig);
+
+// ✅ تهيئة Firebase مع معالجة الخطأ
+try {
+    firebase.initializeApp(firebaseConfig);
+} catch (e) {
+    showToast("فشل الاتصال بقاعدة البيانات. تحقق من اتصالك.", "error");
+    console.error("Firebase init error:", e);
+}
 const db = firebase.database();
 
 // 🆕 مراقبة حالة الاتصال بـ Firebase
@@ -1649,7 +1664,11 @@ function sendBroadcast(type) {
 async function checkAuth() {
     const pass = document.getElementById('masterPass').value.trim();
     if (!pass) { showToast("الرجاء إدخال رمز المرور", "error"); return; }
-    masterPassword = encodeURIComponent(pass);
+    
+    // ✅ تخزين كلمة المرور الأصلية (بدون تشفير) لاستخدامها لاحقاً
+    masterPassword = pass;
+    
+    const encodedPass = encodeURIComponent(pass);
     const btn = document.querySelector('.auth-btn');
     btn.classList.add('btn-loading');
     btn.disabled = true;
@@ -1658,7 +1677,7 @@ async function checkAuth() {
     const timeout = setTimeout(() => controller.abort(), 12000);
 
     try {
-        const url = `${API_URL}?action=VERIFY_MASTER_PASS&pass=${masterPassword}&token=${API_TOKEN}&ts=${Date.now()}`;
+        const url = `${API_URL}?action=VERIFY_MASTER_PASS&pass=${encodedPass}&token=${API_TOKEN}&ts=${Date.now()}`;
         const res = await fetch(url, { signal: controller.signal });
         const response = await res.json();
         clearTimeout(timeout);
@@ -1794,7 +1813,7 @@ function listenToFirebaseOrders() {
                     o.id || '', o.restaurant || '', o.area || 'غير محدد',
                     details, o.price || 0, o.status || 'pending',
                     o.driverPhone || '', o.last_update || o.timestamp || '', o.photoUrl || '',
-                    o.is_overeign || false, o.last_update || '', o.last_offered_to || ''
+                    o.is_sovereign || false, o.last_update || '', o.last_offered_to || '' // ✅ تصحيح
                 ];
                 
                 if (['accepted', 'heading', 'arrived_at_res', 'picked_up'].includes(o.status)) {
@@ -2520,7 +2539,7 @@ function withdrawOrderOptUI(orderId, driverPhone, el) {
         last_update: now,
         last_offered_to: driverPhone,
         last_offered_time: now,
-        is_overeign: false
+        is_sovereign: false // ✅ تصحيح
     }).then(() => {
         showToast("تم سحب الطلب بنجاح");
     }).catch(() => {
@@ -2533,6 +2552,8 @@ function withdrawOrderOptUI(orderId, driverPhone, el) {
 
 function assignDriverOptUI(orderId, driverPhone, el) {
     if (!driverPhone) return;
+    if (!ensureMasterPassword()) return; // ✅ تحقق
+
     el.disabled = true;
     const spinnerEl = document.createElement('div');
     spinnerEl.className = 'spinner-mini';
@@ -2548,10 +2569,11 @@ function assignDriverOptUI(orderId, driverPhone, el) {
         status: 'manual_pending',
         driverPhone: driverPhone,
         last_update: now,
-        is_overeign: true
+        is_sovereign: true // ✅ تصحيح
     });
 
-    fetch(`${API_URL}?action=ASSIGN_DRIVER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}&pass=${masterPassword}`)
+    // ✅ تشفير كلمة المرور عند الإرسال
+    fetch(`${API_URL}?action=ASSIGN_DRIVER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`)
         .then(r => r.json()).then(res => {
             spinnerEl.remove();
             if (!res.success) { showToast("خطأ", "error"); if (card) card.style.opacity = '1'; el.disabled = false; }
@@ -2562,7 +2584,17 @@ function assignDriverOptUI(orderId, driverPhone, el) {
         });
 }
 
+// ✅ دالة مساعدة للتحقق من كلمة المرور
+function ensureMasterPassword() {
+    if (!masterPassword) {
+        showToast("انتهت صلاحية الجلسة. يرجى تحديث الصفحة وتسجيل الدخول مجدداً.", "error");
+        return false;
+    }
+    return true;
+}
+
 function forceComplete(orderId) {
+    if (!ensureMasterPassword()) return; // ✅ تحقق
     if(!confirm("تأكيد إكمال الطلب قسرياً؟ سيتم تسجيله في حساب الكابتن والمطعم.")) return;
     
     const oData = liveFirebaseOrders.find(x => x[O.ID] === orderId);
@@ -2581,8 +2613,8 @@ function forceComplete(orderId) {
         if (String(payType).includes('مناصفة')) driverDebtInc = comm / 2;
 
         let updates = {};
-        updates[`active_orders/${orderId}/status`] = 'completed';
-        updates[`active_orders/${orderId}/status_ar`] = 'مكتمل';
+        // ✅ حذف الطلب من active_orders بدلاً من وضع completed
+        updates[`active_orders/${orderId}`] = null; 
         
         if(driverPhone && driverPhone !== 'system_routing' && driverPhone !== 'pending_driver') {
             updates[`ledgers/drivers/${driverPhone}/completed_orders`] = firebase.database.ServerValue.increment(1);
@@ -2596,11 +2628,12 @@ function forceComplete(orderId) {
         }
         
         db.ref().update(updates);
-        fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${orderId}&status=completed&token=${API_TOKEN}&pass=${masterPassword}`).catch(()=>{});
+        // ✅ تشفير كلمة المرور
+        fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${orderId}&status=completed&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`).catch(()=>{});
         showToast("تم الإكمال وإضافة الأموال للمحافظ!");
     } else {
-        db.ref(`active_orders/${orderId}`).update({status: 'completed', status_ar: 'مكتمل'});
-        fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${orderId}&status=completed&token=${API_TOKEN}&pass=${masterPassword}`).catch(()=>{});
+        db.ref(`active_orders/${orderId}`).set(null); // ✅ حذف
+        fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${orderId}&status=completed&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`).catch(()=>{});
         showToast("تم الإكمال (بدون إضافة للمحفظة لعدم توفر البيانات)");
     }
 }
@@ -2614,10 +2647,12 @@ function getLocalDateString() {
 }
 
 function resetDebtOptUI(type, id, el) {
+    if (!ensureMasterPassword()) return; // ✅ تحقق
     if (!confirm(`تأكيد تصفير ديون (${id})؟ سيتم مسحها من الإكسل وتصفير العداد في Firebase.`)) return;
     el.classList.add('btn-loading');
     el.disabled = true;
-    fetch(`${API_URL}?action=RESET_DEBT&type=${type}&id=${id}&token=${API_TOKEN}&pass=${masterPassword}`)
+    // ✅ تشفير كلمة المرور
+    fetch(`${API_URL}?action=RESET_DEBT&type=${type}&id=${id}&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`)
         .then(r => r.json()).then(res => {
             if (res.success) { showToast("تم التصفير بنجاح"); refreshData(); }
             else { showToast("خطأ أثناء التصفير", "error"); }
@@ -2633,17 +2668,46 @@ function adminActionOptUI(cmd, type, id, el) {
     let newStatus = map_[cmd];
     if (cmd === 'DELETE' && type !== 'ORDER') newStatus = 'banned';
 
+    // ✅ تعطيل الزر مؤقتاً أثناء المعالجة
+    if (el) {
+        el.disabled = true;
+        el.classList.add('btn-loading');
+    }
+
     if (cmd === 'COMPLETE' || cmd === 'DELETE') {
-        if (!confirm(cmd === 'COMPLETE' ? "تأكيد الإتمام القسري؟" : "تأكيد الحذف/الحظر؟")) return;
+        if (!confirm(cmd === 'COMPLETE' ? "تأكيد الإتمام القسري؟" : "تأكيد الحذف/الحظر؟")) {
+            if (el) {
+                el.disabled = false;
+                el.classList.remove('btn-loading');
+            }
+            return;
+        }
         if (type === 'ORDER') {
             const card = el.closest('.order-card') || el.closest('.batch-order-inner');
-            if (card) { card.style.transition = '.3s'; card.style.opacity = '0'; card.style.transform = 'scale(0.95)'; setTimeout(() => card.remove(), 320); }
             
-            if (cmd === 'COMPLETE') {
-                db.ref(`active_orders/${id}`).update({status: 'completed', status_ar: 'مكتمل'}).catch(()=>{});
-            } else if (cmd === 'DELETE') {
-                db.ref(`active_orders/${id}`).update({status: 'deleted', status_ar: 'محذوف'}).catch(()=>{});
-            }
+            // ✅ تحديث Firebase أولاً ثم إخفاء البطاقة
+            const promise = (cmd === 'COMPLETE') 
+                ? db.ref(`active_orders/${id}`).update({status: 'completed', status_ar: 'مكتمل'})
+                : db.ref(`active_orders/${id}`).update({status: 'deleted', status_ar: 'محذوف'});
+            
+            promise
+                .then(() => {
+                    if (card) { 
+                        card.style.transition = '.3s'; 
+                        card.style.opacity = '0'; 
+                        card.style.transform = 'scale(0.95)'; 
+                        setTimeout(() => card.remove(), 320); 
+                    }
+                    showToast(cmd === 'COMPLETE' ? "تم الإكمال" : "تم الحذف");
+                })
+                .catch(err => {
+                    console.error(err);
+                    showToast("فشل تحديث Firebase", "error");
+                    if (el) { el.disabled = false; el.classList.remove('btn-loading'); }
+                    if (card) card.style.opacity = '1';
+                });
+            // لا نكمل باقي الدالة حتى لا نكرر الطلب
+            return;
         }
     }
 
@@ -2663,9 +2727,24 @@ function adminActionOptUI(cmd, type, id, el) {
         updateSectionBadges('DRIVER', globalData.drivers);
     }
 
-    fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${id}&status=${newStatus}&token=${API_TOKEN}&pass=${masterPassword}`)
-        .then(r => r.json()).then(res => { if (!res.success) { showToast("حدث خطأ", "error"); refreshData(); } })
-        .catch(() => {});
+    if (ensureMasterPassword()) {
+        // ✅ تشفير كلمة المرور
+        fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${id}&status=${newStatus}&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`)
+            .then(r => r.json()).then(res => {
+                if (!res.success) { showToast("حدث خطأ", "error"); refreshData(); }
+            }).catch(() => {})
+            .finally(() => {
+                if (el) {
+                    el.disabled = false;
+                    el.classList.remove('btn-loading');
+                }
+            });
+    } else {
+        if (el) {
+            el.disabled = false;
+            el.classList.remove('btn-loading');
+        }
+    }
 }
 
 /* ─── Archive ─── */
@@ -2733,9 +2812,16 @@ function renderArchive() {
         </tr>`;
     });
 
+    // 🆕 رسالة تنبيه عن حدود الأرشيف
+    const archiveInfoMsg = `<tr><td colspan="5" style="text-align:center; padding:8px; background:var(--primary-light); color:var(--primary-dark); font-size:0.75rem; font-weight:800;">
+        ⚡ يتم عرض آخر 300 طلب فقط. استخدم التصفية لتضييق النتائج.
+    </td></tr>`;
+    
     if (totalOrders > LIMIT) {
         html += `<tr><td colspan="5" style="text-align:center; padding:16px; color:var(--text-3); font-size:0.78rem; font-weight:700;">تم إخفاء ${totalOrders - LIMIT} طلب قديم — استخدم البحث</td></tr>`;
     }
+    
+    html = archiveInfoMsg + html; // إضافة الرسالة في الأعلى
 
     document.getElementById('arcTotalCount').textContent = totalOrders;
     document.getElementById('arcTotalComm').textContent  = totalComm;
@@ -2754,11 +2840,13 @@ function renderArchive() {
 
 /* 🆕 تحديث الأرشيف يدوياً */
 async function forceArchiveRefresh(event) {
+    if (!ensureMasterPassword()) return; // ✅ تحقق
     const btn = event.currentTarget;
     btn.classList.add('btn-loading');
     btn.disabled = true;
     try {
-        const res = await fetch(`${API_URL}?action=RUN_NIGHTLY_ARCHIVE&token=${API_TOKEN}&pass=${masterPassword}`);
+        // ✅ تشفير كلمة المرور
+        const res = await fetch(`${API_URL}?action=RUN_NIGHTLY_ARCHIVE&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`);
         const data = await res.json();
         if (data.success) {
             showToast(`✅ تم تحديث الأرشيف! (${data.archivedCount || 0} طلب)`);
@@ -2868,7 +2956,20 @@ function initMap() {
     setTimeout(() => map.invalidateSize(), 350 + 50);
 }
 
-// 🆕 تنظيف المستمعين عند الخروج (اختياري، يمكن استدعاؤه عند تسجيل الخروج)
+// 🆕 دالة تسجيل الخروج
+function performLogout() {
+    if (confirm("تأكيد تسجيل الخروج؟ سيتم إغلاق جميع الاتصالات.")) {
+        cleanupFirebaseListeners();
+        // مسح كلمة المرور والبيانات المؤقتة
+        masterPassword = "";
+        localOverrides = { orders: {}, drivers: {}, restaurants: {} };
+        localStorage.clear();
+        sessionStorage.clear();
+        location.reload();
+    }
+}
+
+// 🆕 تنظيف المستمعين عند الخروج
 function cleanupFirebaseListeners() {
     firebaseListeners.forEach(({ ref, callback }) => {
         ref.off('value', callback);
