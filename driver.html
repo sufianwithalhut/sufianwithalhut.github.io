@@ -2,15 +2,20 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 9.3 (متوافق مع V34.1: دعم استقبال البث السيادي من الإدارة) ---
-        const CURRENT_APP_VERSION = "9.3"; 
-        
-        if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
-            console.log("نسخة V34.1... جاري التحديث للإصدار 9.3!");
-            localStorage.setItem('hut_app_version', CURRENT_APP_VERSION);
-            if ('caches' in window) { caches.keys().then(names => { names.forEach(name => caches.delete(name)); }); }
-            if ('serviceWorker' in navigator) { navigator.serviceWorker.getRegistrations().then(regs => { regs.forEach(r => r.unregister()); }); }
-            window.location.reload(true);
+        // --- إصدار 9.4 (إصلاح 8 مشاكل + استقبال إشعار جهوزية الطلب) ---
+        const CURRENT_APP_VERSION = "9.4";
+        // ✅ BUG 7 FIX: try/catch يمنع حلقة reload لا نهائية إذا فشل localStorage
+        try {
+            if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
+                localStorage.setItem('hut_app_version', CURRENT_APP_VERSION);
+                if (localStorage.getItem('hut_app_version') === CURRENT_APP_VERSION) {
+                    if ('caches' in window) { caches.keys().then(names => { names.forEach(n => caches.delete(n)); }); }
+                    if ('serviceWorker' in navigator) { navigator.serviceWorker.getRegistrations().then(regs => { regs.forEach(r => r.unregister()); }); }
+                    window.location.reload();
+                }
+            }
+        } catch(e) {
+            console.warn('تعذّر التحقق من الإصدار:', e.message);
         }
     </script>
     <meta charset="UTF-8">
@@ -81,6 +86,24 @@
         .order-price small { font-size: 0.8rem; color: var(--text-muted); margin-right: 2px; }
         .status-banner { text-align: center; padding: 8px; border-radius: 12px; font-weight: 800; font-size: 0.95rem; margin-bottom: 20px; background: var(--stat-bg); color: var(--primary-blue); }
         
+        /* ── إشعار الجهوزية ── */
+        .ready-banner {
+            background: linear-gradient(135deg, #fff7ed, #fef3c7);
+            border: 2px solid #f97316;
+            border-radius: 16px;
+            padding: 12px 16px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: readyPulse 1.5s ease-in-out infinite;
+        }
+        .ready-banner-text { font-weight: 900; color: #c2410c; font-size: 0.95rem; }
+        @keyframes readyPulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(249,115,22,0.3); }
+            50% { box-shadow: 0 0 0 8px rgba(249,115,22,0); }
+        }
+
         .btn-support-mini { background: rgba(59, 130, 246, 0.05); color: var(--accent-blue); border: 1px solid rgba(59, 130, 246, 0.3); padding: 4px 10px; border-radius: 10px; font-size: 0.8rem; font-weight: 800; cursor: pointer; transition: 0.2s; display: inline-flex; align-items: center; gap: 5px; text-decoration: none; }
         .btn-support-mini:active { transform: scale(0.95); background: rgba(59, 130, 246, 0.1); }
         .timer-badge { font-weight: 900; padding: 4px 12px; border-radius: 12px; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 5px; border: 1px solid transparent; transition: 0.3s; }
@@ -145,6 +168,22 @@
         .btn-refresh-waiting { background: #f1f5f9; color: var(--text-muted); border: 1px solid var(--border-color); font-weight: 700; border-radius: 20px; padding: 10px 20px; transition: 0.2s; border: none; }
         .btn-accept-order { background: var(--success-green); color: white; border-radius: 20px; padding: 20px; font-weight: 900; font-size: 1.2rem; width: 100%; border: none; transition: 0.3s; display: flex; align-items: center; justify-content: center; gap: 15px; box-shadow: 0 10px 20px rgba(16, 185, 129, 0.3); margin-bottom: 15px; }
         
+        /* ✅ BUG 4 FIX: تعريف CSS لزر إسكات الصوت */
+        .btn-mute {
+            background: rgba(255,255,255,0.15);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 20px;
+            padding: 14px;
+            font-weight: 800;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: 0.2s;
+            width: 100%;
+            margin-bottom: 12px;
+        }
+        .btn-mute:active { transform: scale(0.97); background: rgba(255,255,255,0.25); }
+
         .svg-icon { width: 22px; height: 22px; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; fill: none; }
         .svg-icon-small { width: 16px; height: 16px; }
 
@@ -187,7 +226,9 @@
 <audio id="alertSound" loop src="https://actions.google.com/sounds/v1/alarms/submarine_dive_horn.ogg"></audio>
 <audio id="doubleOrderSound" loop src="https://actions.google.com/sounds/v1/alarms/bugle_tune.ogg"></audio>
 <audio id="cancelSound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg"></audio>
-<audio id="welcomeSound" src="https://actions.google.com/sounds/v1/water/water_drop.ogg"></audio> 
+<audio id="welcomeSound" src="https://actions.google.com/sounds/v1/water/water_drop.ogg"></audio>
+<!-- ✅ NEW: صوت إشعار الجهوزية -->
+<audio id="readySound" src="https://actions.google.com/sounds/v1/cartoon/pop.ogg"></audio>
 
 <div id="loginSection" class="login-wrapper">
     <div class="text-center mb-5 w-100">
@@ -228,7 +269,6 @@
         </div>
         <h3 class="fw-black mb-2" style="color: var(--primary-blue);">أنت في غرفة الانتظار</h3>
         <p class="text-muted fw-bold mb-4" style="font-size: 0.9rem;">حسابك مسجل وقيد المراجعة.<br>النظام يفحص حالتك تلقائياً الآن، ستدخل فور موافقة الإدارة.</p>
-        
         <div class="d-flex align-items-center justify-content-center gap-2 mb-4">
             <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
             <span class="text-primary fw-bold small" id="waitingStatusText">جاري الاستعلام التلقائي...</span>
@@ -287,7 +327,9 @@
 
         <div id="searchingStatus" class="radar-container">
             <div class="radar-center">
-                <div class="radar-wave" style="animation-delay: 0s"></div><div class="radar-wave" style="animation-delay: 0.8s"></div><div class="radar-wave" style="animation-delay: 1.6s"></div>
+                <div class="radar-wave" style="animation-delay: 0s"></div>
+                <div class="radar-wave" style="animation-delay: 0.8s"></div>
+                <div class="radar-wave" style="animation-delay: 1.6s"></div>
                 <div class="rounded-circle shadow-lg d-flex align-items-center justify-content-center position-relative" style="width: 80px; height: 80px; z-index: 10; background: var(--card-bg);">
                     <svg class="svg-icon" style="color: var(--accent-blue); width: 40px; height: 40px;" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
                 </div>
@@ -338,7 +380,8 @@
     </div>
     <div class="pb-2 flex-shrink-0">
         <button class="btn-mute w-100 d-flex align-items-center justify-content-center gap-2" onclick="window.muteAlarmOnly()">
-            إسكات الصوت <svg class="svg-icon" viewBox="0 0 24 24"><path d="M13.73 21a2 2 0 0 1-3.46 0"></path><path d="M18.63 13A17.89 17.89 0 0 1 18 8"></path><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"></path><path d="M18 8a6 6 0 0 0-9.33-5"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+            إسكات الصوت
+            <svg class="svg-icon" viewBox="0 0 24 24"><path d="M13.73 21a2 2 0 0 1-3.46 0"></path><path d="M18.63 13A17.89 17.89 0 0 1 18 8"></path><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"></path><path d="M18 8a6 6 0 0 0-9.33-5"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
         </button>
         <button class="btn-accept-order" id="btnAcceptMain" onclick="window.acceptOrder()">
             قبول الطلب فوراً <svg class="svg-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>
@@ -353,50 +396,50 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getDatabase, ref, onValue, update, get, increment } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-    const API_URL = "https://script.google.com/macros/s/AKfycbzKDBjgPxmt_iDCphkjB6EY-cnag_aqwxrdNDrY9uqBRbTZYsqGWl4TJn4pANS8OVYm/exec";
+    const API_URL   = "https://script.google.com/macros/s/AKfycbzKDBjgPxmt_iDCphkjB6EY-cnag_aqwxrdNDrY9uqBRbTZYsqGWl4TJn4pANS8OVYm/exec";
     const API_TOKEN = "HUT_SECURE_99";
     
     const firebaseConfig = {
       apiKey: "AIzaSyAo1rmqUzieYZU3RIwXOAN87GkpNrp-_Hc",
       authDomain: "sufyan-delivery.firebaseapp.com",
       databaseURL: "https://sufyan-delivery-default-rtdb.europe-west1.firebasedatabase.app",
-      projectId: "sufyan-delivery"
+      projectId: "sufyan-delivery",
+      storageBucket: "sufyan-delivery.firebasestorage.app",
+      messagingSenderId: "941542380637",
+      appId: "1:941542380637:web:9623fa6e627817ffeba9b4"
     };
 
     const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
+    const db  = getDatabase(app);
 
     let driverData = null, countdownInterval, currentOrderData = null, activeOrders = [], isRegistering = false, isOnline = true;
     let wakeLock = null, waitingPollingTimer = null, heartbeatInterval = null;
     let lastLocUpdateTs = 0, lastSentLat = 0, lastSentLng = 0, lastActiveHtml = "";
+    // ✅ NEW: Set لتتبع الطلبات التي أُرسل لها إشعار الجهوزية (لمنع التكرار)
+    let readyNotifiedOrders = new Set();
 
-    let offlineActionQueue = JSON.parse(localStorage.getItem('hut_offline_queue') || '[]');
-    let isProcessingQueue = false;
+    let offlineActionQueue  = JSON.parse(localStorage.getItem('hut_offline_queue') || '[]');
+    let isProcessingQueue   = false;
 
     let audioCtx = null;
     function unlockAudio() {
-        const audios = ['alertSound', 'doubleOrderSound', 'cancelSound', 'welcomeSound'];
+        const audios = ['alertSound', 'doubleOrderSound', 'cancelSound', 'welcomeSound', 'readySound'];
         audios.forEach(id => {
             const a = document.getElementById(id);
-            if(a) { a.play().then(() => { a.pause(); a.currentTime = 0; }).catch(()=>{}); }
+            if (a) { a.play().then(() => { a.pause(); a.currentTime = 0; }).catch(() => {}); }
         });
-        
         if (!audioCtx) {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             setInterval(() => {
-                if(isOnline && audioCtx) {
+                if (isOnline && audioCtx) {
                     const osc = audioCtx.createOscillator();
                     const gain = audioCtx.createGain();
-                    osc.connect(gain);
-                    gain.connect(audioCtx.destination);
-                    osc.frequency.value = 20000; 
-                    gain.gain.value = 0.01;
-                    osc.start();
-                    osc.stop(audioCtx.currentTime + 0.01);
+                    osc.connect(gain); gain.connect(audioCtx.destination);
+                    osc.frequency.value = 20000; gain.gain.value = 0.01;
+                    osc.start(); osc.stop(audioCtx.currentTime + 0.01);
                 }
             }, 5000);
         }
-
         document.removeEventListener('touchstart', unlockAudio);
         document.removeEventListener('click', unlockAudio);
     }
@@ -406,17 +449,14 @@
     function calculateDistanceMeters(lat1, lon1, lat2, lon2) {
         if (!lat1 || !lon1 || !lat2 || !lon2) return 9999;
         const R = 6371e3;
-        const p1 = lat1 * Math.PI/180;
-        const p2 = lat2 * Math.PI/180;
-        const dp = (lat2-lat1) * Math.PI/180;
-        const dl = (lon2-lon1) * Math.PI/180;
-        const a = Math.sin(dp/2) * Math.sin(dp/2) + Math.cos(p1) * Math.cos(p2) * Math.sin(dl/2) * Math.sin(dl/2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-        return R * c;
+        const p1 = lat1 * Math.PI/180, p2 = lat2 * Math.PI/180;
+        const dp = (lat2-lat1) * Math.PI/180, dl = (lon2-lon1) * Math.PI/180;
+        const a  = Math.sin(dp/2)*Math.sin(dp/2) + Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)*Math.sin(dl/2);
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
 
     function saveToOfflineQueue(url) {
-        offlineActionQueue.push({ url: url, timestamp: Date.now() });
+        offlineActionQueue.push({ url, timestamp: Date.now() });
         localStorage.setItem('hut_offline_queue', JSON.stringify(offlineActionQueue));
         processOfflineQueue();
     }
@@ -424,88 +464,80 @@
     async function processOfflineQueue() {
         if (isProcessingQueue || offlineActionQueue.length === 0 || !navigator.onLine) {
             const syncEl = document.getElementById('syncStatus');
-            if(syncEl) syncEl.style.display = 'none';
+            if (syncEl) syncEl.style.display = 'none';
             return;
         }
-        
         isProcessingQueue = true;
         const syncEl = document.getElementById('syncStatus');
-        if(syncEl) { syncEl.style.display = 'flex'; document.getElementById('syncText').innerText = `جاري مزامنة ${offlineActionQueue.length} عمليات...`; }
-
+        if (syncEl) { syncEl.style.display = 'flex'; document.getElementById('syncText').innerText = `جاري مزامنة ${offlineActionQueue.length} عمليات...`; }
         let failedQueue = [];
-        for (let i = 0; i < offlineActionQueue.length; i++) {
-            const action = offlineActionQueue[i];
-            try { await fetch(action.url, { method: 'GET', mode: 'no-cors', cache: 'no-store' }); } 
+        for (const action of offlineActionQueue) {
+            try { await fetch(action.url, { method: 'GET', mode: 'no-cors', cache: 'no-store' }); }
             catch (err) { failedQueue.push(action); }
         }
-
         offlineActionQueue = failedQueue;
         localStorage.setItem('hut_offline_queue', JSON.stringify(offlineActionQueue));
-        if(syncEl) syncEl.style.display = 'none';
+        if (syncEl) syncEl.style.display = 'none';
         isProcessingQueue = false;
     }
     setInterval(processOfflineQueue, 5000);
 
-    function safeFetchUpdate(url) { saveToOfflineQueue(url); }
-
-    const svgPhone = `<svg class="svg-icon svg-icon-small" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>`;
-    const svgMap = `<svg class="svg-icon svg-icon-small" viewBox="0 0 24 24"><polygon points="3 11 22 2 13 21 11 13 3 11"></polygon></svg>`;
-    const svgWa = `<svg class="svg-icon svg-icon-small" viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>`;
-    const svgImg = `<svg class="svg-icon svg-icon-small" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>`;
-    const svgSupport = `<svg class="svg-icon" style="width: 14px; height: 14px;" viewBox="0 0 24 24"><path d="M3 18v-6a9 9 0 0 1 18 0v6"></path><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path></svg>`;
-    const svgTimer = `<svg class="svg-icon" style="width: 14px; height: 14px;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>`;
+    const svgPhone   = `<svg class="svg-icon svg-icon-small" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>`;
+    const svgMap     = `<svg class="svg-icon svg-icon-small" viewBox="0 0 24 24"><polygon points="3 11 22 2 13 21 11 13 3 11"></polygon></svg>`;
+    const svgWa      = `<svg class="svg-icon svg-icon-small" viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>`;
+    const svgImg     = `<svg class="svg-icon svg-icon-small" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>`;
+    const svgSupport = `<svg class="svg-icon" style="width:14px;height:14px;" viewBox="0 0 24 24"><path d="M3 18v-6a9 9 0 0 1 18 0v6"></path><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path></svg>`;
+    const svgTimer   = `<svg class="svg-icon" style="width:14px;height:14px;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>`;
+    const svgBell    = `<svg class="svg-icon svg-icon-small" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>`;
 
     window.openSafeLink = function(url) {
-        if (window.AndroidRadar && window.AndroidRadar.openExternalApp) { window.AndroidRadar.openExternalApp(url); } 
+        if (window.AndroidRadar && window.AndroidRadar.openExternalApp) { window.AndroidRadar.openExternalApp(url); }
         else { window.open(url, '_blank'); }
-    }
+    };
 
     window.openSmartWhatsapp = function(phone, resName, area, orderId) {
-        if(!phone) return;
+        if (!phone) return;
         const msg = encodeURIComponent(`مرحباً بك! 🛵\nأنا كابتن شركة سفيان، والمسؤول عن توصيل طلبك اللذيذ 🍔 من (${resName}) المخصص لمنطقة (${area}) ✨.\n\nيرجى إرسال موقعك الدقيق (Location) 📍 لتسليم الطلبية بأسرع وقت ممكن 🚀.\nشكراً لك! 🌹`);
-        let cleanPhone = phone;
-        if (cleanPhone.startsWith('0')) { cleanPhone = '964' + cleanPhone.substring(1); }
-        const url = `https://wa.me/${cleanPhone}?text=${msg}`;
-        window.openSafeLink(url);
-    }
+        let clean = phone.startsWith('0') ? '964' + phone.substring(1) : phone;
+        window.openSafeLink(`https://wa.me/${clean}?text=${msg}`);
+    };
 
     window.muteAlarmOnly = function() {
         if (window.AndroidRadar) { window.AndroidRadar.stopAlarm(); }
         try { document.getElementById('alertSound').pause(); document.getElementById('doubleOrderSound').pause(); } catch(e) {}
-    }
+    };
 
     function showToast(msg, type = 'success') {
-        const container = document.getElementById('toast-container');
+        let container = document.getElementById('toast-container');
         if (!container) {
-            const cont = document.createElement('div');
-            cont.id = 'toast-container';
-            cont.style.cssText = 'position:fixed; top:20px; left:50%; transform:translateX(-50%); z-index:99999; display:flex; flex-direction:column; gap:10px;';
-            document.body.appendChild(cont);
+            container = document.createElement('div');
+            container.id = 'toast-container';
+            container.style.cssText = 'position:fixed; top:20px; left:50%; transform:translateX(-50%); z-index:99999; display:flex; flex-direction:column; gap:10px; max-width: 90vw;';
+            document.body.appendChild(container);
         }
         const toast = document.createElement('div');
-        toast.style.cssText = `background: ${type === 'success' ? '#10b981' : '#ef4444'}; color: white; padding: 15px 20px; border-radius: 20px; font-weight: 800; font-size: 0.95rem; box-shadow: 0 10px 25px rgba(0,0,0,0.25); text-align: center; animation: slideDown 0.3s forwards; line-height: 1.4;`;
+        toast.style.cssText = `background: ${type === 'success' ? '#10b981' : (type === 'info' ? '#1e3a8a' : '#ef4444')}; color: white; padding: 15px 20px; border-radius: 20px; font-weight: 800; font-size: 0.95rem; box-shadow: 0 10px 25px rgba(0,0,0,0.25); text-align: center; animation: slideDown 0.3s forwards; line-height: 1.4;`;
         toast.innerHTML = msg;
-        document.getElementById('toast-container').appendChild(toast);
-        setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 5000);
+        container.appendChild(toast);
+        setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 6000);
     }
 
     function checkFridayMessage() {
         const today = new Date();
-        if (today.getDay() === 5) { 
-            const lastShown = localStorage.getItem('hut_friday_msg');
+        if (today.getDay() === 5) {
             const todayStr = today.toISOString().split('T')[0];
-            if (lastShown !== todayStr) {
+            if (localStorage.getItem('hut_friday_msg') !== todayStr) {
                 setTimeout(() => {
                     showToast('جمعة مباركة ومتقبلة بإذن الله 🕌✨<br>لا تنسَ الصلاة على الحبيب المصطفى ﷺ 📿🤲.<br>رزقك الله من واسع فضله 💙', 'success');
                     localStorage.setItem('hut_friday_msg', todayStr);
-                }, 3000); 
+                }, 3000);
             }
         }
     }
 
-    function showLoading(s, text = "جاري المزامنة مع النظام...") { 
-        document.getElementById('loadingText').innerText = text; 
-        document.getElementById('loadingOverlay').style.display = s ? 'flex' : 'none'; 
+    function showLoading(s, text = "جاري المزامنة مع النظام...") {
+        document.getElementById('loadingText').innerText = text;
+        document.getElementById('loadingOverlay').style.display = s ? 'flex' : 'none';
     }
 
     window.addEventListener('online', () => { document.getElementById('offlineBanner').classList.add('hidden-section'); processOfflineQueue(); });
@@ -513,22 +545,18 @@
     document.addEventListener('contextmenu', event => event.preventDefault());
 
     async function requestWakeLock() { if ('wakeLock' in navigator) { try { wakeLock = await navigator.wakeLock.request('screen'); } catch (err) {} } }
-    function releaseWakeLock() { if (wakeLock !== null) { wakeLock.release().then(() => { wakeLock = null; }); } }
+    function releaseWakeLock() { if (wakeLock) { wakeLock.release().then(() => { wakeLock = null; }); } }
 
     window.initAudioAndAuth = function() {
-        ['alertSound', 'doubleOrderSound', 'cancelSound', 'welcomeSound'].forEach(id => {
-            let audio = document.getElementById(id);
-            if (audio) { audio.volume = 0; let p = audio.play(); if (p !== undefined) { p.then(() => { audio.pause(); audio.currentTime = 0; audio.volume = 1; }).catch(e => { }); } }
+        ['alertSound', 'doubleOrderSound', 'cancelSound', 'welcomeSound', 'readySound'].forEach(id => {
+            const a = document.getElementById(id);
+            if (a) { a.volume = 0; const p = a.play(); if (p) { p.then(() => { a.pause(); a.currentTime = 0; a.volume = 1; }).catch(() => {}); } }
         });
-        
-        if (!audioCtx) {
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        }
-
-        if ("Notification" in window && Notification.permission !== "granted") { Notification.requestPermission(); }
-        if (navigator.geolocation) { navigator.geolocation.getCurrentPosition(function(pos) {}, function(err) {}, { enableHighAccuracy: true, maximumAge: 0 }); }
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if ("Notification" in window && Notification.permission !== "granted") Notification.requestPermission();
+        if (navigator.geolocation) navigator.geolocation.getCurrentPosition(() => {}, () => {}, { enableHighAccuracy: true, maximumAge: 0 });
         authAction();
-    }
+    };
 
     function checkSavedSession() {
         const sessionStr = localStorage.getItem('hut_driver_session');
@@ -537,67 +565,64 @@
             try {
                 const session = JSON.parse(sessionStr);
                 if ((Date.now() - session.timestamp) / 3600000 < 24) {
-                    driverData = session; document.getElementById('driverPhone').value = session.phone; showDashboard();
-                    const savedOrders = localStorage.getItem('hut_active_orders');
-                    if (savedOrders) { 
-                        activeOrders = JSON.parse(savedOrders); 
-                        activeOrders.forEach(o => { if(!o.acceptedTime) o.acceptedTime = Date.now(); });
-                    } 
-                    displayActiveOrders(); return true;
+                    driverData = session;
+                    document.getElementById('driverPhone').value = session.phone;
+                    showDashboard();
+                    const saved = localStorage.getItem('hut_active_orders');
+                    if (saved) { activeOrders = JSON.parse(saved); activeOrders.forEach(o => { if (!o.acceptedTime) o.acceptedTime = Date.now(); }); }
+                    displayActiveOrders();
+                    return true;
                 }
             } catch(e) {}
         } else if (pendingStr) {
-            document.getElementById('driverPhone').value = pendingStr; showWaitingRoom(); return true;
+            document.getElementById('driverPhone').value = pendingStr;
+            showWaitingRoom();
+            return true;
         }
         return false;
     }
 
-    window.onload = function() { 
-        if (!checkSavedSession()) { 
-            const savedDriver = localStorage.getItem('hut_driver'); 
-            if (savedDriver) { 
-                driverData = JSON.parse(savedDriver); document.getElementById('driverPhone').value = driverData.phone; 
-                authAction(); 
-                const savedOrders = localStorage.getItem('hut_active_orders'); 
-                if (savedOrders) { 
-                    activeOrders = JSON.parse(savedOrders); 
-                    activeOrders.forEach(o => { if(!o.acceptedTime) o.acceptedTime = Date.now(); });
-                } 
-            } 
-        } 
+    window.onload = function() {
+        if (!checkSavedSession()) {
+            const savedDriver = localStorage.getItem('hut_driver');
+            if (savedDriver) {
+                driverData = JSON.parse(savedDriver);
+                document.getElementById('driverPhone').value = driverData.phone;
+                authAction();
+                const saved = localStorage.getItem('hut_active_orders');
+                if (saved) { activeOrders = JSON.parse(saved); activeOrders.forEach(o => { if (!o.acceptedTime) o.acceptedTime = Date.now(); }); }
+            }
+        }
     };
 
     function authAction() {
         let rawPhone = document.getElementById('driverPhone').value.trim();
         if (!rawPhone) return alert("يرجى إدخال رقم الهاتف");
         let phone = rawPhone.replace(/^0+/, '');
-        
         if (isRegistering) {
             const name = document.getElementById('driverName').value.trim();
             if (!name) return alert("يرجى كتابة الاسم الثلاثي");
             showLoading(true, "جاري إنشاء الحساب...");
-            const payload = { action: 'DRIVER_REG', token: API_TOKEN, name: name, phone: phone };
-            
-            fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) })
-            .then(() => {
-                showLoading(false); localStorage.setItem('hut_driver_pending', phone); showWaitingRoom();
-            }).catch(() => { showLoading(false); alert("ضعف في الاتصال بالشبكة."); });
+            fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'DRIVER_REG', token: API_TOKEN, name, phone }) })
+                .then(() => { showLoading(false); localStorage.setItem('hut_driver_pending', phone); showWaitingRoom(); })
+                .catch(() => { showLoading(false); alert("ضعف في الاتصال بالشبكة."); });
             return;
         }
-
         showLoading(true, "جاري المزامنة...");
         fetch(`${API_URL}?action=checkDriver&phone=${phone}&token=${API_TOKEN}`)
-            .then(res => res.json()).then(data => handleLoginCheck(data, phone)).catch(err => { showLoading(false); alert("خطأ اتصال"); });
+            .then(r => r.json()).then(data => handleLoginCheck(data, phone))
+            .catch(() => { showLoading(false); alert("خطأ اتصال"); });
     }
 
     function handleLoginCheck(data, phone) {
         showLoading(false);
         if (data.status === "active" || data.status === "inactive") {
-            driverData = { phone: phone, name: data.name, timestamp: Date.now() }; 
-            localStorage.setItem('hut_driver', JSON.stringify(driverData)); localStorage.setItem('hut_driver_session', JSON.stringify(driverData)); 
+            driverData = { phone, name: data.name, timestamp: Date.now() };
+            localStorage.setItem('hut_driver', JSON.stringify(driverData));
+            localStorage.setItem('hut_driver_session', JSON.stringify(driverData));
             showDashboard(); displayActiveOrders();
-        } else if (data.status === "banned") { 
-            alert("حساب محظور."); location.reload(); 
+        } else if (data.status === "banned") {
+            alert("حساب محظور."); location.reload();
         } else if (data.status === "pending" || data.status === "waiting") {
             localStorage.setItem('hut_driver_pending', phone); showWaitingRoom();
         } else {
@@ -607,50 +632,57 @@
             document.getElementById('mainAuthBtn').innerHTML = `إرسال طلب الانضمام <svg class="svg-icon" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>`;
             document.getElementById('mainAuthBtn').style.background = 'var(--accent-orange)';
         }
-    };
+    }
 
     function showWaitingRoom() {
         document.getElementById('authBox').classList.add('hidden-section');
         document.getElementById('waitingBox').classList.remove('hidden-section');
         if (waitingPollingTimer) clearInterval(waitingPollingTimer);
-        waitingPollingTimer = setInterval(() => window.checkWaitingStatus(false), 15000); 
+        waitingPollingTimer = setInterval(() => window.checkWaitingStatus(false), 15000);
     }
 
     window.checkWaitingStatus = function(isManual = false) {
         let rawPhone = document.getElementById('driverPhone').value.trim() || localStorage.getItem('hut_driver_pending');
         if (!rawPhone) return;
         let phone = rawPhone.replace(/^0+/, '');
-        if (isManual) { document.getElementById('waitingStatusText').innerText = "جاري التحقق اليدوي..."; }
-        
+        if (isManual) document.getElementById('waitingStatusText').innerText = "جاري التحقق اليدوي...";
         fetch(`${API_URL}?action=checkDriver&phone=${phone}&token=${API_TOKEN}`)
-            .then(res => res.json()).then(data => {
+            .then(r => r.json()).then(data => {
                 document.getElementById('waitingStatusText').innerText = "جاري الاستعلام التلقائي...";
                 if (data.status === "active" || data.status === "inactive") {
-                    clearInterval(waitingPollingTimer); localStorage.removeItem('hut_driver_pending');
-                    driverData = { phone: phone, name: data.name, timestamp: Date.now() }; 
-                    localStorage.setItem('hut_driver', JSON.stringify(driverData)); localStorage.setItem('hut_driver_session', JSON.stringify(driverData)); 
-                    const wAudio = document.getElementById('welcomeSound'); if (wAudio) { wAudio.currentTime = 0; wAudio.play().catch(e=>{}); }
-                    document.getElementById('waitingBox').classList.add('hidden-section'); showDashboard();
+                    clearInterval(waitingPollingTimer);
+                    localStorage.removeItem('hut_driver_pending');
+                    driverData = { phone, name: data.name, timestamp: Date.now() };
+                    localStorage.setItem('hut_driver', JSON.stringify(driverData));
+                    localStorage.setItem('hut_driver_session', JSON.stringify(driverData));
+                    const wA = document.getElementById('welcomeSound');
+                    if (wA) { wA.currentTime = 0; wA.play().catch(() => {}); }
+                    document.getElementById('waitingBox').classList.add('hidden-section');
+                    showDashboard();
                 } else if (data.status === "banned") {
-                    clearInterval(waitingPollingTimer); localStorage.removeItem('hut_driver_pending'); alert("⚠️ عذراً، حسابك محظور."); location.reload();
+                    clearInterval(waitingPollingTimer);
+                    localStorage.removeItem('hut_driver_pending');
+                    alert("⚠️ عذراً، حسابك محظور."); location.reload();
                 }
-            }).catch(e=>{});
-    }
+            }).catch(() => {});
+    };
 
     function showDashboard() {
-        document.getElementById('loginSection').classList.add('hidden-section'); document.getElementById('dashboardPage').classList.remove('hidden-section');
-        document.getElementById('driverNameDisplay').innerText = "كابتن " + driverData.name; startSystem();
-        checkFridayMessage(); 
+        document.getElementById('loginSection').classList.add('hidden-section');
+        document.getElementById('dashboardPage').classList.remove('hidden-section');
+        document.getElementById('driverNameDisplay').innerText = "كابتن " + driverData.name;
+        startSystem();
+        checkFridayMessage();
     }
 
     window.logout = function() {
         if (activeOrders.length > 0) return alert("⚠️ قم بإنهاء الطلبات أولاً.");
-        if (confirm("تأكيد تسجيل الخروج؟")) { 
-            releaseWakeLock(); 
+        if (confirm("تأكيد تسجيل الخروج؟")) {
+            releaseWakeLock();
             updateFirebaseLocationStatus('inactive');
-            localStorage.clear(); sessionStorage.clear(); location.reload(); 
+            localStorage.clear(); sessionStorage.clear(); location.reload();
         }
-    }
+    };
 
     window.toggleOnlineStatus = function() {
         isOnline = document.getElementById('onlineToggle').checked;
@@ -658,26 +690,24 @@
         if (isOnline) {
             badge.className = "status-badge online"; badge.innerHTML = `متاح للطلبات`;
             document.getElementById('searchingStatus').classList.remove('offline-mode');
-            
-            if(navigator.geolocation) {
+            if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(pos => {
                     lastSentLat = pos.coords.latitude; lastSentLng = pos.coords.longitude;
                     updateFirebaseLocationStatus('active');
-                }, err => { updateFirebaseLocationStatus('active'); }, { enableHighAccuracy: true, timeout: 5000 });
+                }, () => { updateFirebaseLocationStatus('active'); }, { enableHighAccuracy: true, timeout: 5000 });
             } else { updateFirebaseLocationStatus('active'); }
-
-            requestWakeLock(); 
-            if(!heartbeatInterval) heartbeatInterval = setInterval(sendHeartbeat, 20000); 
+            requestWakeLock();
+            if (!heartbeatInterval) heartbeatInterval = setInterval(sendHeartbeat, 20000);
             displayActiveOrders();
         } else {
             badge.className = "status-badge offline"; badge.innerHTML = `في استراحة`;
             document.getElementById('searchingStatus').classList.add('offline-mode');
             updateFirebaseLocationStatus('inactive');
-            releaseWakeLock(); 
-            if(heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
+            releaseWakeLock();
+            if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
             displayActiveOrders();
         }
-    }
+    };
 
     function sendHeartbeat() {
         if (!isOnline || !driverData) return;
@@ -686,13 +716,11 @@
                 lastSentLat = pos.coords.latitude; lastSentLng = pos.coords.longitude;
                 updateFirebaseLocationStatus('active');
             });
-        } else {
-            updateFirebaseLocationStatus('active');
-        }
+        } else { updateFirebaseLocationStatus('active'); }
     }
 
     function updateFirebaseLocationStatus(statusStr) {
-        if(lastSentLat && lastSentLng) {
+        if (lastSentLat && lastSentLng) {
             const updates = {};
             updates[`drivers_locations/${driverData.phone}`] = { lat: lastSentLat, lng: lastSentLng, status: statusStr, last_update: new Date().toISOString() };
             update(ref(db), updates);
@@ -700,46 +728,41 @@
     }
 
     function startSystem() {
-        if (isOnline) { 
-            requestWakeLock(); 
-            heartbeatInterval = setInterval(sendHeartbeat, 20000); 
-        }
-        startHotDataListeners(); 
-        
+        if (isOnline) { requestWakeLock(); heartbeatInterval = setInterval(sendHeartbeat, 20000); }
+        startHotDataListeners();
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(pos => {
-                lastLocUpdateTs = Date.now(); lastSentLat = pos.coords.latitude; lastSentLng = pos.coords.longitude;
-                if(driverData) { driverData.currentLat = pos.coords.latitude; driverData.currentLng = pos.coords.longitude; }
+                lastLocUpdateTs = Date.now();
+                lastSentLat = pos.coords.latitude; lastSentLng = pos.coords.longitude;
+                if (driverData) { driverData.currentLat = pos.coords.latitude; driverData.currentLng = pos.coords.longitude; }
                 updateFirebaseLocationStatus(isOnline ? 'active' : 'inactive');
-            }, err => { document.getElementById('permissionOverlay').classList.remove('hidden-section'); }, { enableHighAccuracy: true, timeout: 10000 });
+            }, () => { document.getElementById('permissionOverlay').classList.remove('hidden-section'); },
+            { enableHighAccuracy: true, timeout: 10000 });
 
-            navigator.geolocation.watchPosition(
-                pos => {
-                    document.getElementById('permissionOverlay').classList.add('hidden-section');
-                    driverData.currentLat = pos.coords.latitude; driverData.currentLng = pos.coords.longitude;
-                    lastSentLat = pos.coords.latitude; lastSentLng = pos.coords.longitude;
-                    updateFirebaseLocationStatus(isOnline ? 'active' : 'inactive');
-                }, 
-                err => { document.getElementById('permissionOverlay').classList.remove('hidden-section'); }, 
-                { enableHighAccuracy: true, maximumAge: 5000 }
-            );
+            navigator.geolocation.watchPosition(pos => {
+                document.getElementById('permissionOverlay').classList.add('hidden-section');
+                driverData.currentLat = pos.coords.latitude; driverData.currentLng = pos.coords.longitude;
+                lastSentLat = pos.coords.latitude; lastSentLng = pos.coords.longitude;
+                updateFirebaseLocationStatus(isOnline ? 'active' : 'inactive');
+            }, () => { document.getElementById('permissionOverlay').classList.remove('hidden-section'); },
+            { enableHighAccuracy: true, maximumAge: 5000 });
         }
     }
 
     window.closeCancelAlert = function() {
         document.getElementById('cancelAlertOverlay').classList.add('hidden-section');
         try { document.getElementById('cancelSound').pause(); } catch(e) {}
-    }
+    };
 
     function forceRemoveActiveOrder(msg, orderId) {
-        let cancelAudio = document.getElementById('cancelSound');
-        cancelAudio.currentTime = 0; cancelAudio.play().catch(e => {});
+        const cancelAudio = document.getElementById('cancelSound');
+        cancelAudio.currentTime = 0; cancelAudio.play().catch(() => {});
         document.getElementById('cancelAlertText').innerText = `الطلب #${orderId}: ${msg}`;
         document.getElementById('cancelAlertOverlay').classList.remove('hidden-section');
         activeOrders = activeOrders.filter(o => String(o.id) !== String(orderId));
-        localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders)); 
+        readyNotifiedOrders.delete(String(orderId));
+        localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
         displayActiveOrders();
-        
         if (currentOrderData && String(currentOrderData.id) === String(orderId)) {
             clearInterval(countdownInterval);
             document.getElementById('orderAlertOverlay').classList.add('hidden-section');
@@ -749,69 +772,95 @@
     }
 
     function startHotDataListeners() {
-        const accountRef = ref(db, `drivers_locations/${driverData.phone}/account_status`);
-        onValue(accountRef, (snapshot) => {
-            const status = snapshot.val();
-            if (status === "banned") {
+        // ── مراقبة الحساب ──
+        onValue(ref(db, `drivers_locations/${driverData.phone}/account_status`), snap => {
+            if (snap.val() === "banned") {
                 alert("⚠️ لقد تم حظر حسابك من قبل الإدارة.");
                 localStorage.clear(); sessionStorage.clear(); location.reload();
             }
         });
 
-        const ledgerRef = ref(db, `ledgers/drivers/${driverData.phone}`);
-        onValue(ledgerRef, (snapshot) => {
-            const ledger = snapshot.val() || { completed_orders: 0, debt: 0 };
-            document.getElementById('statOrdersCount').innerText = ledger.completed_orders || 0;
-            document.getElementById('statDebt').innerHTML = `${ledger.debt || 0} <small class="fs-6">د.ع</small>`;
+        // ── المحفظة ──
+        onValue(ref(db, `ledgers/drivers/${driverData.phone}`), snap => {
+            const l = snap.val() || { completed_orders: 0, debt: 0 };
+            document.getElementById('statOrdersCount').innerText = l.completed_orders || 0;
+            document.getElementById('statDebt').innerHTML = `${l.debt || 0} <small class="fs-6">د.ع</small>`;
         });
 
+        // ── سجل اليوم ──
         const todayStr = new Date().toISOString().split('T')[0];
-        const dailyLedgerRef = ref(db, `daily_ledgers/${driverData.phone}/${todayStr}`);
-        onValue(dailyLedgerRef, (snapshot) => {
-            const dailyData = snapshot.val() || {};
-            let todayCashCalc = 0;
-            let ledgerHtmlString = '';
-            
-            Object.values(dailyData).sort((a,b) => b.timestamp - a.timestamp).forEach(record => {
-                todayCashCalc += record.price;
-                const timeFmt = new Date(record.timestamp).toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'});
-                ledgerHtmlString += `<div class="ledger-item"><div><h6 class="fw-black m-0 text-dark">#${record.orderId} - ${record.resName}</h6><small class="text-muted fw-bold">${timeFmt} | منطقة ${record.area}</small></div><h5 class="fw-black text-success m-0">${record.price} <small class="fs-6">د.ع</small></h5></div>`;
+        onValue(ref(db, `daily_ledgers/${driverData.phone}/${todayStr}`), snap => {
+            const daily = snap.val() || {};
+            let total = 0, html = '';
+            Object.values(daily).sort((a, b) => b.timestamp - a.timestamp).forEach(r => {
+                total += r.price;
+                const t = new Date(r.timestamp).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+                html += `<div class="ledger-item"><div><h6 class="fw-black m-0 text-dark">#${r.orderId} - ${r.resName}</h6><small class="text-muted fw-bold">${t} | منطقة ${r.area}</small></div><h5 class="fw-black text-success m-0">${r.price} <small class="fs-6">د.ع</small></h5></div>`;
             });
-            
-            document.getElementById('ledgerTotalCash').innerHTML = `${todayCashCalc} <small class="fs-5">د.ع</small>`;
-            document.getElementById('ledgerList').innerHTML = ledgerHtmlString || '<div class="text-center text-muted fw-bold py-4">لا توجد رحلات مكتملة اليوم.</div>';
+            document.getElementById('ledgerTotalCash').innerHTML = `${total} <small class="fs-5">د.ع</small>`;
+            document.getElementById('ledgerList').innerHTML = html || '<div class="text-center text-muted fw-bold py-4">لا توجد رحلات مكتملة اليوم.</div>';
         });
 
-        const ordersRef = ref(db, 'active_orders');
-        onValue(ordersRef, (snapshot) => {
-            const activeFbOrders = snapshot.val() || {};
+        // ── الطلبات النشطة ──
+        onValue(ref(db, 'active_orders'), snap => {
+            const activeFbOrders = snap.val() || {};
             const myId = String(driverData.phone).replace(/^0+/, '').trim();
-            
+
+            // فحص سحب الطلبات من عندي
             for (let i = activeOrders.length - 1; i >= 0; i--) {
-                const myOrder = activeOrders[i];
-                const fbOrder = activeFbOrders[myOrder.id];
+                const myOrder  = activeOrders[i];
+                const fbOrder  = activeFbOrders[myOrder.id];
                 if (!fbOrder) {
                     forceRemoveActiveOrder("تم حذف هذا الطلب أو إنهاءه.", myOrder.id);
                 } else {
-                    let fbDriverPhone = String(fbOrder.driverPhone || "").replace(/^0+/, '').trim();
-                    if (fbDriverPhone !== myId && fbOrder.status !== 'completed') {
+                    const fbPhone = String(fbOrder.driverPhone || "").replace(/^0+/, '').trim();
+                    if (fbPhone !== myId && fbOrder.status !== 'completed') {
                         forceRemoveActiveOrder("تم سحب الطلب وتعيينه لكابتن آخر.", myOrder.id);
                     }
                 }
             }
 
+            // ✅ NEW: إشعار جهوزية الطلب من المطعم
+            activeOrders.forEach(myOrder => {
+                const fbOrder = activeFbOrders[myOrder.id];
+                if (!fbOrder) return;
+                const orderId = String(myOrder.id);
+                if (fbOrder.ready_for_pickup === true && !readyNotifiedOrders.has(orderId)) {
+                    readyNotifiedOrders.add(orderId);
+                    // تحديث حالة الطلب المحلي
+                    myOrder.readyForPickup = true;
+                    localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
+                    // تشغيل صوت وعرض إشعار
+                    const rAudio = document.getElementById('readySound');
+                    if (rAudio) { rAudio.currentTime = 0; rAudio.play().catch(() => {}); }
+                    showToast(`🍽️ طلبيتك جاهزة في <b>${myOrder.resName}</b>!<br>توجّه للاستلام فوراً`, 'info');
+                    // إرسال push notification إذا كانت متاحة
+                    if ("Notification" in window && Notification.permission === "granted") {
+                        new Notification("🍽️ الطلبية جاهزة!", {
+                            body: `طلبيتك في ${myOrder.resName} جاهزة للاستلام`,
+                            icon: "/driver-logo.png"
+                        });
+                    }
+                    displayActiveOrders(); // إعادة رسم البطاقة لإظهار شارة الجهوزية
+                }
+                // إذا أُلغيت الجهوزية من المطعم
+                if (fbOrder.ready_for_pickup === false && readyNotifiedOrders.has(orderId)) {
+                    readyNotifiedOrders.delete(orderId);
+                    myOrder.readyForPickup = false;
+                    localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
+                    displayActiveOrders();
+                }
+            });
+
+            // استقبال طلب جديد
             if (isOnline) {
                 Object.values(activeFbOrders).forEach(fbOrder => {
                     if (!fbOrder.restaurant || fbOrder.restaurant.trim() === "" || fbOrder.restaurant === "undefined") return;
-
-                    let safeFbPhone = String(fbOrder.driverPhone || "").replace(/^0+/, '').trim();
-                    let isTargetedForMe = (safeFbPhone === myId) && (fbOrder.status === "pending_driver" || fbOrder.status === "manual_pending");
-
-                    let notAlreadyAccepted = !activeOrders.find(o => String(o.id) === String(fbOrder.id));
-                    let notCurrentlyRinging = !(currentOrderData && String(currentOrderData.id) === String(fbOrder.id));
-
-                    if(isTargetedForMe && notAlreadyAccepted && notCurrentlyRinging) {
-                        
+                    const safeFbPhone = String(fbOrder.driverPhone || "").replace(/^0+/, '').trim();
+                    const isForMe     = (safeFbPhone === myId) && (fbOrder.status === "pending_driver" || fbOrder.status === "manual_pending");
+                    const notAccepted = !activeOrders.find(o => String(o.id) === String(fbOrder.id));
+                    const notRinging  = !(currentOrderData && String(currentOrderData.id) === String(fbOrder.id));
+                    if (isForMe && notAccepted && notRinging) {
                         currentOrderData = {
                             id: fbOrder.id, resName: fbOrder.restaurant, area: fbOrder.area || "غير محدد",
                             price: fbOrder.price || 0, details: fbOrder.details || "", photoUrl: fbOrder.photoUrl || "",
@@ -819,63 +868,61 @@
                             comm: fbOrder.comm || 0, payType: fbOrder.payType || "المطعم يدفع",
                             is_sovereign: fbOrder.is_sovereign || false
                         };
-                        
                         const orderAge = fbOrder.last_update ? (Date.now() - new Date(fbOrder.last_update).getTime()) : 0;
-                        currentOrderData.expireTime = Date.now() + Math.max(10000, 60000 - orderAge); 
-                        
+                        currentOrderData.expireTime = Date.now() + Math.max(10000, 60000 - orderAge);
                         document.getElementById('alertTitleText').innerText = activeOrders.length > 0 ? "طلب إضافي!" : "طلب جديد!";
                         document.getElementById('alertSovereignText').innerText = currentOrderData.is_sovereign ? "⚠️ تعيين إداري مباشر (لا يمكن تجاهله)" : "";
-                        document.getElementById('alertResName').innerText = fbOrder.restaurant; 
-                        document.getElementById('alertArea').innerText = fbOrder.area || "غير محدد";
-                        
+                        document.getElementById('alertResName').innerText = fbOrder.restaurant;
+                        document.getElementById('alertArea').innerText    = fbOrder.area || "غير محدد";
                         document.getElementById('orderAlertOverlay').classList.remove('hidden-section');
-                        if (window.AndroidRadar) { window.AndroidRadar.triggerOrderAlarm(); } 
-                        else { 
-                            let audio = document.getElementById(activeOrders.length > 0 ? 'doubleOrderSound' : 'alertSound'); 
-                            audio.currentTime = 0; audio.play().catch(e => { }); 
+                        if (window.AndroidRadar) { window.AndroidRadar.triggerOrderAlarm(); }
+                        else {
+                            const audio = document.getElementById(activeOrders.length > 0 ? 'doubleOrderSound' : 'alertSound');
+                            audio.currentTime = 0; audio.play().catch(() => {});
                         }
-                        
                         startCountdown();
                     }
                 });
             }
         });
 
-        // 🆕 مستمع البث السيادي من الإدارة
-        const broadcastRef = ref(db, 'system_broadcast');
-        onValue(broadcastRef, (snapshot) => {
-            const data = snapshot.val();
+        // ── البث السيادي ──
+        onValue(ref(db, 'system_broadcast'), snap => {
+            const data = snap.val();
             if (data && data.msg) {
-                const msgAge = data.ts ? Date.now() - data.ts : 0;
-                if (msgAge < 10000) {
-                    showBroadcastModal(data.msg);
-                }
+                const age = data.ts ? Date.now() - data.ts : 0;
+                if (age < 10000) showBroadcastModal(data.msg);
             }
         });
     }
 
-    // 🆕 دالة عرض نافذة البث
+    // ✅ BUG 5 FIX: استبدال lucide icon بـ SVG مباشر
     function showBroadcastModal(message) {
         const overlay = document.createElement('div');
         overlay.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:50000; display:flex; align-items:center; justify-content:center; padding:20px;';
         overlay.innerHTML = `
-            <div style="background:white; border-radius:30px; padding:30px; max-width:350px; text-align:center;">
-                <i data-lucide="megaphone" width="48" height="48" style="color:var(--primary-blue); margin-bottom:15px;"></i>
-                <h3 style="font-weight:900; color:var(--primary-blue);">تنبيه الإدارة</h3>
-                <p style="font-size:1.1rem; margin:20px 0;">${message}</p>
-                <button onclick="this.closest('div').parentElement.remove()" style="background:var(--primary-blue); color:white; border:none; padding:12px 24px; border-radius:20px; font-weight:bold;">حسناً</button>
-            </div>
-        `;
+            <div style="background:white; border-radius:30px; padding:30px; max-width:350px; width:100%; text-align:center;">
+                <svg style="width:48px;height:48px;color:#1e3a8a;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round;margin-bottom:15px;" viewBox="0 0 24 24"><path d="M3 11l19-9-9 19-2-8-8-2z"></path></svg>
+                <h3 style="font-weight:900; color:#1e3a8a; margin-bottom:10px;">تنبيه الإدارة</h3>
+                <p style="font-size:1.1rem; margin:15px 0; color:#0f172a; line-height:1.6;">${message}</p>
+                <button onclick="this.closest('div').parentElement.remove()" style="background:#1e3a8a; color:white; border:none; padding:12px 28px; border-radius:20px; font-weight:900; font-size:1rem; cursor:pointer;">حسناً</button>
+            </div>`;
         document.body.appendChild(overlay);
-        if (typeof lucide !== 'undefined') lucide.createIcons({ root: overlay });
-        setTimeout(() => overlay.remove(), 8000);
+        setTimeout(() => { if (overlay.parentElement) overlay.remove(); }, 8000);
     }
 
     function startCountdown() {
-        const circle = document.getElementById('timerCircle'); clearInterval(countdownInterval);
+        const circle = document.getElementById('timerCircle');
+        clearInterval(countdownInterval);
+        const totalMs = currentOrderData.expireTime - Date.now();
         countdownInterval = setInterval(() => {
-            let rem = Math.ceil((currentOrderData.expireTime - Date.now()) / 1000); if (rem < 0) rem = 0; document.getElementById('seconds').innerText = rem;
-            if (circle) circle.style.strokeDashoffset = 471 - (rem * (471 / 60)); if (rem <= 0) window.declineOrder();
+            let rem = Math.ceil((currentOrderData.expireTime - Date.now()) / 1000);
+            if (rem < 0) rem = 0;
+            document.getElementById('seconds').innerText = rem;
+            // ✅ نستخدم totalMs الحقيقي لحساب نسبة الدائرة
+            const totalSec = Math.ceil(totalMs / 1000);
+            if (circle) circle.style.strokeDashoffset = 471 - (rem * (471 / Math.max(totalSec, 1)));
+            if (rem <= 0) window.declineOrder();
         }, 1000);
     }
 
@@ -887,33 +934,28 @@
         clearInterval(countdownInterval);
         document.getElementById('orderAlertOverlay').classList.add('hidden-section');
         window.muteAlarmOnly();
-
         if (currentOrderData) {
             const now = new Date().toISOString();
             const updates = {};
-            updates[`active_orders/${currentOrderData.id}/status`] = "pending_driver";
-            updates[`active_orders/${currentOrderData.id}/driverPhone`] = "system_routing";
-            updates[`active_orders/${currentOrderData.id}/last_update`] = now;
-            updates[`active_orders/${currentOrderData.id}/last_offered_to`] = driverData.phone;
+            updates[`active_orders/${currentOrderData.id}/status`]            = "pending_driver";
+            updates[`active_orders/${currentOrderData.id}/driverPhone`]       = "system_routing";
+            updates[`active_orders/${currentOrderData.id}/last_update`]       = now;
+            updates[`active_orders/${currentOrderData.id}/last_offered_to`]   = driverData.phone;
             updates[`active_orders/${currentOrderData.id}/last_offered_time`] = now;
-            updates[`active_orders/${currentOrderData.id}/is_sovereign`] = false; 
+            updates[`active_orders/${currentOrderData.id}/is_sovereign`]      = false;
             update(ref(db), updates);
             currentOrderData = null;
         }
-    }
+    };
 
     window.acceptOrder = async function() {
         const btn = document.getElementById('btnAcceptMain');
         btn.innerHTML = `<div class="spinner-border spinner-border-sm text-white"></div> جاري تأمين الطلب...`;
-        btn.disabled = true;
-
+        btn.disabled  = true;
         clearInterval(countdownInterval);
         window.muteAlarmOnly();
-        
-        const id = currentOrderData.id;
-        const updates = { status: 'accepted', driverPhone: driverData.phone };
-        update(ref(db, `active_orders/${id}`), updates);
-        
+
+        // ✅ BUG 6 FIX: نسجّل القبول مرة واحدة فقط في finalizeAccept لا هنا
         setTimeout(async () => {
             try {
                 if (!currentOrderData.resPhone || !currentOrderData.resLat) {
@@ -921,83 +963,109 @@
                     const data = await r.json();
                     const resInfo = data.restaurants.find(r => r[1] === currentOrderData.resName);
                     if (resInfo) {
-                        currentOrderData.resPhone = resInfo[2]; currentOrderData.resArea = resInfo[3];
-                        currentOrderData.resLat = resInfo[6]; currentOrderData.resLng = resInfo[7];
-                        currentOrderData.comm = parseFloat(resInfo[5]) || 0;
-                        currentOrderData.payType = resInfo[8] || "المطعم يدفع";
+                        currentOrderData.resPhone = resInfo[2];
+                        currentOrderData.resArea  = resInfo[3];
+                        currentOrderData.resLat   = resInfo[6];
+                        currentOrderData.resLng   = resInfo[7];
+                        currentOrderData.comm     = parseFloat(resInfo[5]) || 0;
+                        currentOrderData.payType  = resInfo[8] || "المطعم يدفع";
                     } else { currentOrderData.resPhone = "غير متوفر"; }
                 }
-            } catch (e) { if (!currentOrderData.resPhone) currentOrderData.resPhone = "غير متوفر"; }
-            
+            } catch(e) { if (!currentOrderData.resPhone) currentOrderData.resPhone = "غير متوفر"; }
             finalizeAccept();
-        }, 1500); 
-    }
+        }, 1500);
+    };
 
     function finalizeAccept() {
         document.getElementById('orderAlertOverlay').classList.add('hidden-section');
-        
-        const newO = { 
-            id: currentOrderData.id, resName: currentOrderData.resName, resArea: currentOrderData.resArea || currentOrderData.area, 
-            details: String(currentOrderData.details), price: parseFloat(currentOrderData.price) || 0, area: currentOrderData.area, 
-            state: 'heading', photoUrl: currentOrderData.photoUrl, resPhone: currentOrderData.resPhone, 
-            resLat: currentOrderData.resLat, resLng: currentOrderData.resLng, comm: currentOrderData.comm || 0,
-            payType: currentOrderData.payType || "المطعم يدفع", acceptedTime: Date.now(),
-            is_sovereign: currentOrderData.is_sovereign || false
+        const newO = {
+            id            : currentOrderData.id,
+            resName       : currentOrderData.resName,
+            // ✅ BUG 2 FIX: لا نسقط على منطقة الزبون أبداً
+            resArea       : currentOrderData.resArea || null,
+            details       : String(currentOrderData.details),
+            price         : parseFloat(currentOrderData.price) || 0,
+            area          : currentOrderData.area,
+            state         : 'heading',
+            photoUrl      : currentOrderData.photoUrl,
+            resPhone      : currentOrderData.resPhone,
+            resLat        : currentOrderData.resLat,
+            resLng        : currentOrderData.resLng,
+            comm          : currentOrderData.comm || 0,
+            payType       : currentOrderData.payType || "المطعم يدفع",
+            acceptedTime  : Date.now(),
+            is_sovereign  : currentOrderData.is_sovereign || false,
+            readyForPickup: false
         };
-        
         activeOrders.push(newO);
         localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
         displayActiveOrders();
-        
+
+        // ✅ BUG 6 FIX: كتابة واحدة فقط (حُذفت الكتابة المزدوجة من acceptOrder)
         const updates = {};
-        updates[`active_orders/${newO.id}/status`] = 'accepted';
+        updates[`active_orders/${newO.id}/status`]      = 'accepted';
         updates[`active_orders/${newO.id}/driverPhone`] = driverData.phone;
         update(ref(db), updates);
-        
+
         const acceptBtn = document.getElementById('btnAcceptMain');
-        if (acceptBtn) { acceptBtn.innerHTML = `قبول الطلب فوراً <svg class="svg-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>`; acceptBtn.disabled = false; }
+        if (acceptBtn) {
+            acceptBtn.innerHTML = `قبول الطلب فوراً <svg class="svg-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+            acceptBtn.disabled  = false;
+        }
     }
 
     function displayActiveOrders() {
-        let box = document.getElementById('activeOrderBox');
+        const box = document.getElementById('activeOrderBox');
         if (activeOrders.length === 0) {
             document.getElementById('searchingStatus').classList.remove('hidden-section');
             box.classList.add('hidden-section');
-            lastActiveHtml = 'empty'; return;
+            lastActiveHtml = 'empty';
+            return;
         }
-
         document.getElementById('searchingStatus').classList.add('hidden-section');
         box.classList.remove('hidden-section');
-        
+
         let html = '';
-        let isDouble = activeOrders.length > 1;
+        const isDouble = activeOrders.length > 1;
 
         activeOrders.forEach((order, index) => {
             let stateTitle = order.state === 'heading' ? "متوجه للمطعم" : order.state === 'arrived' ? "في المطعم" : "في الطريق للزبون";
-            let btnAction = order.state === 'heading' ? "arrive" : order.state === 'arrived' ? "pickup" : "finish";
-            let btnText = order.state === 'heading' ? "تأكيد الوصول للمطعم" : order.state === 'arrived' ? "تأكيد استلام الطلب" : "تأكيد تسليم الطلب";
-            let btnClass = order.state === 'heading' ? "heading" : order.state === 'arrived' ? "arrived" : "picked";
-            let btnIcon = order.state === 'heading' ? svgMap : order.state === 'arrived' ? svgImg : `<svg class="svg-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+            let btnAction  = order.state === 'heading' ? "arrive"  : order.state === 'arrived' ? "pickup"  : "finish";
+            let btnText    = order.state === 'heading' ? "تأكيد الوصول للمطعم" : order.state === 'arrived' ? "تأكيد استلام الطلب" : "تأكيد تسليم الطلب";
+            let btnClass   = order.state === 'heading' ? "heading" : order.state === 'arrived' ? "arrived" : "picked";
+            let btnIcon    = order.state === 'heading' ? svgMap : order.state === 'arrived' ? svgImg : `<svg class="svg-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
             let disabledAttr = "";
 
             if (order.state === 'picked_up') {
-                const timeElapsed = Date.now() - (order.pickupTime || 0);
-                if (timeElapsed < 120000) {
+                const elapsed = Date.now() - (order.pickupTime || 0);
+                if (elapsed < 120000) {
                     disabledAttr = "disabled"; btnText = "جاري التوجه للزبون ⏳";
-                    setTimeout(() => { if (document.getElementById(`order-${order.id}`)) displayActiveOrders(); }, 120000 - timeElapsed);
+                    setTimeout(() => { if (document.getElementById(`order-${order.id}`)) displayActiveOrders(); }, 120000 - elapsed);
                 }
             }
-            
-            let mapUrl = order.resLat ? `https://www.google.com/maps/dir/?api=1&destination=${order.resLat},${order.resLng}` : '';
-            let resPhoneStr = order.resPhone ? String(order.resPhone) : "";
-            let resPhoneNum = resPhoneStr ? (resPhoneStr.startsWith('0') ? resPhoneStr : '0' + resPhoneStr) : null;
-            let waRes = resPhoneStr ? (resPhoneStr.startsWith('0') ? '964' + resPhoneStr.substring(1) : resPhoneStr) : null;
-            let safeDetails = String(order.details || "");
-            let custMatch = safeDetails.match(/(07[0-9]{8,9})/);
-            let custPhoneNum = custMatch ? String(custMatch[0]) : null;
-            let waCustHtml = custPhoneNum ? `<button class="btn-action-pill whatsapp" onclick="window.openSmartWhatsapp('${custPhoneNum}', '${order.resName}', '${order.area}', '${order.id}')">${svgWa} رسالة للزبون</button>` : '';
-            let badgeHtml = isDouble ? `<div class="order-badge double">طلب مزدوج (${index + 1} de ${activeOrders.length})</div>` : `<div class="order-badge">طلب حصري</div>`;
-            let photoBtnHtml = (order.photoUrl && String(order.photoUrl).startsWith("http")) ? `<button class="btn-photo-view" onclick="window.openSafeLink('${order.photoUrl}')">${svgImg} عرض صورة الوصل</button>` : '';
+
+            const mapUrl      = order.resLat ? `https://www.google.com/maps/dir/?api=1&destination=${order.resLat},${order.resLng}` : '';
+            const resPhoneStr = order.resPhone ? String(order.resPhone) : "";
+            const resPhoneNum = resPhoneStr ? (resPhoneStr.startsWith('0') ? resPhoneStr : '0' + resPhoneStr) : null;
+            const waRes       = resPhoneStr ? (resPhoneStr.startsWith('0') ? '964' + resPhoneStr.substring(1) : resPhoneStr) : null;
+            const safeDetails = String(order.details || "");
+            const custMatch   = safeDetails.match(/(07[0-9]{8,9})/);
+            const custPhoneNum= custMatch ? String(custMatch[0]) : null;
+            const waCustHtml  = custPhoneNum ? `<button class="btn-action-pill whatsapp" onclick="window.openSmartWhatsapp('${custPhoneNum}', '${order.resName}', '${order.area}', '${order.id}')">${svgWa} رسالة للزبون</button>` : '';
+            // ✅ BUG 1 FIX: "من" بدل "de"
+            const badgeHtml   = isDouble
+                ? `<div class="order-badge double">طلب مزدوج (${index + 1} من ${activeOrders.length})</div>`
+                : `<div class="order-badge">طلب حصري</div>`;
+            const photoBtnHtml= (order.photoUrl && String(order.photoUrl).startsWith("http"))
+                ? `<button class="btn-photo-view" onclick="window.openSafeLink('${order.photoUrl}')">${svgImg} عرض صورة الوصل</button>` : '';
+
+            // ✅ NEW: شارة جهوزية الطلب
+            const readyBannerHtml = order.readyForPickup
+                ? `<div class="ready-banner">${svgBell}<span class="ready-banner-text">🍽️ الطلبية جاهزة في المطعم — توجّه الآن للاستلام!</span></div>`
+                : '';
+
+            // ✅ BUG 3 FIX: عنوان الاستلام يعرض منطقة المطعم (resArea) لا منطقة الزبون
+            const pickupAreaLabel = order.resArea ? order.resArea : 'موقع المطعم';
 
             html += `
             <div class="global-order-card" id="order-${order.id}">
@@ -1011,13 +1079,15 @@
                         <a href="#" onclick="window.openSafeLink('https://wa.me/9647828942660'); return false;" class="btn-support-mini">${svgSupport} الدعم الفني</a>
                     </div>
                 </div>
+
+                ${readyBannerHtml}
                 
                 <div class="status-banner">${stateTitle}</div>
                 
                 <div class="route-timeline">
                     <div class="route-point pickup">
                         <div class="point-content">
-                            <div class="point-title">الاستلام من (${order.resArea || '---'})</div>
+                            <div class="point-title">الاستلام من (${pickupAreaLabel})</div>
                             <div class="point-name">${order.resName}</div>
                             <div class="point-actions-grid">
                                 ${resPhoneNum ? `<button class="btn-action-pill call" onclick="window.openSafeLink('tel:${resPhoneNum}')">${svgPhone} اتصال</button>` : ''}
@@ -1045,7 +1115,7 @@
                 </button>
             </div>`;
         });
-        
+
         if (lastActiveHtml !== html) { box.innerHTML = html; lastActiveHtml = html; }
     }
 
@@ -1053,81 +1123,66 @@
         activeOrders.forEach(order => {
             const timerEl = document.getElementById(`timer-${order.id}`);
             if (!timerEl) return;
-            const startTime = order.acceptedTime || Date.now(); 
-            const totalAllowedMs = 20 * 60 * 1000; 
-            const elapsedMs = Date.now() - startTime;
-            const remainingMs = totalAllowedMs - elapsedMs;
-
-            const isNegative = remainingMs < 0;
-            const absMs = Math.abs(remainingMs);
-            const minutes = Math.floor(absMs / 60000);
-            const seconds = Math.floor((absMs % 60000) / 1000);
-            const formattedTime = (isNegative ? "-" : "") + String(minutes).padStart(2, '0') + ":" + String(seconds).padStart(2, '0');
-            
-            timerEl.innerHTML = `${svgTimer} ${formattedTime}`;
-            if (remainingMs > 600000) { timerEl.className = "timer-badge timer-safe"; } else if (remainingMs > 0) { timerEl.className = "timer-badge timer-warn"; } else { timerEl.className = "timer-badge timer-danger"; }
+            const elapsed    = Date.now() - (order.acceptedTime || Date.now());
+            const allowed    = 20 * 60 * 1000;
+            const remaining  = allowed - elapsed;
+            const isNeg      = remaining < 0;
+            const abs        = Math.abs(remaining);
+            const min        = Math.floor(abs / 60000);
+            const sec        = Math.floor((abs % 60000) / 1000);
+            timerEl.innerHTML = `${svgTimer} ${isNeg ? '-' : ''}${String(min).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+            timerEl.className = remaining > 600000 ? "timer-badge timer-safe" : remaining > 0 ? "timer-badge timer-warn" : "timer-badge timer-danger";
         });
     }
-
     setInterval(updateOrderTimers, 1000);
 
     window.updateOrderStatus = function(id, action, btnElement) {
         const order = activeOrders.find(o => String(o.id) === String(id));
         if (!order) return;
 
-        if (action === 'arrive') {
-            if (order.resLat && order.resLng && driverData && driverData.currentLat && driverData.currentLng) {
-                const dist = calculateDistanceMeters(driverData.currentLat, driverData.currentLng, order.resLat, order.resLng);
-                if (dist > 150) {
-                    showToast(`⚠️ لا يمكنك تأكيد الوصول!<br>أنت تبعد <b>${Math.round(dist)} متر</b> عن المطعم 📍`, "error");
-                    return; 
-                }
+        if (action === 'arrive' && order.resLat && order.resLng && driverData?.currentLat && driverData?.currentLng) {
+            const dist = calculateDistanceMeters(driverData.currentLat, driverData.currentLng, order.resLat, order.resLng);
+            if (dist > 150) {
+                showToast(`⚠️ لا يمكنك تأكيد الوصول!<br>أنت تبعد <b>${Math.round(dist)} متر</b> عن المطعم 📍`, "error");
+                return;
             }
         }
 
         const origHtml = btnElement.innerHTML;
         btnElement.innerHTML = `<div class="spinner-border spinner-border-sm text-white"></div>`;
-        btnElement.disabled = true;
+        btnElement.disabled  = true;
 
         if (action === 'arrive') {
             order.state = 'arrived';
             update(ref(db, `active_orders/${id}`), { status: 'arrived_at_res' });
-            localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders)); displayActiveOrders(); 
-        } 
-        else if (action === 'pickup') {
+            localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
+            displayActiveOrders();
+        } else if (action === 'pickup') {
             order.state = 'picked_up'; order.pickupTime = Date.now();
             update(ref(db, `active_orders/${id}`), { status: 'picked_up' });
-            localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders)); displayActiveOrders(); 
-        } 
-        else if (action === 'finish') {
+            localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
+            displayActiveOrders();
+        } else if (action === 'finish') {
             if (Date.now() - order.pickupTime < 120000) { btnElement.innerHTML = origHtml; btnElement.disabled = false; return; }
-            
             const card = document.getElementById(`order-${id}`);
             if (card) { card.style.transition = '0.3s'; card.style.opacity = '0'; card.style.transform = 'scale(0.95)'; }
-            
             setTimeout(() => {
-                let driverDebtIncrease = 0;
-                let resDebtIncrease = parseFloat(order.comm) || 0;
-                if (order.payType && order.payType.includes('مناصفة')) { driverDebtIncrease = resDebtIncrease / 2; }
-
-                let updates = {};
-                updates[`active_orders/${id}/status`] = 'completed';
-                updates[`active_orders/${id}/status_ar`] = 'مكتمل';
-                
+                const driverDebt = order.payType?.includes('مناصفة') ? (parseFloat(order.comm) || 0) / 2 : 0;
+                const resDebt    = parseFloat(order.comm) || 0;
+                const safeResPhone = order.resPhone && order.resPhone !== "غير متوفر" ? order.resPhone : null;
+                const todayS     = new Date().toISOString().split('T')[0];
+                const updates    = {};
+                updates[`active_orders/${id}/status`]   = 'completed';
+                updates[`active_orders/${id}/status_ar`]= 'مكتمل';
                 updates[`ledgers/drivers/${driverData.phone}/completed_orders`] = increment(1);
-                updates[`ledgers/drivers/${driverData.phone}/debt`] = increment(driverDebtIncrease);
-                
-                let safeResPhone = order.resPhone && order.resPhone !== "غير متوفر" ? order.resPhone : null;
-                if(safeResPhone) {
+                updates[`ledgers/drivers/${driverData.phone}/debt`]             = increment(driverDebt);
+                if (safeResPhone) {
                     updates[`ledgers/restaurants/${safeResPhone}/completed_orders`] = increment(1);
-                    updates[`ledgers/restaurants/${safeResPhone}/debt`] = increment(resDebtIncrease);
+                    updates[`ledgers/restaurants/${safeResPhone}/debt`]             = increment(resDebt);
                 }
-
-                const todayStr = new Date().toISOString().split('T')[0];
-                updates[`daily_ledgers/${driverData.phone}/${todayStr}/${id}`] = { orderId: id, resName: order.resName, area: order.area, price: order.price, timestamp: Date.now() };
-
+                updates[`daily_ledgers/${driverData.phone}/${todayS}/${id}`] = { orderId: id, resName: order.resName, area: order.area, price: order.price, timestamp: Date.now() };
                 update(ref(db), updates);
-
+                readyNotifiedOrders.delete(String(id));
                 activeOrders = activeOrders.filter(o => String(o.id) !== String(id));
                 localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
                 displayActiveOrders();
@@ -1135,8 +1190,8 @@
         }
     };
 
-    window.openLedger = function() { document.getElementById('ledgerModal').classList.remove('hidden-section'); }
-    window.closeLedger = function() { document.getElementById('ledgerModal').classList.add('hidden-section'); }
+    window.openLedger  = function() { document.getElementById('ledgerModal').classList.remove('hidden-section'); };
+    window.closeLedger = function() { document.getElementById('ledgerModal').classList.add('hidden-section'); };
 </script>
 </body>
 </html>
