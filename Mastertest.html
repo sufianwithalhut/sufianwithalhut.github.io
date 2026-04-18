@@ -1,0 +1,3104 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <script>
+        // --- الإصدار 6.8 (عرض جميع الطلبيات + إصلاح memory leak + إصلاح أرشفة forceComplete) ---
+        const CURRENT_APP_VERSION = "6.8";
+        const VERSION_KEY = 'hut_master_app_version';
+        try {
+            if (localStorage.getItem(VERSION_KEY) !== CURRENT_APP_VERSION) {
+                localStorage.setItem(VERSION_KEY, CURRENT_APP_VERSION);
+                if (localStorage.getItem(VERSION_KEY) === CURRENT_APP_VERSION) {
+                    console.log("نسخة إدارة V34.1 محسّنة... جاري التحديث!");
+                    if ('caches' in window) {
+                        caches.keys().then(function(names) {
+                            for (let name of names) caches.delete(name);
+                        });
+                    }
+                    if ('serviceWorker' in navigator) {
+                        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                            for (let registration of registrations) { registration.update(); }
+                        });
+                    }
+                    window.location.reload();
+                }
+            }
+        } catch (e) {
+            console.warn('تعذّر التحقق من الإصدار:', e.message);
+        }
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>مكتب سفيان | الإدارة العليا V34.1 — 6.8</title>
+    <meta name="theme-color" content="#f0f7ff">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="إدارة الحوت">
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="apple-touch-icon" href="master-logo.png">
+    <link rel="manifest" href="manifest_master.json">
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script> 
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js" defer></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
+    <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js" defer></script>
+
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+
+    <style>
+        /* ═══════════════════════════════════════════
+           💎 DESIGN SYSTEM — LIGHT BLUE + ORANGE
+        ═══════════════════════════════════════════ */
+        :root {
+            --primary:       #3b9edd;   
+            --primary-dark:  #1d7fc4;   
+            --primary-light: #e8f4fd;   
+            --primary-mist:  #f0f7ff;   
+
+            --accent:        #f97316;   
+            --accent-dark:   #ea580c;   
+            --accent-light:  #fff4ed;   
+            --accent-glow:   rgba(249,115,22,0.18);
+
+            --surface:       #ffffff;
+            --surface-2:     #f7fbff;
+            --border:        rgba(59,158,221,0.12);
+            --text-1:        #0f2744;
+            --text-2:        #3d5a80;
+            --text-3:        #7a9bbf;
+
+            --success:       #0dba77;
+            --warning:       #f59e0b;
+            --danger:        #ef4444;
+            --purple:        #7c3aed;
+
+            --s-xs: 0 2px 8px rgba(15,39,68,0.05);
+            --s-sm: 0 4px 16px rgba(15,39,68,0.07);
+            --s-md: 0 8px 28px rgba(15,39,68,0.09);
+            --s-lg: 0 16px 48px rgba(15,39,68,0.12);
+            --s-blue: 0 8px 24px rgba(59,158,221,0.20);
+            --s-orange: 0 8px 24px rgba(249,115,22,0.22);
+
+            --r-sm: 14px;
+            --r-md: 20px;
+            --r-lg: 28px;
+            --r-xl: 36px;
+            --r-full: 999px;
+
+            --sidebar-w: 264px;
+            --nav-h: 72px;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            height: 100%; overflow: hidden; overscroll-behavior: none;
+            background: var(--primary-mist);
+            font-family: 'Cairo', sans-serif;
+            color: var(--text-1);
+            -webkit-tap-highlight-color: transparent;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* --- Live Ticker & Additions --- */
+        .top-ticker { 
+            background: var(--surface); border-bottom: 1px solid var(--border); padding: 8px 16px; 
+            font-size: 0.8rem; font-weight: 800; color: var(--primary-dark); white-space: nowrap; 
+            overflow: hidden; display: flex; align-items: center; position: absolute; top: 0; 
+            width: 100%; z-index: 1000; box-shadow: var(--s-xs); 
+        }
+        .ticker-content { display: inline-block; animation: tickerScroll 20s linear infinite; }
+        @keyframes tickerScroll { 0% { transform: translateX(100vw); } 100% { transform: translateX(-100%); } }
+        
+        .reject-tag { 
+            background: #fef2f2; color: var(--danger); font-size: 0.7rem; font-weight: 800; 
+            padding: 2px 6px; border-radius: 8px; border: 1px solid #fecaca; 
+            display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; 
+        }
+        
+        /* --- Fullscreen Map & FABs --- */
+        .map-wrapper { transition: all 0.4s ease; position: relative; }
+        .map-wrapper.fullscreen { 
+            position: fixed !important; top: 0 !important; left: 0 !important; 
+            width: 100vw !important; height: 100vh !important; z-index: 9999 !important; 
+        }
+        .fab-map-action {
+            position: absolute; right: 15px; width: 45px; height: 45px; border-radius: 14px;
+            background: var(--surface); color: var(--text-1); display: flex; align-items: center; justify-content: center;
+            box-shadow: var(--s-sm); cursor: pointer; z-index: 1010; border: 1px solid var(--border); transition: 0.2s;
+        }
+        .fab-map-action:active { transform: scale(0.9); }
+        .fab-expand { top: 75px; }
+        .fab-cancel-track { top: 130px; background: #fef2f2; color: var(--danger); border-color: #fecaca; display: none; }
+
+        .fab-broadcast { 
+            position: fixed; bottom: calc(var(--nav-h) + 20px); left: 20px; width: 50px; height: 50px; 
+            border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--accent-dark)); color: white; 
+            display: flex; align-items: center; justify-content: center; box-shadow: var(--s-orange); cursor: pointer; z-index: 1010; border: none; transition: 0.2s; 
+        }
+        .fab-broadcast:active { transform: scale(0.9); }
+        
+        .modal-overlay { position: fixed; inset: 0; background: rgba(15,39,68,0.6); backdrop-filter: blur(5px); z-index: 20000; display: none; align-items: center; justify-content: center; padding: 20px; }
+        .modal-overlay.active { display: flex; animation: fadeIn 0.3s; }
+        @keyframes fadeIn { from{opacity:0;} to{opacity:1;} }
+        .modal-card { background: var(--surface); border-radius: var(--r-xl); width: 100%; max-width: 350px; padding: 25px; box-shadow: var(--s-lg); animation: emergIn .3s; }
+        .msg-btn { width: 100%; text-align: right; background: var(--primary-mist); border: 1px solid var(--border); padding: 12px; border-radius: 12px; margin-bottom: 8px; font-weight: 800; color: var(--text-2); cursor: pointer; transition: 0.2s; display: flex; align-items: center; gap: 10px; font-family: 'Cairo'; }
+        .msg-btn:active { transform: scale(0.98); background: var(--primary-light); }
+
+        #authOverlay {
+            position: fixed; inset: 0; z-index: 10000;
+            background: linear-gradient(145deg, #dbeeff 0%, #f0f7ff 40%, #fff4ed 100%);
+            display: flex; align-items: center; justify-content: center;
+        }
+        .auth-wrap {
+            width: 92%; max-width: 400px;
+            background: rgba(255,255,255,0.82);
+            backdrop-filter: blur(24px);
+            border-radius: var(--r-xl);
+            border: 1px solid rgba(255,255,255,0.9);
+            box-shadow: var(--s-lg);
+            padding: 44px 36px 40px;
+            text-align: center;
+        }
+        .auth-logo {
+            width: 72px; height: 72px; border-radius: 24px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            display: inline-flex; align-items: center; justify-content: center;
+            box-shadow: var(--s-blue);
+            margin-bottom: 22px;
+        }
+        .auth-title { font-size: 1.5rem; font-weight: 900; color: var(--text-1); margin-bottom: 4px; }
+        .auth-sub   { font-size: 0.82rem; font-weight: 600; color: var(--text-3); margin-bottom: 32px; }
+        .auth-input {
+            width: 100%; background: var(--primary-mist);
+            border: 2px solid transparent; border-radius: var(--r-md);
+            padding: 15px 20px; font-family: 'Cairo', sans-serif;
+            font-size: 1rem; font-weight: 700; color: var(--text-1);
+            text-align: center; outline: none;
+            transition: all .25s ease; margin-bottom: 16px;
+        }
+        .auth-input:focus {
+            background: #fff; border-color: var(--primary);
+            box-shadow: 0 0 0 4px var(--primary-light);
+        }
+        .auth-btn {
+            width: 100%; padding: 15px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: #fff; border: none; border-radius: var(--r-md);
+            font-family: 'Cairo', sans-serif; font-size: 1rem; font-weight: 800;
+            cursor: pointer; box-shadow: var(--s-blue);
+            transition: all .2s ease;
+        }
+        .auth-btn:hover  { transform: translateY(-1px); box-shadow: 0 12px 32px rgba(59,158,221,0.35); }
+        .auth-btn:active { transform: scale(0.97); box-shadow: var(--s-xs); }
+
+        /* 🟢 Main Dashboard Layout */
+        #mainDashboard { display: flex; height: 100%; width: 100%; overflow: hidden; padding-top: 35px; position: relative; }
+
+        .admin-tab { display: none; }
+        .admin-tab.active-tab { display: block; }
+
+        @media (max-width: 768px) {
+            .sidebar, .desktop-header { display: none !important; }
+
+            .main-content {
+                margin-right: 0 !important; padding: 0 !important;
+                width: 100%; height: 100%; position: relative;
+                background: var(--primary-mist);
+            }
+
+            .bottom-nav {
+                display: flex;
+                position: fixed; bottom: 0; left: 0; width: 100%;
+                height: var(--nav-h);
+                background: rgba(255,255,255,0.94);
+                backdrop-filter: blur(20px) saturate(180%);
+                border-top: 1px solid var(--border);
+                border-radius: 28px 28px 0 0;
+                justify-content: space-around; align-items: center;
+                z-index: 9999;
+                padding-bottom: env(safe-area-inset-bottom);
+                box-shadow: 0 -8px 32px rgba(15,39,68,0.07);
+            }
+            .b-nav-item {
+                display: flex; flex-direction: column; align-items: center;
+                gap: 4px; width: 25%; cursor: pointer;
+                padding: 10px 0;
+                transition: all .3s cubic-bezier(0.4,0,0.2,1);
+                position: relative;
+            }
+            .b-nav-icon {
+                width: 40px; height: 40px; border-radius: 14px;
+                display: flex; align-items: center; justify-content: center;
+                transition: all .3s cubic-bezier(0.4,0,0.2,1);
+                color: var(--text-3);
+            }
+            .b-nav-label {
+                font-size: 0.68rem; font-weight: 700; color: var(--text-3);
+                transition: color .3s;
+            }
+            .b-nav-item.active .b-nav-icon {
+                background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+                color: #fff;
+                box-shadow: var(--s-blue);
+                transform: translateY(-4px);
+            }
+            .b-nav-item.active .b-nav-label { color: var(--primary-dark); }
+
+            .admin-tab::-webkit-scrollbar { display: none; }
+
+            .admin-tab {
+                position: absolute;
+                top: 35px; bottom: var(--nav-h);
+                left: 0; right: 0;
+                display: block !important;
+                opacity: 0; visibility: hidden; pointer-events: none;
+                transition: opacity 0.3s ease;
+                overflow-y: auto; overflow-x: hidden;
+                background: var(--primary-mist);
+                -webkit-overflow-scrolling: touch;
+                scrollbar-width: none;
+            }
+            .admin-tab.active-tab {
+                opacity: 1; visibility: visible; pointer-events: auto; z-index: 10;
+            }
+
+            #tab-live.active-tab { display: flex !important; flex-direction: column; overflow: hidden; }
+            .map-wrapper {
+                position: relative;
+                width: 100%; flex: 1; min-height: 40vh;
+                z-index: 1;
+            }
+            #adminMap { width: 100%; height: 100%; }
+
+            .map-floating-header {
+                position: absolute;
+                top: max(16px, env(safe-area-inset-top));
+                left: 16px; right: 16px;
+                z-index: 10; display: flex;
+                justify-content: space-between; align-items: center;
+                pointer-events: none;
+            }
+            .map-floating-header > * { pointer-events: auto; }
+
+            .brand-pill {
+                background: rgba(255,255,255,0.95);
+                backdrop-filter: blur(12px);
+                padding: 9px 18px; border-radius: var(--r-full);
+                display: flex; align-items: center; gap: 10px;
+                box-shadow: var(--s-md);
+                border: 1px solid rgba(255,255,255,0.9);
+            }
+            .brand-pill-name {
+                font-size: 0.88rem; font-weight: 900;
+                color: var(--primary-dark);
+            }
+
+            .map-floating-stats {
+                position: absolute;
+                top: calc(max(16px, env(safe-area-inset-top)) + 62px);
+                right: 16px;
+                z-index: 10;
+                display: flex; flex-direction: column; gap: 8px;
+                pointer-events: none;
+            }
+            .m-stat {
+                background: rgba(255,255,255,0.95);
+                backdrop-filter: blur(12px);
+                padding: 8px 14px; border-radius: var(--r-full);
+                font-weight: 800; font-size: 0.88rem;
+                box-shadow: var(--s-sm);
+                display: flex; align-items: center; gap: 8px;
+                border: 1px solid rgba(255,255,255,0.9);
+                color: var(--text-1);
+                pointer-events: auto;
+            }
+
+            .bottom-sheet {
+                position: absolute; top: 53%; left: 0; width: 100%; height: 47%;
+                background: var(--primary-mist);
+                border-radius: 32px 32px 0 0;
+                z-index: 10;
+                display: flex; flex-direction: column;
+                box-shadow: 0 -12px 40px rgba(15,39,68,0.1);
+                transition: top .35s cubic-bezier(0.22,1,0.36,1);
+            }
+            .sheet-handle {
+                width: 40px; height: 5px;
+                background: var(--border);
+                border-radius: 99px;
+                margin: 12px auto 0;
+                flex-shrink: 0;
+            }
+            .sheet-content {
+                overflow-y: auto; flex: 1;
+                padding: 14px 16px 20px;
+                scrollbar-width: none;
+            }
+            .sheet-content::-webkit-scrollbar { display: none; }
+
+            .tab-inner-padding {
+                padding: 20px 16px;
+                padding-top: max(24px, env(safe-area-inset-top));
+                padding-bottom: calc(var(--nav-h) + 20px);
+            }
+            .desktop-stats { display: none !important; }
+        }
+
+        @media (min-width: 769px) {
+            .bottom-nav { display: none !important; }
+
+            .sidebar {
+                width: var(--sidebar-w);
+                background: var(--surface);
+                height: 100vh;
+                position: fixed; right: 0; top: 0;
+                padding: 28px 16px;
+                z-index: 1005;
+                border-left: 1px solid var(--border);
+                box-shadow: var(--s-sm);
+                display: flex; flex-direction: column;
+            }
+            .sidebar-logo {
+                display: flex; align-items: center; gap: 14px;
+                padding: 4px 12px 28px;
+                border-bottom: 1px solid var(--border);
+                margin-bottom: 20px;
+            }
+            .sidebar-logo-icon {
+                width: 46px; height: 46px; border-radius: 16px;
+                background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+                display: flex; align-items: center; justify-content: center;
+                box-shadow: var(--s-blue); flex-shrink: 0;
+            }
+            .sidebar-name   { font-size: 1rem;   font-weight: 900; color: var(--text-1); }
+            .sidebar-sub    { font-size: 0.72rem; font-weight: 600; color: var(--text-3); }
+
+            .nav-item {
+                display: flex; align-items: center; gap: 12px;
+                padding: 13px 16px; border-radius: var(--r-md);
+                color: var(--text-2); font-size: 0.88rem; font-weight: 700;
+                cursor: pointer; margin-bottom: 6px;
+                transition: all .25s ease;
+                text-decoration: none; position: relative;
+            }
+            .nav-item:hover { background: var(--primary-light); color: var(--primary); }
+            .nav-item.active {
+                background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+                color: #fff;
+                box-shadow: var(--s-blue);
+            }
+            .nav-item .nav-icon {
+                width: 34px; height: 34px; border-radius: 10px;
+                display: flex; align-items: center; justify-content: center;
+                background: rgba(255,255,255,0.15); flex-shrink: 0;
+                transition: background .25s;
+            }
+            .nav-item:not(.active) .nav-icon { background: var(--primary-mist); }
+
+            .main-content {
+                margin-right: var(--sidebar-w);
+                padding: 32px 36px;
+                height: 100vh; overflow-y: auto;
+                width: calc(100% - var(--sidebar-w));
+                background: var(--primary-mist);
+                position: relative;
+            }
+            .main-content::-webkit-scrollbar { width: 6px; }
+            .main-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+
+            .desktop-header {
+                display: flex; justify-content: space-between; align-items: center;
+                margin-bottom: 32px;
+            }
+            .desktop-header-title { font-size: 1.6rem; font-weight: 900; color: var(--text-1); }
+            .desktop-header-sub   { font-size: 0.82rem; font-weight: 600; color: var(--text-3); margin-top: 2px; }
+            .desktop-clock {
+                background: var(--surface);
+                padding: 10px 22px; border-radius: var(--r-full);
+                font-weight: 800; font-size: 1rem;
+                color: var(--primary);
+                border: 1px solid var(--border);
+                box-shadow: var(--s-xs);
+            }
+
+            .map-wrapper { width: 100%; height: 460px; margin-bottom: 28px; position: relative; }
+            #adminMap {
+                width: 100%; height: 100%;
+                border-radius: var(--r-lg);
+                box-shadow: var(--s-md);
+                border: 4px solid var(--surface);
+                z-index: 1;
+            }
+            .map-floating-header, .map-floating-stats, .sheet-handle { display: none !important; }
+        }
+
+        /* --- تقييم النجوم للكباتن --- */
+        .driver-rating {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--primary-light);
+            padding: 6px 12px;
+            border-radius: 30px;
+            margin-bottom: 10px;
+        }
+        .stars {
+            color: #fbbf24;
+            font-size: 15px;
+            letter-spacing: 2px;
+        }
+        .level {
+            font-weight: 800;
+            font-size: 11px;
+            color: var(--primary-dark);
+            background: rgba(255,255,255,0.6);
+            padding: 2px 8px;
+            border-radius: 20px;
+        }
+
+        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+
+        .stat-card {
+            background: var(--surface);
+            border-radius: var(--r-lg);
+            padding: 18px 16px;
+            box-shadow: var(--s-xs);
+            border: 1px solid var(--border);
+            display: flex; align-items: center; gap: 14px;
+            transition: all .25s ease;
+            position: relative; overflow: hidden;
+        }
+        .stat-card::before {
+            content: '';
+            position: absolute; top: 0; left: 0; right: 0;
+            height: 3px; border-radius: 99px;
+            background: linear-gradient(90deg, var(--primary), var(--accent));
+            opacity: 0;
+            transition: opacity .25s;
+        }
+        .stat-card:hover { transform: translateY(-2px); box-shadow: var(--s-sm); }
+        .stat-card:hover::before { opacity: 1; }
+        .stat-icon {
+            width: 46px; height: 46px; border-radius: 16px;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+        }
+        .stat-icon.blue   { background: var(--primary-light); color: var(--primary); }
+        .stat-icon.orange { background: var(--accent-light);  color: var(--accent); }
+        .stat-icon.green  { background: #e6faf3; color: var(--success); }
+        .stat-icon.yellow { background: #fffbe6; color: var(--warning); }
+        .stat-val  { font-size: 1.7rem; font-weight: 900; line-height: 1; color: var(--text-1); }
+        .stat-lbl  { font-size: 0.73rem; font-weight: 700; color: var(--text-3); margin-top: 3px; }
+
+        .filter-bar {
+            display: flex; gap: 8px;
+            overflow-x: auto; padding-bottom: 4px; margin-bottom: 16px;
+            scrollbar-width: none;
+        }
+        .filter-bar::-webkit-scrollbar { display: none; }
+        .fp {
+            flex-shrink: 0;
+            padding: 8px 18px; border-radius: var(--r-full);
+            font-family: 'Cairo', sans-serif;
+            font-size: 0.8rem; font-weight: 800;
+            color: var(--text-2);
+            background: var(--surface);
+            border: 1px solid var(--border);
+            cursor: pointer;
+            transition: all .2s ease;
+            white-space: nowrap;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .fp:hover { background: var(--primary-light); color: var(--primary); border-color: var(--primary); }
+        .fp.active {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: #fff; border-color: transparent;
+            box-shadow: var(--s-blue);
+        }
+        .fp .cnt {
+            background: rgba(255,255,255,0.22);
+            padding: 1px 7px; border-radius: 99px;
+            font-size: 0.72rem;
+        }
+        .fp:not(.active) .cnt { background: var(--primary-light); color: var(--primary); }
+
+        .order-card {
+            background: var(--surface);
+            border-radius: var(--r-lg);
+            padding: 16px;
+            margin-bottom: 12px;
+            box-shadow: var(--s-xs);
+            border: 1.5px solid var(--border);
+            position: relative; overflow: hidden;
+            transition: all .25s ease;
+        }
+        .order-card:hover { box-shadow: var(--s-sm); transform: translateY(-1px); }
+
+        .order-card::after {
+            content: ''; position: absolute;
+            right: 0; top: 12px; bottom: 12px; width: 4px;
+            border-radius: 99px;
+            background: var(--text-3);
+        }
+        .oc-pending::after  { background: var(--danger); }
+        .oc-ringing::after  { background: var(--warning); }
+        .oc-active::after   { background: var(--success); }
+        .oc-heading::after  { background: var(--primary); }
+        .oc-arrived::after  { background: var(--accent); }
+        .oc-sovereign::after { background: var(--purple); }
+
+        .oc-pending { animation: urgentPulse 2.2s ease-in-out infinite; }
+        @keyframes urgentPulse {
+            0%, 100% { box-shadow: var(--s-xs); }
+            50%       { box-shadow: 0 4px 20px rgba(239,68,68,0.18); }
+        }
+        .oc-ringing { animation: warnPulse 2.2s ease-in-out infinite; }
+        @keyframes warnPulse {
+            0%, 100% { box-shadow: var(--s-xs); }
+            50%       { box-shadow: 0 4px 20px rgba(245,158,11,0.18); }
+        }
+
+        .oc-header {
+            display: flex; justify-content: space-between;
+            align-items: flex-start;
+            padding-bottom: 12px; margin-bottom: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+        .oc-id { font-size: 1rem; font-weight: 900; color: var(--text-1); display: flex; align-items: center; }
+        .oc-time { font-size: 0.7rem; font-weight: 700; color: var(--text-3); margin-top: 3px; }
+
+        .oc-actions { display: flex; align-items: center; gap: 6px; }
+        .oc-btn {
+            width: 34px; height: 34px; border-radius: 10px;
+            display: inline-flex; align-items: center; justify-content: center;
+            border: none; cursor: pointer;
+            transition: all .18s ease;
+            font-size: 0; line-height: 0;
+        }
+        .oc-btn:active { transform: scale(0.88); }
+        .oc-btn-complete { background: #e6faf3; color: var(--success); }
+        .oc-btn-delete   { background: #fef2f2; color: var(--danger); }
+        .oc-btn-track    {
+            background: var(--primary-light); color: var(--primary);
+            padding: 0 12px; width: auto; border-radius: 10px;
+            font-family: 'Cairo', sans-serif;
+            font-size: 0.72rem; font-weight: 800;
+            display: flex; align-items: center; gap: 4px;
+            height: 34px;
+        }
+
+        .oc-body { display: flex; flex-direction: column; gap: 10px; }
+        .oc-row {
+            display: flex; align-items: center;
+            justify-content: space-between;
+        }
+        .oc-res {
+            font-size: 0.9rem; font-weight: 800; color: var(--text-1);
+            display: flex; align-items: center; gap: 6px;
+        }
+        .oc-price {
+            font-size: 1rem; font-weight: 900; color: var(--success);
+        }
+        .oc-area {
+            font-size: 0.78rem; font-weight: 700; color: var(--text-2);
+            display: flex; align-items: center; gap: 5px;
+        }
+
+        .oc-driver-row {
+            background: var(--primary-mist);
+            border-radius: var(--r-sm);
+            padding: 10px 12px;
+            display: flex; align-items: center;
+            justify-content: space-between; gap: 8px;
+        }
+        .oc-driver-name {
+            font-size: 0.8rem; font-weight: 800; color: var(--primary-dark);
+            flex: 1; min-width: 0;
+        }
+        .oc-driver-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+        .oc-driver-controls { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+        .btn-call-sm {
+            width: 32px; height: 32px; border-radius: 10px;
+            background: #e6faf3; color: var(--success);
+            border: none; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: all .18s;
+        }
+        .btn-call-sm:active { transform: scale(0.88); }
+
+        .assign-select {
+            border: 1.5px solid var(--border); border-radius: 10px;
+            padding: 6px 10px; font-family: 'Cairo', sans-serif;
+            font-size: 0.75rem; font-weight: 800;
+            max-width: 120px;
+            background: var(--surface); color: var(--primary-dark);
+            outline: none; cursor: pointer;
+            appearance: none;
+        }
+
+        .delay-pill {
+            position: absolute; top: 12px; left: 16px;
+            background: #fef2f2; color: var(--danger);
+            padding: 3px 10px; border-radius: var(--r-full);
+            font-size: 0.7rem; font-weight: 900;
+            border: 1px solid #fecaca;
+        }
+
+        .sbadge {
+            padding: 4px 10px; border-radius: var(--r-full);
+            font-size: 0.7rem; font-weight: 900;
+            border: none;
+        }
+        .sbadge-danger  { background: #fef2f2; color: var(--danger); border: 1px solid #fecaca; }
+        .sbadge-warn    { background: #fffbeb; color: var(--warning); border: 1px solid #fde68a; }
+        .sbadge-success { background: #e6faf3; color: var(--success); border: 1px solid #a7f3d0; }
+        .sbadge-blue    { background: var(--primary-light); color: var(--primary-dark); border: 1px solid rgba(59,158,221,0.2); }
+        .sbadge-orange  { background: var(--accent-light); color: var(--accent-dark); border: 1px solid #fed7aa; }
+        .sbadge-purple  { background: #f3e8ff; color: var(--purple); border: 1px solid #d8b4fe; }
+
+        .entity-card {
+            background: var(--surface);
+            border-radius: var(--r-lg);
+            padding: 18px;
+            box-shadow: var(--s-xs);
+            border: 1px solid var(--border);
+            transition: all .25s ease;
+            display: flex; flex-direction: column;
+            position: relative; overflow: hidden;
+            height: 100%;
+        }
+        .entity-card:hover { transform: translateY(-2px); box-shadow: var(--s-sm); }
+
+        .entity-card-top {
+            display: flex; align-items: flex-start;
+            justify-content: space-between; margin-bottom: 12px;
+        }
+        .entity-avatar {
+            width: 44px; height: 44px; border-radius: 16px;
+            display: flex; align-items: center; justify-content: center;
+            background: var(--primary-light); color: var(--primary);
+            flex-shrink: 0;
+        }
+        .entity-name { font-size: 0.92rem; font-weight: 900; color: var(--text-1); line-height: 1.3; margin-bottom: 2px; }
+        .entity-phone { font-size: 0.75rem; font-weight: 700; color: var(--text-3); direction: ltr; }
+
+        .entity-debt {
+            background: #fef2f2;
+            border-radius: var(--r-sm);
+            padding: 8px 12px;
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 12px;
+        }
+        .entity-debt-lbl { font-size: 0.74rem; font-weight: 700; color: var(--danger); }
+        .entity-debt-val { font-size: 0.9rem; font-weight: 900; color: var(--danger); }
+
+        .entity-actions {
+            display: flex; justify-content: space-between; align-items: center;
+            padding-top: 10px; border-top: 1px solid var(--border);
+            margin-top: auto;
+        }
+        .ea-group { display: flex; gap: 6px; }
+        .ea-btn {
+            width: 34px; height: 34px; border-radius: 10px;
+            border: none; cursor: pointer;
+            display: inline-flex; align-items: center; justify-content: center;
+            transition: all .18s;
+        }
+        .ea-btn:active { transform: scale(0.88); }
+        .ea-accept  { background: #e6faf3; color: var(--success); }
+        .ea-pause   { background: #fffbeb; color: var(--warning); }
+        .ea-ban     { background: #fef2f2; color: var(--danger); }
+        .ea-debt    { background: var(--primary-light); color: var(--primary); }
+        .ea-call    { background: var(--accent-light); color: var(--accent); }
+
+        .perf-dot {
+            position: absolute; top: 14px; left: 14px;
+            width: 8px; height: 8px; border-radius: 50%;
+        }
+        .perf-green  { background: var(--success); }
+        .perf-yellow { background: var(--warning); }
+        .perf-red    { background: var(--danger); }
+
+        .arch-toolbar {
+            background: var(--surface);
+            border-radius: var(--r-lg);
+            padding: 18px;
+            box-shadow: var(--s-xs);
+            border: 1px solid var(--border);
+            margin-bottom: 16px;
+        }
+        .form-ctrl {
+            width: 100%; background: var(--primary-mist);
+            border: 1.5px solid var(--border); border-radius: var(--r-sm);
+            padding: 10px 14px; font-family: 'Cairo', sans-serif;
+            font-size: 0.82rem; font-weight: 700; color: var(--text-1);
+            outline: none; transition: all .2s;
+            appearance: none;
+        }
+        .form-ctrl:focus { border-color: var(--primary); background: #fff; box-shadow: 0 0 0 3px var(--primary-light); }
+
+        .arch-stats-bar {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            border-radius: var(--r-lg);
+            padding: 20px 24px;
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 16px;
+            box-shadow: var(--s-blue);
+            position: relative; overflow: hidden;
+        }
+        .arch-stats-bar::before {
+            content: ''; position: absolute;
+            bottom: -40px; left: -40px;
+            width: 120px; height: 120px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.06);
+        }
+        .arch-stats-bar::after {
+            content: ''; position: absolute;
+            top: -30px; right: 30px;
+            width: 90px; height: 90px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.04);
+        }
+        .arch-val  { font-size: 1.8rem; font-weight: 900; color: #fff; }
+        .arch-lbl  { font-size: 0.74rem; font-weight: 700; color: rgba(255,255,255,0.7); margin-bottom: 2px; }
+
+        .arch-export-btn {
+            background: rgba(255,255,255,0.15);
+            border: 1px solid rgba(255,255,255,0.25);
+            color: #fff; border-radius: var(--r-sm);
+            padding: 10px 16px;
+            font-family: 'Cairo', sans-serif;
+            font-size: 0.82rem; font-weight: 800;
+            cursor: pointer; display: flex; align-items: center; gap: 6px;
+            transition: all .2s;
+            backdrop-filter: blur(4px);
+        }
+        .arch-export-btn:hover { background: rgba(255,255,255,0.25); }
+        .arch-export-btn:active { transform: scale(0.95); }
+
+        .arch-table-wrap {
+            background: var(--surface); border-radius: var(--r-lg);
+            box-shadow: var(--s-xs); border: 1px solid var(--border);
+            overflow: hidden;
+        }
+        .arch-table { width: 100%; border-collapse: collapse; min-width: 650px; }
+        .arch-table thead tr {
+            background: var(--primary-mist);
+            border-bottom: 1px solid var(--border);
+        }
+        .arch-table th {
+            padding: 12px 14px; font-size: 0.76rem;
+            font-weight: 800; color: var(--text-3);
+            text-align: center; white-space: nowrap;
+        }
+        .arch-table td {
+            padding: 12px 14px; font-size: 0.82rem;
+            font-weight: 700; text-align: center;
+            border-bottom: 1px solid var(--border);
+            transition: background .15s;
+        }
+        .arch-table tbody tr { cursor: pointer; transition: background .15s; }
+        .arch-table tbody tr:hover { background: var(--primary-mist); }
+        .arch-table tbody tr:last-child td { border-bottom: none; }
+
+        #toast-container {
+            position: fixed;
+            top: max(20px, env(safe-area-inset-top));
+            left: 50%; transform: translateX(-50%);
+            z-index: 20000;
+            display: flex; flex-direction: column; gap: 8px;
+            width: 92%; max-width: 340px;
+        }
+        .toast-msg {
+            background: rgba(255,255,255,0.97);
+            backdrop-filter: blur(16px);
+            border-radius: 18px;
+            padding: 14px 18px;
+            box-shadow: var(--s-lg);
+            display: flex; align-items: center; gap: 12px;
+            font-weight: 800; font-size: 0.86rem; color: var(--text-1);
+            border: 1px solid var(--border);
+            animation: toastIn .35s cubic-bezier(0.22,1,0.36,1) forwards;
+            transition: opacity .3s;
+        }
+        .toast-msg.success .t-icon { background: #e6faf3; color: var(--success); }
+        .toast-msg.error   .t-icon { background: #fef2f2; color: var(--danger); }
+        .t-icon {
+            width: 34px; height: 34px; border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+        }
+        @keyframes toastIn {
+            from { opacity: 0; transform: translateY(-16px) scale(0.96); }
+            to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        #emergencyModal {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.5);
+            backdrop-filter: blur(6px);
+            z-index: 30000; display: none;
+            align-items: center; justify-content: center;
+            padding: 20px;
+        }
+        .emergency-card {
+            background: var(--surface);
+            border-radius: var(--r-xl);
+            padding: 36px 28px;
+            max-width: 360px; width: 100%;
+            text-align: center;
+            border-top: 6px solid var(--danger);
+            box-shadow: var(--s-lg);
+            animation: emergIn .4s cubic-bezier(0.22,1,0.36,1);
+        }
+        @keyframes emergIn {
+            from { opacity: 0; transform: scale(0.9) translateY(20px); }
+            to   { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .emerg-icon { animation: emergPulse 1s ease-in-out infinite; display: inline-block; }
+        @keyframes emergPulse {
+            0%, 100% { transform: scale(1); }
+            50%       { transform: scale(1.08); }
+        }
+        .btn-danger-solid {
+            width: 100%; padding: 14px;
+            background: var(--danger); color: #fff;
+            border: none; border-radius: var(--r-md);
+            font-family: 'Cairo', sans-serif;
+            font-size: 0.95rem; font-weight: 800;
+            cursor: pointer; transition: all .2s;
+            margin-top: 20px;
+        }
+        .btn-danger-solid:active { transform: scale(0.97); }
+
+        #invoiceModal {
+            position: fixed; inset: 0;
+            background: rgba(15,39,68,0.55);
+            backdrop-filter: blur(8px);
+            z-index: 30000; display: none;
+            align-items: flex-end; justify-content: center;
+            padding: 0;
+        }
+        @media (min-width: 769px) {
+            #invoiceModal { align-items: center; padding: 20px; }
+        }
+        .invoice-card {
+            background: var(--surface);
+            border-radius: var(--r-xl) var(--r-xl) 0 0;
+            padding: 28px 24px 40px;
+            width: 100%; max-width: 440px;
+            position: relative;
+            box-shadow: var(--s-lg);
+            animation: sheetUp .38s cubic-bezier(0.22,1,0.36,1);
+            max-height: 90vh; overflow-y: auto;
+        }
+        @media (min-width: 769px) {
+            .invoice-card { border-radius: var(--r-xl); padding: 32px 28px; animation: emergIn .38s cubic-bezier(0.22,1,0.36,1); }
+        }
+        @keyframes sheetUp {
+            from { opacity: 0; transform: translateY(100%); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .inv-close {
+            position: absolute; top: 16px; left: 16px;
+            width: 34px; height: 34px; border-radius: 10px;
+            background: var(--primary-mist); border: none;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; color: var(--text-2); transition: all .18s;
+        }
+        .inv-close:hover { background: var(--primary-light); color: var(--primary); }
+        .inv-icon-wrap {
+            width: 60px; height: 60px; border-radius: 20px;
+            background: var(--accent-light);
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 14px; color: var(--accent);
+        }
+        .inv-title { font-size: 1.1rem; font-weight: 900; text-align: center; color: var(--text-1); margin-bottom: 4px; }
+        .inv-id    { font-size: 0.82rem; font-weight: 700; text-align: center; color: var(--text-3); margin-bottom: 24px; }
+        .inv-row {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px dashed var(--border);
+            font-size: 0.84rem;
+        }
+        .inv-row:last-child { border-bottom: none; }
+        .inv-label { font-weight: 700; color: var(--text-2); }
+        .inv-value { font-weight: 800; color: var(--text-1); text-align: left; max-width: 60%; }
+
+        .leaflet-container { font-family: 'Cairo', sans-serif; }
+        .leaflet-popup-content-wrapper {
+            border-radius: var(--r-md) !important;
+            box-shadow: var(--s-md) !important;
+            border: 1px solid var(--border) !important;
+            padding: 0 !important;
+            overflow: hidden;
+        }
+        .leaflet-popup-content {
+            margin: 0 !important;
+            font-family: 'Cairo', sans-serif;
+        }
+        .map-popup {
+            padding: 12px 16px;
+            font-size: 0.84rem;
+            font-weight: 700;
+            color: var(--text-1);
+            min-width: 140px;
+        }
+        .map-popup-title {
+            font-weight: 900; font-size: 0.9rem;
+            color: var(--primary-dark); margin-bottom: 4px;
+        }
+        .map-popup-sub { color: var(--text-3); font-size: 0.76rem; }
+        .leaflet-popup-tip { background: var(--surface) !important; }
+
+        /* --- Smooth Markers & Ghosts --- */
+        .smooth-marker { transition: transform 1s cubic-bezier(0.4, 0, 0.2, 1); }
+        .drv-marker {
+            width: 34px; height: 34px; border-radius: 50%;
+            border: 2px solid #fff;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 15px;
+            box-shadow: var(--s-sm);
+        }
+        .drv-active { background: linear-gradient(135deg, var(--primary), var(--primary-dark)); color: #fff; }
+        .drv-ghost { background: #94a3b8; filter: grayscale(100%); opacity: 0.8; }
+        
+        .res-pulse {
+            width: 24px; height: 24px;
+            background: var(--accent);
+            border-radius: 50%; border: 2px solid #fff; color: white;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 10px;
+            box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.7);
+            animation: rPulse 1.5s infinite;
+        }
+        @keyframes rPulse { 70% { box-shadow: 0 0 0 10px rgba(249, 115, 22, 0); } 100% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0); } }
+
+        .radar-title {
+            font-size: 0.95rem; font-weight: 900; color: var(--text-1);
+            display: flex; align-items: center; gap: 8px;
+            margin-bottom: 14px;
+        }
+        .radar-title .rt-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--accent);
+            animation: dotPulse 1.5s ease-in-out infinite;
+        }
+        @keyframes dotPulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.5); opacity: 0.6; } }
+
+        .path-animated { animation: dashMove 18s linear infinite; }
+        @keyframes dashMove { to { stroke-dashoffset: -1000; } }
+
+        .skeleton {
+            background: linear-gradient(90deg, var(--primary-light) 25%, var(--primary-mist) 50%, var(--primary-light) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s ease-in-out infinite;
+            border-radius: var(--r-sm);
+        }
+        @keyframes shimmer { to { background-position: -200% 0; } }
+
+        .btn-loading {
+            color: transparent !important; pointer-events: none; position: relative;
+        }
+        .btn-loading::after {
+            content: ''; position: absolute; left: 50%; top: 50%;
+            width: 16px; height: 16px; margin: -8px;
+            border: 2px solid rgba(0,0,0,0.15);
+            border-top-color: currentColor;
+            border-radius: 50%;
+            animation: spin .7s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        .spinner-mini {
+            width: 16px; height: 16px;
+            border: 2px solid rgba(0,0,0,0.2);
+            border-top-color: currentColor;
+            border-radius: 50%;
+            animation: spin .8s linear infinite;
+            display: inline-block;
+        }
+
+        .flash-update { animation: flashBlue .6s ease-out; }
+        @keyframes flashBlue {
+            0%   { background-color: var(--primary-light); }
+            100% { background-color: var(--surface); }
+        }
+
+        .text-primary-c { color: var(--primary); }
+        .text-accent-c  { color: var(--accent); }
+        .fw-900 { font-weight: 900; }
+
+        .empty-state {
+            text-align: center; padding: 48px 20px;
+            color: var(--text-3);
+        }
+        .empty-icon {
+            width: 72px; height: 72px; border-radius: 24px;
+            background: var(--primary-light);
+            display: inline-flex; align-items: center; justify-content: center;
+            margin-bottom: 16px; color: var(--primary);
+        }
+        .empty-title { font-size: 0.95rem; font-weight: 800; color: var(--text-2); margin-bottom: 4px; }
+        .empty-sub   { font-size: 0.78rem; font-weight: 600; }
+
+        .page-title-mob {
+            font-size: 1.2rem; font-weight: 900; color: var(--text-1);
+            margin-bottom: 18px; display: block;
+        }
+        @media (min-width: 769px) { .page-title-mob { display: none; } }
+
+        .section-hdr {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 14px;
+        }
+        .section-hdr-title {
+            font-size: 0.88rem; font-weight: 900; color: var(--text-1);
+            display: flex; align-items: center; gap: 7px;
+        }
+        .section-hdr-title .dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--accent);
+        }
+
+        .search-input-wrap { position: relative; margin-bottom: 16px; }
+        .search-input-wrap .s-icon {
+            position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+            color: var(--text-3); pointer-events: none;
+        }
+        .search-input {
+            width: 100%; background: var(--surface);
+            border: 1.5px solid var(--border); border-radius: var(--r-md);
+            padding: 12px 42px 12px 16px;
+            font-family: 'Cairo', sans-serif; font-size: 0.84rem; font-weight: 700;
+            color: var(--text-1); outline: none; transition: all .2s;
+        }
+        .search-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
+
+        .status-pill {
+            padding: 4px 12px; border-radius: var(--r-full);
+            font-size: 0.72rem; font-weight: 900;
+        }
+        .sp-active   { background: #e6faf3; color: var(--success); }
+        .sp-inactive { background: #fffbeb; color: var(--warning); }
+        .sp-pending  { background: var(--primary-light); color: var(--primary); }
+        .sp-banned   { background: #fef2f2; color: var(--danger); }
+
+        .unpaid-badge {
+            background: #fef2f2; color: var(--danger);
+            padding: 2px 8px; border-radius: var(--r-full);
+            font-size: 0.7rem; font-weight: 900;
+            margin-right: 6px;
+        }
+
+        .live-stat-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px; margin-bottom: 24px;
+        }
+        .live-stat-card {
+            background: var(--surface);
+            border-radius: var(--r-lg); padding: 20px 18px;
+            border: 1px solid var(--border); box-shadow: var(--s-xs);
+            display: flex; align-items: center; gap: 14px;
+            transition: all .25s;
+        }
+        .live-stat-card:hover { box-shadow: var(--s-sm); transform: translateY(-2px); }
+        .lsc-icon {
+            width: 50px; height: 50px; border-radius: 16px;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+        }
+        .lsc-val { font-size: 1.8rem; font-weight: 900; color: var(--text-1); }
+        .lsc-lbl { font-size: 0.76rem; font-weight: 700; color: var(--text-3); margin-top: 2px; }
+
+        .radar-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        @media (max-width: 480px) { .radar-grid { grid-template-columns: 1fr; } }
+        @media (min-width: 769px) { .radar-grid { grid-template-columns: 1fr 1fr; gap: 16px; } }
+        @media (min-width: 1280px) { .radar-grid { grid-template-columns: 1fr 1fr 1fr; } }
+
+        .entity-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        @media (max-width: 480px) { .entity-grid { grid-template-columns: 1fr; } }
+        @media (min-width: 769px) { .entity-grid { grid-template-columns: repeat(3, 1fr); gap: 16px; } }
+        @media (min-width: 1280px) { .entity-grid { grid-template-columns: repeat(4, 1fr); } }
+
+        .custom-cluster-icon > div {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark)) !important;
+        }
+        
+        /* 🆕 مؤشر الاتصال بـ Firebase */
+        #firebaseConnectionStatus {
+            position: fixed;
+            bottom: calc(var(--nav-h) + 20px);
+            right: 20px;
+            background: var(--surface);
+            border-radius: var(--r-full);
+            padding: 8px 16px;
+            box-shadow: var(--s-md);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 800;
+            font-size: 0.8rem;
+            z-index: 1005;
+            border: 1px solid var(--border);
+        }
+        .conn-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--success);
+        }
+        .conn-dot.offline { background: var(--danger); }
+    </style>
+</head>
+<body>
+
+<div id="toast-container"></div>
+<audio id="adminAlertSound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" preload="auto"></audio>
+<audio id="emergencySound" src="https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg" preload="auto" loop></audio>
+
+<div id="emergencyModal">
+    <div class="emergency-card">
+        <div class="emerg-icon">
+            <i data-lucide="alert-triangle" width="56" height="56" style="color: var(--danger);"></i>
+        </div>
+        <h3 style="font-size:1.15rem; font-weight:900; color:var(--danger); margin: 16px 0 8px;">نداء سيادي!</h3>
+        <p style="font-size:0.84rem; font-weight:700; color:var(--text-2); line-height:1.6;">طلب معلق لفترة طويلة جداً — يحتاج تدخل يدوي.</p>
+        <button class="btn-danger-solid" onclick="closeEmergency()">حسناً، سأتدخل الآن</button>
+    </div>
+</div>
+
+<div class="modal-overlay" id="broadcastModal" onclick="closeModal('broadcastModal')">
+    <div class="modal-card" onclick="event.stopPropagation()">
+        <h5 class="fw-black mb-3 text-primary" style="font-family:'Cairo';"><i data-lucide="radio" class="me-2"></i> بث رسالة سيادية</h5>
+        <p class="text-muted fw-bold small mb-4" style="font-family:'Cairo';">ستظهر كإشعار منبثق يوقف شاشة جميع الكباتن المتصلين فوراً.</p>
+        
+        <button class="msg-btn" onclick="sendBroadcast('prayer')">
+            <span style="font-size:1.5rem;">🕌</span> <span>حان الآن موعد الصلاة، تقبل الله طاعاتكم.</span>
+        </button>
+        <button class="msg-btn" onclick="sendBroadcast('tasbih')">
+            <span style="font-size:1.5rem;">📿</span> <span>سبحان الله وبحمده، سبحان الله العظيم.</span>
+        </button>
+        <button class="msg-btn" onclick="sendBroadcast('tawhid')">
+            <span style="font-size:1.5rem;">☝️</span> <span>لا إله إلا الله وحده لا شريك له، له الملك وله الحمد وهو على كل شيء قدير.</span>
+        </button>
+        <button class="msg-btn" onclick="sendBroadcast('rizq')">
+            <span style="font-size:1.5rem;">🌾</span> <span>اللهم ارزقنا الرزق الحلال الطيب وبارك لنا فيه.</span>
+        </button>
+        <button class="msg-btn" onclick="sendBroadcast('clean')">
+            <span style="font-size:1.5rem;">🧼</span> <span>يرجى الحفاظ على نظافة الصندوق، الدراجة، والمظهر العام.</span>
+        </button>
+        <button class="msg-btn" onclick="sendBroadcast('trust')">
+            <span style="font-size:1.5rem;">✨</span> <span>توكلوا على الله، يوم عمل موفق ورزق حلال للجميع.</span>
+        </button>
+
+        <button class="btn btn-light w-100 fw-bold mt-2" style="font-family:'Cairo';" onclick="closeModal('broadcastModal')">إلغاء</button>
+    </div>
+</div>
+
+<div id="authOverlay">
+    <div class="auth-wrap">
+        <div class="auth-logo">
+            <i data-lucide="building-2" width="32" height="32" color="#fff"></i>
+        </div>
+        <div class="auth-title">مكتب سفيان</div>
+        <div class="auth-sub">الإدارة العليا — نظام الحوت V34.1</div>
+        <input type="password" id="masterPass" class="auth-input" placeholder="رمز المرور الآمن" autocomplete="off" onkeypress="if(event.key==='Enter') checkAuth()">
+        <button class="auth-btn" onclick="checkAuth()">تسجيل الدخول</button>
+    </div>
+</div>
+
+<div class="d-none" id="mainDashboard">
+    
+    <div class="top-ticker">
+        <div class="ticker-content" id="tickerText">
+            <span>🟢 جاري الاتصال بالرادار اللحظي...</span>
+        </div>
+    </div>
+
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-logo" style="margin-top: 20px;">
+            <div class="sidebar-logo-icon">
+                <i data-lucide="building-2" width="24" height="24" color="#fff"></i>
+            </div>
+            <div>
+                <div class="sidebar-name">مكتب سفيان</div>
+                <div class="sidebar-sub">الإدارة المركزية</div>
+            </div>
+        </div>
+        <nav>
+            <div class="nav-item active desktop-nav-link" onclick="switchTab('live', this)">
+                <div class="nav-icon"><i data-lucide="map" width="18" height="18"></i></div>
+                <span>الرصد الميداني</span>
+            </div>
+            <div class="nav-item desktop-nav-link" onclick="showTab(event,'orders')">
+                <div class="nav-icon"><i data-lucide="file-text" width="18" height="18"></i></div>
+                <span>الأرشيف المركزي</span>
+            </div>
+            <div class="nav-item desktop-nav-link" onclick="showTab(event,'restaurants')">
+                <div class="nav-icon"><i data-lucide="store" width="18" height="18"></i></div>
+                <span>إدارة الشركاء</span>
+            </div>
+            <div class="nav-item desktop-nav-link" onclick="showTab(event,'drivers')">
+                <div class="nav-icon"><i data-lucide="users" width="18" height="18"></i></div>
+                <span>إدارة الأسطول</span>
+            </div>
+        </nav>
+        <!-- 🆕 زر تسجيل الخروج -->
+        <div style="margin-top: auto; padding: 20px 0;">
+            <button class="btn w-100 fw-bold d-flex align-items-center justify-content-center gap-2" 
+                    style="background: var(--surface); border: 1px solid var(--border); color: var(--danger); border-radius: 16px; padding: 12px;"
+                    onclick="performLogout()">
+                <i data-lucide="log-out" width="18" height="18"></i> تسجيل الخروج
+            </button>
+        </div>
+    </aside>
+
+    <main class="main-content">
+
+        <header class="desktop-header">
+            <div>
+                <div class="desktop-header-title">لوحة التحكم</div>
+                <div class="desktop-header-sub">الرصد المباشر — كركوك</div>
+            </div>
+            <div id="liveTimeDesk" class="desktop-clock">00:00</div>
+        </header>
+
+        <div id="tab-live" class="admin-tab active-tab">
+
+            <div class="live-stat-row desktop-stats">
+                <div class="live-stat-card">
+                    <div class="lsc-icon" style="background:var(--primary-light); color:var(--primary);"><i data-lucide="package" width="24" height="24"></i></div>
+                    <div><div class="lsc-val val-orders">0</div><div class="lsc-lbl">الطلبات النشطة</div></div>
+                </div>
+                <div class="live-stat-card">
+                    <div class="lsc-icon" style="background:#e6faf3; color:var(--success);"><i data-lucide="truck" width="24" height="24"></i></div>
+                    <div><div class="lsc-val val-drivers">0</div><div class="lsc-lbl">كباتن بالميدان</div></div>
+                </div>
+                <div class="live-stat-card">
+                    <div class="lsc-icon" style="background:var(--accent-light); color:var(--accent);"><i data-lucide="store" width="24" height="24"></i></div>
+                    <div><div class="lsc-val val-res">0</div><div class="lsc-lbl">مطاعم متصلة</div></div>
+                </div>
+            </div>
+
+            <div class="map-floating-header">
+                <div class="brand-pill">
+                    <i data-lucide="building-2" width="18" height="18" style="color:var(--primary);"></i>
+                    <span class="brand-pill-name">مكتب سفيان</span>
+                </div>
+                <div id="liveTimeMob" class="brand-pill brand-pill-name">00:00</div>
+            </div>
+            <div class="map-floating-stats">
+                <div class="m-stat"><i data-lucide="package" width="15" height="15" style="color:var(--primary);"></i><span class="val-orders">0</span></div>
+                <div class="m-stat"><i data-lucide="truck" width="15" height="15" style="color:var(--success);"></i><span class="val-drivers">0</span></div>
+                <div class="m-stat"><i data-lucide="store" width="15" height="15" style="color:var(--accent);"></i><span class="val-res">0</span></div>
+            </div>
+
+            <div class="map-wrapper" id="mapWrapper">
+                <div id="adminMap"></div>
+                <button class="fab-map-action fab-expand" onclick="toggleFullscreen()"><i data-lucide="maximize" id="fsIcon"></i></button>
+                <button class="fab-map-action fab-cancel-track" id="btnCancelTrack" onclick="cancelTracking()"><i data-lucide="x"></i></button>
+                <button class="fab-broadcast" onclick="document.getElementById('broadcastModal').classList.add('active')"><i data-lucide="megaphone" width="22"></i></button>
+            </div>
+
+            <div class="bottom-sheet" id="radarSheet">
+                <div class="sheet-handle"></div>
+                <div class="sheet-content">
+                    <div class="section-hdr mb-3">
+                        <div class="radar-title">
+                            <div class="rt-dot"></div>
+                            الرادار الميداني
+                        </div>
+                    </div>
+                    <div class="filter-bar" id="radarFilters">
+                        <button class="fp active" onclick="filterRadar('all',this)">الكل</button>
+                        <button class="fp" style="color:var(--danger)" onclick="filterRadar('pending',this)">بانتظار كابتن</button>
+                        <button class="fp" style="color:var(--success)" onclick="filterRadar('active',this)">قيد التوصيل</button>
+                    </div>
+                    <div id="smartOrdersContainer">
+                        <div class="empty-state">
+                            <div class="skeleton" style="width:64px; height:64px; border-radius:20px; margin: 0 auto 12px;"></div>
+                            <div class="skeleton" style="width:140px; height:14px; border-radius:99px; margin: 0 auto 6px;"></div>
+                            <div class="skeleton" style="width:100px; height:12px; border-radius:99px; margin: 0 auto;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-orders" class="admin-tab tab-inner-padding">
+            <span class="page-title-mob">الأرشيف المركزي</span>
+
+            <div class="arch-toolbar">
+                <div class="row g-2 align-items-end">
+                    <div class="col-12 col-md-3">
+                        <label style="font-size:0.73rem; font-weight:800; color:var(--text-3); margin-bottom:5px; display:block;">بحث برقم الطلب</label>
+                        <input type="text" id="arcSearch" class="form-ctrl" placeholder="ابحث هنا..." oninput="renderArchive(true)">
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <label style="font-size:0.73rem; font-weight:800; color:var(--text-3); margin-bottom:5px; display:block;">المطعم</label>
+                        <select id="arcRes" class="form-ctrl" onchange="renderArchive(true)"><option value="">الكل</option></select>
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <label style="font-size:0.73rem; font-weight:800; color:var(--text-3); margin-bottom:5px; display:block;">الكابتن</label>
+                        <select id="arcDriver" class="form-ctrl" onchange="renderArchive(true)"><option value="">الكل</option></select>
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <label style="font-size:0.73rem; font-weight:800; color:var(--text-3); margin-bottom:5px; display:block;">من تاريخ</label>
+                        <input type="date" id="arcDateFrom" class="form-ctrl" onchange="renderArchive(true)">
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <label style="font-size:0.73rem; font-weight:800; color:var(--text-3); margin-bottom:5px; display:block;">إلى تاريخ</label>
+                        <input type="date" id="arcDateTo" class="form-ctrl" onchange="renderArchive(true)">
+                    </div>
+                    <div class="col-12 col-md-1">
+                        <button class="arch-export-btn" style="background:var(--primary); border-color:var(--primary); width:100%; justify-content:center;" onclick="exportExcel()">
+                            <i data-lucide="download" width="16" height="16"></i> تصدير
+                        </button>
+                    </div>
+                    <div class="col-12 col-md-1">
+                        <button class="arch-export-btn" style="background:var(--success); border-color:var(--success); width:100%; justify-content:center;" onclick="forceArchiveRefresh(event)" title="تحديث الأرشيف الآن">
+                            <i data-lucide="refresh-cw" width="16" height="16"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="arch-stats-bar">
+                <div>
+                    <div class="arch-lbl">الطلبات المكتملة</div>
+                    <div class="arch-val" id="arcTotalCount">0</div>
+                </div>
+                <div style="text-align:left;">
+                    <div class="arch-lbl">العمولات المستحقة</div>
+                    <div class="arch-val"><span id="arcTotalComm">0</span> <span style="font-size:1rem; opacity:0.8;">د.ع</span></div>
+                </div>
+            </div>
+
+            <div class="arch-table-wrap">
+                <div style="overflow-x:auto;">
+                    <table class="arch-table" id="archiveTable">
+                        <thead>
+                            <tr>
+                                <th>رقم الطلب</th>
+                                <th>التاريخ</th>
+                                <th>المطعم</th>
+                                <th>الكابتن</th>
+                                <th>السعر</th>
+                                <th>الحالة</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ordersTableBody">
+                            <tr><td colspan="5">
+                                <div class="empty-state" style="padding:32px;">
+                                    <div class="skeleton" style="width:80px; height:14px; margin:0 auto 8px; border-radius:99px;"></div>
+                                    <div class="skeleton" style="width:120px; height:12px; margin:0 auto; border-radius:99px;"></div>
+                                </div>
+                            </td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-restaurants" class="admin-tab tab-inner-padding">
+            <span class="page-title-mob">إدارة الشركاء</span>
+            <div class="search-input-wrap">
+                <span class="s-icon"><i data-lucide="search" width="16" height="16"></i></span>
+                <input type="text" id="searchResInput" class="search-input" placeholder="بحث عن مطعم أو رقم هاتف..." oninput="triggerSearch('RESTAURANT')">
+            </div>
+            <div class="filter-bar" id="resFiltersGroup">
+                <button class="fp active" onclick="applySectionFilter('RESTAURANT','all',this)">الكل <span class="cnt" id="badge-res-all">0</span></button>
+                <button class="fp" onclick="applySectionFilter('RESTAURANT','pending',this)">طلبات الانضمام <span class="cnt" id="badge-res-pending">0</span></button>
+                <button class="fp" onclick="applySectionFilter('RESTAURANT','active',this)">مفعّل <span class="cnt" id="badge-res-active">0</span></button>
+                <button class="fp" onclick="applySectionFilter('RESTAURANT','inactive',this)">استراحة <span class="cnt" id="badge-res-inactive">0</span></button>
+                <button class="fp" onclick="applySectionFilter('RESTAURANT','banned',this)">موقوف <span class="cnt" id="badge-res-banned">0</span></button>
+            </div>
+            <div class="entity-grid" id="resListContainer">
+                <div class="empty-state" style="grid-column:1/-1;">
+                    <div class="skeleton" style="width:64px; height:64px; border-radius:20px; margin:0 auto 12px;"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-drivers" class="admin-tab tab-inner-padding">
+            <span class="page-title-mob">إدارة الأسطول</span>
+            <div class="search-input-wrap">
+                <span class="s-icon"><i data-lucide="search" width="16" height="16"></i></span>
+                <input type="text" id="searchDriverInput" class="search-input" placeholder="بحث عن كابتن أو رقم هاتف..." oninput="triggerSearch('DRIVER')">
+            </div>
+            <div class="filter-bar" id="driverFiltersGroup">
+                <button class="fp active" onclick="applySectionFilter('DRIVER','all',this)">الكل <span class="cnt" id="badge-driver-all">0</span></button>
+                <button class="fp" onclick="applySectionFilter('DRIVER','pending',this)">طلبات الانضمام <span class="cnt" id="badge-driver-pending">0</span></button>
+                <button class="fp" onclick="applySectionFilter('DRIVER','active',this)">بالميدان <span class="cnt" id="badge-driver-active">0</span></button>
+                <button class="fp" onclick="applySectionFilter('DRIVER','inactive',this)">استراحة <span class="cnt" id="badge-driver-inactive">0</span></button>
+                <button class="fp" onclick="applySectionFilter('DRIVER','banned',this)">موقوف <span class="cnt" id="badge-driver-banned">0</span></button>
+            </div>
+            <div class="entity-grid" id="driverListContainer">
+                <div class="empty-state" style="grid-column:1/-1;">
+                    <div class="skeleton" style="width:64px; height:64px; border-radius:20px; margin:0 auto 12px;"></div>
+                </div>
+            </div>
+        </div>
+
+        <nav class="bottom-nav">
+            <div class="b-nav-item active" onclick="switchTab('live', this)">
+                <div class="b-nav-icon"><i data-lucide="map" width="20" height="20"></i></div>
+                <span class="b-nav-label">الميدان</span>
+            </div>
+            <div class="b-nav-item" onclick="showTab(event,'orders')">
+                <div class="b-nav-icon"><i data-lucide="file-text" width="20" height="20"></i></div>
+                <span class="b-nav-label">الأرشيف</span>
+            </div>
+            <div class="b-nav-item" onclick="showTab(event,'restaurants')">
+                <div class="b-nav-icon"><i data-lucide="store" width="20" height="20"></i></div>
+                <span class="b-nav-label">المطاعم</span>
+            </div>
+            <div class="b-nav-item" onclick="showTab(event,'drivers')">
+                <div class="b-nav-icon"><i data-lucide="users" width="20" height="20"></i></div>
+                <span class="b-nav-label">الأسطول</span>
+            </div>
+        </nav>
+    </main>
+</div>
+
+<div id="invoiceModal" onclick="closeInvoice(event)">
+    <div class="invoice-card" onclick="event.stopPropagation()">
+        <button class="inv-close" onclick="closeInvoice()">
+            <i data-lucide="x" width="16" height="16"></i>
+        </button>
+        <div class="inv-icon-wrap">
+            <i data-lucide="receipt" width="28" height="28"></i>
+        </div>
+        <div class="inv-title">فاتورة الطلب</div>
+        <div class="inv-id" id="invOrderId">#HUT-0000</div>
+        <div class="inv-row"><span class="inv-label">التاريخ والوقت</span><span class="inv-value" id="invDate">---</span></div>
+        <div class="inv-row"><span class="inv-label">المطعم الشريك</span><span class="inv-value" style="color:var(--accent);" id="invRes">---</span></div>
+        <div class="inv-row"><span class="inv-label">الكابتن المنفذ</span><span class="inv-value" style="color:var(--success);" id="invDriver">---</span></div>
+        <div class="inv-row"><span class="inv-label">تفاصيل الزبون</span><span class="inv-value" id="invCust">---</span></div>
+        <div class="inv-row"><span class="inv-label">سعر الطلب</span><span class="inv-value" style="color:var(--primary);" id="invPrice">---</span></div>
+        <hr style="border-color:var(--border); margin:4px 0;">
+        <div class="inv-row"><span class="inv-label">العمولة</span><span class="inv-value" style="color:var(--danger);" id="invComm">---</span></div>
+        <div class="inv-row"><span class="inv-label">نظام الدفع</span><span class="inv-value" id="invPayType">---</span></div>
+        <div class="inv-row" style="border-bottom:none;"><span class="inv-label">حالة المحاسبة</span><span class="inv-value" id="invStatus">---</span></div>
+    </div>
+</div>
+
+<div id="firebaseConnectionStatus">
+    <span class="conn-dot" id="connDot"></span>
+    <span id="connText">متصل بقاعدة البيانات</span>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════
+   🔵 INIT LUCIDE
+═══════════════════════════════════════════ */
+if (typeof lucide !== 'undefined') lucide.createIcons();
+
+/* ═══════════════════════════════════════════
+   🛡️ SECURITY UTIL — XSS protection (محسّن)
+═══════════════════════════════════════════ */
+function escHtml(str) {
+    if (str === null || str === undefined) return '';
+    const d = document.createElement('div');
+    d.textContent = String(str);
+    return d.innerHTML;
+}
+
+// 🆕 دالة مساعدة لتهريب علامات التنصيص في onclick
+function escJs(str) {
+    if (str === null || str === undefined) return '';
+    return String(str).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+
+function safeIcon(containerId) {
+    const el = document.getElementById(containerId);
+    if(el && typeof lucide !== 'undefined') lucide.createIcons({root: el});
+}
+
+/* ═══════════════════════════════════════════
+   📐 DATA SCHEMA
+═══════════════════════════════════════════ */
+const O = { ID:0, REST_NAME:1, AREA:2, DETAILS:3, PRICE:4, STATUS:5, DRIVER_PHONE:6, TIME:7, PHOTO:8, IS_SOVEREIGN:9, LAST_UPDATE:10, LAST_OFFERED:11 };
+const R = { ID:0, NAME:1, PHONE:2, AREA:3, STATUS:4, COMMISSION:5, LAT:6, LNG:7, PAY_TYPE:8 };
+const D = { ID:0, NAME:1, PHONE:2, AREA:3, STATUS:4, LAT:5, LNG:6 };
+
+const TAB_TRANSITION_MS = 350; 
+
+/* ═══════════════════════════════════════════
+   🔗 CONFIG
+═══════════════════════════════════════════ */
+const API_URL   = "https://script.google.com/macros/s/AKfycbzKDBjgPxmt_iDCphkjB6EY-cnag_aqwxrdNDrY9uqBRbTZYsqGWl4TJn4pANS8OVYm/exec";
+const API_TOKEN = "HUT_SECURE_99";
+
+let map, heatLayer, driverClusterGroup, trackPolyline = null;
+let restaurantMarkersLayer = null;
+let globalData = null;
+let currentRadarFilter = 'all';
+let currentResSectionFilter = 'all';
+let currentDriverSectionFilter = 'all';
+let masterPassword = "";
+let lastPendingCount = 0;
+let renderedOrdersCache = {};
+let renderedDriverCards = {};
+let renderedResCards = {};
+let activeDriversOptionsCache = '';
+let liveFirebaseOrders = [];
+let liveDriverMarkers = {};
+let liveResMarkers = {};
+let localOverrides = { orders: {}, drivers: {}, restaurants: {} };
+let isEmergencyMuted = false;
+let isFirebaseListening = false;
+let dataRefreshInterval = null;
+let lastArchiveHtml = '';
+let liveLedgers = { drivers: {}, restaurants: {} };
+let isFullscreen = false;
+
+// 🚀 المصفوفة الحارة للكباتن الحقيقيين المتصلين فقط
+let activeRealDriversSet = new Set();
+
+// 📰 شريط الأخبار الذكي
+let tickerMessages = [];
+let tickerIndex = 0;
+let tickerInterval = null;
+
+// 🆕 مستمعات Firebase لتتبع الاتصال
+let firebaseListeners = [];
+let isFirebaseConnected = true;
+
+const firebaseConfig = {
+    apiKey: "AIzaSyAo1rmqUzieYZU3RIwXOAN87GkpNrp-_Hc",
+    authDomain: "sufyan-delivery.firebaseapp.com",
+    databaseURL: "https://sufyan-delivery-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "sufyan-delivery",
+    storageBucket: "sufyan-delivery.firebasestorage.app",
+    messagingSenderId: "941542380637",
+    appId: "1:941542380637:web:9623fa6e627817ffeba9b4"
+};
+
+// ✅ تهيئة Firebase مع معالجة الخطأ
+try {
+    firebase.initializeApp(firebaseConfig);
+} catch (e) {
+    showToast("فشل الاتصال بقاعدة البيانات. تحقق من اتصالك.", "error");
+    console.error("Firebase init error:", e);
+}
+const db = firebase.database();
+
+// ✅ FIX: تسجيل مستمع system_alerts مرة واحدة عند التهيئة
+setupAlertsListener();
+
+// 🆕 مراقبة حالة الاتصال بـ Firebase
+const connectedRef = db.ref('.info/connected');
+connectedRef.on('value', (snap) => {
+    isFirebaseConnected = snap.val() === true;
+    const dot = document.getElementById('connDot');
+    const text = document.getElementById('connText');
+    if (dot) {
+        dot.className = isFirebaseConnected ? 'conn-dot' : 'conn-dot offline';
+    }
+    if (text) {
+        text.textContent = isFirebaseConnected ? 'متصل بقاعدة البيانات' : 'غير متصل - جاري إعادة المحاولة...';
+    }
+});
+
+/* ─── Toast ─── */
+function showToast(msg, type = 'success') {
+    const c = document.getElementById('toast-container');
+    const t = document.createElement('div');
+    t.className = `toast-msg ${type}`;
+    const icon = type === 'success' ? 'check-circle' : 'alert-circle';
+    t.innerHTML = `<div class="t-icon"><i data-lucide="${icon}" width="18" height="18"></i></div><span style="flex:1;">${msg}</span>`;
+    c.appendChild(t);
+    if (typeof lucide !== 'undefined') lucide.createIcons({ root: t });
+    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 350); }, 3000);
+}
+
+/* ─── Emergency ─── */
+function triggerEmergency() {
+    const m = document.getElementById('emergencyModal');
+    if (m.style.display !== 'flex') {
+        m.style.display = 'flex';
+        const a = document.getElementById('emergencySound');
+        a.currentTime = 0; a.play().catch(() => {});
+    }
+}
+function closeEmergency() {
+    document.getElementById('emergencyModal').style.display = 'none';
+    document.getElementById('emergencySound').pause();
+    isEmergencyMuted = true;
+}
+
+function closeModal(id) {
+    document.getElementById(id).classList.remove('active');
+}
+
+function sendBroadcast(type) {
+    if (['prayer', 'tasbih', 'tawhid', 'rizq'].includes(type)) {
+        if (!confirm('هل أنت متأكد من إرسال هذه الرسالة لجميع الكباتن؟')) return;
+    }
+    const msgs = {
+        prayer: "🕌 حان الآن موعد الصلاة، تقبل الله طاعاتكم.",
+        tasbih: "📿 سبحان الله وبحمده، سبحان الله العظيم.",
+        tawhid: "☝️ لا إله إلا الله وحده لا شريك له، له الملك وله الحمد وهو على كل شيء قدير.",
+        rizq: "🌾 اللهم ارزقنا الرزق الحلال الطيب وبارك لنا فيه.",
+        clean: "🧼 تذكير: يرجى الحفاظ على نظافة صندوق التوصيل، الدراجة، والمظهر العام.",
+        trust: "✨ توكلوا على الله، يوم عمل موفق ورزق حلال للجميع."
+    };
+    db.ref('system_broadcast').set({ msg: msgs[type], ts: Date.now() })
+        .then(() => {
+            showToast("تم إرسال البث لجميع الكباتن بنجاح");
+            if("vibrate" in navigator) navigator.vibrate(100);
+            closeModal('broadcastModal');
+        })
+        .catch(() => showToast("فشل إرسال البث", "error"));
+}
+
+/* ─── Auth ─── */
+async function checkAuth() {
+    const pass = document.getElementById('masterPass').value.trim();
+    if (!pass) { showToast("الرجاء إدخال رمز المرور", "error"); return; }
+    
+    // ✅ تخزين كلمة المرور الأصلية (بدون تشفير) لاستخدامها لاحقاً
+    masterPassword = pass;
+    
+    const encodedPass = encodeURIComponent(pass);
+    const btn = document.querySelector('.auth-btn');
+    btn.classList.add('btn-loading');
+    btn.disabled = true;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+
+    try {
+        const url = `${API_URL}?action=VERIFY_MASTER_PASS&pass=${encodedPass}&token=${API_TOKEN}&ts=${Date.now()}`;
+        const res = await fetch(url, { signal: controller.signal });
+        const response = await res.json();
+        clearTimeout(timeout);
+        _handleAuthResult(response);
+    } catch (err) {
+        clearTimeout(timeout);
+        masterPassword = "";
+        showToast(err.name === 'AbortError' ? "تأخر السيرفر، تحقق من الإنترنت" : "فشل الاتصال بالخادم", "error");
+    } finally {
+        btn.classList.remove('btn-loading');
+        btn.disabled = false;
+    }
+}
+
+function _handleAuthResult(response) {
+    if (response.success) {
+        document.getElementById('authOverlay').style.display = 'none';
+        document.getElementById('mainDashboard').classList.remove('d-none');
+        const a = document.getElementById('adminAlertSound');
+        a.volume = 0; a.play().then(() => { a.pause(); a.currentTime = 0; a.volume = 1; }).catch(() => {});
+        startClock();
+        initMap();
+        refreshData();
+    } else {
+        masterPassword = "";
+        showToast("رمز المرور غير صحيح", "error");
+    }
+}
+
+/* ─── Clock ─── */
+let _clockInterval = null;
+function startClock() {
+    if (_clockInterval) clearInterval(_clockInterval);
+    _clockInterval = setInterval(() => {
+        const t = new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+        document.getElementById('liveTimeDesk').textContent = t;
+        document.getElementById('liveTimeMob').textContent = t;
+    }, 1000);
+}
+
+/* ─── Data Refresh ─── */
+async function refreshData() {
+    try {
+        const url = `${API_URL}?action=getGlobalData&token=${API_TOKEN}&ts=${Date.now()}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('Network response was not ok');
+        const data = await res.json();
+        renderData(data);
+    } catch (e) {
+        console.error("فشل تحديث البيانات:", e);
+        showToast("فشل تحديث البيانات من الخادم", "error");
+    }
+}
+
+window.renderData = function(data) {
+    const now = Date.now();
+    data.drivers.forEach(d => {
+        const ov = localOverrides.drivers[d[2]];
+        if (ov && (now - ov.ts < 120000)) d[4] = ov.status;
+        else if (ov) delete localOverrides.drivers[d[2]];
+    });
+    data.restaurants.forEach(r => {
+        const ov = localOverrides.restaurants[r[2]];
+        if (ov && (now - ov.ts < 120000)) r[4] = ov.status;
+        else if (ov) delete localOverrides.restaurants[r[2]];
+    });
+
+    globalData = data;
+
+    if (document.getElementById('arcRes').options.length === 1) {
+        data.restaurants.slice(1).forEach(r => {
+            document.getElementById('arcRes').innerHTML += `<option value="${escHtml(r[1])}">${escHtml(r[1])}</option>`;
+        });
+        data.drivers.slice(1).forEach(d => {
+            document.getElementById('arcDriver').innerHTML += `<option value="${escHtml(String(d[2]))}">${escHtml(d[1])}</option>`;
+        });
+    }
+
+    try { renderArchive(); } catch(e) { console.error("Archive:", e); }
+    try { updateSectionBadges('RESTAURANT', data.restaurants); } catch(e) {}
+    try { updateSectionBadges('DRIVER', data.drivers); } catch(e) {}
+
+    if(Object.keys(liveLedgers.drivers).length > 0) {
+        triggerSearch('RESTAURANT');
+        triggerSearch('DRIVER');
+    }
+
+    if (!isFirebaseListening) {
+        isFirebaseListening = true;
+        listenToFirebaseLocations();
+        listenToFirebaseOrders();
+        listenToFirebaseLedgers();
+        dataRefreshInterval = setInterval(refreshData, 300000); 
+    }
+
+    if (globalData) updateTicker();
+};
+
+/* ─── Firebase Listeners ─── */
+function listenToFirebaseLedgers() {
+    const ref = db.ref('ledgers');
+    const callback = snap => {
+        liveLedgers = snap.val() || { drivers:{}, restaurants:{} };
+        if (globalData) {
+            triggerSearch('DRIVER');
+            triggerSearch('RESTAURANT');
+        }
+        updateTicker();
+    };
+    ref.on('value', callback);
+    firebaseListeners.push({ ref, callback });
+}
+
+function listenToFirebaseOrders() {
+    const ref = db.ref('active_orders');
+    const callback = snapshot => {
+        const ordersObj = snapshot.val();
+        let newActive = [], pendingCount = 0, hasEmergency = false;
+        const now = Date.now();
+
+        if (ordersObj) {
+            Object.values(ordersObj).forEach(o => {
+                if (!o.restaurant || o.restaurant.trim() === "") return; 
+                // ✅ فلترة الطلبات المحذوفة بالإضافة إلى المكتملة
+                if (o.status === 'completed' || o.status === 'مكتمل' || o.status === 'deleted') return;
+
+                let details = "طلب توصيل";
+                if (globalData?.orders) {
+                    const ex = globalData.orders.find(go => go[0] === o.id);
+                    if (ex) details = ex[3];
+                }
+                
+                let arr = [
+                    o.id || '', o.restaurant || '', o.area || 'غير محدد',
+                    details, o.price || 0, o.status || 'pending',
+                    o.driverPhone || '', o.last_update || o.timestamp || '', o.photoUrl || '',
+                    o.is_sovereign || false, o.last_update || '', o.last_offered_to || '' // ✅ تصحيح
+                ];
+                
+                if (['accepted', 'heading', 'arrived_at_res', 'picked_up'].includes(o.status)) {
+                    delete localOverrides.orders[arr[0]];
+                }
+
+                const ov = localOverrides.orders[arr[0]];
+                if (ov) {
+                    if (now - ov.ts < 120000) {
+                        arr[5] = ov.status || arr[5];
+                        if (ov.driverPhone) arr[6] = ov.driverPhone;
+                    } else { delete localOverrides.orders[arr[0]]; }
+                }
+                newActive.push(arr);
+                if (!arr[6] || arr[6] === "pending_driver" || arr[6] === "manual_pending" || arr[6] === "system_routing") {
+                    pendingCount++;
+                    if (arr[7]) {
+                        const ot = new Date(arr[7]);
+                        if ((new Date() - ot) / 60000 >= 3) hasEmergency = true;
+                    }
+                }
+            });
+        }
+
+        newActive.sort((a, b) => new Date(b[7]) - new Date(a[7]));
+        liveFirebaseOrders = newActive;
+
+        if (pendingCount > lastPendingCount) {
+            const a = document.getElementById('adminAlertSound');
+            a.currentTime = 0; a.play().catch(() => {});
+        }
+        lastPendingCount = pendingCount;
+
+        if (hasEmergency) { if (!isEmergencyMuted) triggerEmergency(); }
+        else {
+            isEmergencyMuted = false;
+            const em = document.getElementById('emergencyModal');
+            if (em?.style.display === 'flex') closeEmergency();
+        }
+
+        document.querySelectorAll('.val-orders').forEach(el => el.textContent = liveFirebaseOrders.length);
+        const activeResNames = [...new Set(liveFirebaseOrders.map(o => o[1]))];
+        document.querySelectorAll('.val-res').forEach(el => el.textContent = activeResNames.length);
+
+        if (globalData) { try { smartRenderRadar(liveFirebaseOrders); } catch(e) {} }
+        updateHeatmap(liveFirebaseOrders);
+        updateRestaurantMarkers(liveFirebaseOrders);
+        updateTicker();
+    };
+    ref.on('value', callback);
+    firebaseListeners.push({ ref, callback });
+}
+
+function updateHeatmap(orders) {
+    if (!heatLayer || !globalData) return;
+    const pts = [];
+    orders.forEach(o => {
+        const rData = globalData.restaurants.find(r => r[1] === o[1]);
+        if (rData?.[6] && rData?.[7]) {
+            const lat = parseFloat(rData[6]), lng = parseFloat(rData[7]);
+            if (!isNaN(lat) && !isNaN(lng)) pts.push([lat, lng, 1]);
+        }
+    });
+    heatLayer.setLatLngs(pts);
+}
+
+function updateRestaurantMarkers(orders) {
+    if(!map || !globalData) return;
+    Object.keys(liveResMarkers).forEach(k => { map.removeLayer(liveResMarkers[k]); delete liveResMarkers[k]; });
+    
+    const activeResNames = [...new Set(orders.map(o => o[1]))];
+    activeResNames.forEach(rName => {
+        const rData = globalData.restaurants.find(r => r[1] === rName);
+        if(rData && rData[6] && rData[7]) {
+            const icon = L.divIcon({ className: '', html: `<div class="res-pulse">🍽</div>`, iconSize: [24, 24], iconAnchor: [12, 12] });
+            liveResMarkers[rName] = L.marker([parseFloat(rData[6]), parseFloat(rData[7])], {icon}).addTo(map);
+        }
+    });
+}
+
+function listenToFirebaseLocations() {
+    if (!map) return;
+    const ref = db.ref('drivers_locations');
+    const callback = snapshot => {
+        const locs = snapshot.val();
+        if (!locs) return;
+        const now = Date.now();
+        
+        activeRealDriversSet.clear();
+
+        Object.keys(locs).forEach(phone => {
+            const d = locs[phone];
+            if (d.status === 'active' && d.lat && d.lng) {
+                const lat = parseFloat(d.lat), lng = parseFloat(d.lng);
+                const idleMins = d.last_update ? (now - new Date(d.last_update).getTime())/60000 : 0;
+                const isGhost = idleMins > 45; 
+                
+                if(!isGhost) {
+                    activeRealDriversSet.add(String(phone).replace(/^0+/, '').trim());
+                }
+
+                if (liveDriverMarkers[phone]) {
+                    liveDriverMarkers[phone].setLatLng([lat, lng]);
+                    const iconEl = liveDriverMarkers[phone].getElement();
+                    if(iconEl) iconEl.innerHTML = `<div class="drv-marker ${isGhost ? 'drv-ghost' : 'drv-active'}">${isGhost?'👻':'🛵'}</div>`;
+                } else {
+                    const name = globalData?.drivers.find(x => String(x[2]) === String(phone))?.[1] || phone;
+                    const icon = L.divIcon({
+                        className: 'smooth-marker',
+                        html: `<div class="drv-marker ${isGhost ? 'drv-ghost' : 'drv-active'}">${isGhost?'👻':'🛵'}</div>`,
+                        iconSize: [32, 32], iconAnchor: [16, 16]
+                    });
+                    const marker = L.marker([lat, lng], {icon}).bindPopup(`<b style="font-family:Cairo">${escHtml(name)}</b>`);
+                    driverClusterGroup.addLayer(marker);
+                    liveDriverMarkers[phone] = marker;
+                }
+            } else if (liveDriverMarkers[phone]) {
+                driverClusterGroup.removeLayer(liveDriverMarkers[phone]);
+                delete liveDriverMarkers[phone];
+            }
+        });
+
+        document.querySelectorAll('.val-drivers').forEach(el => el.textContent = activeRealDriversSet.size);
+        
+        if (globalData) { try { smartRenderRadar(liveFirebaseOrders); } catch(e) {} }
+        
+        if (globalData && document.getElementById('tab-drivers').classList.contains('active-tab')) {
+            triggerSearch('DRIVER');
+        }
+        updateTicker();
+    };
+    ref.on('value', callback);
+    firebaseListeners.push({ ref, callback });
+}
+
+// ✅ FIX: مستمع system_alerts يُسجَّل مرة واحدة فقط (ليس في كل استدعاء updateTicker)
+let _alertsListenerActive = false;
+let _lastAlertMsg = null;
+
+function setupAlertsListener() {
+    if (_alertsListenerActive) return;
+    _alertsListenerActive = true;
+    db.ref('system_alerts').limitToLast(1).on('value', snap => {
+        const alerts = snap.val();
+        if (alerts) {
+            const lastAlert = Object.values(alerts).pop();
+            _lastAlertMsg = (lastAlert && !lastAlert.read) ? `🚨 ${lastAlert.message}` : null;
+        } else {
+            _lastAlertMsg = null;
+        }
+    });
+}
+
+/* ─── شريط الأخبار الذكي (محسّن) ─── */
+function updateTicker() {
+    if (!globalData) return;
+
+    const pending = liveFirebaseOrders.filter(o => !o[6] || o[6] === 'pending_driver' || o[6] === 'system_routing').length;
+    const activeDrivers = activeRealDriversSet.size;
+    const totalDebt = Object.values(liveLedgers.restaurants || {}).reduce((sum, r) => sum + (r.debt || 0), 0);
+    const activeOrdersCount = liveFirebaseOrders.length;
+
+    const areaCounts = {};
+    liveFirebaseOrders.forEach(o => { if(o[2]) areaCounts[o[2]] = (areaCounts[o[2]] || 0) + 1; });
+    let topArea = 'غير متوفر', topAreaCount = 0;
+    Object.entries(areaCounts).forEach(([area, cnt]) => { if(cnt > topAreaCount) { topArea = area; topAreaCount = cnt; } });
+
+    const resCounts = {};
+    liveFirebaseOrders.forEach(o => { if(o[1]) resCounts[o[1]] = (resCounts[o[1]] || 0) + 1; });
+    let topRes = 'غير متوفر', topResCount = 0;
+    Object.entries(resCounts).forEach(([res, cnt]) => { if(cnt > topResCount) { topRes = res; topResCount = cnt; } });
+
+    const driverCounts = {};
+    liveFirebaseOrders.forEach(o => { if(o[6] && o[6] !== 'system_routing' && o[6] !== 'pending_driver') driverCounts[o[6]] = (driverCounts[o[6]] || 0) + 1; });
+    let topDriver = 'غير متوفر', topDriverCount = 0;
+    Object.entries(driverCounts).forEach(([d, cnt]) => { if(cnt > topDriverCount) { topDriver = d; topDriverCount = cnt; } });
+    const topDriverName = globalData.drivers.find(d => String(d[2]) === String(topDriver))?.[1] || topDriver;
+
+    const baseMessages = [
+        `📦 الطلبات النشطة: ${activeOrdersCount} | 🚚 كباتن: ${activeDrivers} | 🍽️ مطاعم: ${document.querySelector('.val-res')?.textContent || 0}`,
+        `💰 إجمالي عمولات اليوم: ${totalDebt} د.ع`,
+        `⏳ طلبات بانتظار كابتن: ${pending}`,
+        `📍 أكثر منطقة: ${topArea} (${topAreaCount} طلب)`,
+        `🏪 أكثر مطعم: ${topRes} (${topResCount} طلب)`,
+        `🛵 أكثر كابتن طلبات: ${topDriverName} (${topDriverCount})`,
+        `🕒 ${new Date().toLocaleTimeString('ar-EG')} - ${new Date().toLocaleDateString('ar-EG')}`
+    ];
+
+    // ✅ FIX: نستخدم _lastAlertMsg المُحدَّث من المستمع الثابت بدلاً من إضافة listener جديد
+    if (_lastAlertMsg) baseMessages.unshift(_lastAlertMsg);
+    tickerMessages = baseMessages;
+
+    if (tickerInterval) clearInterval(tickerInterval);
+    tickerInterval = setInterval(() => {
+        if (tickerMessages.length) {
+            tickerIndex = (tickerIndex + 1) % tickerMessages.length;
+            const el = document.getElementById('tickerText');
+            if (el) el.innerHTML = tickerMessages[tickerIndex];
+        }
+    }, 6000); 
+
+    const el = document.getElementById('tickerText');
+    if (el) el.innerHTML = baseMessages[0];
+}
+
+/* ─── Map Fullscreen & Tracking UI ─── */
+function toggleFullscreen() {
+    const w = document.getElementById('mapWrapper');
+    const s = document.querySelector('.bottom-sheet');
+    const i = document.getElementById('fsIcon');
+    isFullscreen = !isFullscreen;
+    if(isFullscreen) {
+        w.classList.add('fullscreen'); if(s) s.style.display = 'none';
+        i.setAttribute('data-lucide', 'minimize');
+    } else {
+        w.classList.remove('fullscreen'); if(s) s.style.display = 'flex';
+        i.setAttribute('data-lucide', 'maximize');
+        cancelTracking();
+    }
+    safeIcon('mapWrapper');
+    setTimeout(() => map.invalidateSize(), 400);
+}
+
+function cancelTracking() {
+    if (trackPolyline) { map.removeLayer(trackPolyline); trackPolyline = null; }
+    Object.values(liveDriverMarkers).forEach(m => m.setOpacity(1));
+    Object.values(liveResMarkers).forEach(m => m.setOpacity(1));
+    document.getElementById('btnCancelTrack').style.display = 'none';
+    map.setView([35.468, 44.392], 13, {animate: true});
+}
+
+/* ─── Radar Render (تم إصلاح مشاكل اختفاء أزرار الاتصال والسيادي) ─── */
+function smartRenderRadar(activeList) {
+    const container = document.getElementById('smartOrdersContainer');
+
+    let newOpts = '<option value="" disabled selected>تعيين يدوي</option>';
+    if (globalData) {
+        globalData.drivers.slice(1).forEach(d => {
+            const rawPhone = String(d[2]).replace(/^0+/, '').trim();
+            if (activeRealDriversSet.has(rawPhone)) {
+                const completed = liveLedgers.drivers?.[String(d[2])]?.completed_orders || 0;
+                let sym = '🟡';
+                if(completed >= 100) sym = '🟢';
+                else if(completed < 30) sym = '🔴';
+                newOpts += `<option value="${escHtml(String(d[2]))}">${sym} ${escHtml(d[1])}</option>`;
+            }
+        });
+    }
+    activeDriversOptionsCache = newOpts;
+
+    let filtered = [...activeList];
+    if (currentRadarFilter === 'pending') filtered = filtered.filter(o => !o[6] || o[6] === "pending_driver" || o[6] === "system_routing" || o[6] === "manual_pending");
+    if (currentRadarFilter === 'active')  filtered = filtered.filter(o => o[6] && o[6] !== "pending_driver" && o[6] !== "system_routing" && o[6] !== "manual_pending");
+
+    if (filtered.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state" style="grid-column:1/-1;">
+                <div class="empty-icon"><i data-lucide="check-circle" width="32" height="32"></i></div>
+                <div class="empty-title">الرادار نظيف</div>
+                <div class="empty-sub">لا توجد طلبات نشطة حالياً</div>
+            </div>`;
+        renderedOrdersCache = {};
+        safeIcon('smartOrdersContainer');
+        return;
+    }
+
+    if (container.querySelector('.empty-state') || container.querySelector('.skeleton')) {
+        container.innerHTML = '<div class="radar-grid" id="radarGrid"></div>';
+    }
+    let grid = document.getElementById('radarGrid');
+    if (!grid) {
+        container.innerHTML = '<div class="radar-grid" id="radarGrid"></div>';
+        grid = document.getElementById('radarGrid');
+    }
+
+    // 🟢 1. دمج جميع أزرار تحكم السائق لتكون ثابتة ولا تختفي
+    function buildDriverControls(orderId, driverPhone, hasDriver, sInfo, isSovereign) {
+        let ctrl = '';
+        let opts = activeDriversOptionsCache;
+        const safeOrderId = escJs(orderId);
+        const safeDriverPhone = escJs(driverPhone);
+
+        // زر الاتصال (دائماً يظهر إذا كان هناك سائق وليس في حالة رنين فقط)
+        if (hasDriver && !sInfo.ringing) {
+            ctrl += `<button class="btn-call-sm" onclick="window.open('tel:${safeDriverPhone}')"><i data-lucide="phone" width="14" height="14"></i></button>`;
+        }
+
+        // زر السحب (سحب الطلب) للإدارة الصلاحية لسحبه
+        if (sInfo.ringing && hasDriver && !isSovereign) {
+            ctrl += `<button class="oc-btn oc-btn-delete" style="width:auto;padding:0 10px;font-family:'Cairo',sans-serif;font-size:0.72rem;font-weight:800;" onclick="withdrawOrderOptUI('${safeOrderId}','${safeDriverPhone}',this)"><i data-lucide="user-minus" width="13" height="13"></i> سحب</button>`;
+        }
+
+        // تغيير نص القائمة للسيادي أو إذا كان الطلب قيد التنفيذ
+        if (isSovereign || (hasDriver && !sInfo.ringing)) {
+             opts = activeDriversOptionsCache.replace('تعيين يدوي', 'إعادة تعيين 🔄');
+        }
+        
+        ctrl += `<select class="assign-select" onchange="assignDriverOptUI('${safeOrderId}',this.value,this)">${opts}</select>`;
+        return ctrl;
+    }
+
+    const getStatusInfo = (status, hasDriver, timeStr, isSovereign) => {
+        if (isSovereign) {
+            if (status === 'manual_pending') {
+                return { cls: 'oc-sovereign', sbCls: 'sbadge-purple', desc: '👑 تعيين سيادي', ringing: false };
+            }
+            return { cls: 'oc-sovereign', sbCls: 'sbadge-purple', desc: '👑 سيادي', ringing: false };
+        }
+        if (!hasDriver || status === 'pending_driver' || status === 'manual_pending') {
+            if (hasDriver) {
+                return { cls: 'oc-ringing', sbCls: 'sbadge-warn', desc: '⏳ جاري الرنين', ringing: true };
+            }
+            return { cls: 'oc-pending', sbCls: 'sbadge-danger', desc: '🔴 بانتظار كابتن', ringing: false };
+        }
+        if (status === 'system_routing')                      return { cls: 'oc-pending', sbCls: 'sbadge-danger', desc: '🔴 بانتظار توجيه النظام', ringing: false };
+        if (status === 'picked_up' || status === 'في الطريق') return { cls: 'oc-active',  sbCls: 'sbadge-success', desc: '🟢 بالطريق', ringing: false };
+        if (status === 'arrived_at_res')                      return { cls: 'oc-arrived', sbCls: 'sbadge-orange',  desc: '🟠 في المطعم', ringing: false };
+        if (status === 'accepted' || status === 'heading')    return { cls: 'oc-heading', sbCls: 'sbadge-blue',    desc: '🔵 متوجه', ringing: false };
+        return { cls: 'oc-heading', sbCls: 'sbadge-blue', desc: status, ringing: false };
+    };
+
+    const driverOrderCount = {};
+    filtered.forEach(o => {
+        const dp = o[6];
+        if (dp && dp !== "pending_driver" && dp !== "manual_pending" && dp !== "system_routing") {
+            driverOrderCount[dp] = (driverOrderCount[dp] || 0) + 1;
+        }
+    });
+
+    const currentIds = new Set();
+
+    filtered.forEach(o => {
+        const [orderId, restName, orderArea, , orderPrice, status, driverPhone, orderTimeStr, , isSovereign] = o;
+        const hasDriver = (driverPhone && driverPhone !== "pending_driver" && driverPhone !== "manual_pending" && driverPhone !== "system_routing");
+        const driverName = hasDriver
+            ? (globalData?.drivers.find(d => String(d[2]) === String(driverPhone))?.[1] || 'كابتن جديد')
+            : 'جاري البحث في الرادار...';
+        const sInfo = getStatusInfo(status, hasDriver, orderTimeStr, isSovereign);
+        const diffMins = Math.floor((new Date() - new Date(orderTimeStr)) / 60000);
+        const timeF = new Date(orderTimeStr).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+        const isDouble = hasDriver && driverOrderCount[driverPhone] > 1;
+
+        const safeOrderId = escJs(orderId);
+        const safeDriverPhone = escJs(driverPhone);
+        const safeRestName = escJs(restName);
+        const safeOrderArea = escJs(orderArea);
+
+        currentIds.add(orderId);
+        const hash = `${status}-${driverPhone}-${diffMins}-${isDouble}-${isSovereign}`;
+        let existing = document.getElementById(`oc-${orderId}`);
+
+        let rejectHtml = '';
+        if (!hasDriver && o[11]) {
+            const rName = globalData?.drivers.find(d => String(d[2]) === String(o[11]))?.[1] || o[11];
+            rejectHtml = `<br><div class="reject-tag"><i data-lucide="user-x" width="10" height="10"></i> رفضه: ${escHtml(rName)}</div>`;
+        }
+
+        let doubleBadge = isDouble ? `<span class="sbadge" style="background:var(--purple); color:#fff; margin-right:5px; font-size:0.65rem;">مزدوج</span>` : '';
+        let sovereignBadge = isSovereign ? `<span class="sbadge sbadge-purple" style="margin-right:5px;">👑 سيادي</span>` : '';
+
+        if (existing) {
+            if (renderedOrdersCache[orderId] !== hash) {
+                existing.className = `order-card ${sInfo.cls} flash-update`;
+                const sbEl = existing.querySelector('.status-badge-ui');
+                if (sbEl) { sbEl.className = `sbadge status-badge-ui ${sInfo.sbCls}`; sbEl.textContent = sInfo.desc; }
+                const dnEl = existing.querySelector('.driver-name-ui span');
+                if (dnEl) { dnEl.textContent = driverName; }
+                
+                // تحديث الأزرار المدمجة
+                const ctrlEl = existing.querySelector('.driver-controls-ui');
+                if (ctrlEl) {
+                    ctrlEl.innerHTML = buildDriverControls(orderId, driverPhone, hasDriver, sInfo, isSovereign);
+                    safeIcon('oc-' + orderId);
+                }
+
+                // 🟢 2. إضافة وتحديث زر التتبع (المسار) ديناميكياً
+                const actionsEl = existing.querySelector('.oc-actions');
+                if (actionsEl) {
+                    const oldTrackBtn = actionsEl.querySelector('.oc-btn-track');
+                    if (oldTrackBtn) oldTrackBtn.remove();
+                    
+                    if (hasDriver) {
+                        const trackBtnHtml = `<button class="oc-btn-track" onclick="trackDriver('${safeDriverPhone}','${safeRestName}')"><i data-lucide="map-pin" width="12" height="12"></i> مسار</button>`;
+                        const completeBtn = actionsEl.querySelector('.oc-btn-complete');
+                        if (completeBtn) completeBtn.insertAdjacentHTML('beforebegin', trackBtnHtml);
+                        else actionsEl.insertAdjacentHTML('afterbegin', trackBtnHtml);
+                    }
+                    safeIcon('oc-' + orderId);
+                }
+
+                const titleEl = existing.querySelector('.oc-id');
+                if (titleEl) {
+                    titleEl.innerHTML = `#${orderId} ${doubleBadge} ${sovereignBadge}`;
+                }
+                const delayEl = existing.querySelector('.delay-pill');
+                if (diffMins > 3 && !hasDriver) {
+                    if (delayEl) delayEl.textContent = `${diffMins} دق تأخير`;
+                    else existing.insertAdjacentHTML('afterbegin', `<div class="delay-pill">⚠️ تأخير ${diffMins} دقيقة</div>`);
+                } else if (delayEl) delayEl.remove();
+                
+                const areaEl = existing.querySelector('.oc-area');
+                if(areaEl) areaEl.innerHTML = `<i data-lucide="map-pin" width="12" height="12"></i>${safeOrderArea} ${rejectHtml}`;
+
+                renderedOrdersCache[orderId] = hash;
+            }
+            return;
+        }
+
+        const ctrl = buildDriverControls(orderId, driverPhone, hasDriver, sInfo, isSovereign);
+
+        const html = `
+        <div id="oc-${orderId}" class="order-card ${sInfo.cls} flash-update">
+            ${diffMins > 3 && !hasDriver ? `<div class="delay-pill">⚠️ تأخير ${diffMins} دقيقة</div>` : ''}
+            <div class="oc-header" style="${diffMins > 3 && !hasDriver ? 'margin-top:28px;' : ''}">
+                <div>
+                    <div class="oc-id" style="display:flex; align-items:center;">#${orderId} ${doubleBadge} ${sovereignBadge}</div>
+                    <div class="oc-time">⏰ ${timeF}</div>
+                </div>
+                <div class="oc-actions">
+                    <span class="sbadge status-badge-ui ${sInfo.sbCls}">${sInfo.desc}</span>
+                    ${hasDriver ? `<button class="oc-btn-track" onclick="trackDriver('${safeDriverPhone}','${safeRestName}')"><i data-lucide="map-pin" width="12" height="12"></i> مسار</button>` : ''}
+                    <button class="oc-btn oc-btn-complete" onclick="forceComplete('${safeOrderId}')"><i data-lucide="check-circle" width="15" height="15"></i></button>
+                    <button class="oc-btn oc-btn-delete" onclick="adminActionOptUI('DELETE','ORDER','${safeOrderId}',this)"><i data-lucide="trash-2" width="15" height="15"></i></button>
+                </div>
+            </div>
+            <div class="oc-body">
+                <div class="oc-row">
+                    <div class="oc-res"><i data-lucide="store" width="14" height="14" style="color:var(--accent);"></i>${safeRestName}</div>
+                    <div class="oc-price">${orderPrice || 0} د.ع</div>
+                </div>
+                <div class="oc-driver-row">
+                    <div class="oc-driver-name driver-name-ui">
+                        <i data-lucide="bike" width="13" height="13" style="color:var(--primary); margin-left:4px;"></i>
+                        <span>${escHtml(driverName)}</span>
+                    </div>
+                    <div class="oc-driver-controls driver-controls-ui">
+                        ${ctrl}
+                    </div>
+                </div>
+                ${orderArea && orderArea !== 'غير محدد' ? `<div class="oc-area"><i data-lucide="map-pin" width="12" height="12"></i>${safeOrderArea} ${rejectHtml}</div>` : ''}
+            </div>
+        </div>`;
+
+        grid.insertAdjacentHTML('beforeend', html);
+        safeIcon(`oc-${orderId}`);
+        renderedOrdersCache[orderId] = hash;
+    });
+
+    Object.keys(renderedOrdersCache).forEach(id => {
+        if (!currentIds.has(id)) {
+            const el = document.getElementById(`oc-${id}`);
+            if (el) { el.style.transition = '.25s'; el.style.opacity = '0'; el.style.transform = 'scale(0.95)'; setTimeout(() => el.remove(), 260); }
+            delete renderedOrdersCache[id];
+        }
+    });
+}
+
+/* ═══════════════════════════════════════════════════════════
+   🗂️  TAB NAVIGATION  —  switchTab / showTab / filterRadar
+═══════════════════════════════════════════════════════════ */
+
+function _activateTab(tabName) {
+    document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active-tab'));
+    const target = document.getElementById('tab-' + tabName);
+    if (target) {
+        target.classList.add('active-tab');
+        setTimeout(() => { target.scrollTop = 0; }, 50);
+    }
+    if (tabName === 'live' && typeof map !== 'undefined' && map) {
+        setTimeout(() => map.invalidateSize(), TAB_TRANSITION_MS + 50);
+    }
+}
+
+function _updateNavActive(tabName) {
+    document.querySelectorAll('.b-nav-item').forEach(item => {
+        const oc = item.getAttribute('onclick') || '';
+        item.classList.toggle('active', oc.includes("'" + tabName + "'"));
+    });
+    document.querySelectorAll('.nav-item.desktop-nav-link').forEach(item => {
+        const oc = item.getAttribute('onclick') || '';
+        item.classList.toggle('active', oc.includes("'" + tabName + "'"));
+    });
+}
+
+function switchTab(tabName, el) {
+    _activateTab(tabName);
+    _updateNavActive(tabName);
+}
+
+function showTab(event, tabName) {
+    _activateTab(tabName);
+    _updateNavActive(tabName);
+}
+
+function filterRadar(filter, btn) {
+    currentRadarFilter = filter;
+    document.getElementById('radarFilters')?.querySelectorAll('.fp')
+        .forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    try { smartRenderRadar(liveFirebaseOrders); } catch(e) { console.error('filterRadar:', e); }
+}
+
+function trackDriver(driverPhone, restName) {
+    if (!map || !globalData) return;
+    const driver     = globalData.drivers.find(d => String(d[D.PHONE]) === String(driverPhone));
+    const restaurant = globalData.restaurants.find(r => r[R.NAME] === restName);
+    if (!driver) return;
+
+    let dLat = parseFloat(driver[D.LAT]), dLng = parseFloat(driver[D.LNG]);
+    if (liveDriverMarkers[String(driverPhone)]) {
+        const pos = liveDriverMarkers[String(driverPhone)].getLatLng();
+        dLat = pos.lat; dLng = pos.lng;
+    }
+    if (isNaN(dLat) || isNaN(dLng)) return;
+
+    Object.values(liveDriverMarkers).forEach(m => m.setOpacity(0.3));
+    Object.values(liveResMarkers).forEach(m => m.setOpacity(0.3));
+    if (liveDriverMarkers[String(driverPhone)]) liveDriverMarkers[String(driverPhone)].setOpacity(1);
+
+    if (trackPolyline) { map.removeLayer(trackPolyline); trackPolyline = null; }
+
+    let bounds = [[dLat, dLng]];
+    const rLat = restaurant ? parseFloat(restaurant[R.LAT]) : NaN;
+    const rLng = restaurant ? parseFloat(restaurant[R.LNG]) : NaN;
+
+    if (!isNaN(rLat) && !isNaN(rLng)) {
+        bounds.push([rLat, rLng]);
+        if (liveResMarkers[restName]) liveResMarkers[restName].setOpacity(1);
+        trackPolyline = L.polyline([[dLat, dLng], [rLat, rLng]], {
+            color: '#f97316', weight: 5, dashArray: '12, 12',
+            className: 'path-animated'
+        }).addTo(map);
+        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16, animate: true, duration: 1.2 });
+    } else {
+        map.flyTo([dLat, dLng], 16, { duration: 1.2 });
+    }
+
+    document.getElementById('btnCancelTrack').style.display = 'flex';
+    _activateTab('live');
+    _updateNavActive('live');
+}
+
+/* ─── Section Badges ─── */
+function updateSectionBadges(type, list) {
+    const p = type === 'RESTAURANT' ? 'res' : 'driver';
+    const c = { all: 0, pending: 0, active: 0, inactive: 0, banned: 0 };
+    list.slice(1).forEach(item => {
+        const s = item[4];
+        if (s === 'deleted') return;
+        c.all++;
+        if (s === 'pending' || s === 'waiting') c.pending++;
+        
+        if (type === 'DRIVER' && s === 'active') {
+            const rawPhone = String(item[2]).replace(/^0+/, '').trim();
+            if(activeRealDriversSet.has(rawPhone)) c.active++;
+        } 
+        else if (s === 'active') { c.active++; }
+        
+        if (s === 'inactive') c.inactive++;
+        if (s === 'banned')   c.banned++;
+    });
+    ['all','pending','active','inactive','banned'].forEach(k => {
+        const el = document.getElementById(`badge-${p}-${k}`);
+        if (el) el.textContent = c[k];
+    });
+}
+
+/* ─── Search ─── */
+function triggerSearch(type) {
+    const grp = type === 'RESTAURANT' ? document.getElementById('resFiltersGroup') : document.getElementById('driverFiltersGroup');
+    const active = grp.querySelector('.active');
+    const filter = type === 'RESTAURANT' ? currentResSectionFilter : currentDriverSectionFilter;
+    applySectionFilter(type, filter, active);
+}
+
+function applySectionFilter(type, filter, btn) {
+    if (type === 'RESTAURANT') currentResSectionFilter = filter;
+    else currentDriverSectionFilter = filter;
+    const grp = btn.closest('.filter-bar');
+    grp.querySelectorAll('.fp').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    if (globalData) {
+        if (type === 'RESTAURANT') smartRenderFilteredSection('RESTAURANT', globalData.restaurants);
+        else smartRenderFilteredSection('DRIVER', globalData.drivers);
+    }
+}
+
+/* ─── Entity Cards (مع إصلاح الديون وتطبيع الهاتف) ─── */
+function smartRenderFilteredSection(type, fullList) {
+    const filter  = type === 'RESTAURANT' ? currentResSectionFilter : currentDriverSectionFilter;
+    const searchQ = type === 'RESTAURANT'
+        ? (document.getElementById('searchResInput')?.value.trim().toLowerCase() || '')
+        : (document.getElementById('searchDriverInput')?.value.trim().toLowerCase() || '');
+    const cId     = type === 'RESTAURANT' ? 'resListContainer' : 'driverListContainer';
+    const container = document.getElementById(cId);
+    const icon    = type === 'RESTAURANT' ? 'store' : 'user';
+    const cache   = type === 'RESTAURANT' ? renderedResCards : renderedDriverCards;
+
+    let filtered = [];
+    fullList.slice(1).forEach(item => {
+        const s = item[4], n = String(item[1]).toLowerCase(), ph = String(item[2]).toLowerCase();
+        const rawPhone = String(item[2]).replace(/^0+/, '').trim();
+        
+        if (s === 'deleted') return;
+        if (searchQ && !n.includes(searchQ) && !ph.includes(searchQ)) return;
+        
+        if (filter === 'all') filtered.push(item);
+        else if (filter === 'pending' && (s === 'pending' || s === 'waiting')) filtered.push(item);
+        else if (filter === 'active' && type === 'DRIVER') {
+            if(s === 'active' && activeRealDriversSet.has(rawPhone)) filtered.push(item);
+        }
+        else if (filter === s) filtered.push(item);
+    });
+
+    if (filtered.length === 0) {
+        container.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">
+            <div class="empty-icon"><i data-lucide="search-x" width="28" height="28"></i></div>
+            <div class="empty-title">لا توجد نتائج</div>
+            <div class="empty-sub">لا يوجد ما يطابق البحث</div>
+        </div>`;
+        safeIcon(cId);
+        if (type === 'RESTAURANT') renderedResCards = {}; else renderedDriverCards = {};
+        return;
+    }
+    if (container.querySelector('.empty-state') || container.querySelector('.skeleton')) container.innerHTML = '';
+
+    const currentIds = new Set();
+
+    filtered.forEach(item => {
+        const name = item[1], phone = item[2], status = item[4];
+        const safeId = String(phone).replace(/[^a-zA-Z0-9]/g, '');
+        currentIds.add(safeId);
+        
+        const normalizedPhone = String(phone).replace(/^0+/, '').trim();
+        const ledger = type === 'RESTAURANT' 
+            ? (liveLedgers.restaurants?.[normalizedPhone] || {debt:0, completed_orders:0})
+            : (liveLedgers.drivers?.[normalizedPhone] || {debt:0, completed_orders:0});
+        const debt = ledger.debt || 0;
+        const compCount = ledger.completed_orders || 0;
+
+        const hash = `${status}-${debt}-${compCount}`;
+
+        let spClass = 'sp-active';
+        if (status === 'inactive') spClass = 'sp-inactive';
+        if (status === 'pending' || status === 'waiting') spClass = 'sp-pending';
+        if (status === 'banned')  spClass = 'sp-banned';
+        let spLabel = status === 'active' ? 'نشط' : status === 'inactive' ? 'استراحة' : (status === 'pending' || status === 'waiting') ? 'قيد الانتظار' : status === 'banned' ? 'موقوف' : status;
+
+        let perfHtml = '';
+        if (type === 'DRIVER') {
+            let stars = '', level = '';
+            if (compCount >= 100)       { stars = '⭐⭐⭐⭐⭐'; level = 'خبير'; }
+            else if (compCount >= 50)   { stars = '⭐⭐⭐⭐';   level = 'محترف'; }
+            else if (compCount >= 30)   { stars = '⭐⭐⭐';     level = 'نشط'; }
+            else if (compCount >= 10)   { stars = '⭐⭐';       level = 'مبتدئ'; }
+            else                        { stars = '⭐';         level = 'جديد'; }
+            perfHtml = `<div class="driver-rating" title="${level} (${compCount} طلب)">
+                <span class="stars">${stars}</span>
+                <span class="level">${level}</span>
+            </div>`;
+        }
+
+        let existing = document.getElementById(`card-${type}-${safeId}`);
+        if (existing) {
+            if (cache[safeId] !== hash) {
+                const sbEl = existing.querySelector('.status-pill');
+                if (sbEl) { sbEl.className = `status-pill ${spClass}`; sbEl.textContent = spLabel; }
+                const dEl = existing.querySelector('.debt-val');
+                if (dEl) dEl.textContent = `${debt} د.ع`;
+                const cEl = existing.querySelector('.entity-debt-lbl');
+                if (cEl) cEl.innerHTML = `طلبات منجزة: <span class="unpaid-wrap" style="color:var(--text-1); font-weight:900;">${compCount}</span>`;
+                cache[safeId] = hash;
+            }
+            return;
+        }
+
+        const safeName = escHtml(name);
+        const safePhone = escHtml(phone);
+        const safePhoneJs = escJs(phone);
+
+        const html = `
+        <div id="card-${type}-${safeId}" class="entity-card">
+            ${perfHtml}
+            <div class="entity-card-top">
+                <div class="entity-avatar"><i data-lucide="${escHtml(icon)}" width="22" height="22"></i></div>
+                <span class="status-pill ${spClass}">${escHtml(spLabel)}</span>
+            </div>
+            <div class="entity-name" style="margin-top: 8px;">${safeName}</div>
+            <div class="entity-phone">${safePhone}</div>
+            <div class="entity-debt" style="margin-top: 12px;">
+                <div>
+                    <div class="entity-debt-lbl">طلبات منجزة: <span class="unpaid-wrap" style="color:var(--text-1); font-weight:900;">${escHtml(compCount)}</span></div>
+                    <div class="debt-val" style="font-size:1rem; font-weight:900; color:var(--danger);">${escHtml(debt)} د.ع</div>
+                </div>
+            </div>
+            <div class="entity-actions">
+                <div class="ea-group">
+                    <button class="ea-btn ea-accept" title="تفعيل" onclick="adminActionOptUI('ACCEPT','${type}','${safePhoneJs}',this)"><i data-lucide="check" width="16" height="16"></i></button>
+                    <button class="ea-btn ea-pause"  title="استراحة" onclick="adminActionOptUI('PAUSE','${type}','${safePhoneJs}',this)"><i data-lucide="pause" width="16" height="16"></i></button>
+                    <button class="ea-btn ea-ban"    title="حظر" onclick="adminActionOptUI('DELETE','${type}','${safePhoneJs}',this)"><i data-lucide="ban" width="16" height="16"></i></button>
+                </div>
+                <div class="ea-group">
+                    <button class="ea-btn ea-debt"   title="تصفير الديون" onclick="resetDebtOptUI('${type}','${safePhoneJs}',this)"><i data-lucide="banknote" width="16" height="16"></i></button>
+                    <button class="ea-btn ea-call"   title="اتصال" onclick="window.open('tel:${safePhoneJs}')"><i data-lucide="phone-call" width="16" height="16"></i></button>
+                </div>
+            </div>
+        </div>`;
+
+        container.insertAdjacentHTML('beforeend', html);
+        safeIcon(`card-${type}-${safeId}`);
+        cache[safeId] = hash;
+    });
+
+    Object.keys(cache).forEach(id => {
+        if (!currentIds.has(id)) {
+            const el = document.getElementById(`card-${type}-${id}`);
+            if (el) el.remove();
+            delete cache[id];
+        }
+    });
+}
+
+/* ─── Actions (Sovereign Control) ─── */
+function withdrawOrderOptUI(orderId, driverPhone, el) {
+    if (!confirm("سحب الطلب من هذا الكابتن وإعادته للرادار؟")) return;
+    el.disabled = true;
+    localOverrides.orders[String(orderId)] = { status: 'pending_driver', driverPhone: 'system_routing', ts: Date.now() };
+
+    const now = new Date().toISOString();
+    db.ref(`active_orders/${orderId}`).update({
+        status: 'pending_driver',
+        driverPhone: 'system_routing',
+        last_update: now,
+        last_offered_to: driverPhone,
+        last_offered_time: now,
+        is_sovereign: false // ✅ تصحيح
+    }).then(() => {
+        showToast("تم سحب الطلب بنجاح");
+    }).catch(() => {
+        showToast("حدث خطأ في الاتصال", "error");
+        el.disabled = false;
+    });
+    
+    fetch(`${API_URL}?action=DECLINE_ORDER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}`).catch(()=>{});
+}
+
+function assignDriverOptUI(orderId, driverPhone, el) {
+    if (!driverPhone) return;
+    if (!ensureMasterPassword()) return; // ✅ تحقق
+
+    el.disabled = true;
+    const spinnerEl = document.createElement('div');
+    spinnerEl.className = 'spinner-mini';
+    spinnerEl.style.cssText = 'border-top-color:var(--primary); margin-right:5px; display:inline-block;';
+    el.insertAdjacentElement('afterend', spinnerEl);
+    
+    const card = document.getElementById(`oc-${orderId}`);
+    if (card) { card.style.transition = '.3s'; card.style.opacity = '0.5'; }
+    localOverrides.orders[String(orderId)] = { status: 'manual_pending', driverPhone, ts: Date.now() };
+    
+    const now = new Date().toISOString();
+    db.ref(`active_orders/${orderId}`).update({
+        status: 'manual_pending',
+        driverPhone: driverPhone,
+        last_update: now,
+        is_sovereign: true // ✅ تصحيح
+    });
+
+    // ✅ تشفير كلمة المرور عند الإرسال
+    fetch(`${API_URL}?action=ASSIGN_DRIVER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`)
+        .then(r => r.json()).then(res => {
+            spinnerEl.remove();
+            if (!res.success) { showToast("خطأ", "error"); if (card) card.style.opacity = '1'; el.disabled = false; }
+            else showToast("تم التعيين السيادي بنجاح!");
+        }).catch(() => {
+            spinnerEl.remove();
+            showToast("تم الإرسال");
+        });
+}
+
+// ✅ دالة مساعدة للتحقق من كلمة المرور
+function ensureMasterPassword() {
+    if (!masterPassword) {
+        showToast("انتهت صلاحية الجلسة. يرجى تحديث الصفحة وتسجيل الدخول مجدداً.", "error");
+        return false;
+    }
+    return true;
+}
+
+function forceComplete(orderId) {
+    if (!ensureMasterPassword()) return;
+    if(!confirm("تأكيد إكمال الطلب قسرياً؟ سيتم تسجيله في حساب الكابتن والمطعم.")) return;
+    
+    const oData = liveFirebaseOrders.find(x => x[O.ID] === orderId);
+    if(oData) {
+        const driverPhone = oData[O.DRIVER_PHONE];
+        const price       = parseFloat(oData[O.PRICE]) || 0;
+        const resName     = oData[O.REST_NAME];
+        const area        = oData[O.AREA];
+        
+        const rData    = globalData?.restaurants.find(r => r[R.NAME] === resName);
+        const comm     = rData ? (parseFloat(rData[R.COMMISSION]) || 0) : 0;
+        const payType  = rData ? (rData[R.PAY_TYPE] || "المطعم يدفع") : "المطعم يدفع";
+        const resPhone = rData ? rData[R.PHONE] : null;
+
+        let driverDebtInc = 0;
+        let resDebtInc    = comm;
+        if (String(payType).includes('مناصفة')) driverDebtInc = comm / 2;
+
+        const updates = {};
+        // ✅ FIX: حذف الطلب من Firebase فوراً
+        updates[`active_orders/${orderId}`] = null;
+        
+        if(driverPhone && driverPhone !== 'system_routing' && driverPhone !== 'pending_driver' && driverPhone !== 'manual_pending') {
+            updates[`ledgers/drivers/${driverPhone}/completed_orders`] = firebase.database.ServerValue.increment(1);
+            updates[`ledgers/drivers/${driverPhone}/debt`]             = firebase.database.ServerValue.increment(driverDebtInc);
+            const todayStr = getLocalDateString();
+            updates[`daily_ledgers/${driverPhone}/${todayStr}/${orderId}`] = { orderId, resName, area, price, timestamp: Date.now() };
+        }
+        if(resPhone) {
+            updates[`ledgers/restaurants/${resPhone}/completed_orders`] = firebase.database.ServerValue.increment(1);
+            updates[`ledgers/restaurants/${resPhone}/debt`]             = firebase.database.ServerValue.increment(resDebtInc);
+        }
+        
+        db.ref().update(updates);
+
+        // ✅ FIX: استدعاء GAS لأرشفة الطلب في Orders sheet قبل حذفه
+        // GAS ستقرأ البيانات الكاملة من Firebase وتكتبها في Sheets
+        fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${orderId}&status=completed&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`).catch(()=>{});
+        showToast("تم الإكمال وإضافة الأموال للمحافظ!");
+    } else {
+        // ✅ FIX: الطلب غير موجود → احذف فقط بدون استدعاء GAS
+        // (لا يوجد شيء لأرشفته إذا لم يكن الطلب موجوداً في Firebase)
+        db.ref(`active_orders/${orderId}`).remove();
+        showToast("تم الحذف (الطلب لم يعد موجوداً في الرادار)");
+    }
+}
+
+function getLocalDateString() {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function resetDebtOptUI(type, id, el) {
+    if (!ensureMasterPassword()) return; // ✅ تحقق
+    if (!confirm(`تأكيد تصفير ديون (${id})؟ سيتم مسحها من الإكسل وتصفير العداد في Firebase.`)) return;
+    el.classList.add('btn-loading');
+    el.disabled = true;
+    // ✅ تشفير كلمة المرور
+    fetch(`${API_URL}?action=RESET_DEBT&type=${type}&id=${id}&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`)
+        .then(r => r.json()).then(res => {
+            if (res.success) { showToast("تم التصفير بنجاح"); refreshData(); }
+            else { showToast("خطأ أثناء التصفير", "error"); }
+        }).catch(() => showToast("تم إرسال أمر التصفير"))
+        .finally(() => {
+            el.classList.remove('btn-loading');
+            el.disabled = false;
+        });
+}
+
+function adminActionOptUI(cmd, type, id, el) {
+    const map_ = { ACCEPT: 'active', PAUSE: 'inactive', DELETE: 'deleted', COMPLETE: 'completed' };
+    let newStatus = map_[cmd];
+    if (cmd === 'DELETE' && type !== 'ORDER') newStatus = 'banned';
+
+    // ✅ تعطيل الزر مؤقتاً أثناء المعالجة
+    if (el) {
+        el.disabled = true;
+        el.classList.add('btn-loading');
+    }
+
+    if (cmd === 'COMPLETE' || cmd === 'DELETE') {
+        if (!confirm(cmd === 'COMPLETE' ? "تأكيد الإتمام القسري؟" : "تأكيد الحذف/الحظر؟")) {
+            if (el) {
+                el.disabled = false;
+                el.classList.remove('btn-loading');
+            }
+            return;
+        }
+        if (type === 'ORDER') {
+            const card = el.closest('.order-card') || el.closest('.batch-order-inner');
+            
+            if (cmd === 'COMPLETE') {
+                // ✅ FIX: للـ COMPLETE — نحذف من Firebase ثم نستدعي GAS للأرشفة
+                db.ref(`active_orders/${id}`).remove()
+                    .then(() => {
+                        if (card) { 
+                            card.style.transition = '.3s'; 
+                            card.style.opacity = '0'; 
+                            card.style.transform = 'scale(0.95)'; 
+                            setTimeout(() => card.remove(), 320); 
+                        }
+                        showToast("تم الإكمال");
+                        // GAS تقرأ الطلب قبل الحذف وتؤرشفه في Sheets
+                        fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${id}&status=completed&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`).catch(()=>{});
+                    })
+                    .catch(err => {
+                        console.error(err);
+                        showToast("فشل تحديث Firebase", "error");
+                        if (el) { el.disabled = false; el.classList.remove('btn-loading'); }
+                        if (card) card.style.opacity = '1';
+                    });
+            } else {
+                // DELETE: حذف مباشر بدون GAS (لا أرشفة مطلوبة)
+                db.ref(`active_orders/${id}`).remove()
+                    .then(() => {
+                        if (card) { 
+                            card.style.transition = '.3s'; 
+                            card.style.opacity = '0'; 
+                            card.style.transform = 'scale(0.95)'; 
+                            setTimeout(() => card.remove(), 320); 
+                        }
+                        showToast("تم الحذف");
+                    })
+                    .catch(err => {
+                        console.error(err);
+                        showToast("فشل تحديث Firebase", "error");
+                        if (el) { el.disabled = false; el.classList.remove('btn-loading'); }
+                        if (card) card.style.opacity = '1';
+                    });
+            }
+            // لا نكمل باقي الدالة حتى لا نكرر الطلب
+            return;
+        }
+    }
+
+    if (type === 'ORDER') localOverrides.orders[String(id)] = { status: newStatus, ts: Date.now() };
+    if (type === 'RESTAURANT') {
+        localOverrides.restaurants[String(id)] = { status: newStatus, ts: Date.now() };
+        const item = globalData?.restaurants.find(r => String(r[R.PHONE]) === String(id));
+        if (item) item[R.STATUS] = newStatus;
+        applySectionFilter('RESTAURANT', currentResSectionFilter, document.querySelector('#resFiltersGroup .fp.active'));
+        updateSectionBadges('RESTAURANT', globalData.restaurants);
+    }
+    if (type === 'DRIVER') {
+        localOverrides.drivers[String(id)] = { status: newStatus, ts: Date.now() };
+        const item = globalData?.drivers.find(d => String(d[D.PHONE]) === String(id));
+        if (item) item[D.STATUS] = newStatus;
+        applySectionFilter('DRIVER', currentDriverSectionFilter, document.querySelector('#driverFiltersGroup .fp.active'));
+        updateSectionBadges('DRIVER', globalData.drivers);
+    }
+
+    if (ensureMasterPassword()) {
+        // ✅ تشفير كلمة المرور
+        fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${id}&status=${newStatus}&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`)
+            .then(r => r.json()).then(res => {
+                if (!res.success) { showToast("حدث خطأ", "error"); refreshData(); }
+            }).catch(() => {})
+            .finally(() => {
+                if (el) {
+                    el.disabled = false;
+                    el.classList.remove('btn-loading');
+                }
+            });
+    } else {
+        if (el) {
+            el.disabled = false;
+            el.classList.remove('btn-loading');
+        }
+    }
+}
+
+/* ─── Archive ─── */
+// ✅ FIX: حالة الصفحة الحالية للـ pagination
+let arcCurrentPage = 1;
+const ARC_PAGE_SIZE = 100; // 100 طلب لكل صفحة
+
+function renderArchive(resetPage = false) {
+    if (!globalData) return;
+    if (resetPage) arcCurrentPage = 1;
+
+    const search     = document.getElementById('arcSearch').value.trim().toLowerCase();
+    const resFilter  = document.getElementById('arcRes').value;
+    const drvFilter  = document.getElementById('arcDriver').value;
+    const dateFrom   = document.getElementById('arcDateFrom').value;
+    const dateTo     = document.getElementById('arcDateTo').value;
+
+    // ✅ FIX: جلب جميع الطلبات المكتملة بدون حد أقصى
+    const completed = globalData.orders.slice(1)
+        .filter(o => o[O.STATUS] === 'completed' || o[O.STATUS] === 'مكتمل' || o[O.STATUS] === 'settled')
+        .reverse();
+
+    // تطبيق الفلاتر على الكل
+    let filtered = [];
+    let totalComm = 0;
+
+    completed.forEach(o => {
+        const orderId = o[O.ID];
+        const restN   = o[O.REST_NAME];
+        const dp      = o[O.DRIVER_PHONE];
+        let isoDate = '';
+        if (o[O.TIME]) {
+            const d = new Date(o[O.TIME]);
+            if (!isNaN(d.getTime())) isoDate = d.toISOString().split('T')[0];
+        }
+        if (search    && !String(o[O.ID]).toLowerCase().includes(search)
+                     && !String(o[O.DETAILS]).toLowerCase().includes(search)
+                     && !String(restN).toLowerCase().includes(search)) return;
+        if (resFilter && restN !== resFilter) return;
+        if (drvFilter && String(dp) !== drvFilter) return;
+        if (dateFrom  && isoDate && isoDate < dateFrom) return;
+        if (dateTo    && isoDate && isoDate > dateTo)   return;
+
+        const rData = globalData.restaurants.find(r => r[R.NAME] === restN);
+        const comm  = rData ? (parseFloat(rData[R.COMMISSION]) || 0) : 0;
+        totalComm  += comm;
+        filtered.push(o);
+    });
+
+    const totalOrders  = filtered.length;
+    const totalPages   = Math.max(1, Math.ceil(totalOrders / ARC_PAGE_SIZE));
+    if (arcCurrentPage > totalPages) arcCurrentPage = totalPages;
+
+    const startIdx  = (arcCurrentPage - 1) * ARC_PAGE_SIZE;
+    const pageSlice = filtered.slice(startIdx, startIdx + ARC_PAGE_SIZE);
+
+    // بناء الصفوف
+    let html = '';
+    pageSlice.forEach(o => {
+        const orderId  = o[O.ID];
+        const restN    = o[O.REST_NAME];
+        const dp       = o[O.DRIVER_PHONE];
+        const price    = o[O.PRICE] || 0;
+        let isoDate = '', fmtDate = '---';
+        if (o[O.TIME]) {
+            const d = new Date(o[O.TIME]);
+            if (!isNaN(d.getTime())) {
+                isoDate = d.toISOString().split('T')[0];
+                fmtDate = d.toLocaleString('ar-EG');
+            }
+        }
+        const isSettled  = (o[O.STATUS] === 'settled');
+        const dData      = globalData.drivers.find(d => String(d[D.PHONE]) === String(dp));
+        const driverName = dData ? dData[D.NAME] : (dp || '---');
+        const rData      = globalData.restaurants.find(r => r[R.NAME] === restN);
+        const comm       = rData ? (parseFloat(rData[R.COMMISSION]) || 0) : 0;
+        const payType    = rData ? (rData[R.PAY_TYPE] || "المطعم يدفع") : "المطعم يدفع";
+        const od  = { id: orderId, date: fmtDate, res: restN, driver: driverName, details: o[O.DETAILS], price, comm, payType, isSettled };
+        const ds  = encodeURIComponent(JSON.stringify(od)).replace(/'/g, "%27");
+
+        html += `<tr onclick="openInvoice('${ds}')">
+            <td style="color:var(--primary); font-weight:900; font-size:0.82rem;">${escHtml(orderId) || '-'}</td>
+            <td style="font-size:0.76rem; color:var(--text-3);">${escHtml(isoDate) || '-'}</td>
+            <td style="font-weight:800; color:var(--text-1); max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escHtml(restN) || '-'}</td>
+            <td style="color:var(--text-2); font-size:0.8rem;">${escHtml(driverName)}</td>
+            <td style="font-weight:900; color:var(--success);">${escHtml(price)} <small style="color:var(--text-3); font-weight:700;">د.ع</small></td>
+            <td>
+                <span style="padding:4px 12px; border-radius:99px; font-size:0.72rem; font-weight:900; ${isSettled ? 'background:#f1f5f9; color:var(--text-3); border:1px solid var(--border);' : 'background:#e6faf3; color:var(--success); border:1px solid #a7f3d0;'}">
+                    ${isSettled ? 'مسدد' : 'مكتمل'}
+                </span>
+            </td>
+        </tr>`;
+    });
+
+    // ✅ Pagination controls
+    let paginationHtml = '';
+    if (totalPages > 1) {
+        const prevDisabled = arcCurrentPage <= 1 ? 'disabled' : '';
+        const nextDisabled = arcCurrentPage >= totalPages ? 'disabled' : '';
+        paginationHtml = `
+        <tr><td colspan="6" style="padding:12px; text-align:center; background:var(--primary-mist);">
+            <div style="display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap;">
+                <button ${prevDisabled} onclick="arcChangePage(${arcCurrentPage - 1})"
+                    style="background:var(--primary); color:white; border:none; padding:6px 16px; border-radius:12px; font-family:Cairo; font-weight:800; cursor:pointer; opacity:${arcCurrentPage<=1?'0.4':'1'};">
+                    ← السابق
+                </button>
+                <span style="font-weight:900; color:var(--text-1); font-size:0.88rem;">
+                    الصفحة ${arcCurrentPage} من ${totalPages}
+                    &nbsp;|&nbsp; إجمالي: <b>${totalOrders}</b> طلب
+                </span>
+                <button ${nextDisabled} onclick="arcChangePage(${arcCurrentPage + 1})"
+                    style="background:var(--primary); color:white; border:none; padding:6px 16px; border-radius:12px; font-family:Cairo; font-weight:800; cursor:pointer; opacity:${arcCurrentPage>=totalPages?'0.4':'1'};">
+                    التالي →
+                </button>
+            </div>
+        </td></tr>`;
+    }
+
+    document.getElementById('arcTotalCount').textContent = totalOrders;
+    document.getElementById('arcTotalComm').textContent  = totalComm;
+
+    const finalHtml = (html || `<tr><td colspan="6"><div class="empty-state" style="padding:32px;">
+        <div class="empty-icon"><i data-lucide="inbox" width="28" height="28"></i></div>
+        <div class="empty-title">لا توجد طلبات مطابقة</div>
+    </div></td></tr>`) + paginationHtml;
+
+    if (lastArchiveHtml !== finalHtml) {
+        document.getElementById('ordersTableBody').innerHTML = finalHtml;
+        safeIcon('ordersTableBody');
+        lastArchiveHtml = finalHtml;
+    }
+}
+
+function arcChangePage(page) {
+    arcCurrentPage = page;
+    renderArchive(false);
+    // تمرير إلى أعلى الجدول
+    const tableEl = document.getElementById('archiveTable');
+    if (tableEl) tableEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/* 🆕 تحديث الأرشيف يدوياً */
+async function forceArchiveRefresh(event) {
+    if (!ensureMasterPassword()) return; // ✅ تحقق
+    const btn = event.currentTarget;
+    btn.classList.add('btn-loading');
+    btn.disabled = true;
+    try {
+        // ✅ تشفير كلمة المرور
+        const res = await fetch(`${API_URL}?action=RUN_NIGHTLY_ARCHIVE&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`);
+        const data = await res.json();
+        if (data.success) {
+            showToast(`✅ تم تحديث الأرشيف! (${data.archivedCount || 0} طلب)`);
+            await refreshData();
+        } else {
+            showToast("فشل تحديث الأرشيف", "error");
+        }
+    } catch (e) {
+        showToast("خطأ في الاتصال", "error");
+    } finally {
+        btn.classList.remove('btn-loading');
+        btn.disabled = false;
+    }
+}
+
+/* ─── Invoice ─── */
+function openInvoice(dataStr) {
+    const d = JSON.parse(decodeURIComponent(dataStr));
+    document.getElementById('invOrderId').textContent = '#' + d.id;
+    document.getElementById('invDate').textContent    = d.date;
+    document.getElementById('invRes').textContent     = d.res;
+    document.getElementById('invDriver').textContent  = d.driver;
+    document.getElementById('invCust').textContent    = d.details;
+    document.getElementById('invPrice').textContent   = d.price + ' د.ع';
+    document.getElementById('invComm').textContent    = d.comm  + ' د.ع';
+    document.getElementById('invPayType').textContent = d.payType;
+    document.getElementById('invStatus').innerHTML    = d.isSettled
+        ? '<span class="sbadge sbadge-warn">تم تسوية الحساب</span>'
+        : '<span class="sbadge sbadge-success">مكتمل</span>';
+    document.getElementById('invoiceModal').style.display = 'flex';
+}
+function closeInvoice(e) {
+    if (!e || e.target.id === 'invoiceModal') document.getElementById('invoiceModal').style.display = 'none';
+}
+
+/* ─── Export ─── */
+function exportExcel() {
+    if (!globalData?.orders) return showToast("لا توجد بيانات", "error");
+
+    const search    = document.getElementById('arcSearch').value.trim().toLowerCase();
+    const resFilter = document.getElementById('arcRes').value;
+    const drvFilter = document.getElementById('arcDriver').value;
+    const dateFrom  = document.getElementById('arcDateFrom').value;
+    const dateTo    = document.getElementById('arcDateTo').value;
+
+    // ✅ تصدير جميع الطلبات المطابقة للفلتر الحالي (بدون حد)
+    const completed = globalData.orders.slice(1)
+        .filter(o => o[O.STATUS] === 'completed' || o[O.STATUS] === 'مكتمل' || o[O.STATUS] === 'settled')
+        .filter(o => {
+            const isoDate = o[O.TIME] ? new Date(o[O.TIME]).toISOString().split('T')[0] : '';
+            if (search    && !String(o[O.ID]).toLowerCase().includes(search)
+                         && !String(o[O.DETAILS]).toLowerCase().includes(search)
+                         && !String(o[O.REST_NAME]).toLowerCase().includes(search)) return false;
+            if (resFilter && o[O.REST_NAME] !== resFilter) return false;
+            if (drvFilter && String(o[O.DRIVER_PHONE]) !== drvFilter) return false;
+            if (dateFrom  && isoDate && isoDate < dateFrom) return false;
+            if (dateTo    && isoDate && isoDate > dateTo)   return false;
+            return true;
+        });
+
+    if (!completed.length) return showToast("لا توجد طلبات مكتملة للتصدير", "error");
+
+    let csv = '\uFEFF';
+    csv += "ID الطلب,التاريخ,المطعم,الكابتن,السعر,العمولة,نظام الدفع,الحالة\n";
+
+    completed.forEach(o => {
+        const dp = o[O.DRIVER_PHONE];
+        const dData = globalData.drivers.find(d => String(d[D.PHONE]) === String(dp));
+        const driverName = dData ? dData[D.NAME] : (dp || '---');
+        const date = o[O.TIME] ? new Date(o[O.TIME]).toLocaleString('ar-EG') : '---';
+        const rData  = globalData.restaurants.find(r => r[R.NAME] === o[O.REST_NAME]);
+        const comm   = rData ? (parseFloat(rData[R.COMMISSION]) || 0) : 0;
+        const payType= rData ? (rData[R.PAY_TYPE] || '') : '';
+        const esc = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+        csv += [esc(o[O.ID]), esc(date), esc(o[O.REST_NAME]), esc(driverName), esc(o[O.PRICE] || 0), esc(comm), esc(payType), esc(o[O.STATUS])].join(',') + '\n';
+    });
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = `تقرير_الحوت_${getLocalDateString()}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+    showToast(`✅ تم تصدير ${completed.length} طلب`);
+}
+
+/* ─── Map Init ─── */
+function initMap() {
+    const kirkuk = [35.468, 44.392];
+    map = L.map('adminMap', {
+        zoomControl: false,
+        attributionControl: false
+    }).setView(kirkuk, 13);
+
+    L.control.zoom({ position: 'bottomleft' }).addTo(map);
+    L.control.attribution({ position: 'bottomright', prefix: false })
+        .addAttribution('© OpenStreetMap')
+        .addTo(map);
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        maxZoom: 19,
+        subdomains: 'abcd'
+    }).addTo(map);
+
+    heatLayer = L.heatLayer([], {
+        radius: 28, blur: 18, maxZoom: 14,
+        gradient: { 0.3: '#fed7aa', 0.6: '#fb923c', 0.85: '#f97316', 1.0: '#ea580c' }
+    }).addTo(map);
+
+    restaurantMarkersLayer = L.layerGroup().addTo(map);
+
+    driverClusterGroup = L.markerClusterGroup({
+        iconCreateFunction(cluster) {
+            return L.divIcon({
+                html: `<div style="background:linear-gradient(135deg,var(--primary),var(--primary-dark));color:#fff;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:0.85rem;border:3px solid #fff;box-shadow:0 4px 14px rgba(59,158,221,0.4);">${cluster.getChildCount()}</div>`,
+                className: '',
+                iconSize: L.point(38, 38)
+            });
+        },
+        maxClusterRadius: 50,
+        spiderfyOnMaxZoom: true,
+        showCoverageOnHover: false,
+        zoomToBoundsOnClick: true,
+        spiderfyDistanceMultiplier: 1.5
+    });
+    map.addLayer(driverClusterGroup);
+
+    setTimeout(() => map.invalidateSize(), 350 + 50);
+}
+
+// 🆕 دالة تسجيل الخروج
+function performLogout() {
+    if (confirm("تأكيد تسجيل الخروج؟ سيتم إغلاق جميع الاتصالات.")) {
+        cleanupFirebaseListeners();
+        // مسح كلمة المرور والبيانات المؤقتة
+        masterPassword = "";
+        localOverrides = { orders: {}, drivers: {}, restaurants: {} };
+        localStorage.clear();
+        sessionStorage.clear();
+        location.reload();
+    }
+}
+
+// 🆕 تنظيف المستمعين عند الخروج
+function cleanupFirebaseListeners() {
+    firebaseListeners.forEach(({ ref, callback }) => {
+        ref.off('value', callback);
+    });
+    firebaseListeners = [];
+    // ✅ FIX: تنظيف مستمع system_alerts أيضاً
+    if (_alertsListenerActive) {
+        db.ref('system_alerts').off('value');
+        _alertsListenerActive = false;
+    }
+    if (dataRefreshInterval) {
+        clearInterval(dataRefreshInterval);
+        dataRefreshInterval = null;
+    }
+    if (tickerInterval) {
+        clearInterval(tickerInterval);
+        tickerInterval = null;
+    }
+}
+</script>
+</body>
+</html>
