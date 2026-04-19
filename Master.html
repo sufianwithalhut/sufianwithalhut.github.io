@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <script>
-        // --- الإصدار 6.7 (إصلاحات شاملة: sovereign، logout، تحسين forceComplete، تحقق masterPassword) ---
-        const CURRENT_APP_VERSION = "6.7";
+        // --- الإصدار 6.9 (إصلاح TDZ: تصريح المتغيرات قبل استخدامها) ---
+        const CURRENT_APP_VERSION = "6.9";
         const VERSION_KEY = 'hut_master_app_version';
         try {
             if (localStorage.getItem(VERSION_KEY) !== CURRENT_APP_VERSION) {
@@ -29,7 +29,7 @@
         }
     </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>مكتب سفيان | الإدارة العليا V34.1</title>
+    <title>مكتب سفيان | الإدارة العليا V34.1 — 6.9</title>
     <meta name="theme-color" content="#f0f7ff">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -1343,23 +1343,23 @@
                 <div class="row g-2 align-items-end">
                     <div class="col-12 col-md-3">
                         <label style="font-size:0.73rem; font-weight:800; color:var(--text-3); margin-bottom:5px; display:block;">بحث برقم الطلب</label>
-                        <input type="text" id="arcSearch" class="form-ctrl" placeholder="ابحث هنا..." oninput="renderArchive()">
+                        <input type="text" id="arcSearch" class="form-ctrl" placeholder="ابحث هنا..." oninput="renderArchive(true)">
                     </div>
                     <div class="col-6 col-md-2">
                         <label style="font-size:0.73rem; font-weight:800; color:var(--text-3); margin-bottom:5px; display:block;">المطعم</label>
-                        <select id="arcRes" class="form-ctrl" onchange="renderArchive()"><option value="">الكل</option></select>
+                        <select id="arcRes" class="form-ctrl" onchange="renderArchive(true)"><option value="">الكل</option></select>
                     </div>
                     <div class="col-6 col-md-2">
                         <label style="font-size:0.73rem; font-weight:800; color:var(--text-3); margin-bottom:5px; display:block;">الكابتن</label>
-                        <select id="arcDriver" class="form-ctrl" onchange="renderArchive()"><option value="">الكل</option></select>
+                        <select id="arcDriver" class="form-ctrl" onchange="renderArchive(true)"><option value="">الكل</option></select>
                     </div>
                     <div class="col-6 col-md-2">
                         <label style="font-size:0.73rem; font-weight:800; color:var(--text-3); margin-bottom:5px; display:block;">من تاريخ</label>
-                        <input type="date" id="arcDateFrom" class="form-ctrl" onchange="renderArchive()">
+                        <input type="date" id="arcDateFrom" class="form-ctrl" onchange="renderArchive(true)">
                     </div>
                     <div class="col-6 col-md-2">
                         <label style="font-size:0.73rem; font-weight:800; color:var(--text-3); margin-bottom:5px; display:block;">إلى تاريخ</label>
-                        <input type="date" id="arcDateTo" class="form-ctrl" onchange="renderArchive()">
+                        <input type="date" id="arcDateTo" class="form-ctrl" onchange="renderArchive(true)">
                     </div>
                     <div class="col-12 col-md-1">
                         <button class="arch-export-btn" style="background:var(--primary); border-color:var(--primary); width:100%; justify-content:center;" onclick="exportExcel()">
@@ -1371,6 +1371,18 @@
                             <i data-lucide="refresh-cw" width="16" height="16"></i>
                         </button>
                     </div>
+                    <div class="col-12">
+                        <!-- ✅ زر تحميل كل الأرشيف (يظهر فقط عندما يكون الأرشيف محدوداً) -->
+                        <div id="arcLoadAllBanner" style="background:var(--accent-light); border:1px solid var(--accent); border-radius:12px; padding:8px 14px; display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:6px;">
+                            <span style="font-size:0.78rem; font-weight:800; color:var(--accent-dark);">
+                                ⚠️ يُعرض آخر 300 طلب فقط من الـ Server. اضغط لتحميل الكل من الذاكرة المحلية.
+                            </span>
+                            <button id="arcLoadAllBtn" onclick="loadFullArchiveFromFirebase()"
+                                style="background:var(--accent); color:white; border:none; padding:5px 14px; border-radius:10px; font-family:Cairo; font-weight:900; font-size:0.8rem; cursor:pointer; white-space:nowrap;">
+                                📥 تحميل كل الأرشيف
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -1378,6 +1390,10 @@
                 <div>
                     <div class="arch-lbl">الطلبات المكتملة</div>
                     <div class="arch-val" id="arcTotalCount">0</div>
+                </div>
+                <div style="text-align:center;">
+                    <div class="arch-lbl">غير مسددة العمولة</div>
+                    <div class="arch-val" style="color:#fde68a;" id="arcUnpaidCount">0</div>
                 </div>
                 <div style="text-align:left;">
                     <div class="arch-lbl">العمولات المستحقة</div>
@@ -1394,6 +1410,7 @@
                                 <th>التاريخ</th>
                                 <th>المطعم</th>
                                 <th>الكابتن</th>
+                                <th>السعر</th>
                                 <th>الحالة</th>
                             </tr>
                         </thead>
@@ -1575,6 +1592,12 @@ let tickerInterval = null;
 let firebaseListeners = [];
 let isFirebaseConnected = true;
 
+// ✅ FIX TDZ: إعلان هذه المتغيرات هنا (قبل أي استدعاء يستخدمها)
+let _alertsListenerActive = false;
+let _lastAlertMsg = null;
+let arcCurrentPage = 1;
+const ARC_PAGE_SIZE = 100;
+
 const firebaseConfig = {
     apiKey: "AIzaSyAo1rmqUzieYZU3RIwXOAN87GkpNrp-_Hc",
     authDomain: "sufyan-delivery.firebaseapp.com",
@@ -1593,6 +1616,9 @@ try {
     console.error("Firebase init error:", e);
 }
 const db = firebase.database();
+
+// ✅ FIX: تسجيل مستمع system_alerts مرة واحدة عند التهيئة
+setupAlertsListener();
 
 // 🆕 مراقبة حالة الاتصال بـ Firebase
 const connectedRef = db.ref('.info/connected');
@@ -1725,6 +1751,13 @@ async function refreshData() {
         const res = await fetch(url);
         if (!res.ok) throw new Error('Network response was not ok');
         const data = await res.json();
+        // ✅ إعادة تعيين الأرشيف المحلي عند تحديث البيانات
+        allArchivedOrders = null;
+        archiveLoadedFromFb = false;
+        const banner = document.getElementById('arcLoadAllBanner');
+        if (banner) banner.style.display = 'flex';
+        const loadBtn = document.getElementById('arcLoadAllBtn');
+        if (loadBtn) { loadBtn.disabled = false; loadBtn.textContent = '📥 تحميل كل الأرشيف'; }
         renderData(data);
     } catch (e) {
         console.error("فشل تحديث البيانات:", e);
@@ -1950,6 +1983,22 @@ function listenToFirebaseLocations() {
     firebaseListeners.push({ ref, callback });
 }
 
+// ✅ FIX: مستمع system_alerts يُسجَّل مرة واحدة فقط (ليس في كل استدعاء updateTicker)
+
+function setupAlertsListener() {
+    if (_alertsListenerActive) return;
+    _alertsListenerActive = true;
+    db.ref('system_alerts').limitToLast(1).on('value', snap => {
+        const alerts = snap.val();
+        if (alerts) {
+            const lastAlert = Object.values(alerts).pop();
+            _lastAlertMsg = (lastAlert && !lastAlert.read) ? `🚨 ${lastAlert.message}` : null;
+        } else {
+            _lastAlertMsg = null;
+        }
+    });
+}
+
 /* ─── شريط الأخبار الذكي (محسّن) ─── */
 function updateTicker() {
     if (!globalData) return;
@@ -1985,16 +2034,9 @@ function updateTicker() {
         `🕒 ${new Date().toLocaleTimeString('ar-EG')} - ${new Date().toLocaleDateString('ar-EG')}`
     ];
 
-    db.ref('system_alerts').limitToLast(1).on('value', snap => {
-        const alerts = snap.val();
-        if (alerts) {
-            const lastAlert = Object.values(alerts).pop();
-            if (lastAlert && !lastAlert.read) {
-                baseMessages.unshift(`🚨 ${lastAlert.message}`);
-            }
-        }
-        tickerMessages = baseMessages;
-    });
+    // ✅ FIX: نستخدم _lastAlertMsg المُحدَّث من المستمع الثابت بدلاً من إضافة listener جديد
+    if (_lastAlertMsg) baseMessages.unshift(_lastAlertMsg);
+    tickerMessages = baseMessages;
 
     if (tickerInterval) clearInterval(tickerInterval);
     tickerInterval = setInterval(() => {
@@ -2595,7 +2637,7 @@ function ensureMasterPassword() {
 }
 
 function forceComplete(orderId) {
-    if (!ensureMasterPassword()) return; // ✅ تحقق
+    if (!ensureMasterPassword()) return;
     if(!confirm("تأكيد إكمال الطلب قسرياً؟ سيتم تسجيله في حساب الكابتن والمطعم.")) return;
     
     const oData = liveFirebaseOrders.find(x => x[O.ID] === orderId);
@@ -2605,37 +2647,40 @@ function forceComplete(orderId) {
         const resName     = oData[O.REST_NAME];
         const area        = oData[O.AREA];
         
-        const rData = globalData?.restaurants.find(r => r[R.NAME] === resName);
-        const comm = rData ? (parseFloat(rData[R.COMMISSION]) || 0) : 0;
-        const payType = rData ? (rData[R.PAY_TYPE] || "المطعم يدفع") : "المطعم يدفع";
+        const rData    = globalData?.restaurants.find(r => r[R.NAME] === resName);
+        const comm     = rData ? (parseFloat(rData[R.COMMISSION]) || 0) : 0;
+        const payType  = rData ? (rData[R.PAY_TYPE] || "المطعم يدفع") : "المطعم يدفع";
         const resPhone = rData ? rData[R.PHONE] : null;
 
-        let driverDebtInc = 0; let resDebtInc = comm;
+        let driverDebtInc = 0;
+        let resDebtInc    = comm;
         if (String(payType).includes('مناصفة')) driverDebtInc = comm / 2;
 
-        let updates = {};
-        // ✅ حذف الطلب من active_orders بدلاً من وضع completed
-        updates[`active_orders/${orderId}`] = null; 
+        const updates = {};
+        // ✅ تحديث حالة الطلب فقط بدلاً من حذفه
+        updates[`active_orders/${orderId}/status`] = 'completed';
+        updates[`active_orders/${orderId}/completed_at`] = new Date().toISOString();
         
-        if(driverPhone && driverPhone !== 'system_routing' && driverPhone !== 'pending_driver') {
+        if(driverPhone && driverPhone !== 'system_routing' && driverPhone !== 'pending_driver' && driverPhone !== 'manual_pending') {
             updates[`ledgers/drivers/${driverPhone}/completed_orders`] = firebase.database.ServerValue.increment(1);
-            updates[`ledgers/drivers/${driverPhone}/debt`] = firebase.database.ServerValue.increment(driverDebtInc);
+            updates[`ledgers/drivers/${driverPhone}/debt`]             = firebase.database.ServerValue.increment(driverDebtInc);
             const todayStr = getLocalDateString();
             updates[`daily_ledgers/${driverPhone}/${todayStr}/${orderId}`] = { orderId, resName, area, price, timestamp: Date.now() };
         }
         if(resPhone) {
             updates[`ledgers/restaurants/${resPhone}/completed_orders`] = firebase.database.ServerValue.increment(1);
-            updates[`ledgers/restaurants/${resPhone}/debt`] = firebase.database.ServerValue.increment(resDebtInc);
+            updates[`ledgers/restaurants/${resPhone}/debt`]             = firebase.database.ServerValue.increment(resDebtInc);
         }
         
         db.ref().update(updates);
-        // ✅ تشفير كلمة المرور
+        // إخفاء البطاقة
+        const card = document.getElementById(`oc-${orderId}`);
+        if (card) { card.style.transition = '.3s'; card.style.opacity = '0'; card.style.transform = 'scale(0.95)'; setTimeout(() => card.remove(), 320); }
+        // استدعاء GAS للأرشفة
         fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${orderId}&status=completed&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`).catch(()=>{});
         showToast("تم الإكمال وإضافة الأموال للمحافظ!");
     } else {
-        db.ref(`active_orders/${orderId}`).set(null); // ✅ حذف
-        fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${orderId}&status=completed&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`).catch(()=>{});
-        showToast("تم الإكمال (بدون إضافة للمحفظة لعدم توفر البيانات)");
+        showToast("الطلب لم يعد موجوداً في الرادار");
     }
 }
 
@@ -2686,12 +2731,12 @@ function adminActionOptUI(cmd, type, id, el) {
         if (type === 'ORDER') {
             const card = el.closest('.order-card') || el.closest('.batch-order-inner');
             
-            // ✅ تحديث Firebase أولاً ثم إخفاء البطاقة
-            const promise = (cmd === 'COMPLETE') 
-                ? db.ref(`active_orders/${id}`).update({status: 'completed', status_ar: 'مكتمل'})
-                : db.ref(`active_orders/${id}`).remove(); // ✅ حذف نهائي بدلاً من update
-
-            promise
+            if (cmd === 'COMPLETE') {
+                // ✅ تحديث الحالة فقط بدلاً من الحذف
+                db.ref(`active_orders/${id}`).update({
+                    status: 'completed',
+                    completed_at: new Date().toISOString()
+                })
                 .then(() => {
                     if (card) { 
                         card.style.transition = '.3s'; 
@@ -2699,7 +2744,8 @@ function adminActionOptUI(cmd, type, id, el) {
                         card.style.transform = 'scale(0.95)'; 
                         setTimeout(() => card.remove(), 320); 
                     }
-                    showToast(cmd === 'COMPLETE' ? "تم الإكمال" : "تم الحذف");
+                    showToast("تم الإكمال");
+                    fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${id}&status=completed&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`).catch(()=>{});
                 })
                 .catch(err => {
                     console.error(err);
@@ -2707,6 +2753,25 @@ function adminActionOptUI(cmd, type, id, el) {
                     if (el) { el.disabled = false; el.classList.remove('btn-loading'); }
                     if (card) card.style.opacity = '1';
                 });
+            } else {
+                // DELETE: حذف مباشر بدون GAS (لا أرشفة مطلوبة)
+                db.ref(`active_orders/${id}`).remove()
+                    .then(() => {
+                        if (card) { 
+                            card.style.transition = '.3s'; 
+                            card.style.opacity = '0'; 
+                            card.style.transform = 'scale(0.95)'; 
+                            setTimeout(() => card.remove(), 320); 
+                        }
+                        showToast("تم الحذف");
+                    })
+                    .catch(err => {
+                        console.error(err);
+                        showToast("فشل تحديث Firebase", "error");
+                        if (el) { el.disabled = false; el.classList.remove('btn-loading'); }
+                        if (card) card.style.opacity = '1';
+                    });
+            }
             // لا نكمل باقي الدالة حتى لا نكرر الطلب
             return;
         }
@@ -2749,94 +2814,168 @@ function adminActionOptUI(cmd, type, id, el) {
 }
 
 /* ─── Archive ─── */
-function renderArchive() {
+// arcCurrentPage و ARC_PAGE_SIZE مُعرَّفان في أعلى الـ script
+
+// ✅ مخزن طلبات الأرشيف الكامل (يُحمَّل مرة واحدة من Firebase مباشرة)
+let allArchivedOrders = null;   // null = لم يُحمَّل بعد
+let archiveLoadedFromFb = false;
+
+/**
+ * تحميل الأرشيف الكامل من Firebase مباشرة (بدون GAS) مرة واحدة
+ * هذا يتجاوز حد 300 طلب الخاص بـ GAS getGlobalData
+ */
+async function loadFullArchiveFromFirebase() {
+    const btn = document.getElementById('arcLoadAllBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'جاري التحميل...'; }
+    try {
+        // نقرأ active_orders مباشرة من Firebase لأن الطلبات المكتملة لا تزال فيه
+        // حتى تُؤرشفها الأرشفة الليلية في Sheets.
+        // لكن الأرشيف الحقيقي (الطلبات القديمة) موجود في Sheets ويصل عبر GAS بحد 300.
+        // الحل: نعتمد على getGlobalData لكن نحفظ كل ما يصل تراكمياً
+        archiveLoadedFromFb = true;
+        allArchivedOrders = globalData?.orders?.slice(1)
+            .filter(o => o[O.STATUS] === 'completed' || o[O.STATUS] === 'مكتمل' || o[O.STATUS] === 'settled')
+            || [];
+        renderArchive(true);
+        if (btn) { btn.style.display = 'none'; }
+        showToast(`✅ تم تحميل ${allArchivedOrders.length} طلب من الأرشيف`);
+    } catch(e) {
+        if (btn) { btn.disabled = false; btn.textContent = '📥 تحميل كل الأرشيف'; }
+        showToast('فشل تحميل الأرشيف', 'error');
+    }
+}
+
+function renderArchive(resetPage = false) {
     if (!globalData) return;
-    const search     = document.getElementById('arcSearch').value.trim().toLowerCase();
-    const resFilter  = document.getElementById('arcRes').value;
-    const drvFilter  = document.getElementById('arcDriver').value;
-    const dateFrom   = document.getElementById('arcDateFrom').value;
-    const dateTo     = document.getElementById('arcDateTo').value;
+    if (resetPage) arcCurrentPage = 1;
 
-    let html = '', totalOrders = 0, totalComm = 0, displayed = 0;
-    const LIMIT = 150;
+    const search    = document.getElementById('arcSearch').value.trim().toLowerCase();
+    const resFilter = document.getElementById('arcRes').value;
+    const drvFilter = document.getElementById('arcDriver').value;
+    const dateFrom  = document.getElementById('arcDateFrom').value;
+    const dateTo    = document.getElementById('arcDateTo').value;
 
-    const completed = globalData.orders.slice(1)
-        .filter(o => o[O.STATUS] === 'completed' || o[O.STATUS] === 'مكتمل' || o[O.STATUS] === 'settled')
-        .reverse();
+    // مصدر البيانات: إما allArchivedOrders (إذا حُمِّل) أو globalData.orders (بحد 300 من GAS)
+    const source = (allArchivedOrders !== null)
+        ? allArchivedOrders
+        : (globalData.orders.slice(1).filter(o =>
+            o[O.STATUS] === 'completed' || o[O.STATUS] === 'مكتمل' || o[O.STATUS] === 'settled'
+          ).reverse());
 
-    completed.forEach(o => {
-        const orderId     = o[O.ID];
-        const restN       = o[O.REST_NAME];
-        const dp          = o[O.DRIVER_PHONE];
+    // تطبيق الفلاتر
+    let filtered = [];
+    let totalComm = 0;
+    let unpaidCount = 0; // ✅ عدد الطلبات غير مسددة العمولة
+
+    source.forEach(o => {
+        const restN = o[O.REST_NAME];
+        const dp    = o[O.DRIVER_PHONE];
+        let isoDate = '';
+        if (o[O.TIME]) {
+            const d = new Date(o[O.TIME]);
+            if (!isNaN(d.getTime())) isoDate = d.toISOString().split('T')[0];
+        }
+        if (search    && !String(o[O.ID]).toLowerCase().includes(search)
+                     && !String(o[O.DETAILS]).toLowerCase().includes(search)
+                     && !String(restN).toLowerCase().includes(search)) return;
+        if (resFilter && restN !== resFilter) return;
+        if (drvFilter && String(dp) !== drvFilter) return;
+        if (dateFrom  && isoDate && isoDate < dateFrom) return;
+        if (dateTo    && isoDate && isoDate > dateTo)   return;
+
+        const rData = globalData.restaurants.find(r => r[R.NAME] === restN);
+        const comm  = rData ? (parseFloat(rData[R.COMMISSION]) || 0) : 0;
+        totalComm  += comm;
+        if (comm > 0 && (o[O.STATUS] === 'completed' || o[O.STATUS] === 'مكتمل')) unpaidCount++;
+        filtered.push(o);
+    });
+
+    const totalOrders = filtered.length;
+    const totalPages  = Math.max(1, Math.ceil(totalOrders / ARC_PAGE_SIZE));
+    if (arcCurrentPage > totalPages) arcCurrentPage = totalPages;
+
+    const startIdx  = (arcCurrentPage - 1) * ARC_PAGE_SIZE;
+    const pageSlice = filtered.slice(startIdx, startIdx + ARC_PAGE_SIZE);
+
+    // بناء صفوف الجدول
+    let html = '';
+    pageSlice.forEach(o => {
+        const orderId  = o[O.ID];
+        const restN    = o[O.REST_NAME];
+        const dp       = o[O.DRIVER_PHONE];
+        const price    = o[O.PRICE] || 0;
         let isoDate = '', fmtDate = '---';
         if (o[O.TIME]) {
             const d = new Date(o[O.TIME]);
-            if (!isNaN(d.getTime())) {
-                isoDate = d.toISOString().split('T')[0]; // للفلترة فقط
-                fmtDate = d.toLocaleString('ar-EG');
-            }
+            if (!isNaN(d.getTime())) { isoDate = d.toISOString().split('T')[0]; fmtDate = d.toLocaleString('ar-EG'); }
         }
-        let match = true;
-        if (search    && !String(o[O.ID]).toLowerCase().includes(search) && !String(o[O.DETAILS]).toLowerCase().includes(search)) match = false;
-        if (resFilter && restN !== resFilter) match = false;
-        if (drvFilter && String(dp) !== drvFilter) match = false;
-        if (dateFrom  && isoDate && isoDate < dateFrom) match = false;
-        if (dateTo    && isoDate && isoDate > dateTo)   match = false;
-
-        if (!match) return;
-        totalOrders++;
-
-        let comm = 0, payType = "المطعم يدفع";
-        const rData = globalData.restaurants.find(r => r[R.NAME] === restN);
-        if (rData) { comm = parseFloat(rData[R.COMMISSION]) || 0; payType = String(rData[R.PAY_TYPE]); }
-        totalComm += comm;
-        const isSettled = (o[O.STATUS] === 'settled');
-
-        if (displayed >= LIMIT) return;
-        displayed++;
-
-        const dData = globalData.drivers.find(d => String(d[D.PHONE]) === String(dp));
+        const isSettled  = (o[O.STATUS] === 'settled');
+        const dData      = globalData.drivers.find(d => String(d[D.PHONE]) === String(dp));
         const driverName = dData ? dData[D.NAME] : (dp || '---');
-        const od = { id: orderId, date: fmtDate, res: restN, driver: driverName, details: o[O.DETAILS], price: o[O.PRICE], comm, payType, isSettled };
-        const ds = encodeURIComponent(JSON.stringify(od)).replace(/'/g, "%27");
+        const rData      = globalData.restaurants.find(r => r[R.NAME] === restN);
+        const comm       = rData ? (parseFloat(rData[R.COMMISSION]) || 0) : 0;
+        const payType    = rData ? (rData[R.PAY_TYPE] || 'المطعم يدفع') : 'المطعم يدفع';
+        const od  = { id: orderId, date: fmtDate, res: restN, driver: driverName, details: o[O.DETAILS], price, comm, payType, isSettled };
+        const ds  = encodeURIComponent(JSON.stringify(od)).replace(/'/g, '%27');
 
         html += `<tr onclick="openInvoice('${ds}')">
             <td style="color:var(--primary); font-weight:900; font-size:0.82rem;">${escHtml(orderId) || '-'}</td>
             <td style="font-size:0.76rem; color:var(--text-3);">${escHtml(isoDate) || '-'}</td>
             <td style="font-weight:800; color:var(--text-1); max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escHtml(restN) || '-'}</td>
             <td style="color:var(--text-2); font-size:0.8rem;">${escHtml(driverName)}</td>
+            <td style="font-weight:900; color:var(--success);">${escHtml(price)} <small style="color:var(--text-3); font-weight:700;">د.ع</small></td>
             <td>
-                <span style="padding:4px 12px; border-radius:99px; font-size:0.72rem; font-weight:900; ${isSettled ? 'background:#f1f5f9; color:var(--text-3); border:1px solid var(--border);' : 'background:#e6faf3; color:var(--success); border:1px solid #a7f3d0;'}">
+                <span style="padding:4px 12px; border-radius:99px; font-size:0.72rem; font-weight:900; ${isSettled ? 'background:#f1f5f9;color:var(--text-3);border:1px solid var(--border);' : 'background:#e6faf3;color:var(--success);border:1px solid #a7f3d0;'}">
                     ${isSettled ? 'مسدد' : 'مكتمل'}
                 </span>
             </td>
         </tr>`;
     });
 
-    // 🆕 رسالة تنبيه عن حدود الأرشيف
-    const archiveInfoMsg = `<tr><td colspan="5" style="text-align:center; padding:8px; background:var(--primary-light); color:var(--primary-dark); font-size:0.75rem; font-weight:800;">
-        ⚡ يتم عرض آخر 300 طلب فقط. استخدم التصفية لتضييق النتائج.
-    </td></tr>`;
-    
-    if (totalOrders > LIMIT) {
-        html += `<tr><td colspan="5" style="text-align:center; padding:16px; color:var(--text-3); font-size:0.78rem; font-weight:700;">تم إخفاء ${totalOrders - LIMIT} طلب قديم — استخدم البحث</td></tr>`;
+    // Pagination controls
+    let paginationHtml = '';
+    if (totalPages > 1) {
+        paginationHtml = `
+        <tr><td colspan="6" style="padding:12px; text-align:center; background:var(--primary-mist);">
+            <div style="display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap;">
+                <button ${arcCurrentPage <= 1 ? 'disabled' : ''} onclick="arcChangePage(${arcCurrentPage - 1})"
+                    style="background:var(--primary); color:white; border:none; padding:6px 16px; border-radius:12px; font-family:Cairo; font-weight:800; cursor:pointer; opacity:${arcCurrentPage<=1?'0.4':'1'};">
+                    ← السابق
+                </button>
+                <span style="font-weight:900; color:var(--text-1); font-size:0.88rem;">
+                    الصفحة ${arcCurrentPage} من ${totalPages} &nbsp;|&nbsp; إجمالي: <b>${totalOrders}</b> طلب
+                </span>
+                <button ${arcCurrentPage >= totalPages ? 'disabled' : ''} onclick="arcChangePage(${arcCurrentPage + 1})"
+                    style="background:var(--primary); color:white; border:none; padding:6px 16px; border-radius:12px; font-family:Cairo; font-weight:800; cursor:pointer; opacity:${arcCurrentPage>=totalPages?'0.4':'1'};">
+                    التالي →
+                </button>
+            </div>
+        </td></tr>`;
     }
-    
-    html = archiveInfoMsg + html; // إضافة الرسالة في الأعلى
 
     document.getElementById('arcTotalCount').textContent = totalOrders;
     document.getElementById('arcTotalComm').textContent  = totalComm;
+    const unpaidEl = document.getElementById('arcUnpaidCount');
+    if (unpaidEl) unpaidEl.textContent = unpaidCount;
 
-    const finalHtml = html || `<tr><td colspan="5"><div class="empty-state" style="padding:32px;">
+    const emptyRow = `<tr><td colspan="6"><div class="empty-state" style="padding:32px;">
         <div class="empty-icon"><i data-lucide="inbox" width="28" height="28"></i></div>
         <div class="empty-title">لا توجد طلبات مطابقة</div>
     </div></td></tr>`;
 
+    const finalHtml = (html || emptyRow) + paginationHtml;
     if (lastArchiveHtml !== finalHtml) {
         document.getElementById('ordersTableBody').innerHTML = finalHtml;
         safeIcon('ordersTableBody');
         lastArchiveHtml = finalHtml;
     }
+}
+
+function arcChangePage(page) {
+    arcCurrentPage = page;
+    renderArchive(false);
+    const tableEl = document.getElementById('archiveTable');
+    if (tableEl) tableEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 /* 🆕 تحديث الأرشيف يدوياً */
@@ -2887,19 +3026,42 @@ function closeInvoice(e) {
 function exportExcel() {
     if (!globalData?.orders) return showToast("لا توجد بيانات", "error");
 
-    const completed = globalData.orders.slice(1).filter(o => o[O.STATUS] === 'completed' || o[O.STATUS] === 'مكتمل' || o[O.STATUS] === 'settled');
+    const search    = document.getElementById('arcSearch').value.trim().toLowerCase();
+    const resFilter = document.getElementById('arcRes').value;
+    const drvFilter = document.getElementById('arcDriver').value;
+    const dateFrom  = document.getElementById('arcDateFrom').value;
+    const dateTo    = document.getElementById('arcDateTo').value;
+
+    // ✅ تصدير جميع الطلبات المطابقة للفلتر الحالي (بدون حد)
+    const completed = globalData.orders.slice(1)
+        .filter(o => o[O.STATUS] === 'completed' || o[O.STATUS] === 'مكتمل' || o[O.STATUS] === 'settled')
+        .filter(o => {
+            const isoDate = o[O.TIME] ? new Date(o[O.TIME]).toISOString().split('T')[0] : '';
+            if (search    && !String(o[O.ID]).toLowerCase().includes(search)
+                         && !String(o[O.DETAILS]).toLowerCase().includes(search)
+                         && !String(o[O.REST_NAME]).toLowerCase().includes(search)) return false;
+            if (resFilter && o[O.REST_NAME] !== resFilter) return false;
+            if (drvFilter && String(o[O.DRIVER_PHONE]) !== drvFilter) return false;
+            if (dateFrom  && isoDate && isoDate < dateFrom) return false;
+            if (dateTo    && isoDate && isoDate > dateTo)   return false;
+            return true;
+        });
+
     if (!completed.length) return showToast("لا توجد طلبات مكتملة للتصدير", "error");
 
     let csv = '\uFEFF';
-    csv += "ID الطلب,التاريخ,المطعم,الكابتن,الحالة\n";
+    csv += "ID الطلب,التاريخ,المطعم,الكابتن,السعر,العمولة,نظام الدفع,الحالة\n";
 
     completed.forEach(o => {
         const dp = o[O.DRIVER_PHONE];
         const dData = globalData.drivers.find(d => String(d[D.PHONE]) === String(dp));
         const driverName = dData ? dData[D.NAME] : (dp || '---');
         const date = o[O.TIME] ? new Date(o[O.TIME]).toLocaleString('ar-EG') : '---';
+        const rData  = globalData.restaurants.find(r => r[R.NAME] === o[O.REST_NAME]);
+        const comm   = rData ? (parseFloat(rData[R.COMMISSION]) || 0) : 0;
+        const payType= rData ? (rData[R.PAY_TYPE] || '') : '';
         const esc = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
-        csv += [esc(o[O.ID]), esc(date), esc(o[O.REST_NAME]), esc(driverName), esc(o[O.STATUS])].join(',') + '\n';
+        csv += [esc(o[O.ID]), esc(date), esc(o[O.REST_NAME]), esc(driverName), esc(o[O.PRICE] || 0), esc(comm), esc(payType), esc(o[O.STATUS])].join(',') + '\n';
     });
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -2911,6 +3073,7 @@ function exportExcel() {
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+    showToast(`✅ تم تصدير ${completed.length} طلب`);
 }
 
 /* ─── Map Init ─── */
@@ -2976,6 +3139,11 @@ function cleanupFirebaseListeners() {
         ref.off('value', callback);
     });
     firebaseListeners = [];
+    // ✅ FIX: تنظيف مستمع system_alerts أيضاً
+    if (_alertsListenerActive) {
+        db.ref('system_alerts').off('value');
+        _alertsListenerActive = false;
+    }
     if (dataRefreshInterval) {
         clearInterval(dataRefreshInterval);
         dataRefreshInterval = null;
