@@ -2,9 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 9.4 (إصلاح 8 مشاكل + استقبال إشعار جهوزية الطلب) ---
-        const CURRENT_APP_VERSION = "9.4";
-        // ✅ BUG 7 FIX: try/catch يمنع حلقة reload لا نهائية إذا فشل localStorage
+        // --- إصدار 9.5 (إصلاح إزالة الطلب المكتمل + استقبال إشعار جهوزية الطلب) ---
+        const CURRENT_APP_VERSION = "9.5";
         try {
             if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
                 localStorage.setItem('hut_app_version', CURRENT_APP_VERSION);
@@ -806,17 +805,24 @@
             const activeFbOrders = snap.val() || {};
             const myId = String(driverData.phone).replace(/^0+/, '').trim();
 
-            // فحص سحب الطلبات من عندي
+            // ✅ فحص سحب الطلبات أو إكمالها
             for (let i = activeOrders.length - 1; i >= 0; i--) {
                 const myOrder  = activeOrders[i];
                 const fbOrder  = activeFbOrders[myOrder.id];
                 if (!fbOrder) {
                     forceRemoveActiveOrder("تم حذف هذا الطلب أو إنهاءه.", myOrder.id);
-                } else {
-                    const fbPhone = String(fbOrder.driverPhone || "").replace(/^0+/, '').trim();
-                    if (fbPhone !== myId && fbOrder.status !== 'completed') {
-                        forceRemoveActiveOrder("تم سحب الطلب وتعيينه لكابتن آخر.", myOrder.id);
-                    }
+                    continue;
+                }
+                
+                // ✅ إزالة الطلب إذا اكتمل
+                if (fbOrder.status === 'completed' || fbOrder.status === 'مكتمل' || fbOrder.status === 'deleted') {
+                    forceRemoveActiveOrder("تم إنهاء الطلب", myOrder.id);
+                    continue;
+                }
+                
+                const fbPhone = String(fbOrder.driverPhone || "").replace(/^0+/, '').trim();
+                if (fbPhone !== myId) {
+                    forceRemoveActiveOrder("تم سحب الطلب وتعيينه لكابتن آخر.", myOrder.id);
                 }
             }
 
@@ -827,23 +833,16 @@
                 const orderId = String(myOrder.id);
                 if (fbOrder.ready_for_pickup === true && !readyNotifiedOrders.has(orderId)) {
                     readyNotifiedOrders.add(orderId);
-                    // تحديث حالة الطلب المحلي
                     myOrder.readyForPickup = true;
                     localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
-                    // تشغيل صوت وعرض إشعار
                     const rAudio = document.getElementById('readySound');
                     if (rAudio) { rAudio.currentTime = 0; rAudio.play().catch(() => {}); }
                     showToast(`🍽️ طلبيتك جاهزة في <b>${myOrder.resName}</b>!<br>توجّه للاستلام فوراً`, 'info');
-                    // إرسال push notification إذا كانت متاحة
                     if ("Notification" in window && Notification.permission === "granted") {
-                        new Notification("🍽️ الطلبية جاهزة!", {
-                            body: `طلبيتك في ${myOrder.resName} جاهزة للاستلام`,
-                            icon: "/driver-logo.png"
-                        });
+                        new Notification("🍽️ الطلبية جاهزة!", { body: `طلبيتك في ${myOrder.resName} جاهزة للاستلام`, icon: "/driver-logo.png" });
                     }
-                    displayActiveOrders(); // إعادة رسم البطاقة لإظهار شارة الجهوزية
+                    displayActiveOrders();
                 }
-                // إذا أُلغيت الجهوزية من المطعم
                 if (fbOrder.ready_for_pickup === false && readyNotifiedOrders.has(orderId)) {
                     readyNotifiedOrders.delete(orderId);
                     myOrder.readyForPickup = false;
@@ -896,7 +895,6 @@
         });
     }
 
-    // ✅ BUG 5 FIX: استبدال lucide icon بـ SVG مباشر
     function showBroadcastModal(message) {
         const overlay = document.createElement('div');
         overlay.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:50000; display:flex; align-items:center; justify-content:center; padding:20px;';
@@ -919,7 +917,6 @@
             let rem = Math.ceil((currentOrderData.expireTime - Date.now()) / 1000);
             if (rem < 0) rem = 0;
             document.getElementById('seconds').innerText = rem;
-            // ✅ نستخدم totalMs الحقيقي لحساب نسبة الدائرة
             const totalSec = Math.ceil(totalMs / 1000);
             if (circle) circle.style.strokeDashoffset = 471 - (rem * (471 / Math.max(totalSec, 1)));
             if (rem <= 0) window.declineOrder();
@@ -955,7 +952,6 @@
         clearInterval(countdownInterval);
         window.muteAlarmOnly();
 
-        // ✅ BUG 6 FIX: نسجّل القبول مرة واحدة فقط في finalizeAccept لا هنا
         setTimeout(async () => {
             try {
                 if (!currentOrderData.resPhone || !currentOrderData.resLat) {
@@ -981,7 +977,6 @@
         const newO = {
             id            : currentOrderData.id,
             resName       : currentOrderData.resName,
-            // ✅ BUG 2 FIX: لا نسقط على منطقة الزبون أبداً
             resArea       : currentOrderData.resArea || null,
             details       : String(currentOrderData.details),
             price         : parseFloat(currentOrderData.price) || 0,
@@ -1001,7 +996,6 @@
         localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
         displayActiveOrders();
 
-        // ✅ BUG 6 FIX: كتابة واحدة فقط (حُذفت الكتابة المزدوجة من acceptOrder)
         const updates = {};
         updates[`active_orders/${newO.id}/status`]      = 'accepted';
         updates[`active_orders/${newO.id}/driverPhone`] = driverData.phone;
@@ -1052,19 +1046,16 @@
             const custMatch   = safeDetails.match(/(07[0-9]{8,9})/);
             const custPhoneNum= custMatch ? String(custMatch[0]) : null;
             const waCustHtml  = custPhoneNum ? `<button class="btn-action-pill whatsapp" onclick="window.openSmartWhatsapp('${custPhoneNum}', '${order.resName}', '${order.area}', '${order.id}')">${svgWa} رسالة للزبون</button>` : '';
-            // ✅ BUG 1 FIX: "من" بدل "de"
             const badgeHtml   = isDouble
                 ? `<div class="order-badge double">طلب مزدوج (${index + 1} من ${activeOrders.length})</div>`
                 : `<div class="order-badge">طلب حصري</div>`;
             const photoBtnHtml= (order.photoUrl && String(order.photoUrl).startsWith("http"))
                 ? `<button class="btn-photo-view" onclick="window.openSafeLink('${order.photoUrl}')">${svgImg} عرض صورة الوصل</button>` : '';
 
-            // ✅ NEW: شارة جهوزية الطلب
             const readyBannerHtml = order.readyForPickup
                 ? `<div class="ready-banner">${svgBell}<span class="ready-banner-text">🍽️ الطلبية جاهزة في المطعم — توجّه الآن للاستلام!</span></div>`
                 : '';
 
-            // ✅ BUG 3 FIX: عنوان الاستلام يعرض منطقة المطعم (resArea) لا منطقة الزبون
             const pickupAreaLabel = order.resArea ? order.resArea : 'موقع المطعم';
 
             html += `
