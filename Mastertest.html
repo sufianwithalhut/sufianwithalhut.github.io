@@ -1391,6 +1391,10 @@
                     <div class="arch-lbl">الطلبات المكتملة</div>
                     <div class="arch-val" id="arcTotalCount">0</div>
                 </div>
+                <div style="text-align:center;">
+                    <div class="arch-lbl">غير مسددة العمولة</div>
+                    <div class="arch-val" style="color:#fde68a;" id="arcUnpaidCount">0</div>
+                </div>
                 <div style="text-align:left;">
                     <div class="arch-lbl">العمولات المستحقة</div>
                     <div class="arch-val"><span id="arcTotalComm">0</span> <span style="font-size:1rem; opacity:0.8;">د.ع</span></div>
@@ -2860,6 +2864,7 @@ function renderArchive(resetPage = false) {
     // تطبيق الفلاتر
     let filtered = [];
     let totalComm = 0;
+    let unpaidCount = 0; // ✅ عدد الطلبات غير مسددة العمولة
 
     source.forEach(o => {
         const restN = o[O.REST_NAME];
@@ -2878,7 +2883,9 @@ function renderArchive(resetPage = false) {
         if (dateTo    && isoDate && isoDate > dateTo)   return;
 
         const rData = globalData.restaurants.find(r => r[R.NAME] === restN);
-        totalComm  += rData ? (parseFloat(rData[R.COMMISSION]) || 0) : 0;
+        const comm  = rData ? (parseFloat(rData[R.COMMISSION]) || 0) : 0;
+        totalComm  += comm;
+        if (comm > 0 && (o[O.STATUS] === 'completed' || o[O.STATUS] === 'مكتمل')) unpaidCount++;
         filtered.push(o);
     });
 
@@ -2947,6 +2954,8 @@ function renderArchive(resetPage = false) {
 
     document.getElementById('arcTotalCount').textContent = totalOrders;
     document.getElementById('arcTotalComm').textContent  = totalComm;
+    const unpaidEl = document.getElementById('arcUnpaidCount');
+    if (unpaidEl) unpaidEl.textContent = unpaidCount;
 
     const emptyRow = `<tr><td colspan="6"><div class="empty-state" style="padding:32px;">
         <div class="empty-icon"><i data-lucide="inbox" width="28" height="28"></i></div>
