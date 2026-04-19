@@ -2657,8 +2657,9 @@ function forceComplete(orderId) {
         if (String(payType).includes('مناصفة')) driverDebtInc = comm / 2;
 
         const updates = {};
-        // ✅ FIX: حذف الطلب من Firebase فوراً
-        updates[`active_orders/${orderId}`] = null;
+        // ✅ تحديث حالة الطلب فقط بدلاً من حذفه
+        updates[`active_orders/${orderId}/status`] = 'completed';
+        updates[`active_orders/${orderId}/completed_at`] = new Date().toISOString();
         
         if(driverPhone && driverPhone !== 'system_routing' && driverPhone !== 'pending_driver' && driverPhone !== 'manual_pending') {
             updates[`ledgers/drivers/${driverPhone}/completed_orders`] = firebase.database.ServerValue.increment(1);
@@ -2672,16 +2673,14 @@ function forceComplete(orderId) {
         }
         
         db.ref().update(updates);
-
-        // ✅ FIX: استدعاء GAS لأرشفة الطلب في Orders sheet قبل حذفه
-        // GAS ستقرأ البيانات الكاملة من Firebase وتكتبها في Sheets
+        // إخفاء البطاقة
+        const card = document.getElementById(`oc-${orderId}`);
+        if (card) { card.style.transition = '.3s'; card.style.opacity = '0'; card.style.transform = 'scale(0.95)'; setTimeout(() => card.remove(), 320); }
+        // استدعاء GAS للأرشفة
         fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${orderId}&status=completed&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`).catch(()=>{});
         showToast("تم الإكمال وإضافة الأموال للمحافظ!");
     } else {
-        // ✅ FIX: الطلب غير موجود → احذف فقط بدون استدعاء GAS
-        // (لا يوجد شيء لأرشفته إذا لم يكن الطلب موجوداً في Firebase)
-        db.ref(`active_orders/${orderId}`).remove();
-        showToast("تم الحذف (الطلب لم يعد موجوداً في الرادار)");
+        showToast("الطلب لم يعد موجوداً في الرادار");
     }
 }
 
@@ -2733,25 +2732,27 @@ function adminActionOptUI(cmd, type, id, el) {
             const card = el.closest('.order-card') || el.closest('.batch-order-inner');
             
             if (cmd === 'COMPLETE') {
-                // ✅ FIX: للـ COMPLETE — نحذف من Firebase ثم نستدعي GAS للأرشفة
-                db.ref(`active_orders/${id}`).remove()
-                    .then(() => {
-                        if (card) { 
-                            card.style.transition = '.3s'; 
-                            card.style.opacity = '0'; 
-                            card.style.transform = 'scale(0.95)'; 
-                            setTimeout(() => card.remove(), 320); 
-                        }
-                        showToast("تم الإكمال");
-                        // GAS تقرأ الطلب قبل الحذف وتؤرشفه في Sheets
-                        fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${id}&status=completed&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`).catch(()=>{});
-                    })
-                    .catch(err => {
-                        console.error(err);
-                        showToast("فشل تحديث Firebase", "error");
-                        if (el) { el.disabled = false; el.classList.remove('btn-loading'); }
-                        if (card) card.style.opacity = '1';
-                    });
+                // ✅ تحديث الحالة فقط بدلاً من الحذف
+                db.ref(`active_orders/${id}`).update({
+                    status: 'completed',
+                    completed_at: new Date().toISOString()
+                })
+                .then(() => {
+                    if (card) { 
+                        card.style.transition = '.3s'; 
+                        card.style.opacity = '0'; 
+                        card.style.transform = 'scale(0.95)'; 
+                        setTimeout(() => card.remove(), 320); 
+                    }
+                    showToast("تم الإكمال");
+                    fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${id}&status=completed&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`).catch(()=>{});
+                })
+                .catch(err => {
+                    console.error(err);
+                    showToast("فشل تحديث Firebase", "error");
+                    if (el) { el.disabled = false; el.classList.remove('btn-loading'); }
+                    if (card) card.style.opacity = '1';
+                });
             } else {
                 // DELETE: حذف مباشر بدون GAS (لا أرشفة مطلوبة)
                 db.ref(`active_orders/${id}`).remove()
