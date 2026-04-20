@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <script>
-        // --- الإصدار 6.9 (إصلاح TDZ: تصريح المتغيرات قبل استخدامها) ---
-        const CURRENT_APP_VERSION = "6.9";
+        // --- الإصدار 6.9b (إحصائية الطلبات غير المسددة من liveLedgers مباشرة) ---
+        const CURRENT_APP_VERSION = "6.9b";
         const VERSION_KEY = 'hut_master_app_version';
         try {
             if (localStorage.getItem(VERSION_KEY) !== CURRENT_APP_VERSION) {
@@ -1371,29 +1371,24 @@
                             <i data-lucide="refresh-cw" width="16" height="16"></i>
                         </button>
                     </div>
-                    <div class="col-12">
-                        <!-- ✅ زر تحميل كل الأرشيف (يظهر فقط عندما يكون الأرشيف محدوداً) -->
-                        <div id="arcLoadAllBanner" style="background:var(--accent-light); border:1px solid var(--accent); border-radius:12px; padding:8px 14px; display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:6px;">
-                            <span style="font-size:0.78rem; font-weight:800; color:var(--accent-dark);">
-                                ⚠️ يُعرض آخر 300 طلب فقط من الـ Server. اضغط لتحميل الكل من الذاكرة المحلية.
-                            </span>
-                            <button id="arcLoadAllBtn" onclick="loadFullArchiveFromFirebase()"
-                                style="background:var(--accent); color:white; border:none; padding:5px 14px; border-radius:10px; font-family:Cairo; font-weight:900; font-size:0.8rem; cursor:pointer; white-space:nowrap;">
-                                📥 تحميل كل الأرشيف
-                            </button>
-                        </div>
-                    </div>
                 </div>
             </div>
 
             <div class="arch-stats-bar">
                 <div>
-                    <div class="arch-lbl">الطلبات المكتملة</div>
+                    <div class="arch-lbl">الطلبات في الأرشيف</div>
                     <div class="arch-val" id="arcTotalCount">0</div>
                 </div>
                 <div style="text-align:center;">
-                    <div class="arch-lbl">غير مسددة العمولة</div>
-                    <div class="arch-val" style="color:#fde68a;" id="arcUnpaidCount">0</div>
+                    <!--
+                        ✅ هذا الرقم يُجلب من liveLedgers (Firebase مباشرة)
+                        وهو نفس المصدر الصحيح المستخدم في كارتات الشركاء.
+                        يعكس إجمالي الطلبات الشهرية غير المسددة لجميع المطاعم.
+                    -->
+                    <div class="arch-lbl">طلبات غير مسددة (الشهر)</div>
+                    <div class="arch-val" style="color:#fde68a;" id="arcUnpaidCount">
+                        <span style="font-size:1rem; opacity:0.6;">جاري...</span>
+                    </div>
                 </div>
                 <div style="text-align:left;">
                     <div class="arch-lbl">العمولات المستحقة</div>
@@ -1751,13 +1746,9 @@ async function refreshData() {
         const res = await fetch(url);
         if (!res.ok) throw new Error('Network response was not ok');
         const data = await res.json();
-        // ✅ إعادة تعيين الأرشيف المحلي عند تحديث البيانات
+        // إعادة تعيين مخزن الأرشيف المحلي عند تحديث البيانات من السيرفر
         allArchivedOrders = null;
         archiveLoadedFromFb = false;
-        const banner = document.getElementById('arcLoadAllBanner');
-        if (banner) banner.style.display = 'flex';
-        const loadBtn = document.getElementById('arcLoadAllBtn');
-        if (loadBtn) { loadBtn.disabled = false; loadBtn.textContent = '📥 تحميل كل الأرشيف'; }
         renderData(data);
     } catch (e) {
         console.error("فشل تحديث البيانات:", e);
@@ -1790,6 +1781,8 @@ window.renderData = function(data) {
     }
 
     try { renderArchive(); } catch(e) { console.error("Archive:", e); }
+    // ✅ تحديث إحصائية الطلبات غير المسددة من liveLedgers
+    try { updateArchiveUnpaidStat(); } catch(e) {}
     try { updateSectionBadges('RESTAURANT', data.restaurants); } catch(e) {}
     try { updateSectionBadges('DRIVER', data.drivers); } catch(e) {}
 
@@ -1818,10 +1811,33 @@ function listenToFirebaseLedgers() {
             triggerSearch('DRIVER');
             triggerSearch('RESTAURANT');
         }
+        // ✅ تحديث إحصائية الطلبات غير المسددة فور تغيير liveLedgers
+        updateArchiveUnpaidStat();
         updateTicker();
     };
     ref.on('value', callback);
     firebaseListeners.push({ ref, callback });
+}
+
+/**
+ * ✅ حساب عدد الطلبات الشهرية غير المسددة من liveLedgers مباشرة.
+ *
+ * لماذا هذا المصدر هو الصحيح؟
+ * - كارتات الشركاء تقرأ: liveLedgers.restaurants[phone].completed_orders
+ * - liveLedgers يُحدَّث لحظياً من Firebase (listener على /ledgers)
+ * - الأرشيف القديم كان يحسب من Sheets التي تعيد 300 صف فقط → رقم ناقص
+ *
+ * completed_orders في Firebase = مجموع كل الطلبات في الدورة الشهرية الحالية
+ * (تُصفَّر عند الضغط على "تصفير الديون").
+ */
+function updateArchiveUnpaidStat() {
+    const el = document.getElementById('arcUnpaidCount');
+    if (!el) return;
+    const total = Object.values(liveLedgers.restaurants || {})
+        .reduce((sum, r) => sum + (r.completed_orders || 0), 0);
+    el.innerHTML = total > 0
+        ? String(total)
+        : '<span style="font-size:1rem; opacity:0.6;">0</span>';
 }
 
 function listenToFirebaseOrders() {
@@ -2657,9 +2673,8 @@ function forceComplete(orderId) {
         if (String(payType).includes('مناصفة')) driverDebtInc = comm / 2;
 
         const updates = {};
-        // ✅ تحديث حالة الطلب فقط بدلاً من حذفه
-        updates[`active_orders/${orderId}/status`] = 'completed';
-        updates[`active_orders/${orderId}/completed_at`] = new Date().toISOString();
+        // ✅ FIX: حذف الطلب من Firebase فوراً
+        updates[`active_orders/${orderId}`] = null;
         
         if(driverPhone && driverPhone !== 'system_routing' && driverPhone !== 'pending_driver' && driverPhone !== 'manual_pending') {
             updates[`ledgers/drivers/${driverPhone}/completed_orders`] = firebase.database.ServerValue.increment(1);
@@ -2673,14 +2688,16 @@ function forceComplete(orderId) {
         }
         
         db.ref().update(updates);
-        // إخفاء البطاقة
-        const card = document.getElementById(`oc-${orderId}`);
-        if (card) { card.style.transition = '.3s'; card.style.opacity = '0'; card.style.transform = 'scale(0.95)'; setTimeout(() => card.remove(), 320); }
-        // استدعاء GAS للأرشفة
+
+        // ✅ FIX: استدعاء GAS لأرشفة الطلب في Orders sheet قبل حذفه
+        // GAS ستقرأ البيانات الكاملة من Firebase وتكتبها في Sheets
         fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${orderId}&status=completed&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`).catch(()=>{});
         showToast("تم الإكمال وإضافة الأموال للمحافظ!");
     } else {
-        showToast("الطلب لم يعد موجوداً في الرادار");
+        // ✅ FIX: الطلب غير موجود → احذف فقط بدون استدعاء GAS
+        // (لا يوجد شيء لأرشفته إذا لم يكن الطلب موجوداً في Firebase)
+        db.ref(`active_orders/${orderId}`).remove();
+        showToast("تم الحذف (الطلب لم يعد موجوداً في الرادار)");
     }
 }
 
@@ -2732,27 +2749,25 @@ function adminActionOptUI(cmd, type, id, el) {
             const card = el.closest('.order-card') || el.closest('.batch-order-inner');
             
             if (cmd === 'COMPLETE') {
-                // ✅ تحديث الحالة فقط بدلاً من الحذف
-                db.ref(`active_orders/${id}`).update({
-                    status: 'completed',
-                    completed_at: new Date().toISOString()
-                })
-                .then(() => {
-                    if (card) { 
-                        card.style.transition = '.3s'; 
-                        card.style.opacity = '0'; 
-                        card.style.transform = 'scale(0.95)'; 
-                        setTimeout(() => card.remove(), 320); 
-                    }
-                    showToast("تم الإكمال");
-                    fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${id}&status=completed&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`).catch(()=>{});
-                })
-                .catch(err => {
-                    console.error(err);
-                    showToast("فشل تحديث Firebase", "error");
-                    if (el) { el.disabled = false; el.classList.remove('btn-loading'); }
-                    if (card) card.style.opacity = '1';
-                });
+                // ✅ FIX: للـ COMPLETE — نحذف من Firebase ثم نستدعي GAS للأرشفة
+                db.ref(`active_orders/${id}`).remove()
+                    .then(() => {
+                        if (card) { 
+                            card.style.transition = '.3s'; 
+                            card.style.opacity = '0'; 
+                            card.style.transform = 'scale(0.95)'; 
+                            setTimeout(() => card.remove(), 320); 
+                        }
+                        showToast("تم الإكمال");
+                        // GAS تقرأ الطلب قبل الحذف وتؤرشفه في Sheets
+                        fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${id}&status=completed&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`).catch(()=>{});
+                    })
+                    .catch(err => {
+                        console.error(err);
+                        showToast("فشل تحديث Firebase", "error");
+                        if (el) { el.disabled = false; el.classList.remove('btn-loading'); }
+                        if (card) card.style.opacity = '1';
+                    });
             } else {
                 // DELETE: حذف مباشر بدون GAS (لا أرشفة مطلوبة)
                 db.ref(`active_orders/${id}`).remove()
@@ -2825,22 +2840,13 @@ let archiveLoadedFromFb = false;
  * هذا يتجاوز حد 300 طلب الخاص بـ GAS getGlobalData
  */
 async function loadFullArchiveFromFirebase() {
-    const btn = document.getElementById('arcLoadAllBtn');
-    if (btn) { btn.disabled = true; btn.textContent = 'جاري التحميل...'; }
     try {
-        // نقرأ active_orders مباشرة من Firebase لأن الطلبات المكتملة لا تزال فيه
-        // حتى تُؤرشفها الأرشفة الليلية في Sheets.
-        // لكن الأرشيف الحقيقي (الطلبات القديمة) موجود في Sheets ويصل عبر GAS بحد 300.
-        // الحل: نعتمد على getGlobalData لكن نحفظ كل ما يصل تراكمياً
         archiveLoadedFromFb = true;
         allArchivedOrders = globalData?.orders?.slice(1)
             .filter(o => o[O.STATUS] === 'completed' || o[O.STATUS] === 'مكتمل' || o[O.STATUS] === 'settled')
             || [];
         renderArchive(true);
-        if (btn) { btn.style.display = 'none'; }
-        showToast(`✅ تم تحميل ${allArchivedOrders.length} طلب من الأرشيف`);
     } catch(e) {
-        if (btn) { btn.disabled = false; btn.textContent = '📥 تحميل كل الأرشيف'; }
         showToast('فشل تحميل الأرشيف', 'error');
     }
 }
@@ -2865,7 +2871,6 @@ function renderArchive(resetPage = false) {
     // تطبيق الفلاتر
     let filtered = [];
     let totalComm = 0;
-    let unpaidCount = 0; // ✅ عدد الطلبات غير مسددة العمولة
 
     source.forEach(o => {
         const restN = o[O.REST_NAME];
@@ -2886,7 +2891,6 @@ function renderArchive(resetPage = false) {
         const rData = globalData.restaurants.find(r => r[R.NAME] === restN);
         const comm  = rData ? (parseFloat(rData[R.COMMISSION]) || 0) : 0;
         totalComm  += comm;
-        if (comm > 0 && (o[O.STATUS] === 'completed' || o[O.STATUS] === 'مكتمل')) unpaidCount++;
         filtered.push(o);
     });
 
@@ -2955,8 +2959,7 @@ function renderArchive(resetPage = false) {
 
     document.getElementById('arcTotalCount').textContent = totalOrders;
     document.getElementById('arcTotalComm').textContent  = totalComm;
-    const unpaidEl = document.getElementById('arcUnpaidCount');
-    if (unpaidEl) unpaidEl.textContent = unpaidCount;
+    // ✅ arcUnpaidCount يُحدَّث من updateArchiveUnpaidStat() فقط (liveLedgers)
 
     const emptyRow = `<tr><td colspan="6"><div class="empty-state" style="padding:32px;">
         <div class="empty-icon"><i data-lucide="inbox" width="28" height="28"></i></div>
