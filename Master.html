@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <script>
-        // --- الإصدار 7.2 (أرشيف عالمي: KPIs + فرز + تصفية سريعة + pagination ذكي) ---
-        const CURRENT_APP_VERSION = "7.2";
+        // --- الإصدار 7.3 (إصلاحات شاملة: الجلسة، الأرشيف، التقييم، وتوفير استهلاك Firebase) ---
+        const CURRENT_APP_VERSION = "7.3";
         const VERSION_KEY = 'hut_master_app_version';
         try {
             if (localStorage.getItem(VERSION_KEY) !== CURRENT_APP_VERSION) {
@@ -29,7 +29,7 @@
         }
     </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>مكتب سفيان | الإدارة العليا V34.1 — 6.9</title>
+    <title>مكتب سفيان | الإدارة العليا V34.1 — 7.3</title>
     <meta name="theme-color" content="#f0f7ff">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -1393,7 +1393,6 @@
                 <span>إدارة الأسطول</span>
             </div>
         </nav>
-        <!-- 🆕 زر تسجيل الخروج -->
         <div style="margin-top: auto; padding: 20px 0;">
             <button class="btn w-100 fw-bold d-flex align-items-center justify-content-center gap-2" 
                     style="background: var(--surface); border: 1px solid var(--border); color: var(--danger); border-radius: 16px; padding: 12px;"
@@ -1478,7 +1477,6 @@
         <div id="tab-orders" class="admin-tab tab-inner-padding">
             <span class="page-title-mob">الأرشيف المركزي</span>
 
-            <!-- ── 4 KPI Cards ── -->
             <div class="arch-kpi-row">
                 <div class="arch-kpi kpi-blue">
                     <div class="arch-kpi-icon blue"><i data-lucide="archive" width="18" height="18"></i></div>
@@ -1505,7 +1503,6 @@
                 </div>
             </div>
 
-            <!-- ── Toolbar: Filters ── -->
             <div class="arch-toolbar">
                 <div class="row g-2 align-items-end">
                     <div class="col-12 col-md-3">
@@ -1536,21 +1533,18 @@
                         </button>
                     </div>
                 </div>
-                <!-- ── Quick Date Shortcuts ── -->
                 <div class="arc-quick-dates">
                     <span style="font-size:0.73rem; font-weight:800; color:var(--text-3); align-self:center;">تصفية سريعة:</span>
-                    <button class="arc-qd" onclick="arcSetDateRange('today')">اليوم</button>
-                    <button class="arc-qd" onclick="arcSetDateRange('yesterday')">أمس</button>
-                    <button class="arc-qd" onclick="arcSetDateRange('week')">هذا الأسبوع</button>
-                    <button class="arc-qd" onclick="arcSetDateRange('month')">هذا الشهر</button>
-                    <button class="arc-qd" onclick="arcSetDateRange('lastmonth')">الشهر الماضي</button>
-                    <button class="arc-qd" onclick="arcSetDateRange('clear')">الكل</button>
+                    <button class="arc-qd" onclick="arcSetDateRange('today', event)">اليوم</button>
+                    <button class="arc-qd" onclick="arcSetDateRange('yesterday', event)">أمس</button>
+                    <button class="arc-qd" onclick="arcSetDateRange('week', event)">هذا الأسبوع</button>
+                    <button class="arc-qd" onclick="arcSetDateRange('month', event)">هذا الشهر</button>
+                    <button class="arc-qd" onclick="arcSetDateRange('lastmonth', event)">الشهر الماضي</button>
+                    <button class="arc-qd" onclick="arcSetDateRange('clear', event)">الكل</button>
                 </div>
             </div>
 
-            <!-- ── Table with Action Bar ── -->
             <div class="arch-table-wrap">
-                <!-- Action Bar -->
                 <div class="arch-action-bar">
                     <div class="arch-result-info">
                         <i data-lucide="list" width="14" height="14"></i>
@@ -1604,7 +1598,6 @@
                     </table>
                 </div>
 
-                <!-- Pagination -->
                 <div class="arc-pagination" id="arcPaginationBar" style="display:none;"></div>
             </div>
         </div>
@@ -1802,20 +1795,6 @@ const db = firebase.database();
 // ✅ FIX: تسجيل مستمع system_alerts مرة واحدة عند التهيئة
 setupAlertsListener();
 
-// 🆕 مراقبة حالة الاتصال بـ Firebase
-const connectedRef = db.ref('.info/connected');
-connectedRef.on('value', (snap) => {
-    isFirebaseConnected = snap.val() === true;
-    const dot = document.getElementById('connDot');
-    const text = document.getElementById('connText');
-    if (dot) {
-        dot.className = isFirebaseConnected ? 'conn-dot' : 'conn-dot offline';
-    }
-    if (text) {
-        text.textContent = isFirebaseConnected ? 'متصل بقاعدة البيانات' : 'غير متصل - جاري إعادة المحاولة...';
-    }
-});
-
 /* ─── Toast ─── */
 function showToast(msg, type = 'success') {
     const c = document.getElementById('toast-container');
@@ -1869,6 +1848,14 @@ function sendBroadcast(type) {
 }
 
 /* ─── Auth ─── */
+window.addEventListener('DOMContentLoaded', () => {
+    const savedPass = sessionStorage.getItem('hut_master_auth');
+    if (savedPass) {
+        document.getElementById('masterPass').value = savedPass;
+        checkAuth();
+    }
+});
+
 async function checkAuth() {
     const pass = document.getElementById('masterPass').value.trim();
     if (!pass) { showToast("الرجاء إدخال رمز المرور", "error"); return; }
@@ -1902,6 +1889,7 @@ async function checkAuth() {
 
 function _handleAuthResult(response) {
     if (response.success) {
+        sessionStorage.setItem('hut_master_auth', masterPassword);
         document.getElementById('authOverlay').style.display = 'none';
         document.getElementById('mainDashboard').classList.remove('d-none');
         const a = document.getElementById('adminAlertSound');
@@ -1980,6 +1968,20 @@ window.renderData = function(data) {
 
     if (!isFirebaseListening) {
         isFirebaseListening = true;
+        // 🆕 مراقبة حالة الاتصال بـ Firebase يتم تشغيلها هنا فقط
+        const connectedRef = db.ref('.info/connected');
+        connectedRef.on('value', (snap) => {
+            isFirebaseConnected = snap.val() === true;
+            const dot = document.getElementById('connDot');
+            const text = document.getElementById('connText');
+            if (dot) {
+                dot.className = isFirebaseConnected ? 'conn-dot' : 'conn-dot offline';
+            }
+            if (text) {
+                text.textContent = isFirebaseConnected ? 'متصل بقاعدة البيانات' : 'غير متصل - جاري إعادة المحاولة...';
+            }
+        });
+        
         listenToFirebaseLocations();
         listenToFirebaseOrders();
         listenToFirebaseLedgers();
@@ -2006,17 +2008,6 @@ function listenToFirebaseLedgers() {
     firebaseListeners.push({ ref, callback });
 }
 
-/**
- * ✅ حساب عدد الطلبات الشهرية غير المسددة من liveLedgers مباشرة.
- *
- * لماذا هذا المصدر هو الصحيح؟
- * - كارتات الشركاء تقرأ: liveLedgers.restaurants[phone].completed_orders
- * - liveLedgers يُحدَّث لحظياً من Firebase (listener على /ledgers)
- * - الأرشيف القديم كان يحسب من Sheets التي تعيد 300 صف فقط → رقم ناقص
- *
- * completed_orders في Firebase = مجموع كل الطلبات في الدورة الشهرية الحالية
- * (تُصفَّر عند الضغط على "تصفير الديون").
- */
 function updateArchiveUnpaidStat() {
     const el = document.getElementById('arcUnpaidCount');
     if (!el) return;
@@ -2186,8 +2177,6 @@ function listenToFirebaseLocations() {
     firebaseListeners.push({ ref, callback });
 }
 
-// ✅ FIX: مستمع system_alerts يُسجَّل مرة واحدة فقط (ليس في كل استدعاء updateTicker)
-
 function setupAlertsListener() {
     if (_alertsListenerActive) return;
     _alertsListenerActive = true;
@@ -2237,7 +2226,6 @@ function updateTicker() {
         `🕒 ${new Date().toLocaleTimeString('ar-EG')} - ${new Date().toLocaleDateString('ar-EG')}`
     ];
 
-    // ✅ FIX: نستخدم _lastAlertMsg المُحدَّث من المستمع الثابت بدلاً من إضافة listener جديد
     if (_lastAlertMsg) baseMessages.unshift(_lastAlertMsg);
     tickerMessages = baseMessages;
 
@@ -2280,7 +2268,7 @@ function cancelTracking() {
     map.setView([35.468, 44.392], 13, {animate: true});
 }
 
-/* ─── Radar Render (تم إصلاح مشاكل اختفاء أزرار الاتصال والسيادي) ─── */
+/* ─── Radar Render ─── */
 function smartRenderRadar(activeList) {
     const container = document.getElementById('smartOrdersContainer');
 
@@ -2289,7 +2277,7 @@ function smartRenderRadar(activeList) {
         globalData.drivers.slice(1).forEach(d => {
             const rawPhone = String(d[2]).replace(/^0+/, '').trim();
             if (activeRealDriversSet.has(rawPhone)) {
-                const completed = liveLedgers.drivers?.[String(d[2])]?.completed_orders || 0;
+                const completed = liveLedgers.drivers?.[rawPhone]?.completed_orders || 0;
                 let sym = '🟡';
                 if(completed >= 100) sym = '🟢';
                 else if(completed < 30) sym = '🔴';
@@ -2324,24 +2312,20 @@ function smartRenderRadar(activeList) {
         grid = document.getElementById('radarGrid');
     }
 
-    // 🟢 1. دمج جميع أزرار تحكم السائق لتكون ثابتة ولا تختفي
     function buildDriverControls(orderId, driverPhone, hasDriver, sInfo, isSovereign) {
         let ctrl = '';
         let opts = activeDriversOptionsCache;
         const safeOrderId = escJs(orderId);
         const safeDriverPhone = escJs(driverPhone);
 
-        // زر الاتصال (دائماً يظهر إذا كان هناك سائق وليس في حالة رنين فقط)
         if (hasDriver && !sInfo.ringing) {
             ctrl += `<button class="btn-call-sm" onclick="window.open('tel:${safeDriverPhone}')"><i data-lucide="phone" width="14" height="14"></i></button>`;
         }
 
-        // زر السحب (سحب الطلب) للإدارة الصلاحية لسحبه
         if (sInfo.ringing && hasDriver && !isSovereign) {
             ctrl += `<button class="oc-btn oc-btn-delete" style="width:auto;padding:0 10px;font-family:'Cairo',sans-serif;font-size:0.72rem;font-weight:800;" onclick="withdrawOrderOptUI('${safeOrderId}','${safeDriverPhone}',this)"><i data-lucide="user-minus" width="13" height="13"></i> سحب</button>`;
         }
 
-        // تغيير نص القائمة للسيادي أو إذا كان الطلب قيد التنفيذ
         if (isSovereign || (hasDriver && !sInfo.ringing)) {
              opts = activeDriversOptionsCache.replace('تعيين يدوي', 'إعادة تعيين 🔄');
         }
@@ -2417,14 +2401,12 @@ function smartRenderRadar(activeList) {
                 const dnEl = existing.querySelector('.driver-name-ui span');
                 if (dnEl) { dnEl.textContent = driverName; }
                 
-                // تحديث الأزرار المدمجة
                 const ctrlEl = existing.querySelector('.driver-controls-ui');
                 if (ctrlEl) {
                     ctrlEl.innerHTML = buildDriverControls(orderId, driverPhone, hasDriver, sInfo, isSovereign);
                     safeIcon('oc-' + orderId);
                 }
 
-                // 🟢 2. إضافة وتحديث زر التتبع (المسار) ديناميكياً
                 const actionsEl = existing.querySelector('.oc-actions');
                 if (actionsEl) {
                     const oldTrackBtn = actionsEl.querySelector('.oc-btn-track');
@@ -2507,7 +2489,7 @@ function smartRenderRadar(activeList) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   🗂️  TAB NAVIGATION  —  switchTab / showTab / filterRadar
+   🗂️  TAB NAVIGATION
 ═══════════════════════════════════════════════════════════ */
 
 function _activateTab(tabName) {
@@ -2637,7 +2619,7 @@ function applySectionFilter(type, filter, btn) {
     }
 }
 
-/* ─── Entity Cards (مع إصلاح الديون وتطبيع الهاتف) ─── */
+/* ─── Entity Cards ─── */
 function smartRenderFilteredSection(type, fullList) {
     const filter  = type === 'RESTAURANT' ? currentResSectionFilter : currentDriverSectionFilter;
     const searchQ = type === 'RESTAURANT'
@@ -2785,7 +2767,7 @@ function withdrawOrderOptUI(orderId, driverPhone, el) {
         last_update: now,
         last_offered_to: driverPhone,
         last_offered_time: now,
-        is_sovereign: false // ✅ تصحيح
+        is_sovereign: false 
     }).then(() => {
         showToast("تم سحب الطلب بنجاح");
     }).catch(() => {
@@ -2798,7 +2780,7 @@ function withdrawOrderOptUI(orderId, driverPhone, el) {
 
 function assignDriverOptUI(orderId, driverPhone, el) {
     if (!driverPhone) return;
-    if (!ensureMasterPassword()) return; // ✅ تحقق
+    if (!ensureMasterPassword()) return;
 
     el.disabled = true;
     const spinnerEl = document.createElement('div');
@@ -2815,10 +2797,9 @@ function assignDriverOptUI(orderId, driverPhone, el) {
         status: 'manual_pending',
         driverPhone: driverPhone,
         last_update: now,
-        is_sovereign: true // ✅ تصحيح
+        is_sovereign: true 
     });
 
-    // ✅ تشفير كلمة المرور عند الإرسال
     fetch(`${API_URL}?action=ASSIGN_DRIVER&orderId=${orderId}&driverPhone=${driverPhone}&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`)
         .then(r => r.json()).then(res => {
             spinnerEl.remove();
@@ -2830,7 +2811,6 @@ function assignDriverOptUI(orderId, driverPhone, el) {
         });
 }
 
-// ✅ دالة مساعدة للتحقق من كلمة المرور
 function ensureMasterPassword() {
     if (!masterPassword) {
         showToast("انتهت صلاحية الجلسة. يرجى تحديث الصفحة وتسجيل الدخول مجدداً.", "error");
@@ -2862,8 +2842,6 @@ async function forceComplete(orderId) {
         let resDebtInc    = comm;
         if (String(payType).includes('مناصفة')) driverDebtInc = comm / 2;
 
-        // ✅ تحديث الحالة إلى 'completed' فقط — nightlyArchive ستؤرشفه الليلة
-        // هذا أسرع وأكثر أماناً من استدعاء GAS بشكل متزامن
         const updates = {};
         updates[`active_orders/${orderId}/status`]       = 'completed';
         updates[`active_orders/${orderId}/completed_at`] = new Date().toISOString();
@@ -2903,11 +2881,10 @@ function getLocalDateString() {
 }
 
 function resetDebtOptUI(type, id, el) {
-    if (!ensureMasterPassword()) return; // ✅ تحقق
+    if (!ensureMasterPassword()) return;
     if (!confirm(`تأكيد تصفير ديون (${id})؟ سيتم مسحها من الإكسل وتصفير العداد في Firebase.`)) return;
     el.classList.add('btn-loading');
     el.disabled = true;
-    // ✅ تشفير كلمة المرور
     fetch(`${API_URL}?action=RESET_DEBT&type=${type}&id=${id}&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`)
         .then(r => r.json()).then(res => {
             if (res.success) { showToast("تم التصفير بنجاح"); refreshData(); }
@@ -2924,7 +2901,6 @@ function adminActionOptUI(cmd, type, id, el) {
     let newStatus = map_[cmd];
     if (cmd === 'DELETE' && type !== 'ORDER') newStatus = 'banned';
 
-    // ✅ تعطيل الزر مؤقتاً أثناء المعالجة
     if (el) {
         el.disabled = true;
         el.classList.add('btn-loading');
@@ -2942,9 +2918,6 @@ function adminActionOptUI(cmd, type, id, el) {
             const card = el.closest('.order-card') || el.closest('.batch-order-inner');
 
             if (cmd === 'COMPLETE') {
-                // ═══════════════════════════════════════════════════════════
-                // ✅ الترتيب الصحيح: GAS أولاً (أرشفة) ثم حذف Firebase
-                // ═══════════════════════════════════════════════════════════
                 (async () => {
                     try {
                         const gasRes  = await fetch(
@@ -2961,7 +2934,6 @@ function adminActionOptUI(cmd, type, id, el) {
                         if (el) { el.disabled = false; el.classList.remove('btn-loading'); }
                         return;
                     }
-                    // GAS نجحت → احذف من Firebase
                     db.ref(`active_orders/${id}`).remove()
                         .then(() => {
                             if (card) {
@@ -2979,7 +2951,6 @@ function adminActionOptUI(cmd, type, id, el) {
                         });
                 })();
             } else {
-                // DELETE: حذف مباشر بدون أرشفة
                 db.ref(`active_orders/${id}`).remove()
                     .then(() => {
                         if (card) {
@@ -2997,7 +2968,6 @@ function adminActionOptUI(cmd, type, id, el) {
                         if (card) card.style.opacity = '1';
                     });
             }
-            // لا نكمل باقي الدالة
             return;
         }
     }
@@ -3019,7 +2989,6 @@ function adminActionOptUI(cmd, type, id, el) {
     }
 
     if (ensureMasterPassword()) {
-        // ✅ تشفير كلمة المرور
         fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${id}&status=${newStatus}&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`)
             .then(r => r.json()).then(res => {
                 if (!res.success) { showToast("حدث خطأ", "error"); refreshData(); }
@@ -3039,14 +3008,7 @@ function adminActionOptUI(cmd, type, id, el) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   🗂️  ARCHIVE ENGINE — World-Class
-   ── صفر استدعاءات إضافية للسيرفر (كل البيانات من globalData)
-   ── liveLedgers للعدد الصحيح للطلبات غير المسددة
-   ── فرز بعمود (id / date / price / comm)
-   ── اختصارات تاريخ سريعة
-   ── حجم صفحة قابل للتخصيص
-   ── Pagination ذكي مع ellipsis
-   ── KPI: إجمالي الإيرادات + العمولات + غير المسددة
+   🗂️  ARCHIVE ENGINE 
 ═══════════════════════════════════════════════════════════ */
 
 let allArchivedOrders   = null;
@@ -3056,14 +3018,14 @@ let arcSortDir          = 'desc';
 let arcPageSize         = 100;
 
 /* ── Quick Date Shortcuts ── */
-function arcSetDateRange(preset) {
+function arcSetDateRange(preset, e) {
     const from = document.getElementById('arcDateFrom');
     const to   = document.getElementById('arcDateTo');
     const now  = new Date();
     const fmt  = d => d.toISOString().split('T')[0];
 
     document.querySelectorAll('.arc-qd').forEach(b => b.classList.remove('qdActive'));
-    if (event && event.currentTarget) event.currentTarget.classList.add('qdActive');
+    if (e && e.currentTarget) e.currentTarget.classList.add('qdActive');
 
     if (preset === 'today') {
         from.value = fmt(now); to.value = fmt(now);
@@ -3114,9 +3076,12 @@ function arcChangePageSize(val) {
 function getArchiveSource() {
     if (allArchivedOrders !== null) return allArchivedOrders;
     if (!globalData || !globalData.orders) return [];
-    return globalData.orders.slice(1).filter(function(o) {
+    
+    allArchivedOrders = globalData.orders.slice(1).filter(function(o) {
         return o[O.STATUS] === 'completed' || o[O.STATUS] === 'مكتمل' || o[O.STATUS] === 'settled';
     }).reverse();
+    
+    return allArchivedOrders;
 }
 
 /* ── Main renderArchive ── */
@@ -3159,7 +3124,6 @@ function renderArchive(resetPage) {
         filtered.push(o);
     });
 
-    // ── Sort ──
     const dir = arcSortDir === 'asc' ? 1 : -1;
     filtered.sort(function(a, b) {
         if (arcSortCol === 'date')  return dir * (new Date(a[O.TIME]||0) - new Date(b[O.TIME]||0));
@@ -3173,14 +3137,12 @@ function renderArchive(resetPage) {
         return 0;
     });
 
-    // ── Pagination ──
     const total      = filtered.length;
     const totalPages = Math.max(1, Math.ceil(total / arcPageSize));
     if (arcCurrentPage > totalPages) arcCurrentPage = totalPages;
     const startIdx   = (arcCurrentPage - 1) * arcPageSize;
     const pageSlice  = filtered.slice(startIdx, startIdx + arcPageSize);
 
-    // ── Update KPIs ──
     const fmtNum = function(n) { return Math.round(n).toLocaleString('ar-EG'); };
     const tcEl = document.getElementById('arcTotalCount');
     if (tcEl) tcEl.textContent = total.toLocaleString('ar-EG');
@@ -3191,7 +3153,6 @@ function renderArchive(resetPage) {
     const badge = document.getElementById('arcResultBadge');
     if (badge) badge.textContent = total.toLocaleString('ar-EG') + ' طلب';
 
-    // ── Build Rows ──
     let html = '';
     pageSlice.forEach(function(o, i) {
         const rowNum    = startIdx + i + 1;
@@ -3226,7 +3187,7 @@ function renderArchive(resetPage) {
             ? '<span style="padding:3px 10px;border-radius:99px;font-size:0.68rem;font-weight:900;background:#f1f5f9;color:var(--text-3);border:1px solid var(--border);">مسدد ✓</span>'
             : '<span style="padding:3px 10px;border-radius:99px;font-size:0.68rem;font-weight:900;background:#e6faf3;color:var(--success);border:1px solid #a7f3d0;">مكتمل</span>';
 
-        html += '<tr onclick="openInvoice('' + ds + '')">'
+        html += '<tr onclick="openInvoice(\'' + ds + '\')">'
             + '<td class="arch-td-num">' + rowNum + '</td>'
             + '<td class="arch-td-id">' + escHtml(orderId) + '</td>'
             + '<td style="font-size:0.75rem;white-space:nowrap;">'
@@ -3258,7 +3219,6 @@ function renderArchive(resetPage) {
     _renderArcPagination(total, totalPages);
 }
 
-/* ── Smart Pagination ── */
 function _renderArcPagination(total, totalPages) {
     const bar = document.getElementById('arcPaginationBar');
     if (!bar) return;
@@ -3351,7 +3311,6 @@ function exportExcel() {
     const dateFrom  = document.getElementById('arcDateFrom').value;
     const dateTo    = document.getElementById('arcDateTo').value;
 
-    // ✅ تصدير جميع الطلبات المطابقة للفلتر الحالي (بدون حد)
     const completed = globalData.orders.slice(1)
         .filter(o => o[O.STATUS] === 'completed' || o[O.STATUS] === 'مكتمل' || o[O.STATUS] === 'settled')
         .filter(o => {
@@ -3443,7 +3402,6 @@ function initMap() {
 function performLogout() {
     if (confirm("تأكيد تسجيل الخروج؟ سيتم إغلاق جميع الاتصالات.")) {
         cleanupFirebaseListeners();
-        // مسح كلمة المرور والبيانات المؤقتة
         masterPassword = "";
         localOverrides = { orders: {}, drivers: {}, restaurants: {} };
         localStorage.clear();
@@ -3458,7 +3416,6 @@ function cleanupFirebaseListeners() {
         ref.off('value', callback);
     });
     firebaseListeners = [];
-    // ✅ FIX: تنظيف مستمع system_alerts أيضاً
     if (_alertsListenerActive) {
         db.ref('system_alerts').off('value');
         _alertsListenerActive = false;
