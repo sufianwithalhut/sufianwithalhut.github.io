@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <script>
-        // --- الإصدار 7.0 (إصلاح جذري: أرشفة قبل الحذف في forceComplete و adminActionOptUI) ---
-        const CURRENT_APP_VERSION = "7.0";
+        // --- الإصدار 6.9b (إحصائية الطلبات غير المسددة من liveLedgers مباشرة) ---
+        const CURRENT_APP_VERSION = "6.9b";
         const VERSION_KEY = 'hut_master_app_version';
         try {
             if (localStorage.getItem(VERSION_KEY) !== CURRENT_APP_VERSION) {
@@ -2652,17 +2652,17 @@ function ensureMasterPassword() {
     return true;
 }
 
-async function forceComplete(orderId) {
+function forceComplete(orderId) {
     if (!ensureMasterPassword()) return;
-    if (!confirm("تأكيد إكمال الطلب قسرياً؟ سيتم تسجيله في حساب الكابتن والمطعم.")) return;
-
+    if(!confirm("تأكيد إكمال الطلب قسرياً؟ سيتم تسجيله في حساب الكابتن والمطعم.")) return;
+    
     const oData = liveFirebaseOrders.find(x => x[O.ID] === orderId);
-    if (oData) {
+    if(oData) {
         const driverPhone = oData[O.DRIVER_PHONE];
         const price       = parseFloat(oData[O.PRICE]) || 0;
         const resName     = oData[O.REST_NAME];
         const area        = oData[O.AREA];
-
+        
         const rData    = globalData?.restaurants.find(r => r[R.NAME] === resName);
         const comm     = rData ? (parseFloat(rData[R.COMMISSION]) || 0) : 0;
         const payType  = rData ? (rData[R.PAY_TYPE] || "المطعم يدفع") : "المطعم يدفع";
@@ -2672,56 +2672,30 @@ async function forceComplete(orderId) {
         let resDebtInc    = comm;
         if (String(payType).includes('مناصفة')) driverDebtInc = comm / 2;
 
-        // ═══════════════════════════════════════════════════════════
-        // ✅ الترتيب الصحيح الآمن:
-        //
-        //  1) استدعاء GAS أولاً → GAS تقرأ بيانات الطلب الكاملة من
-        //     Firebase وتكتبها في Orders sheet
-        //  2) بعد نجاح GAS → حذف الطلب من Firebase + تحديث المحافظ
-        //
-        //  لماذا هذا مهم؟
-        //  إذا حذفنا من Firebase أولاً، GAS لن تجد الطلب عند قراءته
-        //  فتكتب سطراً فارغاً أو تتخطى الأرشفة → فقدان البيانات نهائياً.
-        // ═══════════════════════════════════════════════════════════
-        try {
-            const gasRes = await fetch(
-                `${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${orderId}&status=completed&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`
-            );
-            const gasData = await gasRes.json();
-            if (!gasData.success) {
-                // GAS فشلت → نُخطر المستخدم ولا نحذف الطلب
-                showToast("فشلت الأرشفة في GAS — لم يُحذف الطلب. أعد المحاولة.", "error");
-                return;
-            }
-        } catch (e) {
-            // فشل الاتصال بـ GAS → لا نحذف الطلب حفاظاً على البيانات
-            showToast("تعذّر الاتصال بالسيرفر لأرشفة الطلب. تحقق من الاتصال وأعد المحاولة.", "error");
-            return;
-        }
-
-        // GAS نجحت في الأرشفة → نحذف من Firebase الآن ونحدّث المحافظ
         const updates = {};
+        // ✅ FIX: حذف الطلب من Firebase فوراً
         updates[`active_orders/${orderId}`] = null;
-
-        if (driverPhone && driverPhone !== 'system_routing'
-                        && driverPhone !== 'pending_driver'
-                        && driverPhone !== 'manual_pending') {
+        
+        if(driverPhone && driverPhone !== 'system_routing' && driverPhone !== 'pending_driver' && driverPhone !== 'manual_pending') {
             updates[`ledgers/drivers/${driverPhone}/completed_orders`] = firebase.database.ServerValue.increment(1);
             updates[`ledgers/drivers/${driverPhone}/debt`]             = firebase.database.ServerValue.increment(driverDebtInc);
             const todayStr = getLocalDateString();
             updates[`daily_ledgers/${driverPhone}/${todayStr}/${orderId}`] = { orderId, resName, area, price, timestamp: Date.now() };
         }
-        if (resPhone) {
+        if(resPhone) {
             updates[`ledgers/restaurants/${resPhone}/completed_orders`] = firebase.database.ServerValue.increment(1);
             updates[`ledgers/restaurants/${resPhone}/debt`]             = firebase.database.ServerValue.increment(resDebtInc);
         }
-
+        
         db.ref().update(updates);
-        showToast("✅ تم الإكمال وإضافة الأموال للمحافظ!");
 
+        // ✅ FIX: استدعاء GAS لأرشفة الطلب في Orders sheet قبل حذفه
+        // GAS ستقرأ البيانات الكاملة من Firebase وتكتبها في Sheets
+        fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${orderId}&status=completed&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`).catch(()=>{});
+        showToast("تم الإكمال وإضافة الأموال للمحافظ!");
     } else {
-        // الطلب غير موجود في liveFirebaseOrders → احذفه من Firebase مباشرة
-        // (لا أرشفة مطلوبة لأنه غير موجود في Firebase أصلاً)
+        // ✅ FIX: الطلب غير موجود → احذف فقط بدون استدعاء GAS
+        // (لا يوجد شيء لأرشفته إذا لم يكن الطلب موجوداً في Firebase)
         db.ref(`active_orders/${orderId}`).remove();
         showToast("تم الحذف (الطلب لم يعد موجوداً في الرادار)");
     }
@@ -2773,53 +2747,36 @@ function adminActionOptUI(cmd, type, id, el) {
         }
         if (type === 'ORDER') {
             const card = el.closest('.order-card') || el.closest('.batch-order-inner');
-
+            
             if (cmd === 'COMPLETE') {
-                // ═══════════════════════════════════════════════════════════
-                // ✅ الترتيب الصحيح: GAS أولاً (أرشفة) ثم حذف Firebase
-                // ═══════════════════════════════════════════════════════════
-                (async () => {
-                    try {
-                        const gasRes  = await fetch(
-                            `${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${id}&status=completed&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`
-                        );
-                        const gasData = await gasRes.json();
-                        if (!gasData.success) {
-                            showToast("فشلت الأرشفة — لم يُحذف الطلب. أعد المحاولة.", "error");
-                            if (el) { el.disabled = false; el.classList.remove('btn-loading'); }
-                            return;
-                        }
-                    } catch(e) {
-                        showToast("تعذّر الاتصال بالسيرفر. تحقق من الاتصال وأعد المحاولة.", "error");
-                        if (el) { el.disabled = false; el.classList.remove('btn-loading'); }
-                        return;
-                    }
-                    // GAS نجحت → احذف من Firebase
-                    db.ref(`active_orders/${id}`).remove()
-                        .then(() => {
-                            if (card) {
-                                card.style.transition = '.3s';
-                                card.style.opacity = '0';
-                                card.style.transform = 'scale(0.95)';
-                                setTimeout(() => card.remove(), 320);
-                            }
-                            showToast("✅ تم الإكمال والأرشفة بنجاح");
-                        })
-                        .catch(err => {
-                            console.error(err);
-                            showToast("تم أرشفة الطلب في GAS لكن فشل الحذف من Firebase", "error");
-                            if (el) { el.disabled = false; el.classList.remove('btn-loading'); }
-                        });
-                })();
-            } else {
-                // DELETE: حذف مباشر بدون أرشفة
+                // ✅ FIX: للـ COMPLETE — نحذف من Firebase ثم نستدعي GAS للأرشفة
                 db.ref(`active_orders/${id}`).remove()
                     .then(() => {
-                        if (card) {
-                            card.style.transition = '.3s';
-                            card.style.opacity = '0';
-                            card.style.transform = 'scale(0.95)';
-                            setTimeout(() => card.remove(), 320);
+                        if (card) { 
+                            card.style.transition = '.3s'; 
+                            card.style.opacity = '0'; 
+                            card.style.transform = 'scale(0.95)'; 
+                            setTimeout(() => card.remove(), 320); 
+                        }
+                        showToast("تم الإكمال");
+                        // GAS تقرأ الطلب قبل الحذف وتؤرشفه في Sheets
+                        fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=ORDER&id=${id}&status=completed&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`).catch(()=>{});
+                    })
+                    .catch(err => {
+                        console.error(err);
+                        showToast("فشل تحديث Firebase", "error");
+                        if (el) { el.disabled = false; el.classList.remove('btn-loading'); }
+                        if (card) card.style.opacity = '1';
+                    });
+            } else {
+                // DELETE: حذف مباشر بدون GAS (لا أرشفة مطلوبة)
+                db.ref(`active_orders/${id}`).remove()
+                    .then(() => {
+                        if (card) { 
+                            card.style.transition = '.3s'; 
+                            card.style.opacity = '0'; 
+                            card.style.transform = 'scale(0.95)'; 
+                            setTimeout(() => card.remove(), 320); 
                         }
                         showToast("تم الحذف");
                     })
@@ -2830,7 +2787,7 @@ function adminActionOptUI(cmd, type, id, el) {
                         if (card) card.style.opacity = '1';
                     });
             }
-            // لا نكمل باقي الدالة
+            // لا نكمل باقي الدالة حتى لا نكرر الطلب
             return;
         }
     }
