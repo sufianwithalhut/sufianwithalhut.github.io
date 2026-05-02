@@ -3,60 +3,56 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>جهاز فحص الذكاء الاصطناعي</title>
+    <title>رادار كشف النماذج</title>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; padding: 50px 20px; background: #f8fafc; color: #0f172a; }
         button { padding: 15px 30px; font-size: 18px; font-weight: bold; background: #0369a1; color: white; border: none; border-radius: 12px; cursor: pointer; box-shadow: 0 4px 15px rgba(3, 105, 161, 0.3); transition: 0.2s; }
         button:active { transform: scale(0.95); }
-        #resultBox { margin-top: 30px; padding: 20px; background: white; border-radius: 12px; border: 2px solid #e2e8f0; text-align: left; direction: ltr; font-family: monospace; white-space: pre-wrap; font-size: 14px; max-width: 600px; margin-left: auto; margin-right: auto; word-wrap: break-word; }
+        #resultBox { margin-top: 30px; padding: 20px; background: white; border-radius: 12px; border: 2px solid #e2e8f0; text-align: left; direction: ltr; font-family: monospace; white-space: pre-wrap; font-size: 15px; max-width: 600px; margin-left: auto; margin-right: auto; word-wrap: break-word; line-height: 1.6; }
         .error { border-color: #ef4444 !important; background: #fef2f2 !important; color: #b91c1c; }
         .success { border-color: #10b981 !important; background: #f0fdf4 !important; color: #047857; }
     </style>
 </head>
 <body>
 
-    <h2>جهاز فحص نبض الذكاء الاصطناعي V2 🩺</h2>
+    <h2>رادار كشف نماذج جوجل السرية 📡</h2>
+    <p>هذا الزر سيسحب قائمة النماذج المسموحة لمفتاحك لنعرف الاسم الصحيح</p>
     
-    <button onclick="testAPI()">اضغط هنا لفحص الاتصال 🚀</button>
+    <button onclick="fetchModels()">اضغط هنا لسحب القائمة 🔍</button>
     
     <div id="resultBox">النتيجة ستظهر هنا...</div>
 
     <script>
+        // مفتاحك السري مدمج هنا
         const API_KEY = "AIzaSyDkfzd2GUao8N3u2YQZ7y7-6shWBX0a7bI";
 
-        async function testAPI() {
+        async function fetchModels() {
             const resBox = document.getElementById('resultBox');
-            resBox.innerHTML = "جاري الاتصال بسيرفرات جوجل... ⏳";
+            resBox.innerHTML = "جاري سحب البيانات من جوجل... ⏳";
             resBox.className = "";
 
-            // 🔥 تم تحديث اسم النموذج هنا إلى gemini-1.5-flash-latest
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${API_KEY}`;
-            
-            const payload = {
-                contents: [{ parts: [{ text: "أجب بكلمة واحدة فقط بالعربية: 'نجاح'" }] }]
-            };
+            const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${API_KEY}`;
 
             try {
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
+                const response = await fetch(url);
+                const data = await response.json();
 
                 if (!response.ok) {
-                    const errorData = await response.json();
-                    resBox.innerHTML = `❌ جوجل رفضت الاتصال!\n\nكود الخطأ: ${response.status}\n\nتفاصيل الخطأ:\n${JSON.stringify(errorData, null, 2)}`;
+                    resBox.innerHTML = `❌ خطأ في السحب:\n${JSON.stringify(data, null, 2)}`;
                     resBox.className = "error";
                     return;
                 }
 
-                const data = await response.json();
-                const text = data.candidates[0].content.parts[0].text;
-                resBox.innerHTML = `✅ الاتصال سليم 100%!\n\nرد النظام الذكي:\n${text}`;
+                // فلترة النماذج التي تدعم توليد النصوص وقراءة الصور
+                const validModels = data.models
+                    .filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes("generateContent"))
+                    .map(m => `✅ ${m.name}`);
+
+                resBox.innerHTML = `🎯 نجاح! هذه هي الأسماء المسموحة لمفتاحك:\n\n${validModels.join('\n')}\n\n(أرسل لي هذه القائمة!)`;
                 resBox.className = "success";
 
             } catch (e) {
-                resBox.innerHTML = `🛑 فشل الإرسال من المتصفح!\n\n${e.message}`;
+                resBox.innerHTML = `🛑 فشل الاتصال!\n\n${e.message}`;
                 resBox.className = "error";
             }
         }
