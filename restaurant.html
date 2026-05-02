@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 8.0 (النسخة الذكية السحرية - Zero Friction & JSON Strict) ---
-        const CURRENT_APP_VERSION = "8.0"; 
+        // --- إصدار 8.5 (النسخة الذكية السحرية - JSON Strict Mode & Area Injection) ---
+        const CURRENT_APP_VERSION = "8.5"; 
         const RES_VERSION_KEY = 'hut_res_app_version';
         try {
             if (localStorage.getItem(RES_VERSION_KEY) !== CURRENT_APP_VERSION) {
@@ -1021,7 +1021,7 @@
                     enterDashboard();
                 } else if (data.status === "banned") {
                     clearInterval(waitingPollingTimer); localStorage.removeItem('hut_res_pending');
-                    alert("⚠️ حسابك محظور."); location.reload();
+                    alert("⚠️ حساب محظور."); location.reload();
                 }
             }).catch(() => {});
     };
@@ -1227,18 +1227,27 @@
     // 🧠 دالة المعالجة الذكية في الخلفية (محدثة لتعمل بدقة 100% وبدون أخطاء JSON)
     async function extractDataFromImageBg(base64Data) {
         // نجمع مناطق المطعم لنوجه النظام لها حصراً
-        const areaNames = Object.keys(myCustomPriceList).length > 0 ? Object.keys(myCustomPriceList).join('، ') : 'مناطق كركوك';
+        const areaList = Object.keys(myCustomPriceList);
+        const areaNames = areaList.length > 0 ? areaList.join('، ') : 'مناطق كركوك';
         
+        const promptText = `أنت نظام ذكي لاستخراج البيانات من وصولات المطاعم في العراق.
+استخرج 3 قيم فقط بناءً على الصورة المرفقة.
+يجب أن تكون النتيجة JSON نقي فقط بالصيغة التالية:
+{
+  "price": 15000,
+  "phone": "07712345678",
+  "area": "اسم المنطقة"
+}
+
+القواعد:
+1. price: رقم فقط (السعر الإجمالي) بدون فواصل أو نصوص. إذا لم تجده، ضع 0.
+2. phone: رقم الهاتف، يبدأ بـ 07. إذا لم تجده، اتركه فارغاً "".
+3. area: ابحث عن اسم المنطقة في الوصل وطابقه *حصراً* مع إحدى هذه المناطق: [${areaNames}]. إذا لم تجد تطابقاً دقيقاً، اكتب "تحديد ذكي (انظر الوصل)".`;
+
         const payload = {
             "contents": [{
                 "parts": [
-                    { "text": `أنت نظام آلي فائق الذكاء لقراءة وصولات المطاعم العراقية.
-مهمتك استخراج 3 قيم فقط من الصورة.
-
-التعليمات الصارمة:
-1. السعر (price): استخرجه كأرقام إنجليزية فقط (مثلاً 15000 وليس ١٥٠٠٠ أو 15,000). تجاهل أي فواصل.
-2. الهاتف (phone): رقم يبدأ بـ 07. إذا لم تجده اتركه فارغاً "".
-3. المنطقة (area): ابحث في الوصل عن أي كلمة تتطابق أو تشبه إحدى هذه المناطق حصراً: [${areaNames}]. إذا وجدتها، اكتبها كما هي باللستة. إذا لم تجدها، اكتب "غير محددة".` },
+                    { "text": promptText },
                     { "inline_data": { "mime_type": "image/jpeg", "data": base64Data } }
                 ]
             }],
@@ -1254,10 +1263,18 @@
                 headers: { 'Content-Type': 'application/json' }, 
                 body: JSON.stringify(payload) 
             });
+            
+            if (!response.ok) {
+                console.error("API Error Status:", response.status);
+                return { error: true };
+            }
+
             const data = await response.json();
             
             // JSON نقي وجاهز
-            const cleanJson = JSON.parse(data.candidates[0].content.parts[0].text);
+            let aiText = data.candidates[0].content.parts[0].text;
+            aiText = aiText.trim();
+            const cleanJson = JSON.parse(aiText);
             return cleanJson;
 
         } catch (e) { 
@@ -1415,5 +1432,6 @@
 </script>
 </body>
 </html>
+
 
 ```
