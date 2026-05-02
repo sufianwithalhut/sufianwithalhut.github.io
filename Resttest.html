@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 17.0 (النسخة الزرقاء الفاخرة - Blue Glass Header) ---
-        const CURRENT_APP_VERSION = "17.0"; 
+        // --- إصدار 18.0 (السرعة القصوى - إرسال 0 ثانية + ربط ذكي للمناطق) ---
+        const CURRENT_APP_VERSION = "18.0"; 
         const RES_VERSION_KEY = 'hut_res_app_version';
         try {
             if (localStorage.getItem(RES_VERSION_KEY) !== CURRENT_APP_VERSION) {
@@ -89,7 +89,7 @@
             flex-direction: column; color: var(--primary-blue);
         }
 
-        /* --- الهيدر الزجاجي الأزرق الفاخر (Blue Glass Header) --- */
+        /* --- الهيدر الزجاجي الأزرق الفاخر --- */
         .global-header {
             position: sticky;
             top: 0;
@@ -167,7 +167,7 @@
 
         .partner-badge {
             font-size: 0.65rem;
-            color: #cbd5e1; /* لون رمادي فاتح مائل للأزرق */
+            color: #cbd5e1; 
             font-weight: 800;
             margin-top: 1px;
         }
@@ -204,7 +204,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            background: rgba(255, 255, 255, 0.95); /* زجاج أبيض يعطي تباين جميل مع الأزرق */
+            background: rgba(255, 255, 255, 0.95); 
             border: 1px solid rgba(255, 255, 255, 1);
             border-radius: 14px;
             padding: 10px 5px;
@@ -379,7 +379,7 @@
         @keyframes pulseDot { 0% { box-shadow: 0 0 0 0 var(--accent-glow); } 70% { box-shadow: 0 0 0 5px rgba(255, 107, 0, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 107, 0, 0); } }
 
         .archive-item { display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.6); padding: 8px 10px; border-radius: 10px; border: 1px solid var(--glass-border); margin-bottom: 6px; }
-        .success-toast { background: rgba(16, 185, 129, 0.95); backdrop-filter: blur(10px); color: white; border-radius: 16px; padding: 15px; margin-top: 10px; display: flex; align-items: center; justify-content: center; text-align: center; gap: 12px; animation: slideUp 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        .success-toast { background: rgba(16, 185, 129, 0.95); backdrop-filter: blur(10px); color: white; border-radius: 16px; padding: 15px; margin-top: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 8px; animation: slideUp 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
         
         @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes slideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
@@ -627,12 +627,9 @@
                     </form>
 
                     <div id="orderStatusBox" class="hidden-section">
-                        <div class="success-toast">
-                            <div>
-                                <i data-lucide="check-circle" size="32" class="mb-1"></i>
-                                <div class="fw-black" id="statusMsg" style="font-size: 0.95rem;">تم استلام الطلب!</div>
-                                <div style="font-size: 0.75rem; opacity: 0.9;">جاري المعالجة الذكية والإرسال للسائقين 🚀</div>
-                            </div>
+                        <div class="success-toast" id="successToastContent">
+                            <i data-lucide="check-circle" size="32"></i>
+                            <div class="fw-black" id="statusMsg" style="font-size: 0.95rem;">تم استلام الطلب!</div>
                         </div>
                     </div>
                 </div>
@@ -716,6 +713,22 @@
     let actionBlacklist     = [];
     const BLACKLIST_TTL_MS  = 15000;
     let liveActiveOrders = [];
+
+    // --- دالة المطابقة الذكية للمناطق ---
+    function matchAreaWithList(aiArea, priceListObj) {
+        if (!aiArea || aiArea === "غير محددة") return null;
+        const areas = Object.keys(priceListObj);
+        
+        // 1. بحث متطابق تماماً
+        let matched = areas.find(a => a.trim() === aiArea.trim());
+        if (matched) return { name: matched, price: priceListObj[matched] };
+        
+        // 2. بحث جزئي (تحتوي على الكلمة)
+        matched = areas.find(a => aiArea.includes(a) || a.includes(aiArea));
+        if (matched) return { name: matched, price: priceListObj[matched] };
+        
+        return null;
+    }
 
     window.normalizeCustomerPhone = function(raw) {
         if (!raw) return { clean: '', changed: false };
@@ -1227,10 +1240,8 @@
         document.getElementById('orderSection').classList.remove('hidden-section');
         document.getElementById('resTitle').innerText = currentResName;
         
-        // --- تحديث الأفاتار (الهوية البصرية) ---
         const avatar = document.getElementById('resAvatar');
         if(currentResName && currentResName.length > 0) {
-            // نأخذ أول حرف من اسم المطعم، ونتجاهل كلمة "مطعم" إذا وجدت
             let cleanName = currentResName.replace(/^مطعم\s+/i, '');
             avatar.innerText = cleanName.charAt(0);
         }
@@ -1456,6 +1467,7 @@
         }
     }
 
+    // --- المعالجة الخلفية صفر ثانية (Fire & Forget) ---
     document.getElementById('orderForm').onsubmit = function(e) {
         e.preventDefault();
 
@@ -1495,17 +1507,19 @@
         } else {
             if (!base64Receipt) return alert("يرجى التقاط صورة للوصل أولاً.");
             
-            btn.innerHTML = `<div class="spinner-border spinner-border-sm me-1"></div> تحليل ذكي...`; 
-            btn.disabled  = true;
-            
             const base64Content = base64Receipt.split(',')[1];
             const currentRes = currentResName; 
             
-            processPhotoOrderWithValidation(base64Content, currentRes, btn, originalBtnHtml);
+            // 1. تفريغ الحقول وإظهار النجاح فوراً (Zero-Wait)
+            showSuccessMessage("تم استلام الصورة! 🚀<br><small style='font-size:0.75rem; opacity:0.9;'>تتم المعالجة بالخلفية وسيتم توجيهها للسائقين قريباً.</small>");
+            
+            // 2. إطلاق المعالجة في الخلفية بدون await للـ Form
+            processPhotoOrderBackgroundSafe(base64Content, currentRes);
         }
     };
 
-    async function processPhotoOrderWithValidation(base64Content, resName, btn, originalBtnHtml) {
+    // دالة المعالجة الآمنة في الخلفية
+    async function processPhotoOrderBackgroundSafe(base64Content, resName) {
         try {
             const formData = new FormData(); formData.append("image", base64Content);
             const uploadPromise = fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, { method: "POST", body: formData }).then(r => r.json()).catch(e => ({error: true}));
@@ -1514,14 +1528,6 @@
             const results = await Promise.allSettled([uploadPromise, aiPromise]);
             const uploadResult = results[0]; 
             const aiResult = results[1];
-
-            if (aiResult.status === 'rejected' || (aiResult.status === 'fulfilled' && aiResult.value.error)) {
-                const errorMsg = aiResult.value.msg ? `\nتفاصيل: ${aiResult.value.msg}` : "";
-                alert(`⚠️ فشل النظام الذكي في الاتصال أو قراءة الوصل. يرجى التأكد من جودة الصورة.${errorMsg}`);
-                btn.innerHTML = originalBtnHtml;
-                btn.disabled = false;
-                return; 
-            }
 
             let imageUrl = "";
             if (uploadResult.status === 'fulfilled' && uploadResult.value && !uploadResult.value.error && uploadResult.value.data) { 
@@ -1543,21 +1549,26 @@
                     finalPhone = clean || aiResult.value.phone;
                     finalDetails = `الهاتف: ${finalPhone} | ${finalDetails}`;
                 }
-                if (aiResult.value.area && aiResult.value.area !== "غير محددة" && aiResult.value.area !== "") {
-                    finalArea = aiResult.value.area + " (مستخرج آلياً)";
+                // الربط الذكي للمناطق (Fuzzy Matching)
+                if (aiResult.value.area) {
+                    const matched = matchAreaWithList(aiResult.value.area, myCustomPriceList);
+                    if (matched) {
+                        finalArea = `${matched.name} (توصيل: ${matched.price})`;
+                    } else {
+                        finalArea = `${aiResult.value.area} (مستخرج آلياً)`;
+                    }
                 }
+            } else {
+                // في حال فشل الذكاء الاصطناعي، نرسل الطلب مع الصورة للسائق ليقرأه يدوياً
+                finalArea = "يحتاج مراجعة (انظر الصورة)";
+                finalDetails = "⚠️ فشل التحليل الذكي | " + finalDetails;
             }
 
+            // إرسال الطلب النهائي بصمت للقاعدة (سيظهر تلقائياً في قائمة الطلبات النشطة)
             await finalizeOrderPlacementSilent(finalDetails, imageUrl, finalPrice, finalArea, resName);
-            btn.innerHTML = originalBtnHtml; 
-            btn.disabled = false;
-            showSuccessMessage();
 
         } catch (e) {
-            console.error("System error:", e);
-            alert("حدث خطأ غير متوقع في النظام.");
-            btn.innerHTML = originalBtnHtml;
-            btn.disabled = false;
+            console.error("Background processing completely failed:", e);
         }
     }
 
@@ -1565,7 +1576,7 @@
         try {
             await finalizeOrderPlacementSilent(details, imageUrl, price, area, currentResName);
             btn.innerHTML = originalBtnHtml; btn.disabled = false;
-            showSuccessMessage();
+            showSuccessMessage("تم إرسال الطلب للرادار بنجاح! 🚀");
         } catch (e) { btn.innerHTML = originalBtnHtml; btn.disabled = false; alert("حدث خطأ."); }
     }
 
@@ -1590,11 +1601,11 @@
         fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'NEW_ORDER', token: API_TOKEN, frontendId: uniqueId, restaurantName: resName, area, price, details, image: imageUrl }) }).catch(() => {});
     }
 
-    function showSuccessMessage() {
+    function showSuccessMessage(customMsg) {
         if (navigator.vibrate) navigator.vibrate([100, 50, 100]); // 📱 الاهتزاز عند النجاح
         
         document.getElementById('orderStatusBox').classList.remove('hidden-section');
-        document.getElementById('statusMsg').innerHTML = `<span class="fw-bold">تم إرسال الطلب للرادار بنجاح! 🚀</span>`;
+        document.getElementById('statusMsg').innerHTML = customMsg;
         
         document.getElementById('customerPhone').value = ""; document.getElementById('customerDetails').value = "";
         document.getElementById('orderPrice').value = ""; document.getElementById('customAreaName').value = ""; document.getElementById('customAreaPrice').value = "";
