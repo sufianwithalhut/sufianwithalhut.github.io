@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 15.0 (القارئ الخارق - Prompt عراقي مخصص + إجبار JSON + Temperature 0.1) ---
-        const CURRENT_APP_VERSION = "15.0"; 
+        // --- إصدار 16.0 (سرعة البرق + معالجة خلفية صامتة + قوة غاشمة للـ JSON) ---
+        const CURRENT_APP_VERSION = "16.0"; 
         const RES_VERSION_KEY = 'hut_res_app_version';
         try {
             if (localStorage.getItem(RES_VERSION_KEY) !== CURRENT_APP_VERSION) {
@@ -48,7 +48,6 @@
     <script src="https://unpkg.com/lucide@latest" defer></script>
     
     <style>
-        /* [تم الاحتفاظ بجميع الأنماط (CSS) كما هي بدون تغيير] */
         :root {
             --primary: #0f172a;
             --accent: #ff6b00; 
@@ -1266,7 +1265,14 @@
             const data = await response.json();
             let aiText = data.candidates[0].content.parts[0].text;
             
-            aiText = aiText.replace(/```json/g, "").replace(/```/g, "").trim();
+            // 🛡️ قوة غاشمة: اقتلاع الـ JSON فقط من النص حتى لو "تكلم" الذكاء الاصطناعي
+            const jsonMatch = aiText.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+                aiText = jsonMatch[0];
+            } else {
+                aiText = aiText.replace(/```json/g, "").replace(/```/g, "").trim();
+            }
+            
             const cleanJson = JSON.parse(aiText);
             return cleanJson;
 
@@ -1312,19 +1318,22 @@
             finalizeOrderPlacement(finalDetails, "", finalPrice, areaWithHint, btn, originalBtnHtml);
             
         } else {
+            // --- ⚡ الإرسال بسرعة البرق (Fire & Forget) ⚡ ---
             if (!base64Receipt) return alert("يرجى التقاط صورة للوصل أولاً.");
-            
-            btn.innerHTML = `<div class="spinner-border spinner-border-sm me-1"></div> تحليل ذكي...`; 
-            btn.disabled  = true;
             
             const base64Content = base64Receipt.split(',')[1];
             const currentRes = currentResName; 
             
-            processPhotoOrderWithValidation(base64Content, currentRes, btn, originalBtnHtml);
+            // 1. إظهار رسالة النجاح وتفريغ الحقل في جزء من الثانية
+            showSuccessMessage();
+            
+            // 2. إرسال الطلب للمعالجة الصامتة في الخلفية الظلامية
+            processPhotoOrderBackground(base64Content, currentRes);
         }
     };
 
-    async function processPhotoOrderWithValidation(base64Content, resName, btn, originalBtnHtml) {
+    // 🚀 دالة المعالجة الصامتة في الخلفية (Zero Wait)
+    async function processPhotoOrderBackground(base64Content, resName) {
         try {
             const formData = new FormData(); formData.append("image", base64Content);
             const uploadPromise = fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, { method: "POST", body: formData }).then(r => r.json()).catch(e => ({error: true}));
@@ -1333,14 +1342,6 @@
             const results = await Promise.allSettled([uploadPromise, aiPromise]);
             const uploadResult = results[0]; 
             const aiResult = results[1];
-
-            if (aiResult.status === 'rejected' || (aiResult.status === 'fulfilled' && aiResult.value.error)) {
-                const errorMsg = aiResult.value.msg ? `\nتفاصيل: ${aiResult.value.msg}` : "";
-                alert(`⚠️ فشل النظام الذكي في الاتصال أو قراءة الوصل. يرجى التأكد من جودة الصورة.${errorMsg}`);
-                btn.innerHTML = originalBtnHtml;
-                btn.disabled = false;
-                return; 
-            }
 
             let imageUrl = "";
             if (uploadResult.status === 'fulfilled' && uploadResult.value && !uploadResult.value.error && uploadResult.value.data) { 
@@ -1367,19 +1368,17 @@
                 }
             }
 
+            // إرسال الطلب النهائي بصمت للقاعدة
             await finalizeOrderPlacementSilent(finalDetails, imageUrl, finalPrice, finalArea, resName);
-            btn.innerHTML = originalBtnHtml; 
-            btn.disabled = false;
-            showSuccessMessage();
 
         } catch (e) {
-            console.error("System error:", e);
-            alert("حدث خطأ غير متوقع في النظام.");
-            btn.innerHTML = originalBtnHtml;
-            btn.disabled = false;
+            console.error("Background error:", e);
+            // 🪂 شبكة الأمان: إرسال الطلب حتى لو انهار كل شيء
+            finalizeOrderPlacementSilent("مسح ذكي - وصل مصور (خطأ في المعالجة)", "", 0, "تحديد ذكي (انظر الوصل)", resName);
         }
     }
 
+    // الإرسال اليدوي العادي (يعيد الزر لوضعه الطبيعي)
     async function finalizeOrderPlacement(details, imageUrl, price, area, btn, originalBtnHtml) {
         try {
             await finalizeOrderPlacementSilent(details, imageUrl, price, area, currentResName);
@@ -1388,6 +1387,7 @@
         } catch (e) { btn.innerHTML = originalBtnHtml; btn.disabled = false; alert("حدث خطأ."); }
     }
 
+    // الإرسال الصامت للقاعدة (بدون تغييرات في واجهة المستخدم)
     async function finalizeOrderPlacementSilent(details, imageUrl, price, area, resName) {
         const uniqueId    = "HUT-" + Math.floor(Date.now() / 1000);
         const tsIso       = new Date().toISOString();
@@ -1409,7 +1409,11 @@
         fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'NEW_ORDER', token: API_TOKEN, frontendId: uniqueId, restaurantName: resName, area, price, details, image: imageUrl }) }).catch(() => {});
     }
 
+    // دالة تفريغ الحقول وإظهار النجاح (تعمل فوراً)
     function showSuccessMessage() {
+        // هز الهاتف إذا كان يدعم ذلك
+        if (navigator.vibrate) navigator.vibrate(50);
+        
         document.getElementById('orderStatusBox').classList.remove('hidden-section');
         document.getElementById('statusMsg').innerHTML = `<span class="fw-bold">تم إرسال الطلب للرادار بنجاح! 🚀</span>`;
         
