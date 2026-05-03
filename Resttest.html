@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 24.0 (ترقية إلى Gemini 1.5 Flash المستقر + طبقات حماية كاملة + درع JSON) ---
-        const CURRENT_APP_VERSION = "24.0"; 
+        // --- إصدار 25.0 (Gemini 1.5 Flash + درع JSON + نظام الطابور الذكي AI Queue) ---
+        const CURRENT_APP_VERSION = "25.0"; 
         const RES_VERSION_KEY = 'hut_res_app_version';
         try {
             if (localStorage.getItem(RES_VERSION_KEY) !== CURRENT_APP_VERSION) {
@@ -680,7 +680,7 @@
     const API_TOKEN = "HUT_SECURE_99";
     const IMGBB_KEY = "546047e6407dd77fc9518dd37e27cda2"; 
     
-    // 🛡️ المفتاح الجديد AIzaSyCOX9Uze4Qzdx4T0pNAWUo_XDDuke3hTLU (مقطع لـ 5 أجزاء) للتمويه
+    // 🛡️ المفتاح الجديد AIzaSyCOX9Uze4Qzdx4T0pNAWUo_XDDuke3hTLU (مقطع لـ 5 أجزاء)
     const _k1 = "AIzaSyCOX9";
     const _k2 = "Uze4Qzdx4";
     const _k3 = "T0pNAWUo_";
@@ -688,29 +688,59 @@
     const _k5 = "LU";
     const GEMINI_API_KEY = _k1 + _k2 + _k3 + _k4 + _k5;
 
-    // 🛡️ صمّام الأمان – معدّل الطلبات (15 طلب في الدقيقة)
-    const RATE_LIMIT_MAX  = 15;
+    // 🛡️ نظام الطابور الذكي (AI Queue System) لضمان عدم تجاوز حد 14 طلب / دقيقة
+    const RATE_LIMIT_MAX  = 14; 
     const RATE_LIMIT_WINDOW_MS = 60000;
     const aiRequestTimestamps = [];
+    const aiQueue = [];
+    let isProcessingAiQueue = false;
 
-    function canMakeAiRequest() {
-        const now = Date.now();
-        while (aiRequestTimestamps.length > 0 && (now - aiRequestTimestamps[0]) > RATE_LIMIT_WINDOW_MS) {
-            aiRequestTimestamps.shift();
+    async function waitForAiSlot() {
+        while (true) {
+            const now = Date.now();
+            // مسح الطلبات التي مر عليها أكثر من دقيقة
+            while (aiRequestTimestamps.length > 0 && (now - aiRequestTimestamps[0]) > RATE_LIMIT_WINDOW_MS) {
+                aiRequestTimestamps.shift();
+            }
+            // إذا كان هناك مكان متاح في الدقيقة الحالية
+            if (aiRequestTimestamps.length < RATE_LIMIT_MAX) {
+                aiRequestTimestamps.push(Date.now()); // حجز المكان
+                return;
+            }
+            // إذا الطابور ممتلئ، ننتظر ثانية واحدة ثم نفحص مجدداً
+            await new Promise(r => setTimeout(r, 1000));
         }
-        return aiRequestTimestamps.length < RATE_LIMIT_MAX;
     }
 
-    function recordAiRequest() {
-        aiRequestTimestamps.push(Date.now());
+    async function callGeminiAPI(payload, timeoutMs = 20000) {
+        return new Promise((resolve, reject) => {
+            aiQueue.push({ payload, timeoutMs, resolve, reject });
+            processAiQueue();
+        });
     }
 
-    // 🛡️ دالة موحّدة لاستدعاء Gemini API المستقر
-    async function callGeminiAPI(payload, timeoutMs = 15000) {
-        // تم الاعتماد على النسخة المستقرة لضمان عدم التعطل
+    async function processAiQueue() {
+        if (isProcessingAiQueue) return;
+        isProcessingAiQueue = true;
+
+        while (aiQueue.length > 0) {
+            await waitForAiSlot(); // السحر هنا: سينتظر حتى تتوفر مساحة في الدقيقة!
+            const task = aiQueue.shift();
+            
+            try {
+                const result = await executeGeminiFetch(task.payload, task.timeoutMs);
+                task.resolve(result);
+            } catch (error) {
+                task.reject(error);
+            }
+        }
+        isProcessingAiQueue = false;
+    }
+
+    async function executeGeminiFetch(payload, timeoutMs) {
         const MODEL_NAME = "gemini-1.5-flash"; 
         const MAX_RETRIES = 3;
-        const BASE_DELAY_MS = 1000;
+        const BASE_DELAY_MS = 1500;
 
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
             const controller = new AbortController();
@@ -730,6 +760,7 @@
                 clearTimeout(timeoutId);
 
                 if (!response.ok) {
+                    if (response.status === 429) throw new Error("RATE_LIMIT_429");
                     const errText = await response.text();
                     throw new Error(`HTTP ${response.status}: ${errText}`);
                 }
@@ -740,12 +771,15 @@
             } catch (error) {
                 clearTimeout(timeoutId);
 
+                if (error.message === "RATE_LIMIT_429") {
+                    console.warn("⚠️ سيرفر جوجل يطلب الانتظار، سيتم التأجيل 10 ثواني إضافية...");
+                    await new Promise(resolve => setTimeout(resolve, 10000));
+                }
+
                 if (attempt < MAX_RETRIES) {
                     const delay = BASE_DELAY_MS * attempt;
-                    console.warn(`⚠️ محاولة ${attempt} فشلت (${error.message}). إعادة المحاولة بعد ${delay}ms...`);
                     await new Promise(resolve => setTimeout(resolve, delay));
                 } else {
-                    console.error(`❌ فشلت جميع المحاولات (${MAX_RETRIES}): ${error.message}`);
                     return { error: true, msg: error.message };
                 }
             }
@@ -842,19 +876,14 @@
         document.getElementById('pasteModal').style.display = 'none';
     };
 
-    // --- 🧠 نظام اللصق الذكي المطور (JSON Armor + Logic) ---
+    // --- 🧠 نظام اللصق الذكي المطور (JSON Armor + Queue Logic) ---
     window.processPastedText = async function() {
         const text = document.getElementById('pasteTextInput').value.trim();
         if (!text) { alert("يرجى لصق رسالة أولاً!"); return; }
-
-        if (!canMakeAiRequest()) {
-            alert("⏳ تم الوصول للحد الأقصى للطلبات الذكية. انتظر دقيقة ثم حاول مجدداً.");
-            return;
-        }
         
         const btn = document.getElementById('processPasteBtn');
         const originalHtml = btn.innerHTML;
-        btn.innerHTML = `<div class="spinner-border spinner-border-sm me-1"></div> جاري الفهم...`;
+        btn.innerHTML = `<div class="spinner-border spinner-border-sm me-1"></div> جاري الفهم بالدور...`;
         btn.disabled = true;
 
         const areaList = Object.keys(myCustomPriceList);
@@ -870,19 +899,21 @@
             "contents": [{ "parts": [{ "text": promptText }] }],
             "generationConfig": { 
                 "temperature": 0.1,
-                "response_mime_type": "application/json" 
+                "responseMimeType": "application/json" 
             }
         };
 
         try {
-            recordAiRequest();
-            const data = await callGeminiAPI(payload, 10000);
+            // سيتم إرساله عبر الطابور الموحد بدلاً من الفحص اليدوي للحد
+            const data = await callGeminiAPI(payload, 25000); 
             
             if (data.error) {
                 throw new Error(data.msg || "فشل الاتصال بالذكاء الاصطناعي");
             }
 
-            const cleanJson = JSON.parse(data.candidates[0].content.parts[0].text);
+            let aiText = data.candidates[0].content.parts[0].text;
+            aiText = aiText.replace(/```json/g, "").replace(/```/g, "").trim();
+            const cleanJson = JSON.parse(aiText);
 
             if (cleanJson.phone) {
                 const { clean } = window.normalizeCustomerPhone(cleanJson.phone);
@@ -915,7 +946,7 @@
 
         } catch (e) {
             console.error("❌ فشل اللصق الذكي:", e);
-            alert("لم نتمكن من فهم الرسالة تلقائياً، يرجى ملء الحقول يدوياً.");
+            alert("حدث خطأ أو تأخير في الاستجابة. يرجى الإدخال يدوياً.");
         } finally {
             btn.innerHTML = originalHtml;
             btn.disabled = false;
@@ -1612,7 +1643,7 @@
         if (lastActiveHtml !== activeOrdersHtml) { document.getElementById('activeOrdersList').innerHTML = activeOrdersHtml || `<div class="text-center text-muted fw-bold py-4 small" style="font-size: 0.8rem; background: rgba(255,255,255,0.4); border-radius: 20px;"><i data-lucide="inbox" size="24" class="mb-2 opacity-50"></i><br>لا توجد طلبات نشطة حالياً.</div>`; lastActiveHtml = activeOrdersHtml; if (typeof lucide !== 'undefined') lucide.createIcons(); }
     }
 
-    // --- 🧠 استخراج البيانات من صورة الوصل (المسح الذكي) – الإصدار الجبلي المستقر ---
+    // --- 🧠 استخراج البيانات من صورة الوصل (المسح الذكي) – نظام الطابور ---
     async function extractDataFromImageBg(base64Data) {
         const areaList = Object.keys(myCustomPriceList);
         const areaNames = areaList.length > 0 ? areaList.join('، ') : 'مناطق كركوك';
@@ -1621,11 +1652,6 @@
 1. "price": المجموع النهائي كرقم فقط (بدون د.ع).
 2. "phone": ابحث عن رقم هاتف الزبون (07...). ⚠️ تنبيه: استبعد أي أرقام مطبوعة تخص المطعم أو الإدارة في الترويسة. ابحث عن الرقم المكتوب يدوياً أو بجانب (هاتف، زبون، عميل).
 3. "area": اسم المنطقة وطابقها مع هذه القائمة إن أمكن: [${areaNames}].`;
-
-        if (!canMakeAiRequest()) {
-            console.warn("⏳ تجاوز الحد الأقصى لطلبات AI – تخطي التحليل الذكي");
-            return { error: true, msg: "rate_limited", area: "يحتاج مراجعة (انظر الصورة)" };
-        }
 
         const compressedImage = await compressImageIfNeeded(base64Data);
         const base64Content = compressedImage.includes(',') ? compressedImage.split(',')[1] : compressedImage;
@@ -1639,20 +1665,23 @@
             }],
             "generationConfig": { 
                 "temperature": 0.1,
-                "response_mime_type": "application/json" 
+                "responseMimeType": "application/json" 
             }
         };
 
         try {
-            recordAiRequest();
-            const data = await callGeminiAPI(payload, 15000);
+            // سيتم وضع الطلب في الطابور الموحد والانتظار بصمت دون تعطيل البرنامج
+            const data = await callGeminiAPI(payload, 25000);
             
             if (data.error) {
                 console.warn("⚠️ فشل تحليل الصورة بالذكاء الاصطناعي، متابعة بدون AI:", data.msg);
                 return { error: true, msg: data.msg, area: "يحتاج مراجعة (انظر الصورة)" };
             }
 
-            const cleanJson = JSON.parse(data.candidates[0].content.parts[0].text);
+            let aiText = data.candidates[0].content.parts[0].text;
+            aiText = aiText.replace(/```json/g, "").replace(/```/g, "").trim();
+            const cleanJson = JSON.parse(aiText);
+            
             return cleanJson;
 
         } catch (e) {
