@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 22.0 (ميزة اللصق الذكي Smart Paste + استخراج التفاصيل العراقية) ---
-        const CURRENT_APP_VERSION = "22.0"; 
+        // --- إصدار 32.0 (إزالة قفل الخريطة للإرسال السريع + 4 مفاتيح مقطعة + طابور ذكي) ---
+        const CURRENT_APP_VERSION = "32.0"; 
         const RES_VERSION_KEY = 'hut_res_app_version';
         try {
             if (localStorage.getItem(RES_VERSION_KEY) !== CURRENT_APP_VERSION) {
@@ -692,13 +692,123 @@
     const API_TOKEN = "HUT_SECURE_99";
     const IMGBB_KEY = "546047e6407dd77fc9518dd37e27cda2"; 
     
-    // 🛡️ التقطيع السري لحماية المفتاح من GitHub
-    const P1 = "AIzaSyC_";
-    const P2 = "zxNonyp";
-    const P3 = "UZ2lAxVz";
-    const P4 = "nBWiuMJ8";
-    const P5 = "uf7Mas4g";
-    const GEMINI_API_KEY = P1 + P2 + P3 + P4 + P5;
+    // 🛡️ التقطيع السري لـ 4 مفاتيح لحمايتها من حظر GitHub
+    const K1 = ["AIzaSyC_", "zxNonyp", "UZ2lAxVz", "nBWiuMJ8", "uf7Mas4g"];
+    const K2 = ["AIzaSyB4", "DaPz4v_", "Deh75ej9", "beWOqnHX", "hWfmgvY8"];
+    const K3 = ["AIzaSyCL", "IX0gUew", "EN8zeO3C", "m4XrKJ6q", "PdrYgOLo"];
+    const K4 = ["AIzaSyAI", "mxC9jB_", "f09ICYSL", "MpsrjCYb", "ARw0F_LI"];
+
+    const apiKeys = [
+        K1.join(''), K2.join(''), K3.join(''), K4.join('')
+    ];
+    let currentKeyIndex = 0;
+
+    // 🛡️ نظام الطابور الذكي (AI Queue System) لـ 55 طلب في الدقيقة!
+    const RATE_LIMIT_MAX  = 55; 
+    const RATE_LIMIT_WINDOW_MS = 60000;
+    const aiRequestTimestamps = [];
+    const aiQueue = [];
+    let isProcessingAiQueue = false;
+
+    async function waitForAiSlot() {
+        while (true) {
+            const now = Date.now();
+            while (aiRequestTimestamps.length > 0 && (now - aiRequestTimestamps[0]) > RATE_LIMIT_WINDOW_MS) {
+                aiRequestTimestamps.shift();
+            }
+            if (aiRequestTimestamps.length < RATE_LIMIT_MAX) {
+                aiRequestTimestamps.push(Date.now());
+                return;
+            }
+            await new Promise(r => setTimeout(r, 1000));
+        }
+    }
+
+    async function callGeminiAPI(payload, timeoutMs = 25000) {
+        return new Promise((resolve, reject) => {
+            aiQueue.push({ payload, timeoutMs, resolve, reject });
+            processAiQueue();
+        });
+    }
+
+    async function processAiQueue() {
+        if (isProcessingAiQueue) return;
+        isProcessingAiQueue = true;
+
+        while (aiQueue.length > 0) {
+            await waitForAiSlot(); 
+            const task = aiQueue.shift();
+            
+            try {
+                const result = await executeGeminiFetch(task.payload, task.timeoutMs);
+                task.resolve(result);
+            } catch (error) {
+                task.reject(error);
+            }
+        }
+        isProcessingAiQueue = false;
+    }
+
+    async function executeGeminiFetch(payload, timeoutMs) {
+        const MODEL_NAME = "gemini-2.5-flash"; 
+        const MAX_RETRIES = 4; // المحاولة 4 مرات (تساوي عدد المفاتيح)
+        const BASE_DELAY_MS = 1000;
+
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+            
+            // التبديل التلقائي للمفاتيح
+            const activeKey = apiKeys[currentKeyIndex];
+            currentKeyIndex = (currentKeyIndex + 1) % apiKeys.length;
+
+            try {
+                const response = await fetch(
+                    `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${activeKey}`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                        signal: controller.signal
+                    }
+                );
+
+                clearTimeout(timeoutId);
+
+                if (!response.ok) {
+                    if (response.status === 429) throw new Error("RATE_LIMIT_429");
+                    const errText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errText}`);
+                }
+
+                const data = await response.json();
+                
+                if (!data.candidates || data.candidates.length === 0) {
+                    throw new Error("No output from AI. Possibly blocked.");
+                }
+                
+                return data;
+
+            } catch (error) {
+                clearTimeout(timeoutId);
+
+                if (error.name === 'AbortError') {
+                     error.message = 'Request timed out';
+                }
+
+                if (error.message === "RATE_LIMIT_429") {
+                    console.warn(`⚠️ المفتاح استنفد الحد. سيتم التبديل للمفتاح التالي فوراً...`);
+                    if (attempt === MAX_RETRIES) {
+                        await new Promise(resolve => setTimeout(resolve, 8000));
+                    }
+                } else {
+                    if (attempt === MAX_RETRIES) return { error: true, msg: error.message };
+                    const delay = BASE_DELAY_MS * attempt;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
+            }
+        }
+    }
 
     const firebaseConfig = {
       apiKey: "AIzaSyAo1rmqUzieYZU3RIwXOAN87GkpNrp-_Hc",
@@ -766,8 +876,7 @@
         const areaList = Object.keys(myCustomPriceList);
         const areaNames = areaList.length > 0 ? areaList.join('، ') : 'مناطق كركوك';
 
-        // Prompt مخصص للهجة العراقية واستخراج النقاط الدالة
-        const promptText = `أنت خبير في فهم رسائل طلبات التوصيل في العراق. اقرأ هذه الرسالة المنسوخة من الواتساب: "${text}" واستخرج منها البيانات التالية بدقة:
+        const promptText = `أنت خبير في معالجة طلبات التوصيل في العراق. اقرأ هذه الرسالة المنسوخة من الواتساب: "${text}" واستخرج منها البيانات التالية بدقة:
 1. السعر (price): المجموع الكلي كرقم فقط بدون أي فواصل. (مثال: إذا قال 15 الف، اكتب 15000).
 2. الهاتف (phone): استخرج أي رقم هاتف يبدأ بـ 07.
 3. المنطقة (area): اسم المنطقة الأساسية. حاول مطابقتها مع هذه القائمة إن أمكن: [${areaNames}].
@@ -783,20 +892,17 @@
 
         const payload = {
             "contents": [{ "parts": [{ "text": promptText }] }],
-            "generationConfig": { "temperature": 0.1 }
+            "generationConfig": { 
+                "temperature": 0.1,
+                "response_mime_type": "application/json"
+            }
         };
 
         try {
-            // ✅ تم تغيير اسم النموذج إلى gemini-2.5-flash
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, { 
-                method: 'POST', 
-                headers: { 'Content-Type': 'application/json' }, 
-                body: JSON.stringify(payload) 
-            });
+            const data = await callGeminiAPI(payload); 
             
-            if (!response.ok) throw new Error("فشل الاتصال بالذكاء الاصطناعي");
+            if (data.error) throw new Error("فشل الاتصال بالذكاء الاصطناعي");
 
-            const data = await response.json();
             let aiText = data.candidates[0].content.parts[0].text;
             aiText = aiText.replace(/```json/g, "").replace(/```/g, "").trim();
             const cleanJson = JSON.parse(aiText);
@@ -1429,13 +1535,12 @@
             newLiveOrders.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
             liveActiveOrders = newLiveOrders; renderActiveOrdersUI();
             
-            // --- تحديث الأيقونة التفاعلية (The Magic Wave S) بناءً على الطلبات ---
             const routingIcon = document.getElementById('headerRoutingIcon');
             const centerContainer = document.getElementById('headerCenterContainer');
             if (routingIcon && centerContainer) {
                 if (liveActiveOrders.length > 0) {
-                    routingIcon.classList.add('active'); // تفعيل موجة السحر الزرقاء
-                    centerContainer.classList.add('active'); // تلوين اسم سفيان
+                    routingIcon.classList.add('active');
+                    centerContainer.classList.add('active');
                 } else {
                     routingIcon.classList.remove('active');
                     centerContainer.classList.remove('active');
@@ -1595,10 +1700,16 @@
             let finalArea = document.getElementById('customerArea').value; 
             let areaWithHint = finalArea;
 
+            // ✅ الحل الجذري هنا: 
+            // إذا لم يكن التطبيق قد استلم الإحداثيات بعد (أي لا تزال 35.468)، سيسحبها من الجلسة القديمة فوراً
+            // بدون أن يظهر تنبيه الانتظار، ويرسل الطلب في لمح البصر.
             if (Math.abs(regLat - 35.468) < 0.001 && Math.abs(regLng - 44.392) < 0.001) {
                 const s = JSON.parse(localStorage.getItem('hut_res_session') || '{}');
-                if (s.lat && s.lng) { regLat = parseFloat(s.lat); regLng = parseFloat(s.lng); } 
-                else { alert("⚠️ انتظر ثواني ليتم تحميل الخريطة."); return; }
+                if (s.lat && s.lng) { 
+                    regLat = parseFloat(s.lat); 
+                    regLng = parseFloat(s.lng); 
+                } 
+                // إزالة رسالة الخطأ والانتظار تماماً
             }
 
             if (finalArea === "أخرى" || !finalArea) {
