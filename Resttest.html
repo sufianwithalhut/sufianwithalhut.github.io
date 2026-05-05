@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 31.10 (استعادة محرك 31.0 المستقر للصور + اتصال مباشر + مفتاح مدفوع) ---
-        const CURRENT_APP_VERSION = "31.10"; 
+        // --- إصدار 31.11 (تفعيل ذاكرة المطاعم لتمييز الزبون عن المطعم بدقة) ---
+        const CURRENT_APP_VERSION = "31.11"; 
         const RES_VERSION_KEY = 'hut_res_app_version';
         try {
             if (localStorage.getItem(RES_VERSION_KEY) !== CURRENT_APP_VERSION) {
@@ -812,7 +812,10 @@
 3. المنطقة (area): اسم المنطقة الأساسية. حاول مطابقتها مع هذه القائمة إن أمكن: [${areaNames}].
 4. التفاصيل الإضافية (details): استخرج أي كلام يدل على عنوان دقيق أو أقرب نقطة دالة، مثل: (قرب الجامع، بصف الحديقة الجبيرة، يم اسواق محمد، الخ...). لا تضع فيها الطلبات الغذائية بل ركز على العنوان الدقيق. إذا لم تجد، اتركها فارغة.
 
-يجب إرجاع النتيجة بصيغة JSON نقي فقط، بدون أي نصوص إضافية، بالشكل التالي:
+🛑 قاعدة البيانات الناقصة (Missing Data):
+إذا لم تجد (السعر) أو (رقم الهاتف) أو كلاهما في الرسالة، اترك قيمتهما فارغة ""، ولكن استخرج "المنطقة" (area) دائماً.
+
+أرجع النتيجة بصيغة JSON فقط:
 {
   "price": "...",
   "phone": "...",
@@ -842,13 +845,22 @@
                 const { clean } = window.normalizeCustomerPhone(cleanJson.phone);
                 document.getElementById('customerPhone').value = clean || cleanJson.phone;
                 window.handleSmartPhone(document.getElementById('customerPhone'));
+            } else {
+                document.getElementById('customerPhone').value = "";
             }
+            
             if (cleanJson.price) {
                 document.getElementById('orderPrice').value = String(cleanJson.price).replace(/\D/g, '');
+            } else {
+                document.getElementById('orderPrice').value = "";
             }
+            
             if (cleanJson.details) {
                 document.getElementById('customerDetails').value = cleanJson.details;
+            } else {
+                document.getElementById('customerDetails').value = "";
             }
+
             if (cleanJson.area) {
                 const matched = matchAreaWithList(cleanJson.area, myCustomPriceList);
                 if (matched) {
@@ -860,6 +872,9 @@
                     document.getElementById('customAreaName').value = cleanJson.area;
                     document.getElementById('priceHint').classList.add('hidden-section');
                 }
+            } else {
+                document.getElementById('customerArea').value = "";
+                document.getElementById('areaDisplayInput').value = "";
             }
 
             window.saveDraft();
@@ -1571,27 +1586,29 @@
         const areaList = Object.keys(myCustomPriceList);
         const areaNames = areaList.length > 0 ? areaList.join('، ') : 'مناطق كركوك';
         
-        // 🧠 1. ذاكرة الذكاء الاصطناعي المخصصة للمطاعم (Restaurant Memory)
+        // 🧠 1. ذاكرة الذكاء الاصطناعي المخصصة للمطاعم
         const restaurantHints = {
-            "TAPIOCA": "تجاهل الرقم 07701004176 تماماً لأنه للمطعم. ركز على الرقم والمنطقة في أسفل الوصل.",
-            "Firefly Burger": "تجاهل الرقم 07829980468 والرقم 07821100939. ابحث عن اسم المنطقة بعد كلمة (Road:) أو بجوارها.",
-            "مندي صنعاء اليمن": "المنطقة واسم الزبون مكتوبان في منتصف الوصل تحت كلمة (العنوان) و (الزبون). تجاهل أرقام الدلفري السفلية.",
-            "افران فلسطين": "الوصل مكتوب غالباً بخط اليد. المنطقة مكتوبة بعد كلمة (العنوان) أو بخط مائل كبير.",
-            "IBO bakery": "تجاهل الرقم 07750000801. ركز على المنطقة المكتوبة بجوار (كراج بغداد) أو تحتها.",
-            "قصابة اياد 2": "تجاهل الأرقام السفلية (07701316536 وغيرها). رقم الزبون موجود في الأعلى بجوار (رقم الهاتف) والمنطقة بجوار (العنوان).",
-            "مطعم الديوان": "وصل مكتوب بخط يدوي بحت. اقرأ الكتابة اليدوية بدقة شديدة لاستخراج المنطقة وتجاهل المطبوع.",
-            "قصابة الأخوين": "تجاهل الأرقام السفلية (0772... و 0770...). منطقة الزبون ورقم هاتفه موجودة في قسم (السيد، الموبايل، العنوان)."
+            "TAPIOCA": "تجاهل الرقم 07701004176 تماماً لأنه للمطعم. ركز على الرقم والمنطقة في أسفل الوصل أو المكتوبة بخط اليد.",
+            "Firefly Burger": "تجاهل الأرقام 07829980468 و 07821100939. ابحث عن المنطقة بجوار كلمة Road.",
+            "مندي صنعاء اليمن": "تجاهل أرقام الدلفري المطبوعة في الأسفل. اقرأ معلومات الزبون من منتصف الوصل.",
+            "افران فلسطين": "تجاهل أي رقم مطبوع. ركز فقط على الكتابة اليدوية.",
+            "IBO bakery": "تجاهل الرقم 07750000801. ركز على منطقة الزبون.",
+            "قصابة اياد 2": "تجاهل الأرقام المطبوعة أسفل الوصل (07701316536 وغيرها). الزبون في الأعلى.",
+            "مطعم الديوان": "تجاهل المطبوع، اقرأ الكتابة اليدوية فقط.",
+            "قصابة الأخوين": "تجاهل الأرقام السفلية 0772 و 0770. معلومات الزبون في قسم (السيد، الموبايل)."
         };
 
-        const currentHint = restaurantHints[currentResName] ? "ملاحظة لهذا المطعم: " + restaurantHints[currentResName] : "تجاهل أرقام المطعم المطبوعة.";
+        const currentHint = restaurantHints[currentResName] ? "ملاحظة هامة جداً لهذا المطعم: " + restaurantHints[currentResName] : "تحذير: تجاهل أرقام واسم المطعم المطبوعة في ترويسة أو تذييل الوصل، وابحث عن معلومات الزبون (التوصيل) فقط.";
 
-        // 🧠 2. الـ Prompt المباشر والواضح (نفس آلية 31.0 ولكن مع الذاكرة)
-        const promptText = `استخرج البيانات التالية من هذا الوصل:
-1. السعر (price): المجموع الكلي النهائي كرقم فقط بدون أي فواصل.
-2. الهاتف (phone): ابحث عن هاتف الزبون (يبدأ بـ 07). ${currentHint}
-3. المنطقة (area): اقرأ الكلمات المطبوعة أو المكتوبة بخط اليد. حاول مطابقتها مع هذه القائمة إن أمكن: [${areaNames}].
+        const promptText = `أنت خبير في قراءة وصولات التوصيل. المطعم الحالي هو: "${currentResName}".
+${currentHint}
 
-في حال عدم وجود سعر أو هاتف، اترك القيمة فارغة ""، ولكن استخرج المنطقة دائماً.
+استخرج بيانات "الزبون" فقط وتجاهل بيانات "المطعم":
+1. السعر (price): المجموع الكلي للطلب (رقم فقط بدون فواصل).
+2. الهاتف (phone): رقم هاتف الزبون حصراً. يبدأ بـ 07. تأكد أنك لم تختر رقم المطعم.
+3. المنطقة (area): منطقة التوصيل للزبون. طابقها مع هذه القائمة إن أمكن: [${areaNames}].
+
+في حال عدم وجود سعر أو هاتف للزبون، اترك القيمة فارغة "". لا تخمنها.
 يجب إرجاع النتيجة بصيغة JSON نقي فقط:
 {
   "price": "...",
@@ -1618,7 +1635,6 @@
             const data = await fetchGeminiWithRetry(payload);
             
             if (data.error) {
-                console.error("AI Error:", data.msg);
                 return { error: true, msg: data.msg, area: "يحتاج مراجعة (انظر الصورة)" };
             }
 
@@ -1629,7 +1645,6 @@
             return cleanJson;
 
         } catch (e) { 
-            console.error("Parse Error Details:", e);
             return { error: true, msg: e.message, area: "يحتاج مراجعة (انظر الصورة)" }; 
         }
     }
