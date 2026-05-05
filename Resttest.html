@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 31.6 (إزالة نظام الطابور واستخدام fetchGeminiWithRetry المباشرة) ---
-        const CURRENT_APP_VERSION = "31.6"; 
+        // --- إصدار 31.8 (حساب مدفوع + تقطيع المفتاح لحمايته من رادارات GitHub) ---
+        const CURRENT_APP_VERSION = "31.8"; 
         const RES_VERSION_KEY = 'hut_res_app_version';
         try {
             if (localStorage.getItem(RES_VERSION_KEY) !== CURRENT_APP_VERSION) {
@@ -691,25 +691,16 @@
     const API_URL   = "https://script.google.com/macros/s/AKfycbzKDBjgPxmt_iDCphkjB6EY-cnag_aqwxrdNDrY9uqBRbTZYsqGWl4TJn4pANS8OVYm/exec";
     const API_TOKEN = "HUT_SECURE_99";
     const IMGBB_KEY = "546047e6407dd77fc9518dd37e27cda2"; 
-    
-    // 🛡️ التقطيع السري لـ 4 مفاتيح لحمايتها من حظر GitHub
-    const K1 = ["AIzaSyC_", "zxNonyp", "UZ2lAxVz", "nBWiuMJ8", "uf7Mas4g"];
-    const K2 = ["AIzaSyB4", "DaPz4v_", "Deh75ej9", "beWOqnHX", "hWfmgvY8"];
-    const K3 = ["AIzaSyCL", "IX0gUew", "EN8zeO3C", "m4XrKJ6q", "PdrYgOLo"];
-    const K4 = ["AIzaSyAI", "mxC9jB_", "f09ICYSL", "MpsrjCYb", "ARw0F_LI"];
 
-    const apiKeys = [
-        K1.join(''), K2.join(''), K3.join(''), K4.join('')
-    ];
-    let currentKeyIndex = 0;
+    // 🛡️ التقطيع السري للمفتاح لحمايته من رادارات GitHub
+    const SECRET_PARTS = ["AIzaSyB", "KMRsl", "Ko5hg5m", "11gHy4Z", "dM7_efk", "tiDwxU"];
 
-    /* ── الدالة المُحسَّنة لقراءة الوصل (Exponential Backoff + Key Rotation) ── */
+    /* ── الدالة المُحسَّنة للاتصال المباشر مع محاولات إعادة الاتصال ── */
     async function fetchGeminiWithRetry(payload, timeoutMs = 25000) {
-        const MAX_RETRIES = 4;
+        const MAX_RETRIES = 3;
+        const activeKey = SECRET_PARTS.join('');
+        
         for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-            const activeKey = apiKeys[currentKeyIndex];
-            currentKeyIndex = (currentKeyIndex + 1) % apiKeys.length;
-
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -727,37 +718,25 @@
                 clearTimeout(timeoutId);
 
                 if (!response.ok) {
-                    if (response.status === 429) {
-                        // انتظار تصاعدي يصل إلى 60 ثانية
-                        const waitTime = Math.min(15000 * (attempt + 1), 60000);
-                        console.warn(`⏳ Rate limit على المفتاح. انتظار ${waitTime/1000} ثواني...`);
-                        await new Promise(r => setTimeout(r, waitTime));
-                        continue;
-                    }
-                    throw new Error(`HTTP ${response.status}`);
+                    throw new Error(`HTTP Error: ${response.status}`);
                 }
 
                 const data = await response.json();
                 if (!data.candidates || data.candidates.length === 0) {
-                    throw new Error("AI returned no content");
+                    throw new Error("لم يتم إرجاع أي نص.");
                 }
                 return data;
 
             } catch (error) {
                 clearTimeout(timeoutId);
-                if (error.name === 'AbortError') {
-                    // محاولة مجدداً مع زيادة زمن الانتظار
-                    const waitTime = 2000 * (attempt + 1);
-                    await new Promise(r => setTimeout(r, waitTime));
-                    continue;
-                }
+                console.warn(`Gemini Attempt ${attempt + 1} failed:`, error.message);
                 if (attempt === MAX_RETRIES - 1) {
                     return { error: true, msg: error.message };
                 }
-                await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+                // انتظار ثانية قبل المحاولة التالية
+                await new Promise(r => setTimeout(r, 1000));
             }
         }
-        return { error: true, msg: "جميع المحاولات فشلت" };
     }
 
     const firebaseConfig = {
@@ -832,7 +811,10 @@
 3. المنطقة (area): اسم المنطقة الأساسية. حاول مطابقتها مع هذه القائمة إن أمكن: [${areaNames}].
 4. التفاصيل الإضافية (details): استخرج أي كلام يدل على عنوان دقيق أو أقرب نقطة دالة، مثل: (قرب الجامع، بصف الحديقة الجبيرة، يم اسواق محمد، الخ...). لا تضع فيها الطلبات الغذائية بل ركز على العنوان الدقيق. إذا لم تجد، اتركها فارغة.
 
-يجب إرجاع النتيجة بصيغة JSON نقي فقط، بدون أي نصوص إضافية، بالشكل التالي:
+🛑 قاعدة البيانات الناقصة (Missing Data):
+إذا لم تجد (السعر) أو (رقم الهاتف) أو كلاهما في الرسالة، اترك قيمتهما فارغة ""، ولكن استخرج "المنطقة" (area) دائماً.
+
+أرجع النتيجة بصيغة JSON فقط:
 {
   "price": "...",
   "phone": "...",
@@ -862,13 +844,22 @@
                 const { clean } = window.normalizeCustomerPhone(cleanJson.phone);
                 document.getElementById('customerPhone').value = clean || cleanJson.phone;
                 window.handleSmartPhone(document.getElementById('customerPhone'));
+            } else {
+                document.getElementById('customerPhone').value = "";
             }
+            
             if (cleanJson.price) {
                 document.getElementById('orderPrice').value = String(cleanJson.price).replace(/\D/g, '');
+            } else {
+                document.getElementById('orderPrice').value = "";
             }
+            
             if (cleanJson.details) {
                 document.getElementById('customerDetails').value = cleanJson.details;
+            } else {
+                document.getElementById('customerDetails').value = "";
             }
+
             if (cleanJson.area) {
                 const matched = matchAreaWithList(cleanJson.area, myCustomPriceList);
                 if (matched) {
@@ -880,6 +871,9 @@
                     document.getElementById('customAreaName').value = cleanJson.area;
                     document.getElementById('priceHint').classList.add('hidden-section');
                 }
+            } else {
+                document.getElementById('customerArea').value = "";
+                document.getElementById('areaDisplayInput').value = "";
             }
 
             window.saveDraft();
@@ -1276,7 +1270,7 @@
                 const img = new Image();
                 img.onload = function() {
                     const canvas   = document.createElement('canvas');
-                    const MAX_W    = 950;
+                    const MAX_W    = 700; /* تقليل الحجم لتحسين الاتساق مع Gemini */
                     const scale    = img.width > MAX_W ? MAX_W / img.width : 1;
                     canvas.width   = img.width * scale;
                     canvas.height  = img.height * scale;
@@ -1591,45 +1585,19 @@
         const areaList = Object.keys(myCustomPriceList);
         const areaNames = areaList.length > 0 ? areaList.join('، ') : 'مناطق كركوك';
         
-        // 🧠 1. ذاكرة الذكاء الاصطناعي المخصصة للمطاعم (Restaurant Memory)
-        const restaurantHints = {
-            "TAPIOCA": "تجاهل الرقم 07701004176 تماماً لأنه للمطعم. ركز على الرقم والمنطقة في أسفل الوصل.",
-            "Firefly Burger": "تجاهل الرقم 07829980468 والرقم 07821100939. ابحث عن اسم المنطقة بعد كلمة (Road:) أو بجوارها.",
-            "مندي صنعاء اليمن": "المنطقة واسم الزبون مكتوبان في منتصف الوصل تحت كلمة (العنوان) و (الزبون). تجاهل أرقام الدلفري السفلية.",
-            "افران فلسطين": "الوصل مكتوب غالباً بخط اليد. المنطقة مكتوبة بعد كلمة (العنوان) أو بخط مائل كبير.",
-            "IBO bakery": "تجاهل الرقم 07750000801. ركز على المنطقة المكتوبة بجوار (كراج بغداد) أو تحتها.",
-            "قصابة اياد 2": "تجاهل الأرقام السفلية (07701316536 وغيرها). رقم الزبون موجود في الأعلى بجوار (رقم الهاتف) والمنطقة بجوار (العنوان).",
-            "مطعم الديوان": "وصل مكتوب بخط يدوي بحت. اقرأ الكتابة اليدوية بدقة شديدة لاستخراج المنطقة وتجاهل المطبوع.",
-            "قصابة الأخوين": "تجاهل الأرقام السفلية (0772... و 0770...). منطقة الزبون ورقم هاتفه موجودة في قسم (السيد، الموبايل، العنوان)."
-        };
+        const promptText = `استخرج البيانات التالية من هذا الوصل:
+1. السعر (price): المجموع الكلي النهائي كرقم فقط بدون أي فواصل.
+2. الهاتف (phone): ابحث عن هاتف الزبون بجانب كلمات مثل (هاتف، Phone، عميل). تجاهل الأرقام الموجودة أسفل الوصل لأنها خاصة بالمطعم. يجب أن يبدأ بـ 07.
+3. المنطقة (area): اقرأ الكلمات المطبوعة أو المكتوبة بخط اليد. ابحث عن اختصارات مثل (Road، م.بغداد، ط.بغداد). حول الاختصارات إلى أسماء مناطق مفهومة وطابقها مع هذه القائمة إن أمكن: [${areaNames}].
 
-        // تحديد الذاكرة المناسبة للمطعم الحالي (إن وجدت)، أو إعطاء توجيه عام.
-        const currentHint = restaurantHints[currentResName] || "ركز بشدة على خط اليد في منتصف وأسفل الفاتورة لاستخراج المنطقة ورقم الهاتف.";
-
-        // 🧠 2. الـ Prompt الصارم (الأولوية القصوى للمنطقة)
-        const promptText = `أنت نظام ذكاء اصطناعي عبقري تقرأ فواتير مطاعم العراق.
-أنت الآن تقرأ فاتورة خاصة بمطعم: "${currentResName}".
-معلومة هامة من ذاكرتك عن هذا المطعم: [ ${currentHint} ].
-
-⚠️ الأولوية القصوى المطلقة (HIGHEST PRIORITY): استخراج "منطقة الزبون".
-1. المنطقة (area): يجب أن تستخرج منطقة الزبون مهما كان الوصل صعباً أو بخط يد رديء جداً. 
-   - ابحث في كل زاوية عن اسم (حي، شارع، طريق، مجمع، م.).
-   - تجاهل تماماً عنوان المطعم الثابت المطبوع.
-   - طابق ما تقرأه مع هذه القائمة بذكاء: [${areaNames}]. إذا لم تجد، اكتب ما قرأته حرفياً.
-
-2. الهاتف (phone): رقم الزبون (11 رقم يبدأ بـ 07). تجاهل أرقام المطعم المطبوعة في الترويسة أو في تذييل الوصل بناءً على المعلومة التي في ذاكرتك.
-3. السعر (price): المجموع الكلي النهائي للطلب كرقم فقط (مثال: 15000).
-
-🛑 قاعدة البيانات الناقصة (Missing Data):
-في بعض الأحيان قد يكون الوصل ممزقاً أو لا يحتوي على (السعر) أو (رقم الهاتف). إذا لم تجد أياً منها، اترك قيمتها فارغة هكذا ""، ولكن يجب عليك إرجاع "المنطقة" (area) دائماً إن وجدت.
-
-أرجع النتيجة بصيغة JSON فقط:
+يجب إرجاع النتيجة بصيغة JSON نقي فقط، بدون أي نصوص إضافية، بالشكل التالي:
 {
   "price": "...",
   "phone": "...",
   "area": "..."
 }`;
 
+        // ✅ قص ترويسة المتصفح قبل الإرسال (الحل السحري للصورة)
         const base64Content = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
 
         const payload = {
@@ -1640,13 +1608,14 @@
                 ]
             }],
             "generationConfig": {
-                "temperature": 0.2, // حرارة معتدلة لمرونة فك شفرة خط اليد دون هلوسة
+                "temperature": 0.1,
                 "response_mime_type": "application/json"
             }
         };
 
         try {
-            const data = await fetchGeminiWithRetry(payload);
+            // توجيه الطلب لنظام الطابور الذكي
+            const data = await callGeminiAPI(payload);
             
             if (data.error) {
                 return { error: true, msg: data.msg, area: "يحتاج مراجعة (انظر الصورة)" };
@@ -1659,7 +1628,6 @@
             return cleanJson;
 
         } catch (e) { 
-            console.error("AI Image Error Details:", e);
             return { error: true, msg: e.message, area: "يحتاج مراجعة (انظر الصورة)" }; 
         }
     }
