@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 32.0 (ميزة اللصق الذكي + 4 مفاتيح + طابور + إلغاء تأخير الخريطة في الإدخال اليدوي) ---
-        const CURRENT_APP_VERSION = "32.0"; 
+        // --- إصدار 31.3 (ذاكرة المطاعم + منع الفلسفة + قاعدة البيانات الناقصة + إرسال فوري بالخلفية) ---
+        const CURRENT_APP_VERSION = "31.3"; 
         const RES_VERSION_KEY = 'hut_res_app_version';
         try {
             if (localStorage.getItem(RES_VERSION_KEY) !== CURRENT_APP_VERSION) {
@@ -882,7 +882,10 @@
 3. المنطقة (area): اسم المنطقة الأساسية. حاول مطابقتها مع هذه القائمة إن أمكن: [${areaNames}].
 4. التفاصيل الإضافية (details): استخرج أي كلام يدل على عنوان دقيق أو أقرب نقطة دالة، مثل: (قرب الجامع، بصف الحديقة الجبيرة، يم اسواق محمد، الخ...). لا تضع فيها الطلبات الغذائية بل ركز على العنوان الدقيق. إذا لم تجد، اتركها فارغة.
 
-يجب إرجاع النتيجة بصيغة JSON نقي فقط، بدون أي نصوص إضافية، بالشكل التالي:
+🛑 قاعدة البيانات الناقصة (Missing Data):
+إذا لم تجد (السعر) أو (رقم الهاتف) أو كلاهما في الرسالة، إياك أن تخمنهما من عندك! اترك قيمتهما فارغة ""، ولكن يجب عليك إرجاع "المنطقة" (area) دائماً.
+
+تحذير شديد جداً: إياك أن تكتب أي كلمة، أو مقدمة، أو خاتمة خارج أقواس الـ JSON. ممنوع إرجاع أي نص حواري، فقط أرجع كائن JSON النقي بالشكل التالي:
 {
   "price": "...",
   "phone": "...",
@@ -893,7 +896,7 @@
         const payload = {
             "contents": [{ "parts": [{ "text": promptText }] }],
             "generationConfig": { 
-                "temperature": 0.1,
+                "temperature": 0.05,
                 "response_mime_type": "application/json"
             }
         };
@@ -912,13 +915,22 @@
                 const { clean } = window.normalizeCustomerPhone(cleanJson.phone);
                 document.getElementById('customerPhone').value = clean || cleanJson.phone;
                 window.handleSmartPhone(document.getElementById('customerPhone'));
+            } else {
+                document.getElementById('customerPhone').value = "";
             }
+            
             if (cleanJson.price) {
                 document.getElementById('orderPrice').value = String(cleanJson.price).replace(/\D/g, '');
+            } else {
+                document.getElementById('orderPrice').value = "";
             }
+            
             if (cleanJson.details) {
                 document.getElementById('customerDetails').value = cleanJson.details;
+            } else {
+                document.getElementById('customerDetails').value = "";
             }
+
             if (cleanJson.area) {
                 const matched = matchAreaWithList(cleanJson.area, myCustomPriceList);
                 if (matched) {
@@ -930,11 +942,15 @@
                     document.getElementById('customAreaName').value = cleanJson.area;
                     document.getElementById('priceHint').classList.add('hidden-section');
                 }
+            } else {
+                document.getElementById('customerArea').value = "";
+                document.getElementById('areaDisplayInput').value = "";
             }
 
             window.saveDraft();
             window.closePasteModal();
             
+            // اهتزاز للتأكيد
             if (navigator.vibrate) navigator.vibrate([50, 50, 50]); 
 
         } catch (e) {
@@ -1640,55 +1656,78 @@
         const areaList = Object.keys(myCustomPriceList);
         const areaNames = areaList.length > 0 ? areaList.join('، ') : 'مناطق كركوك';
         
-        const promptText = `استخرج البيانات التالية من هذا الوصل:
-1. السعر (price): المجموع الكلي النهائي كرقم فقط بدون أي فواصل.
-2. الهاتف (phone): ابحث عن هاتف الزبون بجانب كلمات مثل (هاتف، Phone، عميل). تجاهل الأرقام الموجودة أسفل الوصل لأنها خاصة بالمطعم. يجب أن يبدأ بـ 07.
-3. المنطقة (area): اقرأ الكلمات المطبوعة أو المكتوبة بخط اليد. ابحث عن اختصارات مثل (Road، م.بغداد، ط.بغداد). حول الاختصارات إلى أسماء مناطق مفهومة وطابقها مع هذه القائمة إن أمكن: [${areaNames}].
+        // 🧠 1. ذاكرة الذكاء الاصطناعي المخصصة للمطاعم (Restaurant Memory)
+        const restaurantHints = {
+            "TAPIOCA": "تجاهل الرقم 07701004176 تماماً لأنه للمطعم. ركز على الرقم والمنطقة في أسفل الوصل.",
+            "Firefly Burger": "تجاهل الرقم 07829980468 والرقم 07821100939. ابحث عن اسم المنطقة بعد كلمة (Road:) أو بجوارها.",
+            "مندي صنعاء اليمن": "المنطقة واسم الزبون مكتوبان في منتصف الوصل تحت كلمة (العنوان) و (الزبون). تجاهل أرقام الدلفري السفلية.",
+            "افران فلسطين": "الوصل مكتوب غالباً بخط اليد. المنطقة مكتوبة بعد كلمة (العنوان) أو بخط مائل كبير.",
+            "IBO bakery": "تجاهل الرقم 07750000801. ركز على المنطقة المكتوبة بجوار (كراج بغداد) أو تحتها.",
+            "قصابة اياد 2": "تجاهل الأرقام السفلية (07701316536 وغيرها). رقم الزبون موجود في الأعلى بجوار (رقم الهاتف) والمنطقة بجوار (العنوان).",
+            "مطعم الديوان": "وصل مكتوب بخط يدوي بحت. اقرأ الكتابة اليدوية بدقة شديدة لاستخراج المنطقة وتجاهل المطبوع.",
+            "قصابة الأخوين": "تجاهل الأرقام السفلية (0772... و 0770...). منطقة الزبون ورقم هاتفه موجودة في قسم (السيد، الموبايل، العنوان)."
+        };
 
-يجب إرجاع النتيجة بصيغة JSON نقي فقط، بدون أي نصوص إضافية، بالشكل التالي:
+        // تحديد الذاكرة المناسبة للمطعم الحالي (إن وجدت)، أو إعطاء توجيه عام.
+        const currentHint = restaurantHints[currentResName] || "ركز بشدة على خط اليد في منتصف وأسفل الفاتورة لاستخراج المنطقة ورقم الهاتف.";
+
+        // 🧠 2. الـ Prompt الصارم (الأولوية القصوى للمنطقة)
+        const promptText = `أنت نظام ذكاء اصطناعي عبقري تقرأ فواتير مطاعم العراق.
+أنت الآن تقرأ فاتورة خاصة بمطعم: "${currentResName}".
+معلومة هامة من ذاكرتك عن هذا المطعم: [ ${currentHint} ].
+
+⚠️ الأولوية القصوى المطلقة (HIGHEST PRIORITY): استخراج "منطقة الزبون".
+1. المنطقة (area): يجب أن تستخرج منطقة الزبون مهما كان الوصل صعباً أو بخط يد رديء جداً. 
+   - ابحث في كل زاوية عن اسم (حي، شارع، طريق، مجمع، م.).
+   - تجاهل تماماً عنوان المطعم الثابت المطبوع.
+   - طابق ما تقرأه مع هذه القائمة بذكاء: [${areaNames}]. إذا لم تجد، اكتب ما قرأته حرفياً.
+
+2. الهاتف (phone): رقم الزبون (11 رقم يبدأ بـ 07). تجاهل أرقام المطعم المطبوعة في الترويسة أو في تذييل الوصل بناءً على المعلومة التي في ذاكرتك.
+3. السعر (price): المجموع الكلي النهائي للطلب كرقم فقط (مثال: 15000).
+
+🛑 قاعدة البيانات الناقصة (Missing Data):
+في بعض الأحيان قد يكون الوصل ممزقاً أو لا يحتوي على (السعر) أو (رقم الهاتف). إذا لم تجد أياً منها، إياك أن تخمنها من عندك! ببساطة اترك قيمتها فارغة هكذا ""، ولكن يجب عليك إرجاع "المنطقة" (area) دائماً إن وجدت.
+
+تحذير شديد جداً: إياك أن تكتب أي كلمة، أو مقدمة، أو خاتمة خارج أقواس الـ JSON. ممنوع إرجاع أي نص حواري، فقط أرجع كائن JSON النقي بالشكل التالي:
 {
   "price": "...",
   "phone": "...",
   "area": "..."
 }`;
 
+        const base64Content = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
+
         const payload = {
             "contents": [{
                 "parts": [
                     { "text": promptText },
-                    { "inline_data": { "mime_type": "image/jpeg", "data": base64Data } }
+                    { "inline_data": { "mime_type": "image/jpeg", "data": base64Content } }
                 ]
             }],
             "generationConfig": {
-                "temperature": 0.1
+                "temperature": 0.05, // حرارة شبه معدومة لضمان الدقة المطلقة وعدم التأليف
+                "response_mime_type": "application/json"
             }
         };
 
         try {
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, { 
-                method: 'POST', 
-                headers: { 'Content-Type': 'application/json' }, 
-                body: JSON.stringify(payload) 
-            });
+            const data = await callGeminiAPI(payload);
             
-            if (!response.ok) {
-                const errText = await response.text();
-                return { error: true, msg: `HTTP ${response.status}: ${errText}` };
+            if (data.error) {
+                return { error: true, msg: data.msg, area: "يحتاج مراجعة (انظر الصورة)" };
             }
 
-            const data = await response.json();
             let aiText = data.candidates[0].content.parts[0].text;
-            
             aiText = aiText.replace(/```json/g, "").replace(/```/g, "").trim();
             const cleanJson = JSON.parse(aiText);
+            
             return cleanJson;
 
         } catch (e) { 
-            return { error: true, msg: e.message }; 
+            return { error: true, msg: e.message, area: "يحتاج مراجعة (انظر الصورة)" }; 
         }
     }
 
-    // ✅ التعديل هنا: سحب الإحداثيات من الجلسة في حالة الإدخال اليدوي لتجنب الانتظار
     document.getElementById('orderForm').onsubmit = function(e) {
         e.preventDefault();
 
@@ -1699,13 +1738,11 @@
             let finalArea = document.getElementById('customerArea').value; 
             let areaWithHint = finalArea;
 
-            // سحب الإحداثيات من الجلسة المحلية مباشرة
-            const s = JSON.parse(localStorage.getItem('hut_res_session') || '{}');
-            if (s.lat && s.lng) { 
-                regLat = parseFloat(s.lat); 
-                regLng = parseFloat(s.lng); 
-            } 
-            // تم إلغاء رسالة الخطأ (alert) التي تمنع الإرسال
+            if (Math.abs(regLat - 35.468) < 0.001 && Math.abs(regLng - 44.392) < 0.001) {
+                const s = JSON.parse(localStorage.getItem('hut_res_session') || '{}');
+                if (s.lat && s.lng) { regLat = parseFloat(s.lat); regLng = parseFloat(s.lng); } 
+                else { alert("⚠️ انتظر ثواني ليتم تحميل الخريطة."); return; }
+            }
 
             if (finalArea === "أخرى" || !finalArea) {
                 const cName  = document.getElementById('customAreaName').value.trim(); const cPrice = document.getElementById('customAreaPrice').value.trim();
