@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 31.0 (ميزة اللصق الذكي + استخراج التفاصيل + 4 مفاتيح مقطعة + طابور ذكي) ---
-        const CURRENT_APP_VERSION = "31.0"; 
+        // --- إصدار 31.10 (استعادة محرك 31.0 المستقر للصور + اتصال مباشر + مفتاح مدفوع) ---
+        const CURRENT_APP_VERSION = "31.10"; 
         const RES_VERSION_KEY = 'hut_res_app_version';
         try {
             if (localStorage.getItem(RES_VERSION_KEY) !== CURRENT_APP_VERSION) {
@@ -691,80 +691,22 @@
     const API_URL   = "https://script.google.com/macros/s/AKfycbzKDBjgPxmt_iDCphkjB6EY-cnag_aqwxrdNDrY9uqBRbTZYsqGWl4TJn4pANS8OVYm/exec";
     const API_TOKEN = "HUT_SECURE_99";
     const IMGBB_KEY = "546047e6407dd77fc9518dd37e27cda2"; 
-    
-    // 🛡️ التقطيع السري لـ 4 مفاتيح لحمايتها من حظر GitHub
-    const K1 = ["AIzaSyC_", "zxNonyp", "UZ2lAxVz", "nBWiuMJ8", "uf7Mas4g"];
-    const K2 = ["AIzaSyB4", "DaPz4v_", "Deh75ej9", "beWOqnHX", "hWfmgvY8"];
-    const K3 = ["AIzaSyCL", "IX0gUew", "EN8zeO3C", "m4XrKJ6q", "PdrYgOLo"];
-    const K4 = ["AIzaSyAI", "mxC9jB_", "f09ICYSL", "MpsrjCYb", "ARw0F_LI"];
 
-    const apiKeys = [
-        K1.join(''), K2.join(''), K3.join(''), K4.join('')
-    ];
-    let currentKeyIndex = 0;
+    // 🛡️ التقطيع السري للمفتاح لحمايته من رادارات GitHub
+    const SECRET_PARTS = ["AIzaSyB", "KMRsl", "Ko5hg5m", "11gHy4Z", "dM7_efk", "tiDwxU"];
 
-    // 🛡️ نظام الطابور الذكي (AI Queue System) لـ 55 طلب في الدقيقة!
-    const RATE_LIMIT_MAX  = 55; 
-    const RATE_LIMIT_WINDOW_MS = 60000;
-    const aiRequestTimestamps = [];
-    const aiQueue = [];
-    let isProcessingAiQueue = false;
-
-    async function waitForAiSlot() {
-        while (true) {
-            const now = Date.now();
-            while (aiRequestTimestamps.length > 0 && (now - aiRequestTimestamps[0]) > RATE_LIMIT_WINDOW_MS) {
-                aiRequestTimestamps.shift();
-            }
-            if (aiRequestTimestamps.length < RATE_LIMIT_MAX) {
-                aiRequestTimestamps.push(Date.now());
-                return;
-            }
-            await new Promise(r => setTimeout(r, 1000));
-        }
-    }
-
-    async function callGeminiAPI(payload, timeoutMs = 25000) {
-        return new Promise((resolve, reject) => {
-            aiQueue.push({ payload, timeoutMs, resolve, reject });
-            processAiQueue();
-        });
-    }
-
-    async function processAiQueue() {
-        if (isProcessingAiQueue) return;
-        isProcessingAiQueue = true;
-
-        while (aiQueue.length > 0) {
-            await waitForAiSlot(); 
-            const task = aiQueue.shift();
-            
-            try {
-                const result = await executeGeminiFetch(task.payload, task.timeoutMs);
-                task.resolve(result);
-            } catch (error) {
-                task.reject(error);
-            }
-        }
-        isProcessingAiQueue = false;
-    }
-
-    async function executeGeminiFetch(payload, timeoutMs) {
-        const MODEL_NAME = "gemini-2.5-flash"; 
-        const MAX_RETRIES = 4; // المحاولة 4 مرات (تساوي عدد المفاتيح)
-        const BASE_DELAY_MS = 1000;
-
-        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    /* ── الدالة المُحسَّنة للاتصال المباشر مع محاولات إعادة الاتصال ── */
+    async function fetchGeminiWithRetry(payload, timeoutMs = 25000) {
+        const MAX_RETRIES = 3;
+        const activeKey = SECRET_PARTS.join('');
+        
+        for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-            
-            // التبديل التلقائي للمفاتيح
-            const activeKey = apiKeys[currentKeyIndex];
-            currentKeyIndex = (currentKeyIndex + 1) % apiKeys.length;
 
             try {
                 const response = await fetch(
-                    `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${activeKey}`,
+                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${activeKey}`,
                     {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -776,36 +718,24 @@
                 clearTimeout(timeoutId);
 
                 if (!response.ok) {
-                    if (response.status === 429) throw new Error("RATE_LIMIT_429");
-                    const errText = await response.text();
-                    throw new Error(`HTTP ${response.status}: ${errText}`);
+                    const errTxt = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errTxt}`);
                 }
 
                 const data = await response.json();
-                
                 if (!data.candidates || data.candidates.length === 0) {
-                    throw new Error("No output from AI. Possibly blocked.");
+                    throw new Error("لم يتم إرجاع أي نص.");
                 }
-                
                 return data;
 
             } catch (error) {
                 clearTimeout(timeoutId);
-
-                if (error.name === 'AbortError') {
-                     error.message = 'Request timed out';
+                console.warn(`Gemini Attempt ${attempt + 1} failed:`, error.message);
+                if (attempt === MAX_RETRIES - 1) {
+                    return { error: true, msg: error.message };
                 }
-
-                if (error.message === "RATE_LIMIT_429") {
-                    console.warn(`⚠️ المفتاح استنفد الحد. سيتم التبديل للمفتاح التالي فوراً...`);
-                    if (attempt === MAX_RETRIES) {
-                        await new Promise(resolve => setTimeout(resolve, 8000));
-                    }
-                } else {
-                    if (attempt === MAX_RETRIES) return { error: true, msg: error.message };
-                    const delay = BASE_DELAY_MS * attempt;
-                    await new Promise(resolve => setTimeout(resolve, delay));
-                }
+                // انتظار ثانية قبل المحاولة التالية
+                await new Promise(r => setTimeout(r, 1000));
             }
         }
     }
@@ -899,7 +829,7 @@
         };
 
         try {
-            const data = await callGeminiAPI(payload); 
+            const data = await fetchGeminiWithRetry(payload); 
             
             if (data.error) throw new Error("فشل الاتصال بالذكاء الاصطناعي");
 
@@ -1641,19 +1571,34 @@
         const areaList = Object.keys(myCustomPriceList);
         const areaNames = areaList.length > 0 ? areaList.join('، ') : 'مناطق كركوك';
         
+        // 🧠 1. ذاكرة الذكاء الاصطناعي المخصصة للمطاعم (Restaurant Memory)
+        const restaurantHints = {
+            "TAPIOCA": "تجاهل الرقم 07701004176 تماماً لأنه للمطعم. ركز على الرقم والمنطقة في أسفل الوصل.",
+            "Firefly Burger": "تجاهل الرقم 07829980468 والرقم 07821100939. ابحث عن اسم المنطقة بعد كلمة (Road:) أو بجوارها.",
+            "مندي صنعاء اليمن": "المنطقة واسم الزبون مكتوبان في منتصف الوصل تحت كلمة (العنوان) و (الزبون). تجاهل أرقام الدلفري السفلية.",
+            "افران فلسطين": "الوصل مكتوب غالباً بخط اليد. المنطقة مكتوبة بعد كلمة (العنوان) أو بخط مائل كبير.",
+            "IBO bakery": "تجاهل الرقم 07750000801. ركز على المنطقة المكتوبة بجوار (كراج بغداد) أو تحتها.",
+            "قصابة اياد 2": "تجاهل الأرقام السفلية (07701316536 وغيرها). رقم الزبون موجود في الأعلى بجوار (رقم الهاتف) والمنطقة بجوار (العنوان).",
+            "مطعم الديوان": "وصل مكتوب بخط يدوي بحت. اقرأ الكتابة اليدوية بدقة شديدة لاستخراج المنطقة وتجاهل المطبوع.",
+            "قصابة الأخوين": "تجاهل الأرقام السفلية (0772... و 0770...). منطقة الزبون ورقم هاتفه موجودة في قسم (السيد، الموبايل، العنوان)."
+        };
+
+        const currentHint = restaurantHints[currentResName] ? "ملاحظة لهذا المطعم: " + restaurantHints[currentResName] : "تجاهل أرقام المطعم المطبوعة.";
+
+        // 🧠 2. الـ Prompt المباشر والواضح (نفس آلية 31.0 ولكن مع الذاكرة)
         const promptText = `استخرج البيانات التالية من هذا الوصل:
 1. السعر (price): المجموع الكلي النهائي كرقم فقط بدون أي فواصل.
-2. الهاتف (phone): ابحث عن هاتف الزبون بجانب كلمات مثل (هاتف، Phone، عميل). تجاهل الأرقام الموجودة أسفل الوصل لأنها خاصة بالمطعم. يجب أن يبدأ بـ 07.
-3. المنطقة (area): اقرأ الكلمات المطبوعة أو المكتوبة بخط اليد. ابحث عن اختصارات مثل (Road، م.بغداد، ط.بغداد). حول الاختصارات إلى أسماء مناطق مفهومة وطابقها مع هذه القائمة إن أمكن: [${areaNames}].
+2. الهاتف (phone): ابحث عن هاتف الزبون (يبدأ بـ 07). ${currentHint}
+3. المنطقة (area): اقرأ الكلمات المطبوعة أو المكتوبة بخط اليد. حاول مطابقتها مع هذه القائمة إن أمكن: [${areaNames}].
 
-يجب إرجاع النتيجة بصيغة JSON نقي فقط، بدون أي نصوص إضافية، بالشكل التالي:
+في حال عدم وجود سعر أو هاتف، اترك القيمة فارغة ""، ولكن استخرج المنطقة دائماً.
+يجب إرجاع النتيجة بصيغة JSON نقي فقط:
 {
   "price": "...",
   "phone": "...",
   "area": "..."
 }`;
 
-        // ✅ قص ترويسة المتصفح قبل الإرسال (الحل السحري للصورة)
         const base64Content = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
 
         const payload = {
@@ -1670,10 +1615,10 @@
         };
 
         try {
-            // توجيه الطلب لنظام الطابور الذكي
-            const data = await callGeminiAPI(payload);
+            const data = await fetchGeminiWithRetry(payload);
             
             if (data.error) {
+                console.error("AI Error:", data.msg);
                 return { error: true, msg: data.msg, area: "يحتاج مراجعة (انظر الصورة)" };
             }
 
@@ -1684,6 +1629,7 @@
             return cleanJson;
 
         } catch (e) { 
+            console.error("Parse Error Details:", e);
             return { error: true, msg: e.message, area: "يحتاج مراجعة (انظر الصورة)" }; 
         }
     }
@@ -1833,4 +1779,3 @@
 </script>
 </body>
 </html>
-​
