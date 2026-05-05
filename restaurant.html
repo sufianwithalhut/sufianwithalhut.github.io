@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 31.5 (إصلاح انهيار الذكاء الاصطناعي + تبسيط الأوامر + ذاكرة المطاعم) ---
-        const CURRENT_APP_VERSION = "31.5"; 
+        // --- إصدار 31.0 (ميزة اللصق الذكي + استخراج التفاصيل + 4 مفاتيح مقطعة + طابور ذكي) ---
+        const CURRENT_APP_VERSION = "31.0"; 
         const RES_VERSION_KEY = 'hut_res_app_version';
         try {
             if (localStorage.getItem(RES_VERSION_KEY) !== CURRENT_APP_VERSION) {
@@ -751,7 +751,7 @@
 
     async function executeGeminiFetch(payload, timeoutMs) {
         const MODEL_NAME = "gemini-2.5-flash"; 
-        const MAX_RETRIES = 4; // المحاولة 4 مرات
+        const MAX_RETRIES = 4; // المحاولة 4 مرات (تساوي عدد المفاتيح)
         const BASE_DELAY_MS = 1000;
 
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -880,9 +880,7 @@
 1. السعر (price): المجموع الكلي كرقم فقط بدون أي فواصل. (مثال: إذا قال 15 الف، اكتب 15000).
 2. الهاتف (phone): استخرج أي رقم هاتف يبدأ بـ 07.
 3. المنطقة (area): اسم المنطقة الأساسية. حاول مطابقتها مع هذه القائمة إن أمكن: [${areaNames}].
-4. التفاصيل الإضافية (details): استخرج أي كلام يدل على عنوان دقيق أو أقرب نقطة دالة، مثل: (قرب الجامع، بصف الحديقة الجبيرة، يم اسواق محمد، الخ...). لا تضع فيها الطلبات الغذائية بل ركز على العنوان الدقيق.
-
-تنبيه: إذا لم تجد أي معلومة من هذه، اترك قيمتها فارغة "".
+4. التفاصيل الإضافية (details): استخرج أي كلام يدل على عنوان دقيق أو أقرب نقطة دالة، مثل: (قرب الجامع، بصف الحديقة الجبيرة، يم اسواق محمد، الخ...). لا تضع فيها الطلبات الغذائية بل ركز على العنوان الدقيق. إذا لم تجد، اتركها فارغة.
 
 يجب إرجاع النتيجة بصيغة JSON نقي فقط، بدون أي نصوص إضافية، بالشكل التالي:
 {
@@ -914,22 +912,13 @@
                 const { clean } = window.normalizeCustomerPhone(cleanJson.phone);
                 document.getElementById('customerPhone').value = clean || cleanJson.phone;
                 window.handleSmartPhone(document.getElementById('customerPhone'));
-            } else {
-                document.getElementById('customerPhone').value = "";
             }
-            
             if (cleanJson.price) {
                 document.getElementById('orderPrice').value = String(cleanJson.price).replace(/\D/g, '');
-            } else {
-                document.getElementById('orderPrice').value = "";
             }
-            
             if (cleanJson.details) {
                 document.getElementById('customerDetails').value = cleanJson.details;
-            } else {
-                document.getElementById('customerDetails').value = "";
             }
-
             if (cleanJson.area) {
                 const matched = matchAreaWithList(cleanJson.area, myCustomPriceList);
                 if (matched) {
@@ -941,9 +930,6 @@
                     document.getElementById('customAreaName').value = cleanJson.area;
                     document.getElementById('priceHint').classList.add('hidden-section');
                 }
-            } else {
-                document.getElementById('customerArea').value = "";
-                document.getElementById('areaDisplayInput').value = "";
             }
 
             window.saveDraft();
@@ -953,7 +939,6 @@
             if (navigator.vibrate) navigator.vibrate([50, 50, 50]); 
 
         } catch (e) {
-            console.error("AI Paste Error:", e);
             alert("لم نتمكن من فهم الرسالة تلقائياً، يرجى ملء الحقول يدوياً.");
         } finally {
             btn.innerHTML = originalHtml;
@@ -1656,27 +1641,10 @@
         const areaList = Object.keys(myCustomPriceList);
         const areaNames = areaList.length > 0 ? areaList.join('، ') : 'مناطق كركوك';
         
-        // 🧠 1. ذاكرة الذكاء الاصطناعي المخصصة للمطاعم (Restaurant Memory)
-        const restaurantHints = {
-            "TAPIOCA": "تجاهل الرقم 07701004176. ركز على الرقم والمنطقة في أسفل الوصل.",
-            "Firefly Burger": "تجاهل الأرقام 07829980468 و 07821100939. المنطقة توجد بعد كلمة Road.",
-            "مندي صنعاء اليمن": "المنطقة واسم الزبون في منتصف الوصل. تجاهل أرقام الدلفري السفلية.",
-            "افران فلسطين": "الوصل بخط اليد. المنطقة بعد كلمة العنوان.",
-            "IBO bakery": "تجاهل الرقم 07750000801. المنطقة بجوار كراج بغداد.",
-            "قصابة اياد 2": "تجاهل الأرقام السفلية. الزبون في الأعلى.",
-            "مطعم الديوان": "وصل بخط اليد. اقرأ الكتابة اليدوية بدقة.",
-            "قصابة الأخوين": "تجاهل الأرقام السفلية. منطقة الزبون في قسم السيد أو الموبايل."
-        };
-
-        const currentHint = restaurantHints[currentResName] ? "ملاحظة لهذا المطعم: " + restaurantHints[currentResName] : "تجاهل أرقام المطعم المطبوعة.";
-
-        // 🧠 2. الـ Prompt المباشر والهادئ
         const promptText = `استخرج البيانات التالية من هذا الوصل:
-1. السعر (price): المجموع الكلي النهائي كرقم فقط بدون فواصل.
-2. الهاتف (phone): رقم هاتف الزبون (يبدأ بـ 07). ${currentHint}
-3. المنطقة (area): اقرأ الكلمات المطبوعة والمكتوبة بخط اليد لاستخراج منطقة الزبون. طابقها مع هذه القائمة إن أمكن: [${areaNames}].
-
-تنبيه هام: إذا لم تجد السعر أو رقم الهاتف، اترك القيمة فارغة "". لكن حاول دائماً استخراج (المنطقة).
+1. السعر (price): المجموع الكلي النهائي كرقم فقط بدون أي فواصل.
+2. الهاتف (phone): ابحث عن هاتف الزبون بجانب كلمات مثل (هاتف، Phone، عميل). تجاهل الأرقام الموجودة أسفل الوصل لأنها خاصة بالمطعم. يجب أن يبدأ بـ 07.
+3. المنطقة (area): اقرأ الكلمات المطبوعة أو المكتوبة بخط اليد. ابحث عن اختصارات مثل (Road، م.بغداد، ط.بغداد). حول الاختصارات إلى أسماء مناطق مفهومة وطابقها مع هذه القائمة إن أمكن: [${areaNames}].
 
 يجب إرجاع النتيجة بصيغة JSON نقي فقط، بدون أي نصوص إضافية، بالشكل التالي:
 {
@@ -1685,6 +1653,7 @@
   "area": "..."
 }`;
 
+        // ✅ قص ترويسة المتصفح قبل الإرسال (الحل السحري للصورة)
         const base64Content = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
 
         const payload = {
@@ -1695,16 +1664,16 @@
                 ]
             }],
             "generationConfig": {
-                "temperature": 0.1, // حرارة معتدلة لفك شفرة الخط دون هلوسة
+                "temperature": 0.1,
                 "response_mime_type": "application/json"
             }
         };
 
         try {
+            // توجيه الطلب لنظام الطابور الذكي
             const data = await callGeminiAPI(payload);
             
             if (data.error) {
-                console.error("AI Error:", data.msg);
                 return { error: true, msg: data.msg, area: "يحتاج مراجعة (انظر الصورة)" };
             }
 
@@ -1715,7 +1684,6 @@
             return cleanJson;
 
         } catch (e) { 
-            console.error("Parse Error Details:", e);
             return { error: true, msg: e.message, area: "يحتاج مراجعة (انظر الصورة)" }; 
         }
     }
@@ -1865,3 +1833,4 @@
 </script>
 </body>
 </html>
+​
