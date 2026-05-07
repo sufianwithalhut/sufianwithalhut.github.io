@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <script>
-        // --- إصدار 9.2 (Apex Admin — متوافق مع V35.4.1 Enterprise Lazy Engine) ---
-        const CURRENT_APP_VERSION = "9.2";
+        // --- إصدار 9.3 (Clean Slate — متوافق مع V35.4.1 Enterprise Lazy Engine) ---
+        const CURRENT_APP_VERSION = "9.3";
         const VERSION_KEY = 'hut_master_app_version';
         try {
             if (localStorage.getItem(VERSION_KEY) !== CURRENT_APP_VERSION) {
                 localStorage.setItem(VERSION_KEY, CURRENT_APP_VERSION);
                 if (localStorage.getItem(VERSION_KEY) === CURRENT_APP_VERSION) {
-                    console.log("تحديث إلى Apex Admin V9.2...");
+                    console.log("تحديث إلى Clean Slate V9.3...");
                     if ('caches' in window) {
                         caches.keys().then(function(names) {
                             for (let name of names) caches.delete(name);
@@ -29,7 +29,7 @@
         }
     </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>مكتب سفيان | الإدارة العليا V35.4 — 9.2</title>
+    <title>مكتب سفيان | الإدارة العليا V35.4 — 9.3</title>
     <meta name="theme-color" content="#f0f7ff">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -40,7 +40,8 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" defer></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/lucide@latest" defer></script> 
+    <!-- ✅ إزالة defer لضمان رسم الأيقونات فوراً -->
+    <script src="https://unpkg.com/lucide@latest"></script> 
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
@@ -1253,22 +1254,18 @@
 
 <script>
 /* ═══════════════════════════════════════════
-   🔵 INIT LUCIDE & UTILS
+   🔵 التهيئة الكاملة للأيقونات (Fix 1)
 ═══════════════════════════════════════════ */
-if (typeof lucide !== 'undefined') lucide.createIcons();
-function escHtml(str) { if (str == null) return ''; const d = document.createElement('div'); d.textContent = String(str); return d.innerHTML; }
-function escJs(str) { if (str == null) return ''; return String(str).replace(/'/g, "\\'").replace(/"/g, '&quot;'); }
-function safeIcon(cId) { const el = document.getElementById(cId); if(el && typeof lucide !== 'undefined') lucide.createIcons({root: el}); }
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+});
 
-window.showReceiptImage = function(url) {
-    if (!url) return;
-    const m = document.getElementById('receiptImageModal'), i = document.getElementById('receiptImageFull');
-    if (m && i) { i.src = url; m.style.display = 'flex'; }
-};
-window.closeReceiptImage = function() {
-    const m = document.getElementById('receiptImageModal'), i = document.getElementById('receiptImageFull');
-    if (m) { m.style.display = 'none'; if(i) i.src = ''; }
-};
+// بديل احتياطي للتأكد من ظهورها في جميع الحالات
+setTimeout(function() {
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}, 1000);
 
 /* ═══════════════════════════════════════════
    📐 DATA SCHEMA & CONFIG
@@ -1281,7 +1278,6 @@ const API_URL   = "https://script.google.com/macros/s/AKfycbzKDBjgPxmt_iDCphkjB6
 const API_TOKEN = "HUT_SECURE_99";
 
 let map, heatLayer, driverClusterGroup, trackPolyline = null;
-let restaurantMarkersLayer = null;
 let globalData = null;
 let currentRadarFilter = 'all';
 let currentResSectionFilter = 'mostOrders';
@@ -1329,6 +1325,21 @@ setupAlertsListener();
 listenToAuditTrail();
 
 /* ─── UI Helpers ─── */
+function escHtml(str) { if (str == null) return ''; const d = document.createElement('div'); d.textContent = String(str); return d.innerHTML; }
+function escJs(str) { if (str == null) return ''; return String(str).replace(/'/g, "\\'").replace(/"/g, '&quot;'); }
+function safeIcon(cId) { const el = document.getElementById(cId); if(el && typeof lucide !== 'undefined') lucide.createIcons({root: el}); }
+
+window.showReceiptImage = function(url) {
+    if (!url) return;
+    const m = document.getElementById('receiptImageModal'), i = document.getElementById('receiptImageFull');
+    if (m && i) { i.src = url; m.style.display = 'flex'; }
+};
+window.closeReceiptImage = function() {
+    const m = document.getElementById('receiptImageModal'), i = document.getElementById('receiptImageFull');
+    if (m) { m.style.display = 'none'; if(i) i.src = ''; }
+};
+
+/* ─── UI Helpers (continued) ─── */
 function showToast(msg, type = 'success') {
     const c = document.getElementById('toast-container'), t = document.createElement('div');
     t.className = `toast-msg ${type}`;
@@ -1338,12 +1349,7 @@ function showToast(msg, type = 'success') {
 }
 
 function logAudit(action, details) {
-    const entry = {
-        action: action,
-        details: details,
-        timestamp: new Date().toISOString(),
-        user: 'admin'
-    };
+    const entry = { action, details, timestamp: new Date().toISOString(), user: 'admin' };
     db.ref('admin_audit_trail').push(entry).catch(() => {});
 }
 
@@ -1513,6 +1519,7 @@ function updateRestaurantMarkers(orders) {
     });
 }
 
+/* ✅ إصلاح الخريطة: إزالة أيقونات الأشباح */
 function listenToFirebaseLocations() {
     if (!map) return;
     const ref = db.ref('drivers_locations');
@@ -1522,18 +1529,23 @@ function listenToFirebaseLocations() {
         Object.keys(locs).forEach(phone => {
             const d = locs[phone];
             if (d.status === 'active' && d.lat && d.lng) {
-                const isGhost = (d.last_update ? (now - new Date(d.last_update).getTime())/60000 : 0) > 45; 
+                // ✅ لا مزيد من الأشباح: نرسم فقط الأيقونة النشطة
+                const isGhost = (d.last_update ? (now - new Date(d.last_update).getTime())/60000 : 0) > 45;
                 if(!isGhost) activeRealDriversSet.add(String(phone).replace(/^0+/, '').trim());
                 if (liveDriverMarkers[phone]) {
                     liveDriverMarkers[phone].setLatLng([parseFloat(d.lat), parseFloat(d.lng)]);
-                    const iEl = liveDriverMarkers[phone].getElement(); if(iEl) iEl.innerHTML = `<div class="drv-marker ${isGhost?'drv-ghost':'drv-active'}">${isGhost?'👻':'🛵'}</div>`;
+                    const iEl = liveDriverMarkers[phone].getElement();
+                    if(iEl) iEl.innerHTML = `<div class="drv-marker drv-active">🛵</div>`;
                 } else {
                     const name = globalData?.drivers.find(x => String(x[2]) === String(phone))?.[1] || phone;
-                    const icon = L.divIcon({ className: 'smooth-marker', html: `<div class="drv-marker ${isGhost?'drv-ghost':'drv-active'}">${isGhost?'👻':'🛵'}</div>`, iconSize: [32,32], iconAnchor: [16,16] });
-                    const m = L.marker([parseFloat(d.lat), parseFloat(d.lng)], {icon}).bindPopup(`<b style="font-family:Cairo">${escHtml(name)}</b>`);
+                    const icon = L.divIcon({ className: 'smooth-marker', html: `<div class="drv-marker drv-active">🛵</div>`, iconSize: [32,32], iconAnchor: [16,16] });
+                    const m = L.marker([parseFloat(d.lat), parseFloat(d.lng)], {icon}).bindPopup(`<b>${escHtml(name)}</b>`);
                     driverClusterGroup.addLayer(m); liveDriverMarkers[phone] = m;
                 }
-            } else if (liveDriverMarkers[phone]) { driverClusterGroup.removeLayer(liveDriverMarkers[phone]); delete liveDriverMarkers[phone]; }
+            } else if (liveDriverMarkers[phone]) {
+                driverClusterGroup.removeLayer(liveDriverMarkers[phone]);
+                delete liveDriverMarkers[phone];
+            }
         });
         document.querySelectorAll('.val-drivers').forEach(el => el.textContent = activeRealDriversSet.size);
         if (globalData) { try { smartRenderRadar(liveFirebaseOrders); } catch(e){} }
@@ -1600,46 +1612,73 @@ function trackDriver(dPhone, rName) {
 }
 
 /* ─── Tabs & Filters ─── */
-function _activateTab(tabName) { document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active-tab')); const target = document.getElementById('tab-' + tabName); if (target) { target.classList.add('active-tab'); setTimeout(() => { target.scrollTop = 0; }, 50); } if (tabName === 'live' && map) setTimeout(() => map.invalidateSize(), 350); }
-function _updateNavActive(tabName) { document.querySelectorAll('.b-nav-item, .nav-item').forEach(i => { const oc = i.getAttribute('onclick') || ''; i.classList.toggle('active', oc.includes("'" + tabName + "'")); }); }
+const TAB_TRANSITION_MS = 350;
+function _activateTab(tabName) {
+    document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active-tab'));
+    const target = document.getElementById('tab-' + tabName);
+    if (target) { target.classList.add('active-tab'); setTimeout(() => { target.scrollTop = 0; }, 50); }
+    if (tabName === 'live' && map) setTimeout(() => map.invalidateSize(), TAB_TRANSITION_MS + 50);
+}
+function _updateNavActive(tabName) {
+    document.querySelectorAll('.b-nav-item, .nav-item').forEach(i => {
+        const oc = i.getAttribute('onclick') || '';
+        i.classList.toggle('active', oc.includes("'" + tabName + "'"));
+    });
+}
 function switchTab(t) { _activateTab(t); _updateNavActive(t); }
 function showTab(e, t) { _activateTab(t); _updateNavActive(t); }
 function filterRadar(f, b) { currentRadarFilter = f; document.getElementById('radarFilters')?.querySelectorAll('.fp').forEach(x => x.classList.remove('active')); if(b) b.classList.add('active'); try { smartRenderRadar(liveFirebaseOrders); } catch(e){} }
-function triggerSearch(type) { const g = type === 'RESTAURANT' ? document.getElementById('resFiltersGroup') : document.getElementById('driverFiltersGroup'); applySectionFilter(type, type === 'RESTAURANT' ? currentResSectionFilter : currentDriverSectionFilter, g.querySelector('.active')); }
-function applySectionFilter(type, filter, btn) { if(type === 'RESTAURANT') currentResSectionFilter = filter; else currentDriverSectionFilter = filter; btn.closest('.filter-bar').querySelectorAll('.fp').forEach(b => b.classList.remove('active')); btn.classList.add('active'); if(globalData) smartRenderFilteredSection(type, type==='RESTAURANT'?globalData.restaurants:globalData.drivers); }
+function triggerSearch(type) {
+    const g = type === 'RESTAURANT' ? document.getElementById('resFiltersGroup') : document.getElementById('driverFiltersGroup');
+    applySectionFilter(type, type === 'RESTAURANT' ? currentResSectionFilter : currentDriverSectionFilter, g.querySelector('.active'));
+}
+function applySectionFilter(type, filter, btn) {
+    if(type === 'RESTAURANT') currentResSectionFilter = filter; else currentDriverSectionFilter = filter;
+    btn.closest('.filter-bar').querySelectorAll('.fp').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    if(globalData) smartRenderFilteredSection(type, type==='RESTAURANT'?globalData.restaurants:globalData.drivers);
+}
 
 /* ─── Entities Rendering ─── */
 function updateSectionBadges(type, list) {
-    const p = type === 'RESTAURANT' ? 'res' : 'driver', c = { all:0, pending:0, active:0, inactive:0, banned:0, mostOrders:0, mostDebt:0 };
-    list.slice(1).forEach(i => { const s=i[4]; if(s==='deleted') return; c.all++; if(s==='pending'||s==='waiting') c.pending++; else if(type==='DRIVER'&&s==='active') { if(activeRealDriversSet.has(String(i[2]).replace(/^0+/,'').trim())) c.active++; } else if(s==='active') c.active++; if(s==='inactive') c.inactive++; if(s==='banned') c.banned++; });
-    ['all','pending','active','inactive','banned','mostOrders','mostDebt'].forEach(k => { const e=document.getElementById(`badge-${p}-${k}`); if(e) { if(k==='mostOrders'||k==='mostDebt') e.textContent = '...'; else e.textContent = c[k]; } });
+    const p = type === 'RESTAURANT' ? 'res' : 'driver', c = { all:0, pending:0, active:0, inactive:0, banned:0 };
+    list.slice(1).forEach(i => {
+        const s = i[4]; if(s==='deleted') return;
+        c.all++;
+        if(s==='pending'||s==='waiting') c.pending++;
+        else if(type==='DRIVER'&&s==='active') { if(activeRealDriversSet.has(String(i[2]).replace(/^0+/,'').trim())) c.active++; }
+        else if(s==='active') c.active++;
+        if(s==='inactive') c.inactive++;
+        if(s==='banned') c.banned++;
+    });
+    ['all','pending','active','inactive','banned'].forEach(k => {
+        const e = document.getElementById(`badge-${p}-${k}`);
+        if(e) e.textContent = c[k];
+    });
 }
 
 function smartRenderFilteredSection(type, fullList) {
     const filter = type === 'RESTAURANT' ? currentResSectionFilter : currentDriverSectionFilter;
     const searchQ = (document.getElementById(type==='RESTAURANT'?'searchResInput':'searchDriverInput')?.value.trim().toLowerCase() || '');
-    const cId = type === 'RESTAURANT' ? 'resListContainer' : 'driverListContainer', container = document.getElementById(cId), icon = type === 'RESTAURANT' ? 'store' : 'user', cache = type === 'RESTAURANT' ? renderedResCards : renderedDriverCards;
-    let filtered = [];
+    const container = document.getElementById(type === 'RESTAURANT' ? 'resListContainer' : 'driverListContainer');
+    const icon = type === 'RESTAURANT' ? 'store' : 'user';
+    const cache = type === 'RESTAURANT' ? renderedResCards : renderedDriverCards;
     
     // تجهيز قائمة مرتبة حسب الفلتر
     let sortedList = fullList.slice(1).filter(item => item[4] !== 'deleted');
-    
-    // فلترة حسب النص
     if (searchQ) {
         sortedList = sortedList.filter(item => {
             const n = String(item[1]).toLowerCase(), ph = String(item[2]).toLowerCase();
             return n.includes(searchQ) || ph.includes(searchQ);
         });
     }
-
-    // تطبيق فلتر الحالة أو الترتيب
     if (filter === 'mostOrders') {
         sortedList.sort((a, b) => {
             const aPhone = String(a[2]).replace(/^0+/,'').trim();
             const bPhone = String(b[2]).replace(/^0+/,'').trim();
             const aOrders = (type === 'RESTAURANT' ? liveLedgers.restaurants?.[aPhone]?.completed_orders : liveLedgers.drivers?.[aPhone]?.completed_orders) || 0;
             const bOrders = (type === 'RESTAURANT' ? liveLedgers.restaurants?.[bPhone]?.completed_orders : liveLedgers.drivers?.[bPhone]?.completed_orders) || 0;
-            return bOrders - aOrders; // ترتيب تنازلي
+            return bOrders - aOrders;
         });
     } else if (filter === 'mostDebt') {
         sortedList.sort((a, b) => {
@@ -1649,39 +1688,57 @@ function smartRenderFilteredSection(type, fullList) {
             const bDebt = (type === 'RESTAURANT' ? liveLedgers.restaurants?.[bPhone]?.debt : liveLedgers.drivers?.[bPhone]?.debt) || 0;
             return bDebt - aDebt;
         });
-    } else if (filter === 'all') {
-        // لا ترتيب خاص
     } else if (filter === 'pending' || filter === 'waiting') {
         sortedList = sortedList.filter(item => item[4] === 'pending' || item[4] === 'waiting');
     } else if (filter === 'active' && type === 'DRIVER') {
         sortedList = sortedList.filter(item => item[4] === 'active' && activeRealDriversSet.has(String(item[2]).replace(/^0+/,'').trim()));
-    } else if (filter === 'active') {
-        sortedList = sortedList.filter(item => item[4] === 'active');
-    } else if (filter === 'inactive') {
-        sortedList = sortedList.filter(item => item[4] === 'inactive');
-    } else if (filter === 'banned') {
-        sortedList = sortedList.filter(item => item[4] === 'banned');
+    } else if (filter === 'active' || filter === 'inactive' || filter === 'banned') {
+        sortedList = sortedList.filter(item => item[4] === filter);
     }
-
-    if (sortedList.length === 0) { container.innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-icon"><i data-lucide="search-x" width="28" height="28"></i></div><div class="empty-title">لا توجد نتائج</div></div>`; safeIcon(cId); if(type==='RESTAURANT') renderedResCards={}; else renderedDriverCards={}; return; }
+    
+    if (sortedList.length === 0) {
+        container.innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-icon"><i data-lucide="search-x" width="28" height="28"></i></div><div class="empty-title">لا توجد نتائج</div></div>`;
+        safeIcon(container.id);
+        if(type==='RESTAURANT') renderedResCards={}; else renderedDriverCards={};
+        return;
+    }
     if(container.querySelector('.empty-state') || container.querySelector('.skeleton')) container.innerHTML = '';
     const currentIds = new Set();
-
     sortedList.forEach(item => {
-        const name=item[1], phone=item[2], status=item[4], sId=String(phone).replace(/[^a-zA-Z0-9]/g,''), nPhone=String(phone).replace(/^0+/,'').trim();
+        const name=item[1], phone=item[2], status=item[4];
+        const sId=String(phone).replace(/[^a-zA-Z0-9]/g,''), nPhone=String(phone).replace(/^0+/,'').trim();
         currentIds.add(sId);
-        const l = type==='RESTAURANT' ? (liveLedgers.restaurants?.[nPhone]||{debt:0,completed_orders:0}) : (liveLedgers.drivers?.[nPhone]||{debt:0,completed_orders:0}), d=l.debt||0, c=l.completed_orders||0, hash=`${status}-${d}-${c}`;
-        let spC = 'sp-active'; if(status==='inactive') spC='sp-inactive'; if(status==='pending'||status==='waiting') spC='sp-pending'; if(status==='banned') spC='sp-banned';
+        const l = type==='RESTAURANT' ? (liveLedgers.restaurants?.[nPhone]||{debt:0,completed_orders:0}) : (liveLedgers.drivers?.[nPhone]||{debt:0,completed_orders:0});
+        const d=l.debt||0, c=l.completed_orders||0, hash=`${status}-${d}-${c}`;
+        let spC = 'sp-active';
+        if(status==='inactive') spC='sp-inactive';
+        if(status==='pending'||status==='waiting') spC='sp-pending';
+        if(status==='banned') spC='sp-banned';
         let spL = status==='active'?'نشط':status==='inactive'?'استراحة':(status==='pending'||status==='waiting')?'قيد الانتظار':status==='banned'?'موقوف':status;
-
-        let pHtml = ''; if(type==='DRIVER') { let st='', lv=''; if(c>=100){st='⭐⭐⭐⭐⭐';lv='خبير';}else if(c>=50){st='⭐⭐⭐⭐';lv='محترف';}else if(c>=30){st='⭐⭐⭐';lv='نشط';}else if(c>=10){st='⭐⭐';lv='مبتدئ';}else{st='⭐';lv='جديد';} pHtml=`<div class="driver-rating" title="${lv} (${c} طلب)"><span class="stars">${st}</span><span class="level">${lv}</span></div>`; }
-
+        let pHtml = '';
+        if(type==='DRIVER') {
+            let st='', lv='';
+            if(c>=100){st='⭐⭐⭐⭐⭐';lv='خبير';}else if(c>=50){st='⭐⭐⭐⭐';lv='محترف';}else if(c>=30){st='⭐⭐⭐';lv='نشط';}else if(c>=10){st='⭐⭐';lv='مبتدئ';}else{st='⭐';lv='جديد';}
+            pHtml=`<div class="driver-rating" title="${lv} (${c} طلب)"><span class="stars">${st}</span><span class="level">${lv}</span></div>`;
+        }
         let ex = document.getElementById(`card-${type}-${sId}`);
-        if(ex) { if(cache[sId]!==hash) { const sb=ex.querySelector('.status-pill'); if(sb){sb.className=`status-pill ${spC}`; sb.textContent=spL;} const dEl=ex.querySelector('.debt-val'); if(dEl)dEl.textContent=`${d} د.ع`; const cEl=ex.querySelector('.entity-debt-lbl'); if(cEl)cEl.innerHTML=`طلبات منجزة: <span class="unpaid-wrap" style="color:var(--text-1);font-weight:900;">${c}</span>`; cache[sId]=hash; } return; }
-
+        if(ex) {
+            if(cache[sId]!==hash) {
+                const sb=ex.querySelector('.status-pill');
+                if(sb){sb.className=`status-pill ${spC}`; sb.textContent=spL;}
+                const dEl=ex.querySelector('.debt-val');
+                if(dEl)dEl.textContent=`${d} د.ع`;
+                const cEl=ex.querySelector('.entity-debt-lbl');
+                if(cEl)cEl.innerHTML=`طلبات منجزة: <span class="unpaid-wrap" style="color:var(--text-1);font-weight:900;">${c}</span>`;
+                cache[sId]=hash;
+            }
+            return;
+        }
         const sN = escHtml(name), sP = escHtml(phone), sPj = escJs(phone);
         const html = `<div id="card-${type}-${sId}" class="entity-card">${pHtml}<div class="entity-card-top"><div class="entity-avatar"><i data-lucide="${escHtml(icon)}" width="22" height="22"></i></div><span class="status-pill ${spC}">${escHtml(spL)}</span></div><div class="entity-name" style="margin-top:8px;">${sN}</div><div class="entity-phone">${sP}</div><div class="entity-debt" style="margin-top:12px;"><div><div class="entity-debt-lbl">طلبات منجزة: <span class="unpaid-wrap" style="color:var(--text-1);font-weight:900;">${escHtml(c)}</span></div><div class="debt-val" style="font-size:1rem;font-weight:900;color:var(--danger);">${escHtml(d)} د.ع</div></div></div><div class="entity-actions"><div class="ea-group"><button class="ea-btn ea-accept" onclick="adminActionOptUI('ACCEPT','${type}','${sPj}',this)"><i data-lucide="check" width="16" height="16"></i></button><button class="ea-btn ea-pause" onclick="adminActionOptUI('PAUSE','${type}','${sPj}',this)"><i data-lucide="pause" width="16" height="16"></i></button><button class="ea-btn ea-ban" onclick="adminActionOptUI('DELETE','${type}','${sPj}',this)"><i data-lucide="ban" width="16" height="16"></i></button><button class="ea-btn ea-edit" onclick="event.stopPropagation(); openEditModal('${type}','${sPj}')"><i data-lucide="edit-3" width="16" height="16"></i></button></div><div class="ea-group"><button class="ea-btn ea-debt" onclick="resetDebtOptUI('${type}','${sPj}',this)"><i data-lucide="banknote" width="16" height="16"></i></button><button class="ea-btn ea-call" onclick="window.open('tel:${sPj}')"><i data-lucide="phone-call" width="16" height="16"></i></button></div></div></div>`;
-        container.insertAdjacentHTML('beforeend', html); safeIcon(`card-${type}-${sId}`); cache[sId] = hash;
+        container.insertAdjacentHTML('beforeend', html);
+        safeIcon(`card-${type}-${sId}`);
+        cache[sId] = hash;
     });
     Object.keys(cache).forEach(id => { if(!currentIds.has(id)) { const el=document.getElementById(`card-${type}-${id}`); if(el)el.remove(); delete cache[id]; } });
 }
@@ -1729,7 +1786,7 @@ function assignDriverOptUI(oId, dPhone, el) {
     const now = new Date().toISOString(); db.ref(`active_orders/${oId}`).update({ status: 'manual_pending', driverPhone: dPhone, last_update: now, is_sovereign: true });
     fetch(`${API_URL}?action=ASSIGN_DRIVER&orderId=${oId}&driverPhone=${dPhone}&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`)
         .then(r=>r.json()).then(res=>{ sp.remove(); if(!res.success) { showToast("خطأ", "error"); if(card) card.style.opacity='1'; el.disabled=false; } else { showToast("تم التعيين السيادي!"); logAudit('assignDriver', `${oId} -> ${dPhone}`); } })
-        .catch(()=>{ sp.remove(); showToast("تم الإرسال"); });
+        .catch(()=>{ sp.remove(); showToast("تم الإرسال"); }).finally(()=>{ el.disabled = false; });
 }
 function withdrawOrderOptUI(oId, dPhone, el) {
     if(!confirm("سحب الطلب وإعادته للرادار؟")) return; el.disabled = true;
@@ -1951,70 +2008,27 @@ async function extractCoordsFromLink() {
     const link = input.value.trim();
     if (!link) return showToast('الرجاء لصق رابط خرائط Google أولاً', 'error');
 
-    // محاولة استخراج الإحداثيات محلياً
     let lat = null, lng = null;
-
-    // نمط @lat,lng
     const atMatch = link.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
-    if (atMatch) {
-        lat = parseFloat(atMatch[1]);
-        lng = parseFloat(atMatch[2]);
-    }
-
-    // نمط !3d...!4d...
+    if (atMatch) { lat = parseFloat(atMatch[1]); lng = parseFloat(atMatch[2]); }
     if (!lat || !lng) {
         const dMatch = link.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
-        if (dMatch) {
-            lat = parseFloat(dMatch[1]);
-            lng = parseFloat(dMatch[2]);
-        }
+        if (dMatch) { lat = parseFloat(dMatch[1]); lng = parseFloat(dMatch[2]); }
     }
-
-    // نمط ?q=lat,lng
     if (!lat || !lng) {
         const qMatch = link.match(/[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/);
-        if (qMatch) {
-            lat = parseFloat(qMatch[1]);
-            lng = parseFloat(qMatch[2]);
-        }
+        if (qMatch) { lat = parseFloat(qMatch[1]); lng = parseFloat(qMatch[2]); }
     }
-
     if (lat && lng) {
         document.getElementById('editLat').value = lat;
         document.getElementById('editLng').value = lng;
         showToast('✅ تم استخراج الإحداثيات بنجاح.');
         return;
     }
-
-    // إذا كان الرابط مختصراً أو لا يحتوي على إحداثيات واضحة، نحاول تتبعه
-    showToast('جاري تتبع الرابط المختصر...', 'info');
-    try {
-        const response = await fetch(link, { method: 'GET', redirect: 'follow' });
-        const finalUrl = response.url;
-        if (finalUrl !== link) {
-            // إعادة المحاولة مع الرابط المطول
-            const atMatch2 = finalUrl.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
-            const dMatch2 = finalUrl.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
-            if (atMatch2) {
-                document.getElementById('editLat').value = parseFloat(atMatch2[1]);
-                document.getElementById('editLng').value = parseFloat(atMatch2[2]);
-                showToast('✅ تم استخراج الإحداثيات من الرابط المطول.');
-                return;
-            } else if (dMatch2) {
-                document.getElementById('editLat').value = parseFloat(dMatch2[1]);
-                document.getElementById('editLng').value = parseFloat(dMatch2[2]);
-                showToast('✅ تم استخراج الإحداثيات من الرابط المطول.');
-                return;
-            }
-        }
-    } catch (e) {
-        console.warn('تعذر تتبع الرابط:', e);
-    }
-
-    showToast('⚠️ لم نتمكن من استخراج الإحداثيات آلياً. يرجى استخدام زر "تحديد الموقع من الخريطة".', 'error');
+    showToast('⚠️ لم نتمكن من استخراج الإحداثيات. استخدم زر الخريطة.', 'error');
 }
 
-/* ─── AI Chat, Edit Modal, Audit Trail ─── */
+/* ✅ إصلاح المساعد الذكي: إرسال كلمة المرور */
 window.openAIChat = function() {
     document.getElementById('aiChatModal').style.display = 'flex';
     document.getElementById('aiChatInput').focus();
@@ -2023,6 +2037,7 @@ window.askAI = async function() {
     const input = document.getElementById('aiChatInput');
     const question = input.value.trim();
     if (!question) return;
+    if (!ensureMasterPassword()) return;
     const msgs = document.getElementById('aiChatMessages');
     msgs.innerHTML += `<div class="ai-msg user">${escHtml(question)}</div>`;
     input.value = '';
@@ -2030,7 +2045,7 @@ window.askAI = async function() {
         const res = await fetch(API_URL, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ token: API_TOKEN, action: 'ASK_AI_CFO', question: question })
+            body: JSON.stringify({ token: API_TOKEN, action: 'ASK_AI_CFO', question: question, pass: masterPassword })
         });
         const data = await res.json();
         msgs.innerHTML += `<div class="ai-msg">${data.answer || 'عذراً، لم أتمكن من الإجابة.'}</div>`;
@@ -2064,8 +2079,12 @@ function openEditModal(type, phone) {
     document.getElementById('editEntityModal').classList.add('active');
 }
 function closeEditModal() { document.getElementById('editEntityModal').classList.remove('active'); }
+
+/* ✅ إصلاح حفظ التعديلات: تعطيل وتمكين الأزرار */
 async function saveEntityEdits() {
     if (!ensureMasterPassword()) return;
+    const saveBtn = document.querySelector('#editEntityModal .btn-primary');
+    saveBtn.disabled = true; saveBtn.classList.add('btn-loading');
     const updates = { name: document.getElementById('editName').value, area: document.getElementById('editArea').value };
     if (currentEditType === 'RESTAURANT') {
         updates.comm = document.getElementById('editComm').value;
@@ -2073,21 +2092,21 @@ async function saveEntityEdits() {
         updates.priceList = document.getElementById('editPriceList').value;
         const latVal = parseFloat(document.getElementById('editLat').value);
         const lngVal = parseFloat(document.getElementById('editLng').value);
-        if (!isNaN(latVal) && !isNaN(lngVal)) {
-            updates.lat = latVal;
-            updates.lng = lngVal;
-        }
+        if (!isNaN(latVal) && !isNaN(lngVal)) { updates.lat = latVal; updates.lng = lngVal; }
     } else {
         updates.status = document.getElementById('editStatus').value;
     }
-    const res = await fetch(API_URL, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ token: API_TOKEN, action: 'updateEntityInfo', type: currentEditType, phone: currentEditPhone, updates: updates, pass: masterPassword })
-    });
-    const d = await res.json();
-    if (d.success) { showToast('تم التحديث'); logAudit('updateEntity', `تحديث ${currentEditType} ${currentEditPhone}`); closeEditModal(); refreshData(); }
-    else showToast('فشل', 'error');
+    try {
+        const res = await fetch(API_URL, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ token: API_TOKEN, action: 'updateEntityInfo', type: currentEditType, phone: currentEditPhone, updates: updates, pass: masterPassword })
+        });
+        const d = await res.json();
+        if (d.success) { showToast('تم التحديث'); logAudit('updateEntity', `تحديث ${currentEditType} ${currentEditPhone}`); closeEditModal(); refreshData(); }
+        else showToast('فشل', 'error');
+    } catch(e) { showToast('خطأ اتصال', 'error'); }
+    finally { saveBtn.disabled = false; saveBtn.classList.remove('btn-loading'); }
 }
 
 function listenToAuditTrail() {
@@ -2111,12 +2130,24 @@ function renderAuditTrail() {
     if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
-/* ─── AIOps Tab Update ─── */
+/* ✅ تفعيل تبويب AIOps بقراءة حية */
 function updateAIOpsTab() {
-    // fetch from watchtower or use cached
-    // set aiHealthStatus, aiQuarantineCount, etc.
+    if (!document.getElementById('tab-aiops')?.classList.contains('active-tab')) return;
+    db.ref('AIOps_Watchtower').limitToLast(1).on('value', snap => {
+        const val = snap.val();
+        if (val) {
+            const lastKey = Object.keys(val)[0];
+            const last = val[lastKey];
+            document.getElementById('aiHealthStatus').textContent = last.Health || '---';
+            const quarantined = last['Quarantined Orders'];
+            document.getElementById('aiQuarantineCount').textContent = (quarantined && quarantined !== 'None') ? quarantined.split(',').length : 0;
+            document.getElementById('aiLastCheck').textContent = new Date(last.Timestamp).toLocaleTimeString('ar-EG');
+        }
+    });
 }
-setInterval(updateAIOpsTab, 30000);
+setInterval(function() {
+    if (document.getElementById('tab-aiops')?.classList.contains('active-tab')) updateAIOpsTab();
+}, 60000);
 
 /* ─── Map Init ─── */
 function initMap() {
