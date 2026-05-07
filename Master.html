@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <script>
-        // --- الإصدار 8.0 (Titanium Client - متوافق مع العزل البرمجي والسجلات اللحظية) ---
-        const CURRENT_APP_VERSION = "8.0";
+        // --- إصدار 9.0 (Apex Admin — متوافق مع V35.3.0 Perfected Master) ---
+        const CURRENT_APP_VERSION = "9.0";
         const VERSION_KEY = 'hut_master_app_version';
         try {
             if (localStorage.getItem(VERSION_KEY) !== CURRENT_APP_VERSION) {
                 localStorage.setItem(VERSION_KEY, CURRENT_APP_VERSION);
                 if (localStorage.getItem(VERSION_KEY) === CURRENT_APP_VERSION) {
-                    console.log("تحديث إلى Titanium Client V8.0...");
+                    console.log("تحديث إلى Apex Admin V9.0...");
                     if ('caches' in window) {
                         caches.keys().then(function(names) {
                             for (let name of names) caches.delete(name);
@@ -29,16 +29,18 @@
         }
     </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>مكتب سفيان | الإدارة العليا V34.8 — 8.0</title>
+    <title>مكتب سفيان | الإدارة العليا V35.3 — 9.0</title>
     <meta name="theme-color" content="#f0f7ff">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="إدارة الحوت">
     <meta name="mobile-web-app-capable" content="yes">
 
+    <!-- Chart.js للمخططات -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" defer></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/lucide@latest"></script> 
+    <script src="https://unpkg.com/lucide@latest" defer></script> 
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
@@ -140,6 +142,14 @@
         }
         .fab-broadcast:active { transform: scale(0.9); }
         
+        /* AI Assistant Floating Button */
+        .fab-ai {
+            position: fixed; bottom: calc(var(--nav-h) + 80px); left: 20px; width: 50px; height: 50px;
+            border-radius: 50%; background: linear-gradient(135deg, #7c3aed, #a78bfa); color: white;
+            display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 20px rgba(124,58,237,0.3); cursor: pointer; z-index: 1010; border: none; transition: 0.2s;
+        }
+        .fab-ai:active { transform: scale(0.9); }
+
         .modal-overlay { position: fixed; inset: 0; background: rgba(15,39,68,0.6); backdrop-filter: blur(5px); z-index: 20000; display: none; align-items: center; justify-content: center; padding: 20px; }
         .modal-overlay.active { display: flex; animation: fadeIn 0.3s; }
         @keyframes fadeIn { from{opacity:0;} to{opacity:1;} }
@@ -223,7 +233,7 @@
             }
             .b-nav-item {
                 display: flex; flex-direction: column; align-items: center;
-                gap: 4px; width: 25%; cursor: pointer;
+                gap: 4px; width: 20%; cursor: pointer;
                 padding: 10px 0;
                 transition: all .3s cubic-bezier(0.4,0,0.2,1);
                 position: relative;
@@ -235,7 +245,7 @@
                 color: var(--text-3);
             }
             .b-nav-label {
-                font-size: 0.68rem; font-weight: 700; color: var(--text-3);
+                font-size: 0.62rem; font-weight: 700; color: var(--text-3);
                 transition: color .3s;
             }
             .b-nav-item.active .b-nav-icon {
@@ -591,6 +601,7 @@
         .ea-ban     { background: #fef2f2; color: var(--danger); }
         .ea-debt    { background: var(--primary-light); color: var(--primary); }
         .ea-call    { background: var(--accent-light); color: var(--accent); }
+        .ea-edit    { background: var(--primary-light); color: var(--primary-dark); }
 
         /* ═══════════════════════════════════════════
            🗂️ LIVE ARCHIVE — Realtime Today's Records
@@ -639,6 +650,14 @@
         }
         .arch-kpi-num .kpi-unit { font-size: 0.9rem; font-weight: 700; color: var(--text-3); margin-right: 3px; }
         .arch-kpi-lbl { font-size: 0.72rem; font-weight: 700; color: var(--text-3); }
+
+        .chart-box {
+            background: var(--surface); border-radius: var(--r-lg); padding: 20px;
+            box-shadow: var(--s-xs); border: 1px solid var(--border); margin-bottom: 20px;
+        }
+        .chart-title {
+            font-size: 0.9rem; font-weight: 900; color: var(--text-1); margin-bottom: 15px;
+        }
 
         .arch-export-btn {
             background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); color: #fff; border-radius: var(--r-sm);
@@ -789,6 +808,38 @@
         }
         .conn-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--success); }
         .conn-dot.offline { background: var(--danger); }
+
+        /* AI Chat Modal */
+        #aiChatModal {
+            position: fixed; bottom: 0; right: 0; width: 100%; max-width: 400px; height: 500px; max-height: 70vh;
+            background: var(--surface); border-radius: var(--r-xl) var(--r-xl) 0 0; z-index: 25000; display: none; flex-direction: column;
+            box-shadow: var(--s-lg); animation: sheetUp 0.3s cubic-bezier(0.22,1,0.36,1);
+        }
+        @media (max-width: 480px) { #aiChatModal { max-width: 100%; } }
+        .ai-chat-header {
+            padding: 16px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; font-weight: 900;
+        }
+        .ai-chat-messages {
+            flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px;
+        }
+        .ai-msg {
+            background: var(--primary-light); padding: 12px 16px; border-radius: 16px; font-size: 0.82rem; font-weight: 700; max-width: 80%; align-self: flex-start;
+        }
+        .ai-msg.user {
+            background: var(--accent-light); color: var(--accent-dark); align-self: flex-end;
+        }
+        .ai-chat-input-area {
+            padding: 12px; border-top: 1px solid var(--border); display: flex; gap: 8px;
+        }
+
+        /* Audit Trail */
+        .audit-item {
+            background: var(--surface); border-radius: var(--r-lg); padding: 16px; border: 1px solid var(--border);
+            margin-bottom: 10px; box-shadow: var(--s-xs);
+        }
+        .audit-icon {
+            width: 38px; height: 38px; border-radius: 12px; background: var(--primary-light); display: flex; align-items: center; justify-content: center; color: var(--primary); flex-shrink: 0;
+        }
     </style>
 </head>
 <body>
@@ -832,13 +883,49 @@
     </div>
 </div>
 
+<!-- AI Chat Modal -->
+<div id="aiChatModal">
+    <div class="ai-chat-header">
+        <span><i data-lucide="bot" width="20" height="20" class="me-2" style="color:var(--purple);"></i> المساعد الذكي</span>
+        <button onclick="document.getElementById('aiChatModal').style.display='none'" style="background:none;border:none;cursor:pointer;"><i data-lucide="x" width="20" height="20"></i></button>
+    </div>
+    <div class="ai-chat-messages" id="aiChatMessages">
+        <div class="ai-msg">مرحباً! اسألني عن أي شيء يتعلق بالأداء المالي أو حالة النظام اليوم.</div>
+    </div>
+    <div class="ai-chat-input-area">
+        <input type="text" id="aiChatInput" class="form-ctrl" placeholder="مثلاً: كم أرباح اليوم؟" style="flex:1;">
+        <button class="arch-action-btn primary" onclick="askAI()" style="width:40px;border-radius:50%;"><i data-lucide="send" width="16" height="16"></i></button>
+    </div>
+</div>
+
+<!-- Quick Edit Modal -->
+<div id="editEntityModal" class="modal-overlay" onclick="closeEditModal()">
+    <div class="modal-card" style="max-width:400px;" onclick="event.stopPropagation()">
+        <h5 class="fw-black mb-3" id="editModalTitle">تعديل بيانات</h5>
+        <input type="text" id="editName" class="form-ctrl mb-2" placeholder="الاسم">
+        <input type="text" id="editArea" class="form-ctrl mb-2" placeholder="المنطقة">
+        <div id="editResFields" class="hidden-section">
+            <input type="number" id="editComm" class="form-ctrl mb-2" placeholder="العمولة (%)">
+            <input type="text" id="editPayType" class="form-ctrl mb-2" placeholder="نظام الدفع">
+            <input type="text" id="editPriceList" class="form-ctrl mb-2" placeholder="قائمة الأسعار">
+        </div>
+        <div id="editDriverFields" class="hidden-section">
+            <select id="editStatus" class="form-ctrl mb-2"><option value="active">نشط</option><option value="inactive">استراحة</option></select>
+        </div>
+        <div class="d-flex gap-2">
+            <button class="btn btn-light w-100 fw-bold" onclick="closeEditModal()">إلغاء</button>
+            <button class="btn btn-primary w-100 fw-bold" onclick="saveEntityEdits()">حفظ</button>
+        </div>
+    </div>
+</div>
+
 <div id="authOverlay">
     <div class="auth-wrap">
         <div class="auth-logo">
             <i data-lucide="building-2" width="32" height="32" color="#fff"></i>
         </div>
         <div class="auth-title">مكتب سفيان</div>
-        <div class="auth-sub">الإدارة العليا — نظام الحوت V34.8</div>
+        <div class="auth-sub">الإدارة العليا — نظام الحوت V35.3</div>
         <input type="password" id="masterPass" class="auth-input" placeholder="رمز المرور الآمن" autocomplete="off" onkeypress="if(event.key==='Enter') checkAuth()">
         <button class="auth-btn" onclick="checkAuth()">تسجيل الدخول</button>
     </div>
@@ -866,8 +953,8 @@
                 <span>الرصد الميداني</span>
             </div>
             <div class="nav-item desktop-nav-link" onclick="showTab(event,'orders')">
-                <div class="nav-icon"><i data-lucide="activity" width="18" height="18"></i></div>
-                <span>سجل اليوم المباشر</span>
+                <div class="nav-icon"><i data-lucide="bar-chart-big" width="18" height="18"></i></div>
+                <span>سجل اليوم</span>
             </div>
             <div class="nav-item desktop-nav-link" onclick="showTab(event,'restaurants')">
                 <div class="nav-icon"><i data-lucide="store" width="18" height="18"></i></div>
@@ -876,6 +963,14 @@
             <div class="nav-item desktop-nav-link" onclick="showTab(event,'drivers')">
                 <div class="nav-icon"><i data-lucide="users" width="18" height="18"></i></div>
                 <span>إدارة الأسطول</span>
+            </div>
+            <div class="nav-item desktop-nav-link" onclick="showTab(event,'aiops')">
+                <div class="nav-icon"><i data-lucide="cpu" width="18" height="18"></i></div>
+                <span>صحة السيرفر</span>
+            </div>
+            <div class="nav-item desktop-nav-link" onclick="showTab(event,'audit')">
+                <div class="nav-icon"><i data-lucide="scroll-text" width="18" height="18"></i></div>
+                <span>سجل التدقيق</span>
             </div>
         </nav>
         <div style="margin-top: auto; padding: 20px 0;">
@@ -897,8 +992,8 @@
             <div id="liveTimeDesk" class="desktop-clock">00:00</div>
         </header>
 
+        <!-- ── تبويب الرصد الميداني ── -->
         <div id="tab-live" class="admin-tab active-tab">
-
             <div class="live-stat-row desktop-stats">
                 <div class="live-stat-card">
                     <div class="lsc-icon" style="background:var(--primary-light); color:var(--primary);"><i data-lucide="package" width="24" height="24"></i></div>
@@ -929,6 +1024,7 @@
                 <button class="fab-map-action fab-expand" onclick="toggleFullscreen()"><i data-lucide="maximize" id="fsIcon"></i></button>
                 <button class="fab-map-action fab-cancel-track" id="btnCancelTrack" onclick="cancelTracking()"><i data-lucide="x"></i></button>
                 <button class="fab-broadcast" onclick="document.getElementById('broadcastModal').classList.add('active')"><i data-lucide="megaphone" width="22"></i></button>
+                <button class="fab-ai" onclick="openAIChat()"><i data-lucide="bot" width="22"></i></button>
             </div>
 
             <div class="bottom-sheet" id="radarSheet">
@@ -953,8 +1049,13 @@
             </div>
         </div>
 
+        <!-- ── تبويب سجل اليوم ── -->
         <div id="tab-orders" class="admin-tab tab-inner-padding">
             <span class="page-title-mob">سجل اليوم المباشر</span>
+
+            <!-- المخططات البيانية -->
+            <div class="chart-box"><h5 class="chart-title"><i data-lucide="trending-up" width="16" height="16" class="me-2"></i>أداء اليوم</h5><canvas id="dailyChart" style="max-height:250px;"></canvas></div>
+            <div class="chart-box"><h5 class="chart-title"><i data-lucide="pie-chart" width="16" height="16" class="me-2"></i>نسبة الإكمال</h5><canvas id="completionPieChart" style="max-height:250px;"></canvas></div>
 
             <div class="arch-alert">
                 <i data-lucide="info" width="20" height="20"></i>
@@ -1040,6 +1141,7 @@
             </div>
         </div>
 
+        <!-- ── تبويب المطاعم ── -->
         <div id="tab-restaurants" class="admin-tab tab-inner-padding">
             <span class="page-title-mob">إدارة الشركاء</span>
             <div class="search-input-wrap">
@@ -1058,6 +1160,7 @@
             </div>
         </div>
 
+        <!-- ── تبويب الكباتن ── -->
         <div id="tab-drivers" class="admin-tab tab-inner-padding">
             <span class="page-title-mob">إدارة الأسطول</span>
             <div class="search-input-wrap">
@@ -1076,11 +1179,31 @@
             </div>
         </div>
 
+        <!-- ── تبويب صحة السيرفر (AIOps) ── -->
+        <div id="tab-aiops" class="admin-tab tab-inner-padding">
+            <span class="page-title-mob">مركز القيادة</span>
+            <div class="row g-3 mb-4">
+                <div class="col-6 col-md-3"><div class="stat-card"><div class="stat-icon" style="background:var(--primary-light);"><i data-lucide="cpu" width="20" height="20" style="color:var(--primary);"></i></div><div><div class="stat-val" id="aiHealthStatus">---</div><div class="stat-lbl">صحة السيرفر</div></div></div></div>
+                <div class="col-6 col-md-3"><div class="stat-card"><div class="stat-icon" style="background:#fef2f2;"><i data-lucide="alert-triangle" width="20" height="20" style="color:var(--danger);"></i></div><div><div class="stat-val" id="aiQuarantineCount">0</div><div class="stat-lbl">طلبات معزولة</div></div></div></div>
+                <div class="col-6 col-md-3"><div class="stat-card"><div class="stat-icon" style="background:#fffbeb;"><i data-lucide="zap" width="20" height="20" style="color:var(--warning);"></i></div><div><div class="stat-val" id="aiCircuitState">مغلق</div><div class="stat-lbl">قاطع الدائرة</div></div></div></div>
+                <div class="col-6 col-md-3"><div class="stat-card"><div class="stat-icon" style="background:#e6faf3;"><i data-lucide="timer" width="20" height="20" style="color:var(--success);"></i></div><div><div class="stat-val" id="aiLastCheck">---</div><div class="stat-lbl">آخر فحص</div></div></div></div>
+            </div>
+            <div class="chart-box"><h5 class="chart-title">سجل الأخطاء الحرجة (آخر 30 حدثاً)</h5><div id="aiopsLogList"></div></div>
+        </div>
+
+        <!-- ── تبويب سجل التدقيق ── -->
+        <div id="tab-audit" class="admin-tab tab-inner-padding">
+            <span class="page-title-mob">سجل التدقيق</span>
+            <div class="search-input-wrap mb-4"><span class="s-icon"><i data-lucide="search" width="16" height="16"></i></span><input type="text" id="auditSearchInput" class="search-input" placeholder="ابحث في السجل..." oninput="renderAuditTrail()"></div>
+            <div id="auditListContainer"><div class="empty-state"><i data-lucide="scroll-text" width="36" height="36" class="mb-2" style="color:var(--text-3);"></i><div class="empty-title">لا توجد سجلات بعد</div></div></div>
+        </div>
+
         <nav class="bottom-nav">
             <div class="b-nav-item active" onclick="switchTab('live', this)"><div class="b-nav-icon"><i data-lucide="map" width="20" height="20"></i></div><span class="b-nav-label">الميدان</span></div>
-            <div class="b-nav-item" onclick="showTab(event,'orders')"><div class="b-nav-icon"><i data-lucide="activity" width="20" height="20"></i></div><span class="b-nav-label">سجل اليوم</span></div>
+            <div class="b-nav-item" onclick="showTab(event,'orders')"><div class="b-nav-icon"><i data-lucide="bar-chart-big" width="20" height="20"></i></div><span class="b-nav-label">التقارير</span></div>
             <div class="b-nav-item" onclick="showTab(event,'restaurants')"><div class="b-nav-icon"><i data-lucide="store" width="20" height="20"></i></div><span class="b-nav-label">المطاعم</span></div>
             <div class="b-nav-item" onclick="showTab(event,'drivers')"><div class="b-nav-icon"><i data-lucide="users" width="20" height="20"></i></div><span class="b-nav-label">الأسطول</span></div>
+            <div class="b-nav-item" onclick="showTab(event,'aiops')"><div class="b-nav-icon"><i data-lucide="cpu" width="20" height="20"></i></div><span class="b-nav-label">الخادم</span></div>
         </nav>
     </main>
 </div>
@@ -1150,7 +1273,6 @@ let renderedDriverCards = {};
 let renderedResCards = {};
 let activeDriversOptionsCache = '';
 
-// ✅ تقسيم الطلبات لطلبات حية (رادار) وطلبات الأرشيف (سجل اليوم)
 let liveFirebaseOrders = [];
 let todayArchiveOrders = []; 
 
@@ -1167,6 +1289,9 @@ let tickerMessages = [], tickerIndex = 0, tickerInterval = null;
 let firebaseListeners = [], isFirebaseConnected = true;
 let _alertsListenerActive = false, _lastAlertMsg = null;
 let arcSortCol = 'date', arcSortDir = 'desc';
+let dailyChartInstance = null, pieChartInstance = null;
+let currentEditType = null, currentEditPhone = null;
+let auditTrailData = [];
 
 const firebaseConfig = {
     apiKey: "AIzaSyAo1rmqUzieYZU3RIwXOAN87GkpNrp-_Hc",
@@ -1181,6 +1306,7 @@ const firebaseConfig = {
 try { firebase.initializeApp(firebaseConfig); } catch (e) { showToast("فشل الاتصال بقاعدة البيانات.", "error"); }
 const db = firebase.database();
 setupAlertsListener();
+listenToAuditTrail();
 
 /* ─── UI Helpers ─── */
 function showToast(msg, type = 'success') {
@@ -1189,6 +1315,16 @@ function showToast(msg, type = 'success') {
     t.innerHTML = `<div class="t-icon"><i data-lucide="${type==='success'?'check-circle':'alert-circle'}" width="18" height="18"></i></div><span style="flex:1;">${msg}</span>`;
     c.appendChild(t); safeIcon('toast-container');
     setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 350); }, 3000);
+}
+
+function logAudit(action, details) {
+    const entry = {
+        action: action,
+        details: details,
+        timestamp: new Date().toISOString(),
+        user: 'admin'
+    };
+    db.ref('admin_audit_trail').push(entry).catch(() => {});
 }
 
 function triggerEmergency() {
@@ -1241,24 +1377,17 @@ async function refreshData() {
     try {
         const res = await fetch(`${API_URL}?action=getGlobalData&token=${API_TOKEN}&ts=${Date.now()}`);
         const data = await res.json();
-        
-        // مسح Overrides القديمة
         const now = Date.now();
         data.drivers.forEach(d => { const ov = localOverrides.drivers[d[2]]; if(ov && (now-ov.ts<120000)) d[4]=ov.status; else if(ov) delete localOverrides.drivers[d[2]]; });
         data.restaurants.forEach(r => { const ov = localOverrides.restaurants[r[2]]; if(ov && (now-ov.ts<120000)) r[4]=ov.status; else if(ov) delete localOverrides.restaurants[r[2]]; });
-        
         globalData = data;
-
-        // تعبئة القوائم المنسدلة للأرشيف فقط عند البدء
         if (document.getElementById('arcRes').options.length === 1) {
             data.restaurants.slice(1).forEach(r => { document.getElementById('arcRes').innerHTML += `<option value="${escHtml(r[1])}">${escHtml(r[1])}</option>`; });
             data.drivers.slice(1).forEach(d => { document.getElementById('arcDriver').innerHTML += `<option value="${escHtml(String(d[2]))}">${escHtml(d[1])}</option>`; });
         }
-
         try { updateSectionBadges('RESTAURANT', data.restaurants); } catch(e) {}
         try { updateSectionBadges('DRIVER', data.drivers); } catch(e) {}
         if(Object.keys(liveLedgers.drivers).length > 0) { triggerSearch('RESTAURANT'); triggerSearch('DRIVER'); }
-
         if (!isFirebaseListening) {
             isFirebaseListening = true;
             db.ref('.info/connected').on('value', snap => {
@@ -1301,7 +1430,6 @@ function listenToFirebaseOrders() {
                     o.is_sovereign || false, o.last_update || '', o.last_offered_to || '' 
                 ];
 
-                // ✅ فصل الطلبات: أرشيف (مكتمل/ملغي) مقابل نشط (رادار)
                 if (['completed', 'مكتمل', 'settled', 'deleted'].includes(o.status)) {
                     newArchive.push(arr);
                 } else {
@@ -1320,7 +1448,7 @@ function listenToFirebaseOrders() {
         }
 
         newActive.sort((a, b) => new Date(b[7]) - new Date(a[7]));
-        newArchive.sort((a, b) => new Date(b[7]) - new Date(a[7])); // الأحدث أولاً
+        newArchive.sort((a, b) => new Date(b[7]) - new Date(a[7]));
 
         liveFirebaseOrders = newActive;
         todayArchiveOrders = newArchive;
@@ -1336,10 +1464,9 @@ function listenToFirebaseOrders() {
 
         if (globalData) { try { smartRenderRadar(liveFirebaseOrders); } catch(e){} }
         updateHeatmap(liveFirebaseOrders); updateRestaurantMarkers(liveFirebaseOrders);
-        
-        // ✅ تحديث سجل اليوم (الأرشيف اللحظي) تلقائياً!
         renderArchive();
         updateTicker();
+        updateCharts();
     };
     ref.on('value', cb); firebaseListeners.push({ ref, callback: cb });
 }
@@ -1453,7 +1580,7 @@ function trackDriver(dPhone, rName) {
 }
 
 /* ─── Tabs & Filters ─── */
-function _activateTab(tabName) { document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active-tab')); const target = document.getElementById('tab-' + tabName); if (target) { target.classList.add('active-tab'); setTimeout(() => { target.scrollTop = 0; }, 50); } if (tabName === 'live' && map) setTimeout(() => map.invalidateSize(), TAB_TRANSITION_MS + 50); }
+function _activateTab(tabName) { document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active-tab')); const target = document.getElementById('tab-' + tabName); if (target) { target.classList.add('active-tab'); setTimeout(() => { target.scrollTop = 0; }, 50); } if (tabName === 'live' && map) setTimeout(() => map.invalidateSize(), 350); }
 function _updateNavActive(tabName) { document.querySelectorAll('.b-nav-item, .nav-item').forEach(i => { const oc = i.getAttribute('onclick') || ''; i.classList.toggle('active', oc.includes("'" + tabName + "'")); }); }
 function switchTab(t) { _activateTab(t); _updateNavActive(t); }
 function showTab(e, t) { _activateTab(t); _updateNavActive(t); }
@@ -1496,7 +1623,7 @@ function smartRenderFilteredSection(type, fullList) {
         if(ex) { if(cache[sId]!==hash) { const sb=ex.querySelector('.status-pill'); if(sb){sb.className=`status-pill ${spC}`; sb.textContent=spL;} const dEl=ex.querySelector('.debt-val'); if(dEl)dEl.textContent=`${d} د.ع`; const cEl=ex.querySelector('.entity-debt-lbl'); if(cEl)cEl.innerHTML=`طلبات منجزة: <span class="unpaid-wrap" style="color:var(--text-1);font-weight:900;">${c}</span>`; cache[sId]=hash; } return; }
 
         const sN = escHtml(name), sP = escHtml(phone), sPj = escJs(phone);
-        const html = `<div id="card-${type}-${sId}" class="entity-card">${pHtml}<div class="entity-card-top"><div class="entity-avatar"><i data-lucide="${escHtml(icon)}" width="22" height="22"></i></div><span class="status-pill ${spC}">${escHtml(spL)}</span></div><div class="entity-name" style="margin-top:8px;">${sN}</div><div class="entity-phone">${sP}</div><div class="entity-debt" style="margin-top:12px;"><div><div class="entity-debt-lbl">طلبات منجزة: <span class="unpaid-wrap" style="color:var(--text-1);font-weight:900;">${escHtml(c)}</span></div><div class="debt-val" style="font-size:1rem;font-weight:900;color:var(--danger);">${escHtml(d)} د.ع</div></div></div><div class="entity-actions"><div class="ea-group"><button class="ea-btn ea-accept" onclick="adminActionOptUI('ACCEPT','${type}','${sPj}',this)"><i data-lucide="check" width="16" height="16"></i></button><button class="ea-btn ea-pause" onclick="adminActionOptUI('PAUSE','${type}','${sPj}',this)"><i data-lucide="pause" width="16" height="16"></i></button><button class="ea-btn ea-ban" onclick="adminActionOptUI('DELETE','${type}','${sPj}',this)"><i data-lucide="ban" width="16" height="16"></i></button></div><div class="ea-group"><button class="ea-btn ea-debt" onclick="resetDebtOptUI('${type}','${sPj}',this)"><i data-lucide="banknote" width="16" height="16"></i></button><button class="ea-btn ea-call" onclick="window.open('tel:${sPj}')"><i data-lucide="phone-call" width="16" height="16"></i></button></div></div></div>`;
+        const html = `<div id="card-${type}-${sId}" class="entity-card">${pHtml}<div class="entity-card-top"><div class="entity-avatar"><i data-lucide="${escHtml(icon)}" width="22" height="22"></i></div><span class="status-pill ${spC}">${escHtml(spL)}</span></div><div class="entity-name" style="margin-top:8px;">${sN}</div><div class="entity-phone">${sP}</div><div class="entity-debt" style="margin-top:12px;"><div><div class="entity-debt-lbl">طلبات منجزة: <span class="unpaid-wrap" style="color:var(--text-1);font-weight:900;">${escHtml(c)}</span></div><div class="debt-val" style="font-size:1rem;font-weight:900;color:var(--danger);">${escHtml(d)} د.ع</div></div></div><div class="entity-actions"><div class="ea-group"><button class="ea-btn ea-accept" onclick="adminActionOptUI('ACCEPT','${type}','${sPj}',this)"><i data-lucide="check" width="16" height="16"></i></button><button class="ea-btn ea-pause" onclick="adminActionOptUI('PAUSE','${type}','${sPj}',this)"><i data-lucide="pause" width="16" height="16"></i></button><button class="ea-btn ea-ban" onclick="adminActionOptUI('DELETE','${type}','${sPj}',this)"><i data-lucide="ban" width="16" height="16"></i></button><button class="ea-btn ea-edit" onclick="event.stopPropagation(); openEditModal('${type}','${sPj}')"><i data-lucide="edit-3" width="16" height="16"></i></button></div><div class="ea-group"><button class="ea-btn ea-debt" onclick="resetDebtOptUI('${type}','${sPj}',this)"><i data-lucide="banknote" width="16" height="16"></i></button><button class="ea-btn ea-call" onclick="window.open('tel:${sPj}')"><i data-lucide="phone-call" width="16" height="16"></i></button></div></div></div>`;
         container.insertAdjacentHTML('beforeend', html); safeIcon(`card-${type}-${sId}`); cache[sId] = hash;
     });
     Object.keys(cache).forEach(id => { if(!currentIds.has(id)) { const el=document.getElementById(`card-${type}-${id}`); if(el)el.remove(); delete cache[id]; } });
@@ -1509,7 +1636,7 @@ function resetDebtOptUI(type, id, el) {
     if(!ensureMasterPassword()) return; if(!confirm(`تصفير ديون (${id})؟ سيتم مسحها بالكامل من قاعدة البيانات.`)) return;
     el.classList.add('btn-loading'); el.disabled = true;
     fetch(`${API_URL}?action=RESET_DEBT&type=${type}&id=${id}&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`)
-        .then(r=>r.json()).then(res=>{ if(res.success){showToast("تم التصفير بنجاح");} else showToast("خطأ", "error"); })
+        .then(r=>r.json()).then(res=>{ if(res.success){showToast("تم التصفير بنجاح"); logAudit('resetDebt', `${type} ${id}`); } else showToast("خطأ", "error"); })
         .catch(()=>showToast("تم الإرسال")).finally(()=>{el.classList.remove('btn-loading'); el.disabled = false;});
 }
 
@@ -1533,6 +1660,7 @@ function adminActionOptUI(cmd, type, id, el) {
     if(type === 'RESTAURANT') { localOverrides.restaurants[String(id)] = { status: nSt, ts: Date.now() }; const i=globalData?.restaurants.find(r=>String(r[R.PHONE])===String(id)); if(i) i[R.STATUS]=nSt; applySectionFilter('RESTAURANT', currentResSectionFilter, document.querySelector('#resFiltersGroup .fp.active')); updateSectionBadges('RESTAURANT', globalData.restaurants); }
     if(type === 'DRIVER') { localOverrides.drivers[String(id)] = { status: nSt, ts: Date.now() }; const i=globalData?.drivers.find(d=>String(d[D.PHONE])===String(id)); if(i) i[D.STATUS]=nSt; applySectionFilter('DRIVER', currentDriverSectionFilter, document.querySelector('#driverFiltersGroup .fp.active')); updateSectionBadges('DRIVER', globalData.drivers); }
     if(ensureMasterPassword()) { fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${id}&status=${nSt}&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`).catch(()=>{}).finally(()=>{ if(el){el.disabled=false;el.classList.remove('btn-loading');} }); } else { if(el){el.disabled=false;el.classList.remove('btn-loading');} }
+    logAudit(cmd, `${type} ${id} -> ${nSt}`);
 }
 
 function forceComplete(id) { adminActionOptUI('COMPLETE', 'ORDER', id, document.querySelector(`[onclick="forceComplete('${id}')"]`)); }
@@ -1543,7 +1671,7 @@ function assignDriverOptUI(oId, dPhone, el) {
     localOverrides.orders[String(oId)] = { status: 'manual_pending', driverPhone: dPhone, ts: Date.now() };
     const now = new Date().toISOString(); db.ref(`active_orders/${oId}`).update({ status: 'manual_pending', driverPhone: dPhone, last_update: now, is_sovereign: true });
     fetch(`${API_URL}?action=ASSIGN_DRIVER&orderId=${oId}&driverPhone=${dPhone}&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`)
-        .then(r=>r.json()).then(res=>{ sp.remove(); if(!res.success) { showToast("خطأ", "error"); if(card) card.style.opacity='1'; el.disabled=false; } else showToast("تم التعيين السيادي!"); })
+        .then(r=>r.json()).then(res=>{ sp.remove(); if(!res.success) { showToast("خطأ", "error"); if(card) card.style.opacity='1'; el.disabled=false; } else { showToast("تم التعيين السيادي!"); logAudit('assignDriver', `${oId} -> ${dPhone}`); } })
         .catch(()=>{ sp.remove(); showToast("تم الإرسال"); });
 }
 function withdrawOrderOptUI(oId, dPhone, el) {
@@ -1551,6 +1679,7 @@ function withdrawOrderOptUI(oId, dPhone, el) {
     localOverrides.orders[String(oId)] = { status: 'pending_driver', driverPhone: 'system_routing', ts: Date.now() };
     const now = new Date().toISOString(); db.ref(`active_orders/${oId}`).update({ status: 'pending_driver', driverPhone: 'system_routing', last_update: now, last_offered_to: dPhone, last_offered_time: now, is_sovereign: false }).then(()=>showToast("تم سحب الطلب")).catch(()=>{showToast("خطأ اتصال", "error"); el.disabled=false;});
     fetch(`${API_URL}?action=DECLINE_ORDER&orderId=${oId}&driverPhone=${dPhone}&token=${API_TOKEN}`).catch(()=>{});
+    logAudit('withdrawOrder', `${oId} from ${dPhone}`);
 }
 
 /* ─── Radar Render ─── */
@@ -1615,7 +1744,7 @@ function smartRenderRadar(aList) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   🗂️ LIVE ARCHIVE (Realtime Today)
+   🗂️ LIVE ARCHIVE + Charts + Audit + AI Chat
 ═══════════════════════════════════════════════════════════ */
 function arcSort(c) {
     if(arcSortCol===c) arcSortDir=arcSortDir==='asc'?'desc':'asc'; else {arcSortCol=c; arcSortDir=c==='date'?'desc':'asc';}
@@ -1691,6 +1820,44 @@ function renderArchive() {
     const fH = html || eRow; if(lastArchiveHtml !== fH) { document.getElementById('ordersTableBody').innerHTML = fH; safeIcon('ordersTableBody'); lastArchiveHtml = fH; }
 }
 
+function updateCharts() {
+    if (typeof Chart === 'undefined') return;
+    const ctx1 = document.getElementById('dailyChart');
+    if (!ctx1) return;
+    if (dailyChartInstance) dailyChartInstance.destroy();
+    if (pieChartInstance) pieChartInstance.destroy();
+    
+    const completed = todayArchiveOrders.filter(o => o[O.STATUS] !== 'deleted').length;
+    const cancelled = todayArchiveOrders.filter(o => o[O.STATUS] === 'deleted').length;
+    
+    dailyChartInstance = new Chart(ctx1, {
+        type: 'bar',
+        data: {
+            labels: ['مكتمل', 'ملغي'],
+            datasets: [{
+                label: 'عدد الطلبات',
+                data: [completed, cancelled],
+                backgroundColor: ['#10b981', '#ef4444']
+            }]
+        },
+        options: { plugins: { legend: { display: false } }, responsive: true, scales: { y: { beginAtZero: true } } }
+    });
+    
+    const ctx2 = document.getElementById('completionPieChart');
+    if (ctx2) {
+        pieChartInstance = new Chart(ctx2, {
+            type: 'pie',
+            data: {
+                labels: ['مكتمل', 'ملغي'],
+                datasets: [{
+                    data: [completed, cancelled],
+                    backgroundColor: ['#10b981', '#ef4444']
+                }]
+            }
+        });
+    }
+}
+
 function openInvoice(ds) {
     const d = JSON.parse(decodeURIComponent(ds));
     document.getElementById('invOrderId').textContent='#'+d.id; document.getElementById('invDate').textContent=d.date; document.getElementById('invRes').textContent=d.res; document.getElementById('invDriver').textContent=d.driver; document.getElementById('invCust').textContent=d.details; document.getElementById('invPrice').textContent=d.price+' د.ع'; document.getElementById('invComm').textContent=d.comm+' د.ع'; document.getElementById('invPayType').textContent=d.payType; document.getElementById('invStatus').innerHTML=d.isDeleted?'<span class="sbadge sbadge-danger">ملغي</span>':(d.isSettled?'<span class="sbadge sbadge-warn">تم تسوية الحساب</span>':'<span class="sbadge sbadge-success">مكتمل</span>');
@@ -1711,6 +1878,101 @@ function exportExcel() {
     showToast(`✅ تم تصدير ${f.length} طلب`);
 }
 
+/* ─── AI Chat, Edit Modal, Audit Trail ─── */
+window.openAIChat = function() {
+    document.getElementById('aiChatModal').style.display = 'flex';
+    document.getElementById('aiChatInput').focus();
+};
+window.askAI = async function() {
+    const input = document.getElementById('aiChatInput');
+    const question = input.value.trim();
+    if (!question) return;
+    const msgs = document.getElementById('aiChatMessages');
+    msgs.innerHTML += `<div class="ai-msg user">${escHtml(question)}</div>`;
+    input.value = '';
+    try {
+        const res = await fetch(API_URL, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ token: API_TOKEN, action: 'ASK_AI_CFO', question: question })
+        });
+        const data = await res.json();
+        msgs.innerHTML += `<div class="ai-msg">${data.answer || 'عذراً، لم أتمكن من الإجابة.'}</div>`;
+    } catch(e) {
+        msgs.innerHTML += `<div class="ai-msg">فشل الاتصال بالمساعد الذكي.</div>`;
+    }
+    msgs.scrollTop = msgs.scrollHeight;
+};
+
+function openEditModal(type, phone) {
+    currentEditType = type; currentEditPhone = phone;
+    const entity = (type === 'DRIVER' ? globalData.drivers : globalData.restaurants).find(i => String(i[2]) === String(phone));
+    if (!entity) return;
+    document.getElementById('editModalTitle').innerText = type === 'DRIVER' ? 'تعديل بيانات الكابتن' : 'تعديل بيانات المطعم';
+    document.getElementById('editName').value = entity[1] || '';
+    document.getElementById('editArea').value = entity[3] || '';
+    if (type === 'RESTAURANT') {
+        document.getElementById('editResFields').classList.remove('hidden-section');
+        document.getElementById('editDriverFields').classList.add('hidden-section');
+        document.getElementById('editComm').value = entity[5] || '';
+        document.getElementById('editPayType').value = entity[8] || '';
+        document.getElementById('editPriceList').value = entity[12] || '';
+    } else {
+        document.getElementById('editResFields').classList.add('hidden-section');
+        document.getElementById('editDriverFields').classList.remove('hidden-section');
+        document.getElementById('editStatus').value = entity[4] || 'active';
+    }
+    document.getElementById('editEntityModal').classList.add('active');
+}
+function closeEditModal() { document.getElementById('editEntityModal').classList.remove('active'); }
+async function saveEntityEdits() {
+    const updates = { name: document.getElementById('editName').value };
+    if (currentEditType === 'RESTAURANT') {
+        updates.comm = document.getElementById('editComm').value;
+        updates.payType = document.getElementById('editPayType').value;
+        updates.priceList = document.getElementById('editPriceList').value;
+    } else {
+        updates.status = document.getElementById('editStatus').value;
+    }
+    const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ token: API_TOKEN, action: 'updateEntityInfo', type: currentEditType, phone: currentEditPhone, updates: updates, pass: masterPassword })
+    });
+    const d = await res.json();
+    if (d.success) { showToast('تم التحديث'); logAudit('updateEntity', `تحديث ${currentEditType} ${currentEditPhone}`); closeEditModal(); refreshData(); }
+    else showToast('فشل', 'error');
+}
+
+function listenToAuditTrail() {
+    db.ref('admin_audit_trail').limitToLast(100).on('value', snap => {
+        auditTrailData = [];
+        const val = snap.val();
+        if (val) {
+            Object.keys(val).forEach(key => auditTrailData.unshift(val[key]));
+        }
+        if (document.getElementById('tab-audit')?.classList.contains('active-tab')) renderAuditTrail();
+    });
+}
+function renderAuditTrail() {
+    const search = document.getElementById('auditSearchInput')?.value.toLowerCase() || '';
+    const filtered = auditTrailData.filter(e => !search || JSON.stringify(e).toLowerCase().includes(search));
+    let html = '';
+    filtered.forEach(e => {
+        html += `<div class="audit-item d-flex align-items-center gap-3"><div class="audit-icon"><i data-lucide="${e.action==='updateEntity'?'edit':e.action==='resetDebt'?'banknote':'activity'}" width="18" height="18"></i></div><div><div class="fw-bold">${escHtml(e.action)}</div><div style="font-size:0.75rem;color:var(--text-3);">${escHtml(e.timestamp)}</div><div style="font-size:0.8rem;">${escHtml(e.details)}</div></div></div>`;
+    });
+    document.getElementById('auditListContainer').innerHTML = html || '<div class="empty-state"><i data-lucide="scroll-text" width="36" height="36" class="mb-2" style="color:var(--text-3);"></i><div class="empty-title">لا توجد سجلات</div></div>';
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+/* ─── AIOps Tab Update ─── */
+function updateAIOpsTab() {
+    // fetch from watchtower or use cached
+    // set aiHealthStatus, aiQuarantineCount, etc.
+}
+setInterval(updateAIOpsTab, 30000);
+
+/* ─── Map Init ─── */
 function initMap() {
     map = L.map('adminMap', { zoomControl: false, attributionControl: false }).setView([35.468, 44.392], 13);
     L.control.zoom({ position: 'bottomleft' }).addTo(map); L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 19, subdomains: 'abcd' }).addTo(map);
@@ -1729,4 +1991,4 @@ function performLogout() {
 }
 </script>
 </body>
-</html>​
+</html>
