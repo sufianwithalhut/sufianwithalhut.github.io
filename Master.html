@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <script>
-        // --- إصدار 9.5 (Clean Slate — متوافق مع V35.5.0 Pure Core Engine) ---
-        const CURRENT_APP_VERSION = "9.5";
+        // --- إصدار 9.6 (Clean Slate — متوافق مع V35.5.0 Pure Core Engine) ---
+        const CURRENT_APP_VERSION = "9.6";
         const VERSION_KEY = 'hut_master_app_version';
         try {
             if (localStorage.getItem(VERSION_KEY) !== CURRENT_APP_VERSION) {
                 localStorage.setItem(VERSION_KEY, CURRENT_APP_VERSION);
                 if (localStorage.getItem(VERSION_KEY) === CURRENT_APP_VERSION) {
-                    console.log("تحديث إلى Clean Slate V9.5...");
+                    console.log("تحديث إلى Clean Slate V9.6...");
                     if ('caches' in window) {
                         caches.keys().then(function(names) {
                             for (let name of names) caches.delete(name);
@@ -105,7 +105,6 @@
             -webkit-font-smoothing: antialiased;
         }
 
-        /* نقلنا تنسيقات التيكر لتناسب تبويب AIOps */
         .aiops-ticker { 
             background: var(--surface); border-radius: var(--r-md); padding: 12px 16px; 
             font-size: 0.85rem; font-weight: 800; color: var(--primary-dark); white-space: nowrap; 
@@ -132,7 +131,7 @@
             box-shadow: var(--s-sm); cursor: pointer; z-index: 1010; border: 1px solid var(--border); transition: 0.2s;
         }
         .fab-map-action:active { transform: scale(0.9); }
-        .fab-expand { top: 75px; } /* تم تعديل الموضع بعد إزالة التيكر العلوي */
+        .fab-expand { top: 75px; } 
         .fab-cancel-track { top: 130px; background: #fef2f2; color: var(--danger); border-color: #fecaca; display: none; }
 
         .fab-broadcast { 
@@ -196,7 +195,7 @@
         .auth-btn:hover  { transform: translateY(-1px); box-shadow: 0 12px 32px rgba(59,158,221,0.35); }
         .auth-btn:active { transform: scale(0.97); box-shadow: var(--s-xs); }
 
-        #mainDashboard { display: flex; height: 100%; width: 100%; overflow: hidden; position: relative; } /* أزلنا padding-top: 35px; */
+        #mainDashboard { display: flex; height: 100%; width: 100%; overflow: hidden; position: relative; } 
 
         .admin-tab { display: none; }
         .admin-tab.active-tab { display: block; }
@@ -252,7 +251,7 @@
 
             .admin-tab {
                 position: absolute;
-                top: 0; bottom: var(--nav-h); /* بدأ من أعلى الشاشة */
+                top: 0; bottom: var(--nav-h); 
                 left: 0; right: 0;
                 display: block !important;
                 opacity: 0; visibility: hidden; pointer-events: none;
@@ -563,7 +562,7 @@
         .sbadge-orange  { background: var(--accent-light); color: var(--accent-dark); border: 1px solid #fed7aa; }
         .sbadge-purple  { background: #f3e8ff; color: var(--purple); border: 1px solid #d8b4fe; }
 
-        /* --- تحسين كروت الكيانات (تعديل 2) --- */
+        /* --- تحسين كروت الكيانات --- */
         .entity-card {
             background: var(--surface); border-radius: var(--r-lg); padding: 18px; box-shadow: var(--s-xs); border: 1px solid var(--border);
             transition: all .25s ease; display: flex; flex-direction: column; position: relative; overflow: hidden; height: 100%;
@@ -584,9 +583,9 @@
         .entity-debt-val { font-size: 0.9rem; font-weight: 900; color: var(--danger); }
         .entity-actions {
             display: flex; justify-content: center; align-items: center; padding-top: 10px; border-top: 1px solid var(--border); margin-top: auto;
-            flex-wrap: wrap; gap: 8px; /* ضمان التفاف الأزرار بشكل متناسق وعدم خروجها */
+            flex-wrap: wrap; gap: 8px;
         }
-        .ea-group { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; } /* تعديل المجموعات للتوافق مع الزر الجديد */
+        .ea-group { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
         .ea-btn {
             width: 32px; height: 32px; border-radius: 10px; border: none; cursor: pointer;
             display: inline-flex; align-items: center; justify-content: center; transition: all .18s; flex-shrink: 0;
@@ -1163,10 +1162,9 @@
             </div>
             
             <div class="chart-box">
-                <h5 class="chart-title">الإنذارات الحية (System Alerts)</h5>
-                <div class="arch-alert mb-0">
-                    <i data-lucide="info" width="20" height="20"></i>
-                    <span>كلب الحراسة يراقب الطلبات العالقة أو تأخر الكباتن ويصدر الإنذارات تلقائياً هنا أو عبر إشعارات النظام.</span>
+                <h5 class="chart-title">سجل الإنذارات الميدانية (Watchdog Alerts)</h5>
+                <div id="systemAlertsContainer">
+                    <div class="empty-state"><div class="spinner-mini" style="border-top-color:var(--primary);"></div> جاري جلب الإنذارات...</div>
                 </div>
             </div>
         </div>
@@ -1523,11 +1521,55 @@ function listenToFirebaseLocations() {
     ref.on('value', cb); firebaseListeners.push({ ref, callback: cb });
 }
 
+let systemAlertsData = [];
+
 function setupAlertsListener() {
     if (_alertsListenerActive) return; _alertsListenerActive = true;
-    db.ref('system_alerts').limitToLast(1).on('value', snap => {
-        const a = snap.val(); _lastAlertMsg = a ? ((Object.values(a).pop()?.read===false) ? `🚨 ${Object.values(a).pop().message}` : null) : null;
+    db.ref('system_alerts').limitToLast(50).on('value', snap => {
+        systemAlertsData = [];
+        const val = snap.val();
+        if (val) {
+            Object.keys(val).forEach(key => {
+                systemAlertsData.unshift({ id: key, ...val[key] });
+            });
+            const latest = systemAlertsData[0];
+            _lastAlertMsg = latest && latest.read === false ? `🚨 ${latest.message}` : null;
+        } else {
+            _lastAlertMsg = null;
+        }
+        
+        updateTicker();
+        
+        if (document.getElementById('tab-aiops')?.classList.contains('active-tab')) {
+            renderSystemAlerts();
+        }
     });
+}
+
+function renderSystemAlerts() {
+    const container = document.getElementById('systemAlertsContainer');
+    if (!container) return;
+    
+    let html = '';
+    systemAlertsData.forEach(a => {
+        let timeStr = '---';
+        try { timeStr = new Date(a.ts).toLocaleTimeString('ar-EG', {hour: '2-digit', minute: '2-digit'}); } catch(e){}
+        
+        html += `<div class="audit-item d-flex align-items-center gap-3">
+                    <div class="audit-icon" style="background:#fef2f2; color:var(--danger);">
+                        <i data-lucide="alert-triangle" width="18" height="18"></i>
+                    </div>
+                    <div>
+                        <div class="fw-bold" style="color:var(--danger); font-size:0.85rem;">${escHtml(a.message)}</div>
+                        <div style="font-size:0.75rem; color:var(--text-3); margin-top:2px;">
+                            طلب: <span style="font-family: monospace; color:var(--primary);">${escHtml(a.orderId)}</span> • ${timeStr}
+                        </div>
+                    </div>
+                 </div>`;
+    });
+    
+    container.innerHTML = html || `<div class="empty-state"><i data-lucide="shield-check" width="36" height="36" class="mb-2" style="color:var(--success);"></i><div class="empty-title">النظام مستقر ولا توجد إنذارات</div></div>`;
+    safeIcon('systemAlertsContainer');
 }
 
 function updateTicker() {
@@ -1586,6 +1628,10 @@ function _activateTab(tabName) {
     const target = document.getElementById('tab-' + tabName);
     if (target) { target.classList.add('active-tab'); setTimeout(() => { target.scrollTop = 0; }, 50); }
     if (tabName === 'live' && map) setTimeout(() => map.invalidateSize(), TAB_TRANSITION_MS + 50);
+    
+    // 🟢 الإصلاح: إجبار اللوحة على رسم البيانات فور فتح التبويب
+    if (tabName === 'audit' && typeof renderAuditTrail === 'function') renderAuditTrail();
+    if (tabName === 'aiops' && typeof renderSystemAlerts === 'function') renderSystemAlerts();
 }
 function _updateNavActive(tabName) {
     document.querySelectorAll('.b-nav-item, .nav-item').forEach(i => {
