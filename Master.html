@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <script>
-        // --- إصدار 9.6 (Clean Slate — متوافق مع V35.5.0 Pure Core Engine) ---
-        const CURRENT_APP_VERSION = "9.6";
+        // --- إصدار 9.7 (Smart Frontend — متوافق مع V35.5.0 Pure Core Engine) ---
+        const CURRENT_APP_VERSION = "9.7";
         const VERSION_KEY = 'hut_master_app_version';
         try {
             if (localStorage.getItem(VERSION_KEY) !== CURRENT_APP_VERSION) {
                 localStorage.setItem(VERSION_KEY, CURRENT_APP_VERSION);
                 if (localStorage.getItem(VERSION_KEY) === CURRENT_APP_VERSION) {
-                    console.log("تحديث إلى Clean Slate V9.6...");
+                    console.log("تحديث إلى Clean Slate V9.7...");
                     if ('caches' in window) {
                         caches.keys().then(function(names) {
                             for (let name of names) caches.delete(name);
@@ -808,8 +808,9 @@
         /* Audit Trail */
         .audit-item {
             background: var(--surface); border-radius: var(--r-lg); padding: 16px; border: 1px solid var(--border);
-            margin-bottom: 10px; box-shadow: var(--s-xs);
+            margin-bottom: 10px; box-shadow: var(--s-xs); transition: all 0.2s;
         }
+        .audit-item:hover { box-shadow: var(--s-sm); transform: translateY(-1px); }
         .audit-icon {
             width: 38px; height: 38px; border-radius: 12px; background: var(--primary-light); display: flex; align-items: center; justify-content: center; color: var(--primary); flex-shrink: 0;
         }
@@ -1210,15 +1211,13 @@
 
 <script>
 /* ═══════════════════════════════════════════
-   🔵 التهيئة الكاملة للأيقونات (Fix 1)
+   🔵 التهيئة الكاملة للأيقونات
 ═══════════════════════════════════════════ */
 document.addEventListener('DOMContentLoaded', function() {
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();
     }
 });
-
-// بديل احتياطي للتأكد من ظهورها في جميع الحالات
 setTimeout(function() {
     if (typeof lucide !== 'undefined') lucide.createIcons();
 }, 1000);
@@ -1264,6 +1263,7 @@ let arcSortCol = 'date', arcSortDir = 'desc';
 let dailyChartInstance = null, pieChartInstance = null;
 let currentEditType = null, currentEditPhone = null;
 let auditTrailData = [];
+let systemAlertsData = [];
 
 const firebaseConfig = {
     apiKey: "AIzaSyAo1rmqUzieYZU3RIwXOAN87GkpNrp-_Hc",
@@ -1295,7 +1295,6 @@ window.closeReceiptImage = function() {
     if (m) { m.style.display = 'none'; if(i) i.src = ''; }
 };
 
-/* ─── UI Helpers (continued) ─── */
 function showToast(msg, type = 'success') {
     const c = document.getElementById('toast-container'), t = document.createElement('div');
     t.className = `toast-msg ${type}`;
@@ -1304,8 +1303,37 @@ function showToast(msg, type = 'success') {
     setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 350); }, 3000);
 }
 
-function logAudit(action, details) {
-    const entry = { action, details, timestamp: new Date().toISOString(), user: 'admin' };
+// 🟢 دالة مساعدة لجلب الاسم من الذاكرة
+function getEntityNameFromGlobal(phone, type) {
+    if (!globalData || !phone) return phone || "مجهول";
+    const normPhone = String(phone).replace(/^0+/, '').trim();
+    const list = type === 'DRIVER' ? globalData.drivers : (type === 'RESTAURANT' ? globalData.restaurants : []);
+    const entity = list.find(item => String(item[2]).replace(/^0+/, '').trim() === normPhone);
+    return entity ? entity[1] : phone;
+}
+
+// 🟢 تحديث دالة تسجيل التدقيق لتصبح باللغة العربية مع الأسماء
+function logAudit(actionCode, type, phone, detailsExtra) {
+    let actionAr = actionCode;
+    let detailsAr = detailsExtra || "";
+    
+    const name = getEntityNameFromGlobal(phone, type);
+    const typeAr = type === 'DRIVER' ? 'الكابتن' : (type === 'RESTAURANT' ? 'المطعم' : 'الطلب');
+    const entityStr = type !== 'ORDER' ? `${typeAr}: ${name} (${phone})` : `${typeAr} #${phone}`;
+
+    switch (actionCode) {
+        case 'ACCEPT': actionAr = 'تفعيل حساب'; detailsAr = `تم تفعيل ${entityStr}`; break;
+        case 'PAUSE': actionAr = 'إيقاف مؤقت'; detailsAr = `تم إيقاف ${entityStr} مؤقتاً (استراحة)`; break;
+        case 'BAN': actionAr = 'حظر حساب'; detailsAr = `تم حظر ${entityStr}`; break;
+        case 'HARD_DELETE': actionAr = 'حذف نهائي'; detailsAr = `تم حذف ${entityStr} من النظام بالكامل`; break;
+        case 'resetDebt': actionAr = 'تصفير ديون'; detailsAr = `تم تصفير حساب ${entityStr}`; break;
+        case 'updateEntity': actionAr = 'تعديل بيانات'; detailsAr = `تم تعديل معلومات ${entityStr}`; break;
+        case 'assignDriver': actionAr = 'تعيين سيادي'; detailsAr = `تم تعيين الكابتن ${name} للطلب #${detailsExtra}`; break;
+        case 'withdrawOrder': actionAr = 'سحب طلب'; detailsAr = `تم سحب الطلب #${detailsExtra} من الكابتن ${name}`; break;
+        default: break;
+    }
+
+    const entry = { action: actionAr, details: detailsAr, timestamp: new Date().toISOString(), user: 'المدير العام' };
     db.ref('admin_audit_trail').push(entry).catch(() => {});
 }
 
@@ -1452,6 +1480,11 @@ function listenToFirebaseOrders() {
         renderArchive();
         updateTicker();
         updateCharts();
+        
+        // تحديث تنبيهات السيرفر إن كان التبويب مفتوحاً
+        if (document.getElementById('tab-aiops')?.classList.contains('active-tab')) {
+            renderSystemAlerts();
+        }
     };
     ref.on('value', cb); firebaseListeners.push({ ref, callback: cb });
 }
@@ -1521,8 +1554,6 @@ function listenToFirebaseLocations() {
     ref.on('value', cb); firebaseListeners.push({ ref, callback: cb });
 }
 
-let systemAlertsData = [];
-
 function setupAlertsListener() {
     if (_alertsListenerActive) return; _alertsListenerActive = true;
     db.ref('system_alerts').limitToLast(50).on('value', snap => {
@@ -1546,6 +1577,7 @@ function setupAlertsListener() {
     });
 }
 
+// 🟢 الترجمة الفورية لرسائل كلب الحراسة
 function renderSystemAlerts() {
     const container = document.getElementById('systemAlertsContainer');
     if (!container) return;
@@ -1555,14 +1587,38 @@ function renderSystemAlerts() {
         let timeStr = '---';
         try { timeStr = new Date(a.ts).toLocaleTimeString('ar-EG', {hour: '2-digit', minute: '2-digit'}); } catch(e){}
         
+        let displayMessage = a.message;
+        
+        // البحث عن الطلب في المصفوفات المحلية للترجمة الذكية
+        if (a.orderId && globalData) {
+            let targetOrder = liveFirebaseOrders.find(o => String(o[0]) === String(a.orderId));
+            if (!targetOrder) targetOrder = todayArchiveOrders.find(o => String(o[0]) === String(a.orderId));
+            
+            if (targetOrder) {
+                const resName = targetOrder[1];
+                const drvPhone = targetOrder[6];
+                const drvName = (drvPhone && drvPhone !== "pending_driver" && drvPhone !== "system_routing") 
+                                ? getEntityNameFromGlobal(drvPhone, 'DRIVER') 
+                                : null;
+
+                if (a.message.includes("عالق")) {
+                    displayMessage = `طلب معلق من (${resName}) ولم يقبله أحد لفترة طويلة!`;
+                } else if (a.message.includes("متأخر في المطعم")) {
+                    displayMessage = `الكابتن (${drvName || 'المعين'}) متأخر جداً في استلام الطلب من (${resName}).`;
+                } else if (a.message.includes("ينتظر كابتن")) {
+                    displayMessage = `طلب عاجل من (${resName}) بانتظار توجيه كابتن!`;
+                }
+            }
+        }
+        
         html += `<div class="audit-item d-flex align-items-center gap-3">
                     <div class="audit-icon" style="background:#fef2f2; color:var(--danger);">
                         <i data-lucide="alert-triangle" width="18" height="18"></i>
                     </div>
                     <div>
-                        <div class="fw-bold" style="color:var(--danger); font-size:0.85rem;">${escHtml(a.message)}</div>
+                        <div class="fw-bold" style="color:var(--danger); font-size:0.85rem;">${escHtml(displayMessage)}</div>
                         <div style="font-size:0.75rem; color:var(--text-3); margin-top:2px;">
-                            طلب: <span style="font-family: monospace; color:var(--primary);">${escHtml(a.orderId)}</span> • ${timeStr}
+                            طلب: <span style="font-family: monospace; color:var(--primary);">${escHtml(a.orderId || 'غير محدد')}</span> • ${timeStr}
                         </div>
                     </div>
                  </div>`;
@@ -1629,7 +1685,6 @@ function _activateTab(tabName) {
     if (target) { target.classList.add('active-tab'); setTimeout(() => { target.scrollTop = 0; }, 50); }
     if (tabName === 'live' && map) setTimeout(() => map.invalidateSize(), TAB_TRANSITION_MS + 50);
     
-    // 🟢 الإصلاح: إجبار اللوحة على رسم البيانات فور فتح التبويب
     if (tabName === 'audit' && typeof renderAuditTrail === 'function') renderAuditTrail();
     if (tabName === 'aiops' && typeof renderSystemAlerts === 'function') renderSystemAlerts();
 }
@@ -1773,7 +1828,7 @@ function resetDebtOptUI(type, id, el) {
     if(!ensureMasterPassword()) return; if(!confirm(`تصفير ديون (${id})؟ سيتم مسحها بالكامل من قاعدة البيانات.`)) return;
     el.classList.add('btn-loading'); el.disabled = true;
     fetch(`${API_URL}?action=RESET_DEBT&type=${type}&id=${id}&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`)
-        .then(r=>r.json()).then(res=>{ if(res.success){showToast("تم التصفير بنجاح"); logAudit('resetDebt', `${type} ${id}`); } else showToast("خطأ", "error"); })
+        .then(r=>r.json()).then(res=>{ if(res.success){showToast("تم التصفير بنجاح"); logAudit('resetDebt', type, id); } else showToast("خطأ", "error"); })
         .catch(()=>showToast("تم الإرسال")).finally(()=>{el.classList.remove('btn-loading'); el.disabled = false;});
 }
 
@@ -1808,7 +1863,7 @@ function adminActionOptUI(cmd, type, id, el) {
     } else { 
         if(el){el.disabled=false;el.classList.remove('btn-loading');} 
     }
-    logAudit(cmd, `${type} ${id} -> ${nSt}`);
+    logAudit(cmd, type, id);
 }
 
 function forceComplete(id) { adminActionOptUI('COMPLETE', 'ORDER', id, document.querySelector(`[onclick="forceComplete('${id}')"]`)); }
@@ -1819,7 +1874,7 @@ function assignDriverOptUI(oId, dPhone, el) {
     localOverrides.orders[String(oId)] = { status: 'manual_pending', driverPhone: dPhone, ts: Date.now() };
     const now = new Date().toISOString(); db.ref(`active_orders/${oId}`).update({ status: 'manual_pending', driverPhone: dPhone, last_update: now, is_sovereign: true });
     fetch(`${API_URL}?action=ASSIGN_DRIVER&orderId=${oId}&driverPhone=${dPhone}&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`)
-        .then(r=>r.json()).then(res=>{ sp.remove(); if(!res.success) { showToast("خطأ", "error"); if(card) card.style.opacity='1'; el.disabled=false; } else { showToast("تم التعيين السيادي!"); logAudit('assignDriver', `${oId} -> ${dPhone}`); } })
+        .then(r=>r.json()).then(res=>{ sp.remove(); if(!res.success) { showToast("خطأ", "error"); if(card) card.style.opacity='1'; el.disabled=false; } else { showToast("تم التعيين السيادي!"); logAudit('assignDriver', 'ORDER', dPhone, oId); } })
         .catch(()=>{ sp.remove(); showToast("تم الإرسال"); }).finally(()=>{ el.disabled = false; });
 }
 function withdrawOrderOptUI(oId, dPhone, el) {
@@ -1827,7 +1882,7 @@ function withdrawOrderOptUI(oId, dPhone, el) {
     localOverrides.orders[String(oId)] = { status: 'pending_driver', driverPhone: 'system_routing', ts: Date.now() };
     const now = new Date().toISOString(); db.ref(`active_orders/${oId}`).update({ status: 'pending_driver', driverPhone: 'system_routing', last_update: now, last_offered_to: dPhone, last_offered_time: now, is_sovereign: false }).then(()=>showToast("تم سحب الطلب")).catch(()=>{showToast("خطأ اتصال", "error"); el.disabled=false;});
     fetch(`${API_URL}?action=DECLINE_ORDER&orderId=${oId}&driverPhone=${dPhone}&token=${API_TOKEN}`).catch(()=>{});
-    logAudit('withdrawOrder', `${oId} from ${dPhone}`);
+    logAudit('withdrawOrder', 'ORDER', dPhone, oId);
 }
 
 /* ─── Radar Render ─── */
@@ -1892,7 +1947,7 @@ function smartRenderRadar(aList) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   🗂️ LIVE ARCHIVE + Charts + Audit
+   🗂️ LIVE ARCHIVE + Charts
 ═══════════════════════════════════════════════════════════ */
 function arcSort(c) {
     if(arcSortCol===c) arcSortDir=arcSortDir==='asc'?'desc':'asc'; else {arcSortCol=c; arcSortDir=c==='date'?'desc':'asc';}
@@ -2109,31 +2164,10 @@ async function saveEntityEdits() {
             body: JSON.stringify({ token: API_TOKEN, action: 'updateEntityInfo', type: currentEditType, phone: currentEditPhone, updates: updates, pass: masterPassword })
         });
         const d = await res.json();
-        if (d.success) { showToast('تم التحديث'); logAudit('updateEntity', `تحديث ${currentEditType} ${currentEditPhone}`); closeEditModal(); refreshData(); }
+        if (d.success) { showToast('تم التحديث'); logAudit('updateEntity', currentEditType, currentEditPhone); closeEditModal(); refreshData(); }
         else showToast('فشل', 'error');
     } catch(e) { showToast('خطأ اتصال', 'error'); }
     finally { saveBtn.disabled = false; saveBtn.classList.remove('btn-loading'); }
-}
-
-function listenToAuditTrail() {
-    db.ref('admin_audit_trail').limitToLast(100).on('value', snap => {
-        auditTrailData = [];
-        const val = snap.val();
-        if (val) {
-            Object.keys(val).forEach(key => auditTrailData.unshift(val[key]));
-        }
-        if (document.getElementById('tab-audit')?.classList.contains('active-tab')) renderAuditTrail();
-    });
-}
-function renderAuditTrail() {
-    const search = document.getElementById('auditSearchInput')?.value.toLowerCase() || '';
-    const filtered = auditTrailData.filter(e => !search || JSON.stringify(e).toLowerCase().includes(search));
-    let html = '';
-    filtered.forEach(e => {
-        html += `<div class="audit-item d-flex align-items-center gap-3"><div class="audit-icon"><i data-lucide="${e.action==='updateEntity'?'edit':e.action==='resetDebt'?'banknote':'activity'}" width="18" height="18"></i></div><div><div class="fw-bold">${escHtml(e.action)}</div><div style="font-size:0.75rem;color:var(--text-3);">${escHtml(e.timestamp)}</div><div style="font-size:0.8rem;">${escHtml(e.details)}</div></div></div>`;
-    });
-    document.getElementById('auditListContainer').innerHTML = html || '<div class="empty-state"><i data-lucide="scroll-text" width="36" height="36" class="mb-2" style="color:var(--text-3);"></i><div class="empty-title">لا توجد سجلات</div></div>';
-    if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
 /* ─── Map Init ─── */
