@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <script>
-        // --- إصدار 9.9 (Smart Modal Fix & Audit Normalization) ---
-        const CURRENT_APP_VERSION = "9.9";
+        // --- إصدار 10.0 (Titanium Admin — Final Bug Fixes & Smart Audit) ---
+        const CURRENT_APP_VERSION = "10.0";
         const VERSION_KEY = 'hut_master_app_version';
         try {
             if (localStorage.getItem(VERSION_KEY) !== CURRENT_APP_VERSION) {
                 localStorage.setItem(VERSION_KEY, CURRENT_APP_VERSION);
                 if (localStorage.getItem(VERSION_KEY) === CURRENT_APP_VERSION) {
-                    console.log("تحديث إلى Titanium Admin V9.9...");
+                    console.log("تحديث إلى Titanium Admin V10.0...");
                     if ('caches' in window) {
                         caches.keys().then(function(names) {
                             for (let name of names) caches.delete(name);
@@ -104,6 +104,8 @@
             -webkit-tap-highlight-color: transparent;
             -webkit-font-smoothing: antialiased;
         }
+
+        .hidden-section { display: none !important; }
 
         .aiops-ticker { 
             background: var(--surface); border-radius: var(--r-md); padding: 12px 16px; 
@@ -883,7 +885,7 @@
         <label class="edit-label">رقم الهاتف (مسجل النظام)</label>
         <input type="text" id="editPhoneDisplay" class="form-ctrl mb-3" disabled style="background:#f1f5f9; color:#94a3b8; cursor:not-allowed;">
 
-        <div id="editResFields" style="display:none;">
+        <div id="editResFields" class="hidden-section">
             <label class="edit-label">منطقة المطعم الأساسية</label>
             <input type="text" id="editArea" class="form-ctrl mb-3" placeholder="المنطقة">
             
@@ -915,7 +917,9 @@
             </div>
         </div>
 
-        <div id="editDriverFields" style="display:none;">
+        <div id="editDriverFields" class="hidden-section">
+            <label class="edit-label">المنطقة المفضلة</label>
+            <input type="text" id="editDriverArea" class="form-ctrl mb-3" placeholder="منطقة تواجد الكابتن">
             <label class="edit-label">حالة الحساب</label>
             <select id="editStatus" class="form-ctrl mb-3">
                 <option value="active">متاح (نشط)</option>
@@ -945,7 +949,7 @@
             <i data-lucide="building-2" width="32" height="32" color="#fff"></i>
         </div>
         <div class="auth-title">مكتب سفيان</div>
-        <div class="auth-sub">الإدارة العليا — Titanium Admin V9.9</div>
+        <div class="auth-sub">الإدارة العليا — Titanium Admin V10.0</div>
         <input type="password" id="masterPass" class="auth-input" placeholder="رمز المرور الآمن" autocomplete="off" onkeypress="if(event.key==='Enter') checkAuth()">
         <button class="auth-btn" onclick="checkAuth()">تسجيل الدخول</button>
     </div>
@@ -1327,7 +1331,7 @@ function escHtml(str) { if (str == null) return ''; const d = document.createEle
 function escJs(str) { if (str == null) return ''; return String(str).replace(/'/g, "\\'").replace(/"/g, '"'); }
 function safeIcon(cId) { const el = document.getElementById(cId); if(el && typeof lucide !== 'undefined') lucide.createIcons({root: el}); }
 
-// تنظيف الرقم لضمان التطابق التام في جميع السجلات
+// تنظيف الرقم لضمان التطابق التام في جميع السجلات (Fix 2)
 function normalizePhone(p) {
     if(!p) return '';
     let s = String(p).replace(/[^\d]/g, '');
@@ -1340,16 +1344,17 @@ function normalizePhone(p) {
 function getEntityName(type, phone) {
     if(!globalData || !phone) return phone;
     const cleanPhone = normalizePhone(phone);
-    if(type === 'RES') {
+    if(type.startsWith('RES')) {
         const r = globalData.restaurants.find(x => normalizePhone(x[2]) === cleanPhone);
         return r ? r[1] : phone;
     }
-    if(type === 'DRV') {
+    if(type.startsWith('DRI') || type.startsWith('DRV')) {
         const d = globalData.drivers.find(x => normalizePhone(x[2]) === cleanPhone);
         return d ? d[1] : phone;
     }
     return phone;
 }
+
 function getOrderInfo(orderId) {
     let resName = 'مطعم غير معروف', drvName = 'غير معين';
     const liveO = liveFirebaseOrders.find(o => String(o[0]) === String(orderId));
@@ -1845,7 +1850,6 @@ function smartRenderFilteredSection(type, fullList) {
             let avgSpeed = dailyComp > 0 ? Math.round(totalMins / dailyComp) : 0;
             let speedDisplay = avgSpeed > 0 ? avgSpeed + ' دق/طلب' : '---';
 
-            // Auto Rating Logic (Lifetime for Badge)
             let rCls='', iCls='', lv='';
             if(c>=200){rCls='rating-diamond'; iCls='gem'; lv='ماسي';}
             else if(c>=100){rCls='rating-gold'; iCls='award'; lv='ذهبي';}
@@ -1853,7 +1857,7 @@ function smartRenderFilteredSection(type, fullList) {
             else if(c>=10){rCls='rating-bronze'; iCls='shield'; lv='برونزي';}
             else {rCls='rating-new'; iCls='star'; lv='كابتن جديد';}
             
-            hash += `-${avgSpeed}-${rejections}`; // Update hash for UI refresh
+            hash += `-${avgSpeed}-${rejections}`;
 
             pHtml=`
             <div style="display:flex; justify-content:space-between; align-items:flex-start;">
@@ -1938,8 +1942,8 @@ function adminActionOptUI(cmd, type, id, el) {
     }
 
     if(type === 'ORDER') localOverrides.orders[String(id)] = { status: nSt, ts: Date.now() };
-    if(type === 'RESTAURANT') { localOverrides.restaurants[String(id)] = { status: nSt, ts: Date.now() }; const i=globalData?.restaurants.find(r=>String(r[R.PHONE])===String(id)); if(i) i[R.STATUS]=nSt; applySectionFilter('RESTAURANT', currentResSectionFilter, document.querySelector('#resFiltersGroup .fp.active')); updateSectionBadges('RESTAURANT', globalData.restaurants); }
-    if(type === 'DRIVER') { localOverrides.drivers[String(id)] = { status: nSt, ts: Date.now() }; const i=globalData?.drivers.find(d=>String(d[D.PHONE])===String(id)); if(i) i[D.STATUS]=nSt; applySectionFilter('DRIVER', currentDriverSectionFilter, document.querySelector('#driverFiltersGroup .fp.active')); updateSectionBadges('DRIVER', globalData.drivers); }
+    if(type === 'RESTAURANT') { localOverrides.restaurants[String(id)] = { status: nSt, ts: Date.now() }; const i=globalData?.restaurants.find(r=>normalizePhone(r[R.PHONE])===normalizePhone(id)); if(i) i[R.STATUS]=nSt; applySectionFilter('RESTAURANT', currentResSectionFilter, document.querySelector('#resFiltersGroup .fp.active')); updateSectionBadges('RESTAURANT', globalData.restaurants); }
+    if(type === 'DRIVER') { localOverrides.drivers[String(id)] = { status: nSt, ts: Date.now() }; const i=globalData?.drivers.find(d=>normalizePhone(d[D.PHONE])===normalizePhone(id)); if(i) i[D.STATUS]=nSt; applySectionFilter('DRIVER', currentDriverSectionFilter, document.querySelector('#driverFiltersGroup .fp.active')); updateSectionBadges('DRIVER', globalData.drivers); }
     
     if(ensureMasterPassword()) { 
         fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${id}&status=${nSt}&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`)
@@ -2225,8 +2229,8 @@ function openEditModal(type, phone) {
     
     if (type === 'RESTAURANT') {
         document.getElementById('editArea').value = entity[3] || '';
-        document.getElementById('editResFields').style.display = 'block';
-        document.getElementById('editDriverFields').style.display = 'none';
+        document.getElementById('editResFields').classList.remove('hidden-section');
+        document.getElementById('editDriverFields').classList.add('hidden-section');
         document.getElementById('editComm').value = entity[5] || '';
         document.getElementById('editPayType').value = entity[8] || '';
         document.getElementById('editPriceList').value = entity[12] || '';
@@ -2235,8 +2239,8 @@ function openEditModal(type, phone) {
         document.getElementById('editMapLink').value = '';
     } else {
         document.getElementById('editDriverArea').value = entity[3] || '';
-        document.getElementById('editResFields').style.display = 'none';
-        document.getElementById('editDriverFields').style.display = 'block';
+        document.getElementById('editResFields').classList.add('hidden-section');
+        document.getElementById('editDriverFields').classList.remove('hidden-section');
         document.getElementById('editStatus').value = entity[4] || 'active';
     }
     document.getElementById('editEntityModal').classList.add('active');
@@ -2264,7 +2268,7 @@ async function saveEntityEdits() {
     try {
         const res = await fetch(API_URL, {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: {'Content-Type': 'text/plain'}, // Fix CORS Preflight Freezing
             body: JSON.stringify({ token: API_TOKEN, action: 'updateEntityInfo', type: currentEditType, phone: currentEditPhone, updates: updates, pass: masterPassword })
         });
         const d = await res.json();
@@ -2274,8 +2278,8 @@ async function saveEntityEdits() {
             closeEditModal(); 
             refreshData(); 
         }
-        else showToast('فشل', 'error');
-    } catch(e) { showToast('خطأ اتصال', 'error'); }
+        else showToast('فشل التحديث', 'error');
+    } catch(e) { showToast('خطأ اتصال بالسيرفر', 'error'); }
     finally { saveBtn.disabled = false; saveBtn.classList.remove('btn-loading'); }
 }
 
