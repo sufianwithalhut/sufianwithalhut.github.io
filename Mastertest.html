@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <script>
-        // --- إصدار 9.7 (Titanium Admin — Auto Rating & Smart Audit) ---
-        const CURRENT_APP_VERSION = "9.7";
+        // --- إصدار 9.8 (Titanium Admin — Real Daily Metrics & Smart Audit) ---
+        const CURRENT_APP_VERSION = "9.8";
         const VERSION_KEY = 'hut_master_app_version';
         try {
             if (localStorage.getItem(VERSION_KEY) !== CURRENT_APP_VERSION) {
                 localStorage.setItem(VERSION_KEY, CURRENT_APP_VERSION);
                 if (localStorage.getItem(VERSION_KEY) === CURRENT_APP_VERSION) {
-                    console.log("تحديث إلى Titanium Admin V9.7...");
+                    console.log("تحديث إلى Titanium Admin V9.8...");
                     if ('caches' in window) {
                         caches.keys().then(function(names) {
                             for (let name of names) caches.delete(name);
@@ -936,7 +936,7 @@
             <i data-lucide="building-2" width="32" height="32" color="#fff"></i>
         </div>
         <div class="auth-title">مكتب سفيان</div>
-        <div class="auth-sub">الإدارة العليا — Titanium Admin V9.7</div>
+        <div class="auth-sub">الإدارة العليا — Titanium Admin V9.8</div>
         <input type="password" id="masterPass" class="auth-input" placeholder="رمز المرور الآمن" autocomplete="off" onkeypress="if(event.key==='Enter') checkAuth()">
         <button class="auth-btn" onclick="checkAuth()">تسجيل الدخول</button>
     </div>
@@ -1287,6 +1287,7 @@ let isEmergencyMuted = false;
 let isFirebaseListening = false;
 let lastArchiveHtml = '';
 let liveLedgers = { drivers: {}, restaurants: {} };
+let liveDailyMetrics = {}; 
 let isFullscreen = false;
 let activeRealDriversSet = new Set();
 let tickerMessages = [], tickerIndex = 0, tickerInterval = null;
@@ -1443,12 +1444,23 @@ async function refreshData() {
                 if (dot) dot.className = isFirebaseConnected ? 'conn-dot' : 'conn-dot offline';
                 if (txt) txt.textContent = isFirebaseConnected ? 'متصل بقاعدة البيانات' : 'جاري إعادة الاتصال...';
             });
-            listenToFirebaseLocations(); listenToFirebaseOrders(); listenToFirebaseLedgers();
+            listenToFirebaseLocations(); listenToFirebaseOrders(); listenToFirebaseLedgers(); listenToDailyMetrics();
         }
     } catch (e) { showToast("فشل جلب بيانات الشركاء من الخادم", "error"); }
 }
 
 /* ─── Firebase Listeners ─── */
+function listenToDailyMetrics() {
+    const ref = db.ref('daily_metrics');
+    const cb = snap => {
+        liveDailyMetrics = snap.val() || {};
+        if (globalData && document.getElementById('tab-drivers').classList.contains('active-tab')) {
+            triggerSearch('DRIVER');
+        }
+    };
+    ref.on('value', cb); firebaseListeners.push({ ref, callback: cb });
+}
+
 function listenToFirebaseLedgers() {
     const ref = db.ref('ledgers');
     const cb = snap => {
@@ -1625,7 +1637,6 @@ function renderSystemAlerts() {
         
         const {resName, drvName} = getOrderInfo(a.orderId);
         
-        // ترجمة ذكية للإنذارات
         let smartMessage = a.message;
         if(smartMessage.includes('عالق — أُعيد للرادار')) smartMessage = '⚠️ الكابتن تجاهل الطلب وتم إعادته للرادار آلياً.';
         if(smartMessage.includes('متأخر في المطعم')) smartMessage = '⏳ الكابتن متأخر جداً داخل المطعم ولم يستلم الطلب.';
@@ -1787,12 +1798,17 @@ function smartRenderFilteredSection(type, fullList) {
     }
     if(container.querySelector('.empty-state') || container.querySelector('.skeleton')) container.innerHTML = '';
     const currentIds = new Set();
+    const todayDate = new Date().toISOString().split('T')[0];
+
     sortedList.forEach(item => {
         const name=item[1], phone=item[2], status=item[4];
         const sId=String(phone).replace(/[^a-zA-Z0-9]/g,''), nPhone=String(phone).replace(/^0+/,'').trim();
         currentIds.add(sId);
+        
         const l = type==='RESTAURANT' ? (liveLedgers.restaurants?.[nPhone]||{debt:0,completed_orders:0}) : (liveLedgers.drivers?.[nPhone]||{debt:0,completed_orders:0});
-        const d=l.debt||0, c=l.completed_orders||0, hash=`${status}-${d}-${c}`;
+        const d=l.debt||0, c=l.completed_orders||0;
+        
+        let hash=`${status}-${d}-${c}`;
         let spC = 'sp-active';
         if(status==='inactive') spC='sp-inactive';
         if(status==='pending'||status==='waiting') spC='sp-pending';
@@ -1801,25 +1817,31 @@ function smartRenderFilteredSection(type, fullList) {
         
         let pHtml = '';
         if(type==='DRIVER') {
+            const dMetrics = liveDailyMetrics[nPhone]?.[todayDate] || {};
+            const dailyComp = dMetrics.completed_orders || 0;
+            const totalMins = dMetrics.total_delivery_minutes || 0;
+            const rejections = dMetrics.rejected_orders || 0;
+            
+            let avgSpeed = dailyComp > 0 ? Math.round(totalMins / dailyComp) : 0;
+            let speedDisplay = avgSpeed > 0 ? avgSpeed + ' دق/طلب' : '---';
+
+            // Auto Rating Logic (Lifetime for Badge)
             let rCls='', iCls='', lv='';
-            // Auto Rating Logic (Visual)
             if(c>=200){rCls='rating-diamond'; iCls='gem'; lv='ماسي';}
             else if(c>=100){rCls='rating-gold'; iCls='award'; lv='ذهبي';}
             else if(c>=30){rCls='rating-silver'; iCls='medal'; lv='فضي';}
             else if(c>=10){rCls='rating-bronze'; iCls='shield'; lv='برونزي';}
             else {rCls='rating-new'; iCls='star'; lv='كابتن جديد';}
             
-            // Mocking Speed and Rejections until Backend supports it
-            let mockSpeed = Math.max(12, 25 - Math.floor(c/10)) + ' دق';
-            let mockRej = Math.floor(c/15);
-            
+            hash += `-${avgSpeed}-${rejections}`; // Update hash for UI refresh
+
             pHtml=`
             <div style="display:flex; justify-content:space-between; align-items:flex-start;">
                 <div class="driver-rating ${rCls}" title="التقييم الآلي"><i data-lucide="${iCls}" width="14" height="14"></i> <span>مستوى ${lv}</span></div>
             </div>
             <div class="driver-metrics">
-                <div class="metrics-item ${c>30?'good':''}"><i data-lucide="zap" width="12" height="12"></i> السرعة: ${mockSpeed}</div>
-                <div class="metrics-item ${mockRej>3?'bad':''}"><i data-lucide="user-x" width="12" height="12"></i> الرفض: ${mockRej}</div>
+                <div class="metrics-item ${avgSpeed > 0 && avgSpeed <= 15 ? 'good' : (avgSpeed > 25 ? 'bad' : '')}"><i data-lucide="zap" width="12" height="12"></i> السرعة: ${speedDisplay}</div>
+                <div class="metrics-item ${rejections > 2 ? 'bad' : ''}"><i data-lucide="user-x" width="12" height="12"></i> الرفض: ${rejections}</div>
             </div>`;
         }
 
@@ -1854,10 +1876,22 @@ function smartRenderFilteredSection(type, fullList) {
 function ensureMasterPassword() { if(!masterPassword) { showToast("انتهت الجلسة. أعد الدخول.", "error"); return false; } return true; }
 
 function resetDebtOptUI(type, id, el) {
-    if(!ensureMasterPassword()) return; if(!confirm(`تصفير ديون (${id})؟ سيتم مسحها بالكامل من قاعدة البيانات.`)) return;
+    if(!ensureMasterPassword()) return; 
+    if(!confirm(`تصفير ديون (${id})؟ سيتم مسحها بالكامل من قاعدة البيانات.`)) return;
+    
+    const cleanPhone = String(id).replace(/^0+/,'').trim();
+    const debtAmount = type === 'RESTAURANT' ? 
+        (liveLedgers.restaurants?.[cleanPhone]?.debt || 0) : 
+        (liveLedgers.drivers?.[cleanPhone]?.debt || 0);
+
     el.classList.add('btn-loading'); el.disabled = true;
     fetch(`${API_URL}?action=RESET_DEBT&type=${type}&id=${id}&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`)
-        .then(r=>r.json()).then(res=>{ if(res.success){showToast("تم التصفير بنجاح"); logAudit('resetDebt', `تصفير ديون ${type==='DRIVER'?'الكابتن':'المطعم'} (${getEntityName(type.substring(0,3),id)})`); } else showToast("خطأ", "error"); })
+        .then(r=>r.json()).then(res=>{ 
+            if(res.success){
+                showToast("تم التصفير بنجاح"); 
+                logAudit('resetDebt', `تصفير ديون ${type==='DRIVER'?'الكابتن':'المطعم'} (${getEntityName(type.substring(0,3),id)}) بمبلغ ${debtAmount} د.ع`); 
+            } else showToast("خطأ", "error"); 
+        })
         .catch(()=>showToast("تم الإرسال")).finally(()=>{el.classList.remove('btn-loading'); el.disabled = false;});
 }
 
@@ -1871,10 +1905,11 @@ function adminActionOptUI(cmd, type, id, el) {
         if(!confirm(cmd==='COMPLETE'?"تأكيد الإتمام؟":"تأكيد الحذف؟")) { if(el){el.disabled=false;el.classList.remove('btn-loading');} return; }
         if(type === 'ORDER') {
             const card = el.closest('.order-card');
+            const {resName, drvName} = getOrderInfo(id);
             if(cmd === 'COMPLETE') {
-                db.ref(`active_orders/${id}`).update({status:'completed', completed_at: new Date().toISOString()}).then(()=>{ showToast("✅ اكتمل! ينتظر الترحيل الليلي."); logAudit('completeOrder', `إغلاق الطلب #${id} يدوياً`); if(card) {card.style.opacity='0'; setTimeout(()=>card.remove(),300);} }).catch(()=>{ showToast("خطأ", "error"); if(el){el.disabled=false;el.classList.remove('btn-loading');} });
+                db.ref(`active_orders/${id}`).update({status:'completed', completed_at: new Date().toISOString()}).then(()=>{ showToast("✅ اكتمل! ينتظر الترحيل الليلي."); logAudit('completeOrder', `إكمال الطلب #${id} يدوياً (المطعم: ${resName}، الكابتن: ${drvName})`); if(card) {card.style.opacity='0'; setTimeout(()=>card.remove(),300);} }).catch(()=>{ showToast("خطأ", "error"); if(el){el.disabled=false;el.classList.remove('btn-loading');} });
             } else {
-                db.ref(`active_orders/${id}`).update({status:'deleted'}).then(()=>{ showToast("تم نقل الطلب للملغية"); logAudit('deleteOrder', `إلغاء الطلب #${id} يدوياً`); if(card) {card.style.opacity='0'; setTimeout(()=>card.remove(),300);} }).catch(()=>{ showToast("خطأ", "error"); if(el){el.disabled=false;el.classList.remove('btn-loading');} });
+                db.ref(`active_orders/${id}`).update({status:'deleted'}).then(()=>{ showToast("تم نقل الطلب للملغية"); logAudit('deleteOrder', `إلغاء الطلب #${id} يدوياً (المطعم: ${resName})`); if(card) {card.style.opacity='0'; setTimeout(()=>card.remove(),300);} }).catch(()=>{ showToast("خطأ", "error"); if(el){el.disabled=false;el.classList.remove('btn-loading');} });
             }
             return;
         }
@@ -2151,11 +2186,16 @@ async function extractCoordsFromLink() {
 
 function openEditModal(type, phone) {
     currentEditType = type; currentEditPhone = phone;
-    const entity = (type === 'DRIVER' ? globalData.drivers : globalData.restaurants).find(i => String(i[2]) === String(phone));
-    if (!entity) return;
+    const cleanP = String(phone).replace(/^0+/, '').trim();
+    const list = type === 'DRIVER' ? globalData.drivers : globalData.restaurants;
+    const entity = list.find(i => String(i[2]).replace(/^0+/, '').trim() === cleanP);
+    if (!entity) {
+        showToast('لم يتم العثور على البيانات', 'error');
+        return;
+    }
     
     document.getElementById('editModalTitle').innerText = type === 'DRIVER' ? 'تحديث بيانات الكابتن' : 'تحديث بيانات المطعم';
-    document.getElementById('editModalSub').innerText = type === 'DRIVER' ? 'تعديل المنطقة المفضلة وحالة الحساب' : 'تعديل العمولات والموقع وقائمة الأسعار';
+    document.getElementById('editModalSub').innerText = type === 'DRIVER' ? ('الكابتن: ' + entity[1]) : ('المطعم: ' + entity[1]);
     
     document.getElementById('editName').value = entity[1] || '';
     
