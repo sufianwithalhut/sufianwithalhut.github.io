@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 31.10 (استعادة محرك 31.0 المستقر للصور + اتصال مباشر + مفتاح مدفوع) ---
-        const CURRENT_APP_VERSION = "31.10"; 
+        // --- إصدار 32.00 (Fortress Edition - تسجيل دخول مشفر وكلمة مرور) ---
+        const CURRENT_APP_VERSION = "32.00"; 
         const RES_VERSION_KEY = 'hut_res_app_version';
         try {
             if (localStorage.getItem(RES_VERSION_KEY) !== CURRENT_APP_VERSION) {
@@ -437,12 +437,17 @@
     <div class="row justify-content-center">
         <div class="col-lg-5">
             <div class="login-card" id="authBox">
-                <div class="mb-4 text-center">
+                <div class="mb-3 text-center">
                     <label class="form-label text-center">رقم هاتف المنشأة</label>
                     <input type="tel" id="checkPhone" class="custom-input phone-format py-3" placeholder="07XXXXXXXXX" dir="ltr" autocomplete="off" readonly onfocus="this.removeAttribute('readonly');">
                 </div>
+                <div class="mb-4 text-center" id="loginPassContainer">
+                    <label class="form-label text-center">كلمة المرور</label>
+                    <input type="password" id="checkPassword" class="custom-input py-3 text-center" placeholder="********" autocomplete="off">
+                </div>
 
                 <div id="registerFields" class="hidden-section text-start" style="animation: fadeIn 0.5s;">
+                    <div class="mb-2"><input type="password" id="regPassword" class="custom-input" placeholder="إنشاء كلمة مرور قوية" autocomplete="off"></div>
                     <div class="mb-2"><input type="text" id="regName" class="custom-input" placeholder="الاسم التجاري للمطعم" autocomplete="off"></div>
                     <div class="mb-2"><input type="text" id="regArea" class="custom-input" placeholder="منطقة المطعم الأساسية" autocomplete="off"></div>
                     
@@ -1170,6 +1175,10 @@
         if (sessionStr) {
             try {
                 const session = JSON.parse(sessionStr);
+                // فك تشفير كلمة المرور (Base64) إن وجدت
+                if (session.password) {
+                    document.getElementById('checkPassword').value = atob(session.password);
+                }
                 if ((Date.now() - session.timestamp) < 24 * 3600000) {
                     document.getElementById('checkPhone').value = session.phone.startsWith('0') ? session.phone : '0' + session.phone;
                     currentResName = session.name;
@@ -1180,6 +1189,9 @@
             } catch(e) {}
         } else if (pendingStr) {
             document.getElementById('checkPhone').value = pendingStr;
+            // فك التشفير ووضعه في حقل الدخول
+            const pendingPass = localStorage.getItem('hut_res_pending_pass');
+            if (pendingPass) document.getElementById('checkPassword').value = atob(pendingPass);
             showWaitingRoom(); return true;
         }
         return false;
@@ -1190,7 +1202,7 @@
             const savedPhone = localStorage.getItem('hut_res_phone');
             if (savedPhone) {
                 document.getElementById('checkPhone').value = savedPhone.startsWith('0') ? savedPhone : '0' + savedPhone;
-                window.authAction();
+                // إذا تم الحفظ سابقاً بدون كلمة مرور، نترك الحقل فارغاً
             }
         }
     };
@@ -1285,40 +1297,57 @@
         window.saveDraft();
     };
 
+    // --- تعديل دالة authAction لتشمل كلمة المرور ---
     window.authAction = function() {
         let rawPhone = document.getElementById('checkPhone').value.trim();
+        let passAttempt = document.getElementById('checkPassword').value.trim();
+
         if (!rawPhone) return alert("يرجى إدخال رقم الهاتف");
         let phone = rawPhone.startsWith('0') ? rawPhone.substring(1) : rawPhone;
 
         if (isRegistering) {
+            const regPassword = document.getElementById('regPassword').value.trim();
             const name = document.getElementById('regName').value.trim();
             const area = document.getElementById('regArea').value.trim();
             const comm = document.getElementById('regComm').value.trim();
             const pay  = document.getElementById('regPay').value;
             const rawPriceListText = document.getElementById('regPriceList').value;
+            
+            if (!regPassword) return alert("يرجى إنشاء كلمة مرور لحماية حسابك.");
             if (!name || !area || !comm) return alert("يرجى ملء جميع التفاصيل.");
             if (Math.abs(regLat - 35.468) < 0.001 && Math.abs(regLng - 44.392) < 0.001) return alert("الرجاء تحديد موقع مطعمك على الخريطة.");
+            
             const packedPriceList = parseCustomPriceList(rawPriceListText);
             window.showLoading(true);
-            sendRegistration(name, phone, area, comm, pay, regLat, regLng, packedPriceList);
+            sendRegistration(name, phone, regPassword, area, comm, pay, regLat, regLng, packedPriceList);
             return;
         }
 
+        if (!passAttempt) return alert("يرجى إدخال كلمة المرور.");
+
         window.showLoading(true);
-        fetch(`${API_URL}?action=checkRes&phone=${phone}&token=${API_TOKEN}`)
+        // إرسال كلمة المرور مع الطلب ليتأكد منها المحرك V37.0.0
+        fetch(`${API_URL}?action=checkRes&phone=${phone}&password=${encodeURIComponent(passAttempt)}&token=${API_TOKEN}`)
             .then(r => r.json())
-            .then(data => handleLogin(data, phone))
+            .then(data => handleLogin(data, phone, passAttempt))
             .catch(() => { window.showLoading(false); alert("خطأ في الاتصال، حاول مجدداً."); });
     };
 
-    function sendRegistration(name, phone, area, comm, pay, lat, lng, priceListStr) {
+    function sendRegistration(name, phone, password, area, comm, pay, lat, lng, priceListStr) {
         fetch(API_URL, {
             method: 'POST',
-            body: JSON.stringify({ action: 'RESTAURANT_REG', token: API_TOKEN, name, phone, area, comm, pay, lat, lng, priceList: priceListStr })
+            body: JSON.stringify({ 
+                action: 'RESTAURANT_REG', 
+                token: API_TOKEN, 
+                name, phone, area, comm, pay, lat, lng, 
+                priceList: priceListStr,
+                password: password // إرسال كلمة المرور الجديدة
+            })
         }).then(() => {
             window.showLoading(false);
             localStorage.setItem('hut_res_phone', phone);
             localStorage.setItem('hut_res_pending', phone);
+            localStorage.setItem('hut_res_pending_pass', btoa(password)); // حفظ مؤقت للتحقق
             showWaitingRoom();
         }).catch(() => { window.showLoading(false); alert("حدث خطأ أثناء الإرسال."); });
     }
@@ -1334,48 +1363,77 @@
         let rawPhone = document.getElementById('checkPhone').value.trim() || localStorage.getItem('hut_res_pending');
         if (!rawPhone) return;
         let phone = rawPhone.startsWith('0') ? rawPhone.substring(1) : rawPhone;
-        fetch(`${API_URL}?action=checkRes&phone=${phone}&token=${API_TOKEN}`)
+        let pass  = document.getElementById('checkPassword').value.trim();
+        if (!pass) {
+            const savedPass = localStorage.getItem('hut_res_pending_pass');
+            if (savedPass) pass = atob(savedPass);
+        }
+
+        fetch(`${API_URL}?action=checkRes&phone=${phone}&password=${encodeURIComponent(pass)}&token=${API_TOKEN}`)
             .then(r => r.json())
             .then(data => {
                 if (data.status === "active" || data.status === "inactive") {
                     clearInterval(waitingPollingTimer);
                     localStorage.removeItem('hut_res_pending');
+                    localStorage.removeItem('hut_res_pending_pass');
                     currentResName = data.name;
                     regPhone = phone;
                     try { if (data.priceList) myCustomPriceList = JSON.parse(data.priceList); } catch(e) {}
+                    
                     localStorage.setItem('hut_res_session', JSON.stringify({
                         phone, name: data.name, payType: data.payType || 'المطعم يدفع',
-                        comm: parseFloat(data.comm) || 0, timestamp: Date.now()
+                        comm: parseFloat(data.comm) || 0, timestamp: Date.now(),
+                        password: btoa(pass) // حفظ مشفر للجلسة
                     }));
+                    
                     const wAudio = document.getElementById('welcomeSound');
                     if (wAudio) { wAudio.currentTime = 0; wAudio.play().catch(() => {}); }
                     document.getElementById('waitingBox').classList.add('hidden-section');
                     enterDashboard();
                 } else if (data.status === "banned") {
-                    clearInterval(waitingPollingTimer); localStorage.removeItem('hut_res_pending');
+                    clearInterval(waitingPollingTimer); localStorage.removeItem('hut_res_pending'); localStorage.removeItem('hut_res_pending_pass');
                     alert("⚠️ حساب محظور."); location.reload();
+                } else if (data.status === "wrong_password" || data.status === "rate_limited") {
+                    clearInterval(waitingPollingTimer); localStorage.removeItem('hut_res_pending'); localStorage.removeItem('hut_res_pending_pass');
+                    alert("كلمة المرور تغيرت أو تم حظر الحساب مؤقتاً."); location.reload();
                 }
             }).catch(() => {});
     };
 
-    function handleLogin(data, phone) {
+    // --- تعديل handleLogin لمعالجة الردود الأمنية ---
+    function handleLogin(data, phone, passAttempt) {
         window.showLoading(false);
+
+        if (data.status === "wrong_password") {
+            return alert("❌ كلمة المرور غير صحيحة.");
+        }
+        
+        if (data.status === "rate_limited") {
+            return alert("🛡️ تم حظر محاولات الدخول مؤقتاً لحمايتك بسبب كثرة الإدخال الخاطئ. يرجى المحاولة بعد 15 دقيقة.");
+        }
+
         if (data.status === "active" || data.status === "inactive") {
             currentResName = data.name; localStorage.setItem('hut_res_phone', phone);
             localStorage.removeItem('hut_res_pending'); regPhone = phone;
             try { if (data.priceList) myCustomPriceList = JSON.parse(data.priceList); } catch(e) {}
+            
             localStorage.setItem('hut_res_session', JSON.stringify({
                 phone, name: data.name, payType: data.payType || 'المطعم يدفع',
-                comm: parseFloat(data.comm) || 0, timestamp: Date.now()
+                comm: parseFloat(data.comm) || 0, timestamp: Date.now(),
+                password: btoa(passAttempt) // حفظ مشفر
             }));
             enterDashboard();
         } else if (data.status === "pending" || data.status === "waiting") {
-            localStorage.setItem('hut_res_phone', phone); localStorage.setItem('hut_res_pending', phone);
+            localStorage.setItem('hut_res_phone', phone); 
+            localStorage.setItem('hut_res_pending', phone);
+            localStorage.setItem('hut_res_pending_pass', btoa(passAttempt));
             showWaitingRoom();
         } else if (data.status === "banned") {
             alert("⚠️ الحساب محظور."); localStorage.clear(); sessionStorage.clear();
         } else {
-            isRegistering = true; document.getElementById('registerFields').classList.remove('hidden-section');
+            isRegistering = true; 
+            document.getElementById('loginPassContainer').classList.add('hidden-section');
+            document.getElementById('registerFields').classList.remove('hidden-section');
             document.getElementById('checkPhone').disabled = true;
             const btn = document.getElementById('mainAuthBtn');
             btn.innerHTML = `إرسال طلب الانضمام <i data-lucide="send" size="16"></i>`;
