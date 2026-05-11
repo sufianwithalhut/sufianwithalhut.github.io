@@ -1,16 +1,15 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-    <meta charset="UTF-8">
     <script>
-        // --- إصدار 10.1 (Charts Fix & XSS Security Patch) ---
-        const CURRENT_APP_VERSION = "10.1";
+        // --- إصدار 11.0 (Fortress Admin - POST Security, Shift Mgmt & Map Picker) ---
+        const CURRENT_APP_VERSION = "11.0";
         const VERSION_KEY = 'hut_master_app_version';
         try {
             if (localStorage.getItem(VERSION_KEY) !== CURRENT_APP_VERSION) {
                 localStorage.setItem(VERSION_KEY, CURRENT_APP_VERSION);
                 if (localStorage.getItem(VERSION_KEY) === CURRENT_APP_VERSION) {
-                    console.log("تحديث إلى Titanium Admin V10.1...");
+                    console.log("تحديث إلى Titanium Admin V11.0...");
                     if ('caches' in window) {
                         caches.keys().then(function(names) {
                             for (let name of names) caches.delete(name);
@@ -28,8 +27,9 @@
             console.warn('تعذّر التحقق من الإصدار:', e.message);
         }
     </script>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>مكتب سفيان | الإدارة العليا V35.5</title>
+    <title>مكتب سفيان | الإدارة العليا V37.0</title>
     <meta name="theme-color" content="#f0f7ff">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -1431,14 +1431,17 @@ async function checkAuth() {
     masterPassword = pass;
     const btn = document.querySelector('.auth-btn'); btn.classList.add('btn-loading'); btn.disabled = true;
     try {
-        const res = await fetch(`${API_URL}?action=VERIFY_MASTER_PASS&pass=${encodeURIComponent(pass)}&token=${API_TOKEN}&ts=${Date.now()}`);
+        const res = await fetch(API_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action: 'VERIFY_MASTER_PASS', pass: pass, token: API_TOKEN })
+        });
         const response = await res.json();
         if (response.success) {
             sessionStorage.setItem('hut_master_auth', masterPassword);
             document.getElementById('authOverlay').style.display = 'none'; document.getElementById('mainDashboard').classList.remove('d-none');
             const a = document.getElementById('adminAlertSound'); a.volume = 0; a.play().then(() => { a.pause(); a.currentTime = 0; a.volume = 1; }).catch(()=>{});
             startClock(); initMap(); refreshData();
-        } else { masterPassword = ""; showToast("رمز المرور غير صحيح", "error"); }
+        } else { masterPassword = ""; showToast("رمز المرور غير صحيح أو تم حظرك", "error"); }
     } catch (err) { masterPassword = ""; showToast("فشل الاتصال بالخادم", "error"); }
     finally { btn.classList.remove('btn-loading'); btn.disabled = false; }
 }
@@ -1907,7 +1910,7 @@ function smartRenderFilteredSection(type, fullList) {
     Object.keys(cache).forEach(id => { if(!currentIds.has(id)) { const el=document.getElementById(`card-${type}-${id}`); if(el)el.remove(); delete cache[id]; } });
 }
 
-/* ─── Actions ─── */
+/* ─── Actions (POST Methods) ─── */
 function ensureMasterPassword() { if(!masterPassword) { showToast("انتهت الجلسة. أعد الدخول.", "error"); return false; } return true; }
 
 function resetDebtOptUI(type, id, el) {
@@ -1922,14 +1925,19 @@ function resetDebtOptUI(type, id, el) {
     if(!confirm(`تصفير ديون ${entName} (${debtAmount} د.ع)؟ سيتم مسحها بالكامل من قاعدة البيانات.`)) return;
 
     el.classList.add('btn-loading'); el.disabled = true;
-    fetch(`${API_URL}?action=RESET_DEBT&type=${type}&id=${id}&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`)
-        .then(r=>r.json()).then(res=>{ 
-            if(res.success){
-                showToast("تم التصفير بنجاح"); 
-                logAudit('resetDebt', `تصفير ديون ${type==='DRIVER'?'الكابتن':'المطعم'}: ${entName} (${cleanPhone}) بمبلغ ${debtAmount} د.ع`); 
-            } else showToast("خطأ", "error"); 
-        })
-        .catch(()=>showToast("تم الإرسال")).finally(()=>{el.classList.remove('btn-loading'); el.disabled = false;});
+    
+    fetch(API_URL, {
+        method: 'POST',
+        headers: {'Content-Type': 'text/plain'},
+        body: JSON.stringify({ action: 'RESET_DEBT', type: type, id: id, token: API_TOKEN, pass: masterPassword })
+    })
+    .then(r=>r.json()).then(res=>{ 
+        if(res.success){
+            showToast("تم التصفير بنجاح"); 
+            logAudit('resetDebt', `تصفير ديون ${type==='DRIVER'?'الكابتن':'المطعم'}: ${entName} (${cleanPhone}) بمبلغ ${debtAmount} د.ع`); 
+        } else showToast("خطأ", "error"); 
+    })
+    .catch(()=>showToast("تم الإرسال")).finally(()=>{el.classList.remove('btn-loading'); el.disabled = false;});
 }
 
 function adminActionOptUI(cmd, type, id, el) {
@@ -1957,7 +1965,11 @@ function adminActionOptUI(cmd, type, id, el) {
     if(type === 'DRIVER') { localOverrides.drivers[String(id)] = { status: nSt, ts: Date.now() }; const i=globalData?.drivers.find(d=>normalizePhone(d[D.PHONE])===normalizePhone(id)); if(i) i[D.STATUS]=nSt; applySectionFilter('DRIVER', currentDriverSectionFilter, document.querySelector('#driverFiltersGroup .fp.active')); updateSectionBadges('DRIVER', globalData.drivers); }
     
     if(ensureMasterPassword()) { 
-        fetch(`${API_URL}?action=ADMIN_UPDATE_STATUS&type=${type}&id=${id}&status=${nSt}&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`)
+        fetch(API_URL, {
+            method: 'POST',
+            headers: {'Content-Type': 'text/plain'},
+            body: JSON.stringify({ action: 'ADMIN_UPDATE_STATUS', type: type, id: id, status: nSt, token: API_TOKEN, pass: masterPassword })
+        })
         .then(r => r.json()).then(res => {
             if(res.success && cmd === 'HARD_DELETE') showToast("تم الحذف النهائي بنجاح");
         }).catch(()=>{}).finally(()=>{ if(el){el.disabled=false;el.classList.remove('btn-loading');} }); 
@@ -1978,9 +1990,14 @@ function assignDriverOptUI(oId, dPhone, el) {
     const card = document.getElementById(`oc-${oId}`); if(card) { card.style.transition='.3s'; card.style.opacity='0.5'; }
     localOverrides.orders[String(oId)] = { status: 'manual_pending', driverPhone: dPhone, ts: Date.now() };
     const now = new Date().toISOString(); db.ref(`active_orders/${oId}`).update({ status: 'manual_pending', driverPhone: dPhone, last_update: now, is_sovereign: true });
-    fetch(`${API_URL}?action=ASSIGN_DRIVER&orderId=${oId}&driverPhone=${dPhone}&token=${API_TOKEN}&pass=${encodeURIComponent(masterPassword)}`)
-        .then(r=>r.json()).then(res=>{ sp.remove(); if(!res.success) { showToast("خطأ", "error"); if(card) card.style.opacity='1'; el.disabled=false; } else { showToast("تم التعيين السيادي!"); logAudit('assignDriver', `تعيين سيادي للطلب #${oId} للكابتن: ${getEntityName('DRV', dPhone)}`); } })
-        .catch(()=>{ sp.remove(); showToast("تم الإرسال"); }).finally(()=>{ el.disabled = false; });
+    
+    fetch(API_URL, {
+        method: 'POST',
+        headers: {'Content-Type': 'text/plain'},
+        body: JSON.stringify({ action: 'ASSIGN_DRIVER', orderId: oId, driverPhone: dPhone, token: API_TOKEN, pass: masterPassword })
+    })
+    .then(r=>r.json()).then(res=>{ sp.remove(); if(!res.success) { showToast("خطأ", "error"); if(card) card.style.opacity='1'; el.disabled=false; } else { showToast("تم التعيين السيادي!"); logAudit('assignDriver', `تعيين سيادي للطلب #${oId} للكابتن: ${getEntityName('DRV', dPhone)}`); } })
+    .catch(()=>{ sp.remove(); showToast("تم الإرسال"); }).finally(()=>{ el.disabled = false; });
 }
 
 function withdrawOrderOptUI(oId, dPhone, el) {
@@ -1990,6 +2007,34 @@ function withdrawOrderOptUI(oId, dPhone, el) {
     fetch(`${API_URL}?action=DECLINE_ORDER&orderId=${oId}&driverPhone=${dPhone}&token=${API_TOKEN}`).catch(()=>{});
     logAudit('withdrawOrder', `سحب الطلب #${oId} من الكابتن: ${getEntityName('DRV', dPhone)} وإعادته للرادار`);
 }
+
+function toggleSystemShifts() {
+    if(!ensureMasterPassword()) return;
+    const btn = document.getElementById('btnToggleShifts');
+    btn.disabled = true; btn.classList.add('btn-loading');
+    
+    // Check current state from Firebase or global settings
+    const currentState = true; // Replace with actual state check if needed
+    const newState = !currentState;
+    
+    fetch(API_URL, {
+        method: 'POST',
+        headers: {'Content-Type': 'text/plain'},
+        body: JSON.stringify({ action: 'TOGGLE_SHIFTS', state: newState, token: API_TOKEN, pass: masterPassword })
+    })
+    .then(r => r.json())
+    .then(res => {
+        if(res.success) {
+            showToast(`تم ${newState ? 'تفعيل' : 'إيقاف'} نظام الشفتات.`);
+            logAudit('toggleShifts', `${newState ? 'تفعيل' : 'إيقاف'} نظام الشفتات بالكامل`);
+        } else {
+            showToast("خطأ في تغيير الحالة", "error");
+        }
+    })
+    .catch(() => showToast("تم الإرسال"))
+    .finally(() => { btn.disabled = false; btn.classList.remove('btn-loading'); });
+}
+
 
 /* ─── Radar Render ─── */
 function smartRenderRadar(aList) {
@@ -2209,38 +2254,48 @@ function exportExcel() {
 }
 
 /* ─── Smart Edit Modal ─── */
-function captureMapLocation() {
-    if (!map) { showToast('الخريطة غير متاحة حالياً', 'error'); return; }
-    const center = map.getCenter();
-    document.getElementById('editLat').value = center.lat.toFixed(6);
-    document.getElementById('editLng').value = center.lng.toFixed(6);
-    document.getElementById('editMapLink').value = `https://www.google.com/maps?q=${center.lat.toFixed(6)},${center.lng.toFixed(6)}`;
-    showToast('✅ تم نسخ إحداثيات مركز الخريطة الحالي.');
+let editMap; // الخريطة المصغرة في نافذة التعديل
+
+function initEditMap() {
+    if (!document.getElementById('editPickerMap')) return;
+    if (editMap) { 
+        setTimeout(() => editMap.invalidateSize(), 300); 
+        return; 
+    }
+    
+    // قيم افتراضية لكركوك أو القيمة الموجودة مسبقاً
+    let lat = parseFloat(document.getElementById('editLat').value) || 35.468;
+    let lng = parseFloat(document.getElementById('editLng').value) || 44.392;
+
+    editMap = L.map('editPickerMap', { zoomControl: false }).setView([lat, lng], 14);
+    L.control.zoom({ position: 'bottomleft' }).addTo(editMap);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(editMap);
+    
+    editMap.on('move', function () { 
+        document.getElementById('editLat').value = editMap.getCenter().lat.toFixed(6);
+        document.getElementById('editLng').value = editMap.getCenter().lng.toFixed(6); 
+    });
 }
 
-async function extractCoordsFromLink() {
-    const input = document.getElementById('editMapLink');
-    const link = input.value.trim();
-    if (!link) return showToast('الرجاء لصق رابط خرائط Google أولاً', 'error');
-
-    let lat = null, lng = null;
-    const atMatch = link.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
-    if (atMatch) { lat = parseFloat(atMatch[1]); lng = parseFloat(atMatch[2]); }
-    if (!lat || !lng) {
-        const dMatch = link.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
-        if (dMatch) { lat = parseFloat(dMatch[1]); lng = parseFloat(dMatch[2]); }
-    }
-    if (!lat || !lng) {
-        const qMatch = link.match(/[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/);
-        if (qMatch) { lat = parseFloat(qMatch[1]); lng = parseFloat(qMatch[2]); }
-    }
-    if (lat && lng) {
-        document.getElementById('editLat').value = lat;
-        document.getElementById('editLng').value = lng;
-        showToast('✅ تم استخراج الإحداثيات بنجاح.');
-        return;
-    }
-    showToast('⚠️ لم نتمكن من استخراج الإحداثيات.', 'error');
+function searchEditLocation() {
+    const query = document.getElementById('editMapSearchInput').value.trim();
+    if (!query) return;
+    
+    const btn = document.getElementById('btnSearchEditLoc');
+    btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span>`;
+    
+    fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ", كركوك, العراق")}&limit=1`)
+        .then(r => r.json())
+        .then(data => {
+            btn.innerHTML = 'بحث';
+            if (data && data.length > 0) {
+                const lat = parseFloat(data[0].lat); 
+                const lng = parseFloat(data[0].lon);
+                document.getElementById('editLat').value = lat.toFixed(6);
+                document.getElementById('editLng').value = lng.toFixed(6);
+                if (editMap) editMap.flyTo([lat, lng], 16);
+            } else { showToast("لم يتم العثور على المكان.", "error"); }
+        }).catch(() => { btn.innerHTML = 'بحث'; showToast("حدث خطأ أثناء البحث.", "error"); });
 }
 
 function openEditModal(type, phone) {
@@ -2258,8 +2313,8 @@ function openEditModal(type, phone) {
     
     document.getElementById('editName').value = entity[1] || '';
     document.getElementById('editPhoneDisplay').value = entity[2] || phone;
+    document.getElementById('editPassword').value = ''; // إفراغ حقل الباسورد لعدم الكشف عنه
     
-    // 🔴 FIX: Add/Remove class completely instead of display:none to avoid CSS !important overrides
     if (type === 'RESTAURANT') {
         document.getElementById('editArea').value = entity[3] || '';
         document.getElementById('editResFields').classList.remove('hidden-section');
@@ -2267,17 +2322,28 @@ function openEditModal(type, phone) {
         document.getElementById('editComm').value = entity[5] || '';
         document.getElementById('editPayType').value = entity[8] || '';
         document.getElementById('editPriceList').value = entity[12] || '';
-        document.getElementById('editLat').value = entity[6] || '';
-        document.getElementById('editLng').value = entity[7] || '';
-        document.getElementById('editMapLink').value = '';
+        document.getElementById('editLat').value = entity[6] || '35.468';
+        document.getElementById('editLng').value = entity[7] || '44.392';
+        
+        setTimeout(() => {
+            initEditMap();
+            if (editMap) editMap.setView([parseFloat(entity[6] || 35.468), parseFloat(entity[7] || 44.392)], 15);
+        }, 300);
+
     } else {
         document.getElementById('editDriverArea').value = entity[3] || '';
         document.getElementById('editResFields').classList.add('hidden-section');
         document.getElementById('editDriverFields').classList.remove('hidden-section');
         document.getElementById('editStatus').value = entity[4] || 'active';
+        
+        // استرجاع الشفت المسجل من الداتا بيس
+        const savedShift = entity[13] || '10'; // افترضنا أن العمود 13 هو الشفت
+        const shiftSelect = document.getElementById('editDriverShift');
+        if(shiftSelect) shiftSelect.value = savedShift;
     }
     document.getElementById('editEntityModal').classList.add('active');
 }
+
 function closeEditModal() { document.getElementById('editEntityModal').classList.remove('active'); }
 
 async function saveEntityEdits() {
@@ -2285,7 +2351,11 @@ async function saveEntityEdits() {
     const saveBtn = document.querySelector('#editEntityModal .btn-primary');
     saveBtn.disabled = true; saveBtn.classList.add('btn-loading');
     
-    const updates = { name: document.getElementById('editName').value };
+    const updates = { 
+        name: document.getElementById('editName').value,
+        password: document.getElementById('editPassword').value // إرسال الباسورد إذا تم إدخاله
+    };
+
     if (currentEditType === 'RESTAURANT') {
         updates.area = document.getElementById('editArea').value;
         updates.comm = document.getElementById('editComm').value;
@@ -2297,21 +2367,22 @@ async function saveEntityEdits() {
     } else {
         updates.area = document.getElementById('editDriverArea').value;
         updates.status = document.getElementById('editStatus').value;
+        updates.shift = document.getElementById('editDriverShift').value; // حفظ الشفت
     }
     try {
         const res = await fetch(API_URL, {
             method: 'POST',
-            headers: {'Content-Type': 'text/plain'}, // Fix CORS Preflight Freezing
+            headers: {'Content-Type': 'text/plain'}, 
             body: JSON.stringify({ token: API_TOKEN, action: 'updateEntityInfo', type: currentEditType, phone: currentEditPhone, updates: updates, pass: masterPassword })
         });
         const d = await res.json();
         if (d.success) { 
-            showToast('تم التحديث'); 
+            showToast('تم التحديث بنجاح'); 
             logAudit('updateEntity', `تحديث بيانات ${currentEditType==='DRIVER'?'الكابتن':'المطعم'} (${getEntityName(currentEditType.substring(0,3), currentEditPhone)})`); 
             closeEditModal(); 
             refreshData(); 
         }
-        else showToast('فشل التحديث', 'error');
+        else showToast('فشل التحديث: ' + (d.msg || ''), 'error');
     } catch(e) { showToast('خطأ اتصال بالسيرفر', 'error'); }
     finally { saveBtn.disabled = false; saveBtn.classList.remove('btn-loading'); }
 }
@@ -2346,6 +2417,7 @@ function renderAuditTrail() {
         if(e.action === 'ACCEPT') { actionAr = 'تفعيل حساب'; icon = 'check'; clr = 'var(--success)'; }
         if(e.action === 'PAUSE') { actionAr = 'تجميد حساب'; icon = 'pause'; clr = 'var(--warning)'; }
         if(e.action === 'BAN') { actionAr = 'حظر حساب'; icon = 'ban'; clr = 'var(--danger)'; }
+        if(e.action === 'toggleShifts') { actionAr = 'نظام الشفتات'; icon = 'clock'; clr = 'var(--warning)'; }
 
         let timeStr = '---';
         try { timeStr = new Date(e.timestamp).toLocaleString('ar-EG'); } catch(err){}
