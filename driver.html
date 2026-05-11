@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 9.6 (تحديث رسالة الواتساب الاحترافية وتنظيف المنطقة) ---
-        const CURRENT_APP_VERSION = "9.6";
+        // --- إصدار 10.0 (نظام الشفتات، الأمان، وتقييم الأداء) ---
+        const CURRENT_APP_VERSION = "10.0";
         try {
             if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
                 localStorage.setItem('hut_app_version', CURRENT_APP_VERSION);
@@ -19,7 +19,7 @@
     </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>كباتن سفيان | نظام الحوت V34.1</title>
+    <title>كباتن سفيان | نظام الحوت V37.0</title>
     
     <meta name="theme-color" content="#1e3a8a">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -167,7 +167,6 @@
         .btn-refresh-waiting { background: #f1f5f9; color: var(--text-muted); border: 1px solid var(--border-color); font-weight: 700; border-radius: 20px; padding: 10px 20px; transition: 0.2s; border: none; }
         .btn-accept-order { background: var(--success-green); color: white; border-radius: 20px; padding: 20px; font-weight: 900; font-size: 1.2rem; width: 100%; border: none; transition: 0.3s; display: flex; align-items: center; justify-content: center; gap: 15px; box-shadow: 0 10px 20px rgba(16, 185, 129, 0.3); margin-bottom: 15px; }
         
-        /* ✅ BUG 4 FIX: تعريف CSS لزر إسكات الصوت */
         .btn-mute {
             background: rgba(255,255,255,0.15);
             color: white;
@@ -189,6 +188,15 @@
         #syncStatus { position: fixed; bottom: max(10px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); background: rgba(15, 23, 42, 0.9); color: white; padding: 6px 15px; border-radius: 20px; font-size: 0.75rem; font-weight: 800; z-index: 10000; display: none; align-items: center; gap: 8px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); backdrop-filter: blur(5px); }
         .sync-spinner { width: 12px; height: 12px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ستايل عرض الشفت */
+        .shift-badge {
+            font-size: 0.7rem; font-weight: 800;
+            background: rgba(255, 255, 255, 0.15);
+            padding: 4px 8px; border-radius: 12px;
+            display: inline-flex; align-items: center; gap: 4px;
+            margin-top: 5px;
+        }
     </style>
 </head>
 <body>
@@ -235,13 +243,18 @@
         </div>
         <h2 class="fw-black m-0" style="color: var(--primary-blue);">مكتب سفيان للشركاء</h2>
         <p class="text-muted fw-bold mb-0">المنصة الرسمية للكباتن</p>
-        <p class="text-muted fw-bold" style="font-size: 0.85rem;">بالتعاون مع نظام الحوت V34.1</p>
+        <p class="text-muted fw-bold" style="font-size: 0.85rem;">بالتعاون مع نظام الحوت V37.0</p>
     </div>
 
     <div class="login-card" id="authBox">
-        <div class="mb-4 text-center">
+        <div class="mb-3 text-center">
             <label class="form-label text-center">رقم هاتف الكابتن المسجل</label>
             <input type="tel" id="driverPhone" class="custom-input phone-format" placeholder="07XXXXXXXXX" dir="ltr" autocomplete="off" readonly onfocus="this.removeAttribute('readonly');">
+        </div>
+        
+        <div class="mb-4 text-center" id="loginPassContainer">
+            <label class="form-label text-center">كلمة المرور</label>
+            <input type="password" id="driverPassword" class="custom-input text-center" placeholder="********" autocomplete="off">
         </div>
         
         <div id="registerFields" class="hidden-section text-start" style="animation: fadeIn 0.5s;">
@@ -250,14 +263,29 @@
                 <svg class="svg-icon" viewBox="0 0 24 24"><path d="M12 2v20"></path><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
                 <h5 class="fw-black m-0">تسجيل كابتن جديد</h5>
             </div>
-            <div class="mb-4">
+            
+            <div class="mb-3">
                 <label class="form-label">الاسم الثلاثي</label>
                 <input type="text" id="driverName" class="custom-input" placeholder="مثال: أحمد محمد علي" autocomplete="off">
+            </div>
+            
+            <div class="mb-3">
+                <label class="form-label">إنشاء كلمة مرور</label>
+                <input type="password" id="regPassword" class="custom-input" placeholder="كلمة مرور قوية" autocomplete="off">
+            </div>
+
+            <div class="mb-4">
+                <label class="form-label">مدة الشفت المفضلة</label>
+                <select id="regShift" class="custom-input" style="font-size: 0.9rem;">
+                    <option value="6">6 ساعات</option>
+                    <option value="10" selected>10 ساعات</option>
+                    <option value="12">12 ساعة</option>
+                </select>
             </div>
         </div>
 
         <button class="btn-action" id="mainAuthBtn" onclick="initAudioAndAuth()">
-            فحص الإشارة <svg class="svg-icon" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+            تسجيل الدخول <svg class="svg-icon" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
         </button>
     </div>
     
@@ -281,14 +309,18 @@
     <div class="dash-header">
         <div class="d-flex justify-content-between align-items-start">
             <div>
-                <h3 class="fw-black m-0 mb-2" id="driverNameDisplay">...</h3>
+                <h3 class="fw-black m-0 mb-1" id="driverNameDisplay">...</h3>
+                <div class="shift-badge" id="shiftDisplay" style="display: none;">
+                    <svg class="svg-icon" style="width:12px;height:12px;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                    <span id="shiftTimeText">---</span>
+                </div>
                 <div class="d-flex align-items-center gap-2 mt-2">
                     <label class="switch">
-                        <input type="checkbox" id="onlineToggle" checked onchange="window.toggleOnlineStatus()">
+                        <input type="checkbox" id="onlineToggle" onchange="window.toggleOnlineStatus()">
                         <span class="slider-btn"></span>
                     </label>
-                    <div id="onlineStatusBadge" class="status-badge online">
-                        <span id="onlineStatusText">متاح للطلبات</span>
+                    <div id="onlineStatusBadge" class="status-badge">
+                        <span id="onlineStatusText">في استراحة</span>
                     </div>
                 </div>
             </div>
@@ -323,7 +355,7 @@
             </div>
         </div>
 
-        <div id="searchingStatus" class="radar-container">
+        <div id="searchingStatus" class="radar-container offline-mode">
             <div class="radar-center">
                 <div class="radar-wave" style="animation-delay: 0s"></div>
                 <div class="radar-wave" style="animation-delay: 0.8s"></div>
@@ -332,8 +364,8 @@
                     <svg class="svg-icon" style="color: var(--accent-blue); width: 40px; height: 40px;" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
                 </div>
             </div>
-            <h4 class="fw-black mb-2" style="color: var(--text-main);" id="radarTitle">الرادار يعمل</h4>
-            <p class="text-muted fw-bold mb-0" id="radarDesc">جاري البحث عن طلبات قريبة...</p>
+            <h4 class="fw-black mb-2" style="color: var(--text-main);" id="radarTitle">الرادار متوقف</h4>
+            <p class="text-muted fw-bold mb-0" id="radarDesc">قم بتفعيل متاح للطلبات لبدء الشفت</p>
         </div>
 
         <div id="activeOrderBox" class="mt-4 hidden-section"></div>
@@ -410,12 +442,11 @@
     const app = initializeApp(firebaseConfig);
     const db  = getDatabase(app);
 
-    let driverData = null, countdownInterval, currentOrderData = null, activeOrders = [], isRegistering = false, isOnline = true;
-    let wakeLock = null, waitingPollingTimer = null, heartbeatInterval = null;
+    let driverData = null, countdownInterval, currentOrderData = null, activeOrders = [], isRegistering = false, isOnline = false;
+    let wakeLock = null, waitingPollingTimer = null, heartbeatInterval = null, shiftTimerInterval = null;
     let lastLocUpdateTs = 0, lastSentLat = 0, lastSentLng = 0, lastActiveHtml = "";
-    // ✅ NEW: Set لتتبع الطلبات التي أُرسل لها إشعار الجهوزية (لمنع التكرار)
     let readyNotifiedOrders = new Set();
-
+    
     let offlineActionQueue  = JSON.parse(localStorage.getItem('hut_offline_queue') || '[]');
     let isProcessingQueue   = false;
 
@@ -564,18 +595,31 @@
         if (sessionStr) {
             try {
                 const session = JSON.parse(sessionStr);
+                if (session.password) {
+                    document.getElementById('driverPassword').value = atob(session.password);
+                }
                 if ((Date.now() - session.timestamp) / 3600000 < 24) {
                     driverData = session;
                     document.getElementById('driverPhone').value = session.phone;
                     showDashboard();
                     const saved = localStorage.getItem('hut_active_orders');
                     if (saved) { activeOrders = JSON.parse(saved); activeOrders.forEach(o => { if (!o.acceptedTime) o.acceptedTime = Date.now(); }); }
-                    displayActiveOrders();
+                    
+                    // إذا كان الشفت ما زال فعالاً، نتركه online
+                    if (session.shiftEnd && new Date(session.shiftEnd) > new Date()) {
+                        document.getElementById('onlineToggle').checked = true;
+                        window.toggleOnlineStatus();
+                    } else {
+                        document.getElementById('onlineToggle').checked = false;
+                        window.toggleOnlineStatus();
+                    }
                     return true;
                 }
             } catch(e) {}
         } else if (pendingStr) {
             document.getElementById('driverPhone').value = pendingStr;
+            const pendingPass = localStorage.getItem('hut_driver_pending_pass');
+            if (pendingPass) document.getElementById('driverPassword').value = atob(pendingPass);
             showWaitingRoom();
             return true;
         }
@@ -584,49 +628,92 @@
 
     window.onload = function() {
         if (!checkSavedSession()) {
-            const savedDriver = localStorage.getItem('hut_driver');
-            if (savedDriver) {
-                driverData = JSON.parse(savedDriver);
-                document.getElementById('driverPhone').value = driverData.phone;
-                authAction();
-                const saved = localStorage.getItem('hut_active_orders');
-                if (saved) { activeOrders = JSON.parse(saved); activeOrders.forEach(o => { if (!o.acceptedTime) o.acceptedTime = Date.now(); }); }
+            const savedPhone = localStorage.getItem('hut_driver_phone');
+            if (savedPhone) {
+                document.getElementById('driverPhone').value = savedPhone.startsWith('0') ? savedPhone : '0' + savedPhone;
             }
         }
     };
 
     function authAction() {
         let rawPhone = document.getElementById('driverPhone').value.trim();
+        let passAttempt = document.getElementById('driverPassword').value.trim();
         if (!rawPhone) return alert("يرجى إدخال رقم الهاتف");
         let phone = rawPhone.replace(/^0+/, '');
+        
         if (isRegistering) {
             const name = document.getElementById('driverName').value.trim();
+            const regPassword = document.getElementById('regPassword').value.trim();
+            const shiftHours = document.getElementById('regShift').value;
+
             if (!name) return alert("يرجى كتابة الاسم الثلاثي");
+            if (!regPassword) return alert("يرجى إنشاء كلمة مرور لحماية حسابك.");
+
             showLoading(true, "جاري إنشاء الحساب...");
-            fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'DRIVER_REG', token: API_TOKEN, name, phone }) })
-                .then(() => { showLoading(false); localStorage.setItem('hut_driver_pending', phone); showWaitingRoom(); })
-                .catch(() => { showLoading(false); alert("ضعف في الاتصال بالشبكة."); });
+            fetch(API_URL, { 
+                method: 'POST', 
+                body: JSON.stringify({ 
+                    action: 'DRIVER_REG', 
+                    token: API_TOKEN, 
+                    name, 
+                    phone, 
+                    password: regPassword,
+                    shift: shiftHours 
+                }) 
+            })
+            .then(() => { 
+                showLoading(false); 
+                localStorage.setItem('hut_driver_pending', phone); 
+                localStorage.setItem('hut_driver_pending_pass', btoa(regPassword));
+                showWaitingRoom(); 
+            })
+            .catch(() => { showLoading(false); alert("ضعف في الاتصال بالشبكة."); });
             return;
         }
+
+        if (!passAttempt) return alert("يرجى إدخال كلمة المرور.");
+
         showLoading(true, "جاري المزامنة...");
-        fetch(`${API_URL}?action=checkDriver&phone=${phone}&token=${API_TOKEN}`)
-            .then(r => r.json()).then(data => handleLoginCheck(data, phone))
+        fetch(`${API_URL}?action=checkDriver&phone=${phone}&password=${encodeURIComponent(passAttempt)}&token=${API_TOKEN}`)
+            .then(r => r.json()).then(data => handleLoginCheck(data, phone, passAttempt))
             .catch(() => { showLoading(false); alert("خطأ اتصال"); });
     }
 
-    function handleLoginCheck(data, phone) {
+    function handleLoginCheck(data, phone, passAttempt) {
         showLoading(false);
+
+        if (data.status === "wrong_password") {
+            return alert("❌ كلمة المرور غير صحيحة.");
+        }
+        if (data.status === "rate_limited") {
+            return alert("🛡️ تم حظر محاولات الدخول مؤقتاً لحمايتك. يرجى المحاولة بعد 15 دقيقة.");
+        }
+
         if (data.status === "active" || data.status === "inactive") {
-            driverData = { phone, name: data.name, timestamp: Date.now() };
+            driverData = { 
+                phone, 
+                name: data.name, 
+                shiftHours: data.shift || 10,
+                timestamp: Date.now(),
+                password: btoa(passAttempt) 
+            };
             localStorage.setItem('hut_driver', JSON.stringify(driverData));
             localStorage.setItem('hut_driver_session', JSON.stringify(driverData));
-            showDashboard(); displayActiveOrders();
+            localStorage.setItem('hut_driver_phone', phone);
+            
+            showDashboard();
+            document.getElementById('onlineToggle').checked = false;
+            window.toggleOnlineStatus();
+
         } else if (data.status === "banned") {
             alert("حساب محظور."); location.reload();
         } else if (data.status === "pending" || data.status === "waiting") {
-            localStorage.setItem('hut_driver_pending', phone); showWaitingRoom();
+            localStorage.setItem('hut_driver_pending', phone); 
+            localStorage.setItem('hut_driver_pending_pass', btoa(passAttempt));
+            showWaitingRoom();
         } else {
             isRegistering = true;
+            document.getElementById('loginPassContainer').classList.add('hidden-section');
             document.getElementById('registerFields').classList.remove('hidden-section');
             document.getElementById('driverPhone').disabled = true;
             document.getElementById('mainAuthBtn').innerHTML = `إرسال طلب الانضمام <svg class="svg-icon" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>`;
@@ -645,14 +732,25 @@
         let rawPhone = document.getElementById('driverPhone').value.trim() || localStorage.getItem('hut_driver_pending');
         if (!rawPhone) return;
         let phone = rawPhone.replace(/^0+/, '');
+        
+        let pass = document.getElementById('driverPassword').value.trim();
+        if (!pass) {
+            const savedPass = localStorage.getItem('hut_driver_pending_pass');
+            if (savedPass) pass = atob(savedPass);
+        }
+
         if (isManual) document.getElementById('waitingStatusText').innerText = "جاري التحقق اليدوي...";
-        fetch(`${API_URL}?action=checkDriver&phone=${phone}&token=${API_TOKEN}`)
+        fetch(`${API_URL}?action=checkDriver&phone=${phone}&password=${encodeURIComponent(pass)}&token=${API_TOKEN}`)
             .then(r => r.json()).then(data => {
                 document.getElementById('waitingStatusText').innerText = "جاري الاستعلام التلقائي...";
                 if (data.status === "active" || data.status === "inactive") {
                     clearInterval(waitingPollingTimer);
                     localStorage.removeItem('hut_driver_pending');
-                    driverData = { phone, name: data.name, timestamp: Date.now() };
+                    localStorage.removeItem('hut_driver_pending_pass');
+                    driverData = { 
+                        phone, name: data.name, shiftHours: data.shift || 10,
+                        timestamp: Date.now(), password: btoa(pass) 
+                    };
                     localStorage.setItem('hut_driver', JSON.stringify(driverData));
                     localStorage.setItem('hut_driver_session', JSON.stringify(driverData));
                     const wA = document.getElementById('welcomeSound');
@@ -662,6 +760,7 @@
                 } else if (data.status === "banned") {
                     clearInterval(waitingPollingTimer);
                     localStorage.removeItem('hut_driver_pending');
+                    localStorage.removeItem('hut_driver_pending_pass');
                     alert("⚠️ عذراً، حسابك محظور."); location.reload();
                 }
             }).catch(() => {});
@@ -680,28 +779,96 @@
         if (confirm("تأكيد تسجيل الخروج؟")) {
             releaseWakeLock();
             updateFirebaseLocationStatus('inactive');
-            localStorage.clear(); sessionStorage.clear(); location.reload();
+            localStorage.removeItem('hut_driver_session');
+            sessionStorage.clear(); 
+            location.reload();
         }
     };
 
-    window.toggleOnlineStatus = function() {
+    // ── نظام الشفتات ──
+    function startShiftTimer() {
+        if (shiftTimerInterval) clearInterval(shiftTimerInterval);
+        const shiftDisplay = document.getElementById('shiftDisplay');
+        const shiftText = document.getElementById('shiftTimeText');
+        
+        shiftDisplay.style.display = 'inline-flex';
+        
+        shiftTimerInterval = setInterval(() => {
+            if (!driverData.shiftEnd) return;
+            const remaining = new Date(driverData.shiftEnd).getTime() - Date.now();
+            
+            if (remaining <= 0) {
+                clearInterval(shiftTimerInterval);
+                shiftText.innerText = "انتهى الشفت";
+                shiftDisplay.style.background = 'rgba(239, 68, 68, 0.2)';
+                shiftDisplay.style.color = '#fecaca';
+                
+                // إغلاق الدوام تلقائياً
+                document.getElementById('onlineToggle').checked = false;
+                window.toggleOnlineStatus();
+                alert("⏰ انتهى وقت الشفت الخاص بك، وتم تحويلك إلى (في استراحة) تلقائياً.");
+                return;
+            }
+            
+            const hours = Math.floor(remaining / (1000 * 60 * 60));
+            const mins = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
+            shiftText.innerText = `متبقي: ${hours}س و ${mins}د`;
+            
+            if (hours < 1) {
+                shiftDisplay.style.background = 'rgba(249, 115, 22, 0.2)';
+                shiftDisplay.style.color = '#fed7aa';
+            } else {
+                shiftDisplay.style.background = 'rgba(255, 255, 255, 0.15)';
+                shiftDisplay.style.color = 'white';
+            }
+        }, 1000);
+    }
+
+    window.toggleOnlineStatus = async function() {
         isOnline = document.getElementById('onlineToggle').checked;
         const badge = document.getElementById('onlineStatusBadge');
+        
         if (isOnline) {
+            // التحقق أو بدء الشفت عند التفعيل
+            if (!driverData.shiftEnd || new Date(driverData.shiftEnd) <= new Date()) {
+                badge.innerHTML = `<div class="spinner-border spinner-border-sm" role="status"></div>`;
+                try {
+                    const res = await fetch(`${API_URL}?action=START_SHIFT&phone=${driverData.phone}&token=${API_TOKEN}`);
+                    const data = await res.json();
+                    if (data.success) {
+                        driverData.shiftEnd = data.shift_end;
+                        localStorage.setItem('hut_driver_session', JSON.stringify(driverData));
+                    }
+                } catch(e) { console.error("فشل بدء الشفت بالسيرفر", e); }
+            }
+
             badge.className = "status-badge online"; badge.innerHTML = `متاح للطلبات`;
             document.getElementById('searchingStatus').classList.remove('offline-mode');
+            document.getElementById('radarTitle').innerText = "الرادار يعمل";
+            document.getElementById('radarDesc').innerText = "جاري البحث عن طلبات قريبة...";
+            
+            startShiftTimer();
+
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(pos => {
                     lastSentLat = pos.coords.latitude; lastSentLng = pos.coords.longitude;
                     updateFirebaseLocationStatus('active');
                 }, () => { updateFirebaseLocationStatus('active'); }, { enableHighAccuracy: true, timeout: 5000 });
             } else { updateFirebaseLocationStatus('active'); }
+            
             requestWakeLock();
             if (!heartbeatInterval) heartbeatInterval = setInterval(sendHeartbeat, 20000);
             displayActiveOrders();
+            
         } else {
             badge.className = "status-badge offline"; badge.innerHTML = `في استراحة`;
             document.getElementById('searchingStatus').classList.add('offline-mode');
+            document.getElementById('radarTitle').innerText = "الرادار متوقف";
+            document.getElementById('radarDesc').innerText = "قم بتفعيل متاح للطلبات لبدء الشفت";
+            
+            if (shiftTimerInterval) clearInterval(shiftTimerInterval);
+            document.getElementById('shiftDisplay').style.display = 'none';
+
             updateFirebaseLocationStatus('inactive');
             releaseWakeLock();
             if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
@@ -720,9 +887,17 @@
     }
 
     function updateFirebaseLocationStatus(statusStr) {
-        if (lastSentLat && lastSentLng) {
+        if (lastSentLat && lastSentLng && driverData) {
             const updates = {};
-            updates[`drivers_locations/${driverData.phone}`] = { lat: lastSentLat, lng: lastSentLng, status: statusStr, last_update: new Date().toISOString() };
+            updates[`drivers_locations/${driverData.phone}`] = { 
+                lat: lastSentLat, lng: lastSentLng, 
+                status: statusStr, 
+                last_update: new Date().toISOString() 
+            };
+            // إضافة وقت نهاية الشفت إلى Firebase ليقرأه المحرك
+            if (driverData.shiftEnd) {
+                updates[`drivers_locations/${driverData.phone}`].shift_end = driverData.shiftEnd;
+            }
             update(ref(db), updates);
         }
     }
@@ -776,7 +951,7 @@
         onValue(ref(db, `drivers_locations/${driverData.phone}/account_status`), snap => {
             if (snap.val() === "banned") {
                 alert("⚠️ لقد تم حظر حسابك من قبل الإدارة.");
-                localStorage.clear(); sessionStorage.clear(); location.reload();
+                localStorage.removeItem('hut_driver_session'); sessionStorage.clear(); location.reload();
             }
         });
 
@@ -806,7 +981,6 @@
             const activeFbOrders = snap.val() || {};
             const myId = String(driverData.phone).replace(/^0+/, '').trim();
 
-            // ✅ فحص سحب الطلبات أو إكمالها
             for (let i = activeOrders.length - 1; i >= 0; i--) {
                 const myOrder  = activeOrders[i];
                 const fbOrder  = activeFbOrders[myOrder.id];
@@ -814,20 +988,16 @@
                     forceRemoveActiveOrder("تم حذف هذا الطلب أو إنهاءه.", myOrder.id);
                     continue;
                 }
-                
-                // ✅ إزالة الطلب إذا اكتمل
                 if (fbOrder.status === 'completed' || fbOrder.status === 'مكتمل' || fbOrder.status === 'deleted') {
                     forceRemoveActiveOrder("تم إنهاء الطلب", myOrder.id);
                     continue;
                 }
-                
                 const fbPhone = String(fbOrder.driverPhone || "").replace(/^0+/, '').trim();
                 if (fbPhone !== myId) {
                     forceRemoveActiveOrder("تم سحب الطلب وتعيينه لكابتن آخر.", myOrder.id);
                 }
             }
 
-            // ✅ NEW: إشعار جهوزية الطلب من المطعم
             activeOrders.forEach(myOrder => {
                 const fbOrder = activeFbOrders[myOrder.id];
                 if (!fbOrder) return;
@@ -852,7 +1022,6 @@
                 }
             });
 
-            // استقبال طلب جديد
             if (isOnline) {
                 Object.values(activeFbOrders).forEach(fbOrder => {
                     if (!fbOrder.restaurant || fbOrder.restaurant.trim() === "" || fbOrder.restaurant === "undefined") return;
@@ -886,7 +1055,6 @@
             }
         });
 
-        // ── البث السيادي ──
         onValue(ref(db, 'system_broadcast'), snap => {
             const data = snap.val();
             if (data && data.msg) {
@@ -932,6 +1100,7 @@
         clearInterval(countdownInterval);
         document.getElementById('orderAlertOverlay').classList.add('hidden-section');
         window.muteAlarmOnly();
+        
         if (currentOrderData) {
             const now = new Date().toISOString();
             const updates = {};
@@ -941,6 +1110,11 @@
             updates[`active_orders/${currentOrderData.id}/last_offered_to`]   = driverData.phone;
             updates[`active_orders/${currentOrderData.id}/last_offered_time`] = now;
             updates[`active_orders/${currentOrderData.id}/is_sovereign`]      = false;
+            
+            // تسجيل حالة الرفض لتقييم الإدارة
+            const todayStr = now.split('T')[0];
+            updates[`daily_metrics/${driverData.phone}/${todayStr}/rejected_orders`] = increment(1);
+            
             update(ref(db), updates);
             currentOrderData = null;
         }
@@ -1166,8 +1340,17 @@
                 const updates    = {};
                 updates[`active_orders/${id}/status`]   = 'completed';
                 updates[`active_orders/${id}/status_ar`]= 'مكتمل';
+                
+                // حساب السرعة لتقييم الأداء (دقائق)
+                const deliveryMins = Math.max(1, Math.floor((Date.now() - order.acceptedTime) / 60000));
+                
                 updates[`ledgers/drivers/${driverData.phone}/completed_orders`] = increment(1);
                 updates[`ledgers/drivers/${driverData.phone}/debt`]             = increment(driverDebt);
+                
+                // تسجيل سرعة الكابتن وعدد الطلبات ليوم محدد لتقييم الإدارة
+                updates[`daily_metrics/${driverData.phone}/${todayS}/completed_orders`] = increment(1);
+                updates[`daily_metrics/${driverData.phone}/${todayS}/total_delivery_minutes`] = increment(deliveryMins);
+
                 if (safeResPhone) {
                     updates[`ledgers/restaurants/${safeResPhone}/completed_orders`] = increment(1);
                     updates[`ledgers/restaurants/${safeResPhone}/debt`]             = increment(resDebt);
