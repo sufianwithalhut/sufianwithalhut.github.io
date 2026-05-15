@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 34.0 (التوافق الشامل مع المحرك المالي الجديد Firebase Ledgers) ---
-        const CURRENT_APP_VERSION = "34.0";
+        // --- إصدار 35.0 (حل مشكلة العمى اللحظي وقراءة الديون الحية للمطاعم) ---
+        const CURRENT_APP_VERSION = "35.0";
         const RES_VERSION_KEY = 'hut_res_app_version';
         try {
             if (localStorage.getItem(RES_VERSION_KEY) !== CURRENT_APP_VERSION) {
@@ -1541,12 +1541,19 @@
         startHotDataListeners();
     }
 
+    let globalLiveDebt = 0;
+    let globalLiveCount = 0;
+
     function startHotDataListeners() {
         const ordersRef = ref(db, 'active_orders');
         onValue(ordersRef, (snapshot) => {
             const activeFbOrders = snapshot.val() || {};
             let newLiveOrders    = []; let todaySalesTotal  = 0;
             let todayArchiveHtml = ''; const todayISO       = new Date().toISOString().split('T')[0];
+
+            // تصفير العدادات اللحظية مع كل تحديث قادم من Firebase
+            globalLiveDebt = 0;
+            globalLiveCount = 0;
 
             Object.values(activeFbOrders).forEach(fbOrder => {
                 if (fbOrder.restaurant !== currentResName) return;
@@ -1557,6 +1564,22 @@
                     if (orderISO === todayISO) {
                         const priceVal = parseFloat(fbOrder.price) || 0;
                         todaySalesTotal += priceVal;
+                        
+                        // ✨ الحل الجذري: حساب ديون المطعم هنا مباشرة من المصدر
+                        globalLiveCount++;
+                        let commStr = String(fbOrder.comm || '0');
+                        let payType = String(fbOrder.payType || '');
+                        let resComm = 0;
+                        if (!commStr.includes('شهري')) {
+                            if (commStr.includes('/')) {
+                                resComm = parseFloat(commStr.split('/')[1]) || 0;
+                            } else {
+                                let val = parseFloat(commStr) || 0;
+                                resComm = payType.includes("مناصفة") ? (val / 2) : val;
+                            }
+                        }
+                        globalLiveDebt += resComm;
+
                         const orderTime = new Date(fbOrder.timestamp).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
                         let dName = "مكتمل";
                         if (globalDriversInfo.length > 0) {
@@ -1596,9 +1619,14 @@
                 document.getElementById('todayArchiveItems').innerHTML = todayArchiveHtml || `<div class="text-center text-muted fw-bold py-4 small" style="font-size:0.8rem; background: rgba(255,255,255,0.4); border-radius: 20px;">لم تكتمل أي طلبات اليوم بعد.</div>`;
                 lastArchiveHtml = todayArchiveHtml;
             }
+            
+            // دمج وعرض الأرقام اللحظية مع الخزنة فوراً عند اكتمال أي طلب
+            if (window.currentLedgerData) {
+                document.getElementById('statMonthOrders').innerText = (window.currentLedgerData.completed_orders || 0) + globalLiveCount;
+                document.getElementById('statUnpaid').innerText = (parseFloat(window.currentLedgerData.debt) || 0) + globalLiveDebt;
+            }
         });
 
-        // ✨ التحديث: دمج الخزنة مع اللحظي
         let safeResPhone = regPhone;
         if (!safeResPhone) { const s = localStorage.getItem('hut_res_session'); if (s) safeResPhone = JSON.parse(s).phone; }
         
@@ -1608,30 +1636,11 @@
 
             onValue(ref(db, `ledgers/restaurants/${cleanPhone}`), (snapshot) => {
                 const ledger = snapshot.val() || { completed_orders: 0, debt: 0 };
+                window.currentLedgerData = ledger; // حفظ الخزنة الباردة في الذاكرة
                 
-                let liveDebtToday = 0;
-                let liveOrdersToday = 0;
-                const todayISO = new Date().toISOString().split('T')[0];
-                
-                liveActiveOrders.forEach(o => {
-                   if ((o.status === 'completed' || o.status === 'مكتمل') && o.timestamp.includes(todayISO)) {
-                       liveOrdersToday++;
-                       const s = localStorage.getItem('hut_res_session');
-                       let commStr = s ? (JSON.parse(s).comm || '0') : '0';
-                       let payType = s ? (JSON.parse(s).payType || '') : '';
-                       
-                       let resComm = 0;
-                       if (!commStr.includes('شهري')) {
-                           let val = commStr.includes('/') ? parseFloat(commStr.split('/')[1]) : parseFloat(commStr);
-                           val = val || 0;
-                           resComm = payType.includes("مناصفة") ? (val / 2) : val;
-                       }
-                       liveDebtToday += resComm;
-                   }
-                });
-
-                document.getElementById('statMonthOrders').innerText = (ledger.completed_orders || 0) + liveOrdersToday;
-                document.getElementById('statUnpaid').innerText = (parseFloat(ledger.debt) || 0) + liveDebtToday;
+                // دمج الخزنة مع اللحظي
+                document.getElementById('statMonthOrders').innerText = (ledger.completed_orders || 0) + globalLiveCount;
+                document.getElementById('statUnpaid').innerText = (parseFloat(ledger.debt) || 0) + globalLiveDebt;
                 
                 const s = localStorage.getItem('hut_res_session');
                 if (s) { document.getElementById('statPayType').innerText = (JSON.parse(s).payType || '').includes("مناصفة") ? "مناصفة" : "المطعم"; }
