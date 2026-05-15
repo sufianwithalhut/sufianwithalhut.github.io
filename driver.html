@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 10.2 (فصل المحاسبة: التطبيق يرسل فقط، السيرفر يحاسب) ---
-        const CURRENT_APP_VERSION = "10.2";
+        // --- إصدار 11.0 (إصلاح المحفظة وتأمين الشفتات برمجياً مع السيرفر) ---
+        const CURRENT_APP_VERSION = "11.0";
         try {
             if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
                 localStorage.setItem('hut_app_version', CURRENT_APP_VERSION);
@@ -327,7 +327,6 @@
                     <svg class="svg-icon" style="width:12px;height:12px;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
                     <span id="shiftTimeText">---</span>
                 </div>
-                <!-- عداد الرفض اليومي -->
                 <div id="rejectionCounter" class="rejection-counter hidden-section">
                     <svg class="svg-icon" style="width:12px;height:12px;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
                     <span id="rejectionCount">0</span> رفض اليوم
@@ -614,7 +613,6 @@
         if (sessionStr) {
             try {
                 const session = JSON.parse(sessionStr);
-                // كلمة المرور الآن في sessionStorage فقط
                 const pass = sessionStorage.getItem('hut_driver_pass');
                 if (pass) {
                     document.getElementById('driverPassword').value = atob(pass);
@@ -719,7 +717,6 @@
             localStorage.setItem('hut_driver', JSON.stringify(driverData));
             localStorage.setItem('hut_driver_session', JSON.stringify(driverData));
             localStorage.setItem('hut_driver_phone', phone);
-            // حفظ كلمة المرور في sessionStorage فقط
             sessionStorage.setItem('hut_driver_pass', btoa(passAttempt));
             
             showDashboard();
@@ -806,7 +803,6 @@
         }
     };
 
-    // ── نظام الشفتات ──
     function startShiftTimer() {
         if (shiftTimerInterval) clearInterval(shiftTimerInterval);
         const shiftDisplay = document.getElementById('shiftDisplay');
@@ -849,30 +845,27 @@
         const badge = document.getElementById('onlineStatusBadge');
         
         if (isOnline) {
-            if (!driverData.shiftEnd || new Date(driverData.shiftEnd) <= new Date()) {
-                badge.innerHTML = `<div class="spinner-border spinner-border-sm" role="status"></div>`;
-                try {
-                    const res = await fetch(`${API_URL}?action=START_SHIFT&phone=${driverData.phone}&token=${API_TOKEN}`);
-                    const data = await res.json();
-                    if (data.success) {
-                        driverData.shiftEnd = data.shift_end;
-                        localStorage.setItem('hut_driver_session', JSON.stringify(driverData));
-                    } else {
-                        // 🛑 معالجة خطأ الشفت المزدوج أو أي خطأ آخر
-                        alert(data.msg || "تعذّر بدء الشفت. تأكد من عدم وجود شفت نشط آخر اليوم.");
-                        document.getElementById('onlineToggle').checked = false;
-                        isOnline = false;
-                        badge.className = "status-badge offline"; badge.innerHTML = `في استراحة`;
-                        return;
-                    }
-                } catch(e) { 
-                    console.error("فشل بدء الشفت بالسيرفر", e);
-                    alert("تعذر الاتصال بالخادم. حاول مرة أخرى.");
+            badge.innerHTML = `<div class="spinner-border spinner-border-sm" role="status"></div>`;
+            try {
+                const res = await fetch(`${API_URL}?action=START_SHIFT&phone=${driverData.phone}&token=${API_TOKEN}`);
+                const data = await res.json();
+                if (data.success) {
+                    driverData.shiftEnd = data.shift_end;
+                    localStorage.setItem('hut_driver_session', JSON.stringify(driverData));
+                } else {
+                    alert(data.msg || "تعذّر بدء الشفت.");
                     document.getElementById('onlineToggle').checked = false;
                     isOnline = false;
                     badge.className = "status-badge offline"; badge.innerHTML = `في استراحة`;
                     return;
                 }
+            } catch(e) { 
+                console.error("فشل بدء الشفت بالسيرفر", e);
+                alert("تعذر الاتصال بالخادم. حاول مرة أخرى.");
+                document.getElementById('onlineToggle').checked = false;
+                isOnline = false;
+                badge.className = "status-badge offline"; badge.innerHTML = `في استراحة`;
+                return;
             }
 
             badge.className = "status-badge online"; badge.innerHTML = `متاح للطلبات`;
@@ -890,7 +883,6 @@
             } else { updateFirebaseLocationStatus('active'); }
             
             requestWakeLock();
-            // ضبط الفاصل الزمني لإرسال الموقع: 10 ثوانٍ إذا كان هناك طلبات نشطة
             const intervalMs = (activeOrders.length > 0) ? 10000 : 20000;
             if (heartbeatInterval) clearInterval(heartbeatInterval);
             heartbeatInterval = setInterval(sendHeartbeat, intervalMs);
@@ -979,7 +971,7 @@
         activeOrders = activeOrders.filter(o => String(o.id) !== String(orderId));
         readyNotifiedOrders.delete(String(orderId));
         localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
-        adjustHeartbeatInterval(); // ضبط الإرسال كلما تغيرت الطلبات
+        adjustHeartbeatInterval(); 
         displayActiveOrders();
         if (currentOrderData && String(currentOrderData.id) === String(orderId)) {
             clearInterval(countdownInterval);
@@ -990,7 +982,6 @@
     }
 
     function startHotDataListeners() {
-        // ── مراقبة الحساب ──
         onValue(ref(db, `drivers_locations/${driverData.phone}/account_status`), snap => {
             if (snap.val() === "banned") {
                 alert("⚠️ لقد تم حظر حسابك من قبل الإدارة.");
@@ -998,14 +989,21 @@
             }
         });
 
-        // ── المحفظة ──
+        // ── المحفظة (الرقم الحقيقي من Firebase لا يمكن التلاعب به) ──
         onValue(ref(db, `ledgers/drivers/${driverData.phone}`), snap => {
             const l = snap.val() || { completed_orders: 0, debt: 0 };
-            document.getElementById('statOrdersCount').innerText = l.completed_orders || 0;
+            
+            const todayISO = new Date().toISOString().split('T')[0];
+            onValue(ref(db, `daily_ledgers/${driverData.phone}/${todayISO}`), dailySnap => {
+                const dailyData = dailySnap.val() || {};
+                const liveOrdersToday = Object.keys(dailyData).length;
+                
+                document.getElementById('statOrdersCount').innerText = (l.completed_orders || 0) + liveOrdersToday;
+            }, { onlyOnce: true });
+
             document.getElementById('statDebt').innerHTML = `${l.debt || 0} <small class="fs-6">د.ع</small>`;
         });
 
-        // ── سجل اليوم ──
         const todayStr = new Date().toISOString().split('T')[0];
         onValue(ref(db, `daily_ledgers/${driverData.phone}/${todayStr}`), snap => {
             const daily = snap.val() || {};
@@ -1019,7 +1017,6 @@
             document.getElementById('ledgerList').innerHTML = html || '<div class="text-center text-muted fw-bold py-4">لا توجد رحلات مكتملة اليوم.</div>';
         });
 
-        // ── مؤشر الرفض اليومي ──
         onValue(ref(db, `daily_metrics/${driverData.phone}/${todayStr}/rejected_orders`), snap => {
             todayRejections = snap.val() || 0;
             const rejEl = document.getElementById('rejectionCounter');
@@ -1037,7 +1034,6 @@
             }
         });
 
-        // ── الطلبات النشطة ──
         onValue(ref(db, 'active_orders'), snap => {
             const activeFbOrders = snap.val() || {};
             const myId = String(driverData.phone).replace(/^0+/, '').trim();
@@ -1229,7 +1225,7 @@
         };
         activeOrders.push(newO);
         localStorage.setItem('hut_active_orders', JSON.stringify(activeOrders));
-        adjustHeartbeatInterval(); // زيادة معدل إرسال الموقع
+        adjustHeartbeatInterval(); 
         displayActiveOrders();
 
         const updates = {};
@@ -1351,7 +1347,7 @@
             const timerEl = document.getElementById(`timer-${order.id}`);
             if (!timerEl) return;
             const elapsed    = Date.now() - (order.acceptedTime || Date.now());
-            const allowed    = 30 * 60 * 1000; // 30 دقيقة مهلة الوصول
+            const allowed    = 30 * 60 * 1000; 
             const remaining  = allowed - elapsed;
             const isNeg      = remaining < 0;
             const abs        = Math.abs(remaining);
@@ -1363,7 +1359,6 @@
     }
     setInterval(updateOrderTimers, 1000);
 
-    // ✨ تم التعديل هنا: التطبيق يرسل فقط، السيرفر يحاسب
     window.updateOrderStatus = function(id, action, btnElement) {
         const order = activeOrders.find(o => String(o.id) === String(id));
         if (!order) return;
@@ -1398,27 +1393,18 @@
                 const todayS  = new Date().toISOString().split('T')[0];
                 const updates = {};
                 
-                // 1. تحديث حالة الطلب فقط (المحاسبة تتم ليلاً عبر السيرفر)
                 updates[`active_orders/${id}/status`]   = 'completed';
                 updates[`active_orders/${id}/status_ar`]= 'مكتمل';
                     
-                // 2. تحديث مقاييس سرعة الكابتن (مهم للإدارة)
                 const deliveryMins = Math.max(1, Math.floor((Date.now() - order.acceptedTime) / 60000));
                 updates[`daily_metrics/${driverData.phone}/${todayS}/completed_orders`] = increment(1);
                 updates[`daily_metrics/${driverData.phone}/${todayS}/total_delivery_minutes`] = increment(deliveryMins);
 
-                // 3. إضافة الطلب لسجل اليوم الخاص بالكابتن (ليراه في التطبيق)
                 updates[`daily_ledgers/${driverData.phone}/${todayS}/${id}`] = { 
                     orderId: id, resName: order.resName, area: order.area, price: order.price, timestamp: Date.now() 
                 };
 
                 update(ref(db), updates);
-                
-                // 4. تحديث بصري فوري للعداد (دون كتابة إلى Firebase)
-                const statEl = document.getElementById('statOrdersCount');
-                if (statEl) {
-                    statEl.innerText = (parseInt(statEl.innerText || '0') + 1).toString();
-                }
                 
                 readyNotifiedOrders.delete(String(id));
                 activeOrders = activeOrders.filter(o => String(o.id) !== String(id));
