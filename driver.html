@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 11.0 (إصلاح المحفظة وتأمين الشفتات برمجياً مع السيرفر) ---
-        const CURRENT_APP_VERSION = "11.0";
+        // --- إصدار 12.0 (الإصلاح الجذري للمحفظة اللحظية والعمولات) ---
+        const CURRENT_APP_VERSION = "12.0";
         try {
             if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
                 localStorage.setItem('hut_app_version', CURRENT_APP_VERSION);
@@ -989,7 +989,7 @@
             }
         });
 
-        // ── المحفظة (الرقم الحقيقي من Firebase لا يمكن التلاعب به) ──
+        // ── المحفظة (تجمع الخزنة الباردة + ديون وعمولات اليوم اللحظية) ──
         onValue(ref(db, `ledgers/drivers/${driverData.phone}`), snap => {
             const l = snap.val() || { completed_orders: 0, debt: 0 };
             
@@ -997,11 +997,15 @@
             onValue(ref(db, `daily_ledgers/${driverData.phone}/${todayISO}`), dailySnap => {
                 const dailyData = dailySnap.val() || {};
                 const liveOrdersToday = Object.keys(dailyData).length;
+                let liveDebtToday = 0;
+                
+                Object.values(dailyData).forEach(d => {
+                    liveDebtToday += (parseFloat(d.comm) || 0);
+                });
                 
                 document.getElementById('statOrdersCount').innerText = (l.completed_orders || 0) + liveOrdersToday;
-            }, { onlyOnce: true });
-
-            document.getElementById('statDebt').innerHTML = `${l.debt || 0} <small class="fs-6">د.ع</small>`;
+                document.getElementById('statDebt').innerHTML = `${(parseFloat(l.debt) || 0) + liveDebtToday} <small class="fs-6">د.ع</small>`;
+            }); 
         });
 
         const todayStr = new Date().toISOString().split('T')[0];
@@ -1400,8 +1404,21 @@
                 updates[`daily_metrics/${driverData.phone}/${todayS}/completed_orders`] = increment(1);
                 updates[`daily_metrics/${driverData.phone}/${todayS}/total_delivery_minutes`] = increment(deliveryMins);
 
+                // ✨ الإصلاح: حساب ديون الكابتن اللحظية وإرسالها لـ daily_ledgers
+                let drvComm = 0;
+                let commStr = String(order.comm || '0');
+                let payType = String(order.payType || '');
+                if (!commStr.includes('شهري')) {
+                    if (commStr.includes('/')) {
+                        drvComm = parseFloat(commStr.split('/')[0]) || 0; // الكابتن هو الرقم الأول
+                    } else {
+                        let val = parseFloat(commStr) || 0;
+                        if (payType.includes("مناصفة")) drvComm = val / 2;
+                    }
+                }
+
                 updates[`daily_ledgers/${driverData.phone}/${todayS}/${id}`] = { 
-                    orderId: id, resName: order.resName, area: order.area, price: order.price, timestamp: Date.now() 
+                    orderId: id, resName: order.resName, area: order.area, price: order.price, comm: drvComm, timestamp: Date.now() 
                 };
 
                 update(ref(db), updates);
