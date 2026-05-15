@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 33.1 (تحديث مفتاح ImgBB) ---
-        const CURRENT_APP_VERSION = "33.1";
+        // --- إصدار 34.0 (التوافق الشامل مع المحرك المالي الجديد Firebase Ledgers) ---
+        const CURRENT_APP_VERSION = "34.0";
         const RES_VERSION_KEY = 'hut_res_app_version';
         try {
             if (localStorage.getItem(RES_VERSION_KEY) !== CURRENT_APP_VERSION) {
@@ -465,7 +465,6 @@
                         </div>
                     </div>
 
-                    <!-- ⚙️ قسم العمولة الديناميكية الجديد -->
                     <div class="mb-2">
                         <label class="form-label" style="text-align: right; color: var(--primary-blue-dark); font-size: 0.75rem;">نظام العمولة:</label>
                         <div class="commission-type-toggle mb-2" id="commissionTypeToggle">
@@ -485,7 +484,6 @@
                         <div id="commMonthlyFields" class="hidden-section">
                             <input type="text" id="regCommMonthlyAmount" class="custom-input" placeholder="مبلغ الاشتراك الشهري (د.ع)" autocomplete="off" inputmode="decimal" oninput="updateCommissionString()">
                         </div>
-                        <!-- الحقل المخفي الذي سيحمل القيمة النصية النهائية للعمولة -->
                         <input type="hidden" id="regCommFinal" value="">
                     </div>
 
@@ -793,7 +791,7 @@
     let liveActiveOrders = [];
 
     // --- دوال نظام العمولة الديناميكي ---
-    let currentCommissionType = 'fixed'; // fixed, split, monthly
+    let currentCommissionType = 'fixed'; 
 
     window.switchCommissionType = function(type) {
         currentCommissionType = type;
@@ -835,7 +833,6 @@
         document.getElementById('regCommFinal').value = finalValue;
     };
 
-    // --- دالة المطابقة الذكية للمناطق ---
     function matchAreaWithList(aiArea, priceListObj) {
         if (!aiArea || aiArea === "غير محددة") return null;
         const areas = Object.keys(priceListObj);
@@ -935,7 +932,6 @@
             btn.disabled = false;
         }
     };
-
 
     window.normalizeCustomerPhone = function(raw) {
         if (!raw) return { clean: '', changed: false };
@@ -1355,13 +1351,16 @@
         let passAttempt = document.getElementById('checkPassword').value.trim();
 
         if (!rawPhone) return alert("يرجى إدخال رقم الهاتف");
-        let phone = rawPhone.startsWith('0') ? rawPhone.substring(1) : rawPhone;
+        
+        // ✨ التحديث: توحيد رقم الهاتف ليتطابق مع Firebase
+        let phone = rawPhone.replace(/[^\d]/g, ''); 
+        if(phone.startsWith('0')) phone = phone.substring(1);
 
         if (isRegistering) {
             const regPassword = document.getElementById('regPassword').value.trim();
             const name = document.getElementById('regName').value.trim();
             const area = document.getElementById('regArea').value.trim();
-            const comm = document.getElementById('regCommFinal').value.trim(); // النص الجاهز
+            const comm = document.getElementById('regCommFinal').value.trim(); 
             const pay  = document.getElementById('regPay').value;
             const rawPriceListText = document.getElementById('regPriceList').value;
             
@@ -1413,7 +1412,10 @@
     window.checkWaitingStatus = function(isManual = false) {
         let rawPhone = document.getElementById('checkPhone').value.trim() || localStorage.getItem('hut_res_pending');
         if (!rawPhone) return;
-        let phone = rawPhone.startsWith('0') ? rawPhone.substring(1) : rawPhone;
+        
+        let phone = rawPhone.replace(/[^\d]/g, ''); 
+        if(phone.startsWith('0')) phone = phone.substring(1);
+        
         let pass  = document.getElementById('checkPassword').value.trim();
         if (!pass) {
             const savedPass = localStorage.getItem('hut_res_pending_pass');
@@ -1431,11 +1433,10 @@
                     regPhone = phone;
                     try { if (data.priceList) myCustomPriceList = JSON.parse(data.priceList); } catch(e) {}
                     
-                    // الاحتفاظ بالنص الأصلي للعمولة
                     const commRaw = data.comm || '0';
                     localStorage.setItem('hut_res_session', JSON.stringify({
                         phone, name: data.name, payType: data.payType || 'المطعم يدفع',
-                        comm: commRaw, // نص وليس رقم
+                        comm: commRaw, 
                         timestamp: Date.now(),
                         password: btoa(pass)
                     }));
@@ -1470,7 +1471,6 @@
             localStorage.removeItem('hut_res_pending'); regPhone = phone;
             try { if (data.priceList) myCustomPriceList = JSON.parse(data.priceList); } catch(e) {}
             
-            // الاحتفاظ بالنص الأصلي للعمولة
             const commRaw = data.comm || '0';
             localStorage.setItem('hut_res_session', JSON.stringify({
                 phone, name: data.name, payType: data.payType || 'المطعم يدفع',
@@ -1598,13 +1598,41 @@
             }
         });
 
+        // ✨ التحديث: دمج الخزنة مع اللحظي
         let safeResPhone = regPhone;
         if (!safeResPhone) { const s = localStorage.getItem('hut_res_session'); if (s) safeResPhone = JSON.parse(s).phone; }
+        
         if (safeResPhone) {
-            onValue(ref(db, `ledgers/restaurants/${safeResPhone}`), (snapshot) => {
+            let cleanPhone = safeResPhone.replace(/[^\d]/g, '');
+            if(cleanPhone.startsWith('0')) cleanPhone = cleanPhone.substring(1);
+
+            onValue(ref(db, `ledgers/restaurants/${cleanPhone}`), (snapshot) => {
                 const ledger = snapshot.val() || { completed_orders: 0, debt: 0 };
-                document.getElementById('statMonthOrders').innerText = ledger.completed_orders || 0;
-                document.getElementById('statUnpaid').innerText = ledger.debt || 0;
+                
+                let liveDebtToday = 0;
+                let liveOrdersToday = 0;
+                const todayISO = new Date().toISOString().split('T')[0];
+                
+                liveActiveOrders.forEach(o => {
+                   if ((o.status === 'completed' || o.status === 'مكتمل') && o.timestamp.includes(todayISO)) {
+                       liveOrdersToday++;
+                       const s = localStorage.getItem('hut_res_session');
+                       let commStr = s ? (JSON.parse(s).comm || '0') : '0';
+                       let payType = s ? (JSON.parse(s).payType || '') : '';
+                       
+                       let resComm = 0;
+                       if (!commStr.includes('شهري')) {
+                           let val = commStr.includes('/') ? parseFloat(commStr.split('/')[1]) : parseFloat(commStr);
+                           val = val || 0;
+                           resComm = payType.includes("مناصفة") ? (val / 2) : val;
+                       }
+                       liveDebtToday += resComm;
+                   }
+                });
+
+                document.getElementById('statMonthOrders').innerText = (ledger.completed_orders || 0) + liveOrdersToday;
+                document.getElementById('statUnpaid').innerText = (parseFloat(ledger.debt) || 0) + liveDebtToday;
+                
                 const s = localStorage.getItem('hut_res_session');
                 if (s) { document.getElementById('statPayType').innerText = (JSON.parse(s).payType || '').includes("مناصفة") ? "مناصفة" : "المطعم"; }
             });
@@ -1863,7 +1891,6 @@
         if (sessionStr) {
             const sData = JSON.parse(sessionStr); 
             if (!safeResPhone) safeResPhone = sData.phone;
-            // الاحتفاظ بنص العمولة كما هو
             safeComm = sData.comm || '0'; 
             safePayType = sData.payType || 'المطعم يدفع';
         }
