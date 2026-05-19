@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 35.0 (حل مشكلة العمى اللحظي وقراءة الديون الحية للمطاعم) ---
-        const CURRENT_APP_VERSION = "35.0";
+        // --- إصدار 36.0 (الترقية السحابية - Firebase Storage) ---
+        const CURRENT_APP_VERSION = "36.0";
         const RES_VERSION_KEY = 'hut_res_app_version';
         try {
             if (localStorage.getItem(RES_VERSION_KEY) !== CURRENT_APP_VERSION) {
@@ -706,12 +706,14 @@
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getDatabase, ref, onValue, update, set, get } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+    // ✨ [تحديث سحابي] استدعاء مكتبات الـ Storage
+    import { getStorage, ref as storageRef, uploadString, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
     if (typeof lucide !== 'undefined') lucide.createIcons();
 
     const API_URL   = "https://script.google.com/macros/s/AKfycbzKDBjgPxmt_iDCphkjB6EY-cnag_aqwxrdNDrY9uqBRbTZYsqGWl4TJn4pANS8OVYm/exec";
     const API_TOKEN = "HUT_SECURE_99";
-    const IMGBB_KEY = "5e229f808888d4c7f81471fcf582bf14"; 
+    // تم حذف مفتاح imgbb القديم للأبد
 
     const SECRET_PARTS = ["AIzaSyB", "KMRsl", "Ko5hg5m", "11gHy4Z", "dM7_efk", "tiDwxU"];
 
@@ -770,6 +772,7 @@
 
     const app = initializeApp(firebaseConfig);
     const db  = getDatabase(app);
+    const storage = getStorage(app); // ✨ تهيئة المخزن السحابي الجديد
     
     let currentResName   = "";
     let isRegistering    = false;
@@ -1352,7 +1355,6 @@
 
         if (!rawPhone) return alert("يرجى إدخال رقم الهاتف");
         
-        // ✨ التحديث: توحيد رقم الهاتف ليتطابق مع Firebase
         let phone = rawPhone.replace(/[^\d]/g, ''); 
         if(phone.startsWith('0')) phone = phone.substring(1);
 
@@ -1551,7 +1553,6 @@
             let newLiveOrders    = []; let todaySalesTotal  = 0;
             let todayArchiveHtml = ''; const todayISO       = new Date().toISOString().split('T')[0];
 
-            // تصفير العدادات اللحظية مع كل تحديث قادم من Firebase
             globalLiveDebt = 0;
             globalLiveCount = 0;
 
@@ -1565,7 +1566,6 @@
                         const priceVal = parseFloat(fbOrder.price) || 0;
                         todaySalesTotal += priceVal;
                         
-                        // ✨ الحل الجذري: حساب ديون المطعم هنا مباشرة من المصدر
                         globalLiveCount++;
                         let commStr = String(fbOrder.comm || '0');
                         let payType = String(fbOrder.payType || '');
@@ -1620,7 +1620,6 @@
                 lastArchiveHtml = todayArchiveHtml;
             }
             
-            // دمج وعرض الأرقام اللحظية مع الخزنة فوراً عند اكتمال أي طلب
             if (window.currentLedgerData) {
                 document.getElementById('statMonthOrders').innerText = (window.currentLedgerData.completed_orders || 0) + globalLiveCount;
                 document.getElementById('statUnpaid').innerText = (parseFloat(window.currentLedgerData.debt) || 0) + globalLiveDebt;
@@ -1636,9 +1635,8 @@
 
             onValue(ref(db, `ledgers/restaurants/${cleanPhone}`), (snapshot) => {
                 const ledger = snapshot.val() || { completed_orders: 0, debt: 0 };
-                window.currentLedgerData = ledger; // حفظ الخزنة الباردة في الذاكرة
+                window.currentLedgerData = ledger; 
                 
-                // دمج الخزنة مع اللحظي
                 document.getElementById('statMonthOrders').innerText = (ledger.completed_orders || 0) + globalLiveCount;
                 document.getElementById('statUnpaid').innerText = (parseFloat(ledger.debt) || 0) + globalLiveDebt;
                 
@@ -1827,23 +1825,30 @@
             
             showSuccessMessage(`<div style="background: var(--success); width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 8px; box-shadow: 0 4px 15px rgba(16,185,129,0.3);"><i data-lucide="check" size="24" color="white"></i></div><div class="fw-black" style="font-size: 1rem;">تم استلام الصورة! 🚀</div><div style="font-size: 0.75rem; opacity: 0.8; font-weight: 500; margin-top:4px;">تتم المعالجة بالخلفية وسيتم توجيهها للسائقين قريباً.</div>`);
             
+            // ✨ استدعاء الدالة المحدثة للرفع على Firebase
             processPhotoOrderBackgroundSafe(base64Content, currentRes);
         }
     };
 
+    // ✨ [التحديث الأهم] دالة معالجة الصورة باستخدام Firebase Storage السريع
     async function processPhotoOrderBackgroundSafe(base64Content, resName) {
         try {
-            const formData = new FormData(); formData.append("image", base64Content);
-            const uploadPromise = fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, { method: "POST", body: formData }).then(r => r.json()).catch(e => ({error: true}));
+            // 1. التخزين المباشر في حاوية جوجل كلاود (Firebase Storage)
+            const uniqueName = Date.now() + "_" + Math.floor(Math.random() * 1000) + ".jpg";
+            const imgRef = storageRef(storage, 'receipts/' + uniqueName);
+            const uploadPromise = uploadString(imgRef, base64Content, 'base64').then(snapshot => getDownloadURL(snapshot.ref));
+
+            // 2. تحليل الذكاء الاصطناعي في نفس الوقت (بشكل متوازٍ)
             const aiPromise = extractDataFromImageBg(base64Content);
 
             const results = await Promise.allSettled([uploadPromise, aiPromise]);
             const uploadResult = results[0]; 
             const aiResult = results[1];
 
+            // سحب الرابط الدائم للصورة
             let imageUrl = "";
-            if (uploadResult.status === 'fulfilled' && uploadResult.value && !uploadResult.value.error && uploadResult.value.data) { 
-                imageUrl = uploadResult.value.data.url; 
+            if (uploadResult.status === 'fulfilled' && uploadResult.value) { 
+                imageUrl = uploadResult.value; 
             }
 
             let finalPrice = 0;
@@ -1851,6 +1856,7 @@
             let finalArea = "تحديد ذكي (انظر الوصل)"; 
             let finalDetails = "مسح ذكي - وصل مصور";
 
+            // معالجة بيانات الذكاء الاصطناعي
             if (aiResult.status === 'fulfilled' && !aiResult.value.error) {
                 if (aiResult.value.price) { 
                     let cleanStr = String(aiResult.value.price).replace(/\D/g, '');
