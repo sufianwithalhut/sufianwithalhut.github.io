@@ -2,7 +2,7 @@
 <html lang="ar" dir="rtl">
 <head>
 <script>
-const V="19.0",VK="hut_v19";
+const V="20.0",VK="hut_v20";
 try{if(localStorage.getItem(VK)!==V){localStorage.setItem(VK,V);if("caches"in window)caches.keys().then(n=>n.forEach(k=>caches.delete(k)));}}catch(e){}
 </script>
 <meta charset="UTF-8">
@@ -634,12 +634,29 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
 .dm{width:31px;height:31px;border-radius:50%;border:2.5px solid #fff;
   display:flex;align-items:center;justify-content:center;font-size:13px;box-shadow:var(--sh-xs);}
 .dm-on{background:linear-gradient(135deg,var(--sky),var(--sky-d));color:#fff;}
-.drv-marker-wrap{display:flex;flex-direction:column;align-items:center;}
-.dm-label{margin-top:2px;background:rgba(10,22,40,.88);color:#fff;
-  font-size:.6rem;font-weight:800;padding:1px 6px;border-radius:8px;
-  white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.25);
-  font-family:'Cairo',sans-serif;max-width:90px;overflow:hidden;
-  text-overflow:ellipsis;pointer-events:none;}
+.drv-marker-wrap{
+  display:flex;flex-direction:column;align-items:center;
+  width:80px;overflow:visible!important;}
+.drv-marker-wrap .dm{flex-shrink:0;}
+.dm-label{
+  margin-top:3px;
+  background:rgba(10,22,40,.92);
+  color:#fff;
+  font-size:9px;
+  font-weight:800;
+  padding:2px 7px;
+  border-radius:10px;
+  white-space:nowrap;
+  box-shadow:0 2px 8px rgba(0,0,0,.35);
+  font-family:'Cairo',sans-serif;
+  max-width:76px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  pointer-events:none;
+  display:block;
+  text-align:center;
+  line-height:1.4;
+}
 .rp{width:21px;height:21px;background:var(--fire);border-radius:50%;
   border:2px solid #fff;color:#fff;display:flex;align-items:center;
   justify-content:center;font-size:8px;animation:rpp 1.5s infinite;}
@@ -809,7 +826,7 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
   <div class="auth-box">
     <div class="auth-mark">🏢</div>
     <div class="auth-h">مكتب سفيان</div>
-    <div class="auth-s">الإدارة العليا — Fortress V19.0</div>
+    <div class="auth-s">الإدارة العليا — Fortress V20.0</div>
     <input type="password" id="mPW" class="auth-in" placeholder="••••••••" autocomplete="off" onkeypress="if(event.key==='Enter')doAuth()">
     <button class="auth-btn" id="authB" onclick="doAuth()">دخول لوحة التحكم</button>
   </div>
@@ -819,7 +836,7 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
   <aside class="sidebar">
     <div class="sidebar-head">
       <div class="sidebar-logo">🏢</div>
-      <div><div class="sidebar-name">مكتب سفيان</div><div class="sidebar-ver">V19.0 • كركوك</div></div>
+      <div><div class="sidebar-name">مكتب سفيان</div><div class="sidebar-ver">V20.0 • كركوك</div></div>
     </div>
     <span class="sidebar-sec">الرصد والتحليل</span>
     <button class="nb on" id="nb-live" onclick="goTab('live',this)">
@@ -1030,7 +1047,14 @@ const db=firebase.database();
 function esc(s){if(s==null)return"";const d=document.createElement("div");d.textContent=String(s);return d.innerHTML;}
 function ej(s){return String(s??'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');}
 function nP(p){if(!p)return"";let s=String(p).replace(/[^\d]/g,"");if(s.startsWith("964"))s=s.slice(3);return s.replace(/^0+/,"");}
-function dN(p){return gD?.drivers.find(x=>nP(x[D.PHONE])===nP(p))?.[D.NAME]||p;}
+function dN(p){
+  if(!p)return"غير محدد";
+  const found=gD?.drivers.find(x=>nP(x[D.PHONE])===nP(p));
+  if(found&&found[D.NAME])return found[D.NAME];
+  /* fallback: الهاتف مختصر */
+  const ph=String(p).replace(/[^0-9]/g,"");
+  return ph.length>4?"0"+ph.slice(-4):ph;
+}
 function toast(m,t="s"){
   const c=document.getElementById("toasts"),el=document.createElement("div");
   el.className=`ti t${t}`;
@@ -1128,6 +1152,11 @@ async function loadData(){
     data.drivers.forEach(d=>{const ov=ovr.d[d[D.PHONE]];if(ov&&now-ov.ts<120000)d[D.STATUS]=ov.status;else if(ov)delete ovr.d[d[D.PHONE]];});
     data.restaurants.forEach(r=>{const ov=ovr.r[r[R.PHONE]];if(ov&&now-ov.ts<120000)r[R.STATUS]=ov.status;else if(ov)delete ovr.r[r[R.PHONE]];});
     gD=data;
+    /* تحديث أسماء الكباتن على الخريطة بعد وصول gD */
+    Object.keys(drvMk).forEach(phone=>{
+      const nm=esc(dN(phone));
+      if(drvMk[phone]._dnm!==nm){drvMk[phone].setIcon(makeDrvIcon(nm));drvMk[phone]._dnm=nm;}
+    });
     if(document.getElementById("arcRS").options.length===1){
       data.restaurants.slice(1).forEach(r=>document.getElementById("arcRS").innerHTML+=`<option value="${esc(r[R.NAME])}">${esc(r[R.NAME])}</option>`);
       data.drivers.slice(1).forEach(d=>document.getElementById("arcDS").innerHTML+=`<option value="${esc(String(d[D.PHONE]))}">${esc(d[D.NAME])}</option>`);
@@ -1214,12 +1243,14 @@ function setupFB(){
         const dnm=esc(dN(phone));
         if(drvMk[phone]){
           drvMk[phone].setLatLng([parseFloat(d.lat),parseFloat(d.lng)]);
-          /* حدّث الاسم إن تغيّر */
-          if(drvMk[phone]._dnm!==dnm){drvMk[phone].setIcon(makeDrvIcon(dnm));drvMk[phone]._dnm=dnm;}
+          /* حدّث الأيقونة دائماً لضمان ظهور الاسم */
+          drvMk[phone].setIcon(makeDrvIcon(dnm));
+          drvMk[phone]._dnm=dnm;
         }else if(typeof map!=="undefined"){
           const m=L.marker([parseFloat(d.lat),parseFloat(d.lng)],{icon:makeDrvIcon(dnm)});
           m._dnm=dnm;
-          drvCluster.addLayer(m);drvMk[phone]=m;
+          drvCluster.addLayer(m);
+          drvMk[phone]=m;
         }
       }else if(drvMk[phone]){
         if(typeof drvCluster!=="undefined")drvCluster.removeLayer(drvMk[phone]);
@@ -1653,10 +1684,13 @@ window.svEdit=async function(){
 let map,heatL,drvCluster,trkPoly=null;
 /* أيقونة الكابتن مع اسمه الدائم */
 function makeDrvIcon(name){
+  /* iconSize كبير ليتسع للأيقونة + الاسم تحتها
+     iconAnchor = منتصف الأيقونة (ليس منتصف الـ div الكلي) */
   return L.divIcon({
     className:"drv-marker-wrap",
-    html:`<div class="dm dm-on">🛵</div><div class="dm-label">${name}</div>`,
-    iconSize:[31,31],iconAnchor:[15,15]
+    html:`<div class="dm dm-on">🛵</div><div class="dm-label">${name||"?"}</div>`,
+    iconSize:[80,52],
+    iconAnchor:[40,16]
   });
 }
 function initMap(){
@@ -1664,11 +1698,8 @@ function initMap(){
   L.control.zoom({position:"bottomright"}).addTo(map);
   L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",{maxZoom:19,subdomains:"abcd"}).addTo(map);
   heatL=L.heatLayer([],{radius:28,blur:18,maxZoom:14,gradient:{0.3:"#fed7aa",0.6:"#fb923c",0.85:"#f97316",1.0:"#ea580c"}}).addTo(map);
-  drvCluster=L.markerClusterGroup({
-    iconCreateFunction:c=>L.divIcon({html:`<div style="background:linear-gradient(135deg,var(--sky),var(--sky-d));color:#fff;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:.8rem;border:2.5px solid #fff;box-shadow:0 4px 12px rgba(37,99,235,.4)">${c.getChildCount()}</div>`,className:"",iconSize:L.point(34,34)}),
-    maxClusterRadius:35,spiderfyOnMaxZoom:true,showCoverageOnHover:false,disableClusteringAtZoom:15
-  });
-  map.addLayer(drvCluster);
+  /* طبقة عادية بدون تجميع — يظهر اسم كل كابتن دائماً */
+  drvCluster=L.layerGroup().addTo(map);
   setTimeout(()=>map.invalidateSize(),400);
 }
 window.togFS=function(){
