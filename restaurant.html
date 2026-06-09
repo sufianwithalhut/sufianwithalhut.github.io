@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 37.0 (الترقية السحابية + الأرشيف الذكي والبحث) ---
-        const CURRENT_APP_VERSION = "37.0.Sufyan-SmartArchive";
+        // --- إصدار 37.2 (مُنقح - أرشيف ذكي شامل خالي من التكرار) ---
+        const CURRENT_APP_VERSION = "37.2.Sufyan-Flawless";
         const RES_VERSION_KEY = 'hut_res_app_version';
         try {
             if (localStorage.getItem(RES_VERSION_KEY) !== CURRENT_APP_VERSION) {
@@ -422,7 +422,7 @@
         .success-toast { background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(10px); color: white; border-radius: 20px; padding: 20px; margin-top: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 8px; animation: slideUp 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
         
         /* -------------------------------------
-           شاشة المصادقة والانتظار (تم تطبيق التعديلات الجذرية)
+           شاشة المصادقة والانتظار 
            ------------------------------------- */
         .login-wrapper { 
             min-height: 100dvh; 
@@ -768,7 +768,7 @@
                         <div class="mb-3 px-1">
                             <div class="position-relative">
                                 <i data-lucide="search" class="position-absolute" style="right: 12px; top: 50%; transform: translateY(-50%); color: #94a3b8;" size="16"></i>
-                                <input type="text" id="searchArchiveInput" class="custom-input shadow-sm" style="padding-right: 38px; border-radius: 14px; background: white;" placeholder="بحث برقم الهاتف، المنطقة، أو رقم الطلب..." onkeyup="filterArchiveOrders()">
+                                <input type="text" id="searchArchiveInput" class="custom-input shadow-sm" style="padding-right: 38px; border-radius: 14px; background: white;" placeholder="بحث بالكابتن، المنطقة، رقم الزبون..." onkeyup="filterArchiveOrders()">
                             </div>
                         </div>
 
@@ -788,7 +788,6 @@
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getDatabase, ref, onValue, update, set, get } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
-    // ✨ [تحديث سحابي] استدعاء مكتبات الـ Storage
     import { getStorage, ref as storageRef, uploadString, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
     if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -853,7 +852,7 @@
 
     const app = initializeApp(firebaseConfig);
     const db  = getDatabase(app);
-    const storage = getStorage(app); // ✨ تهيئة المخزن السحابي
+    const storage = getStorage(app); 
     
     let currentResName   = "";
     let isRegistering    = false;
@@ -874,7 +873,6 @@
     const BLACKLIST_TTL_MS  = 15000;
     let liveActiveOrders = [];
 
-    // --- دوال نظام العمولة الديناميكي ---
     let currentCommissionType = 'fixed'; 
 
     window.switchCommissionType = function(type) {
@@ -1443,7 +1441,6 @@
         window.saveDraft();
     };
 
-    // --- الدخول وتسجيل الحساب ---
     window.authAction = function() {
         let rawPhone = document.getElementById('checkPhone').value.trim();
         let passAttempt = document.getElementById('checkPassword').value.trim();
@@ -1694,28 +1691,38 @@
                         globalLiveDebt += resComm;
 
                         const orderTime = new Date(fbOrder.timestamp).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
-                        let dName = "مكتمل";
+                        let dName = "غير معروف";
+                        let dPhone = fbOrder.driverPhone || "";
+                        
                         if (globalDriversInfo.length > 0) {
                             const dInfo = globalDriversInfo.find(d => String(d[2]) === String(fbOrder.driverPhone));
-                            if (dInfo) dName = dInfo[1];
+                            if (dInfo) {
+                                dName = dInfo[1];
+                            }
                         }
                         
+                        const isValidPhone = dPhone && !["system_routing", "pending_driver", "manual_pending"].includes(dPhone);
                         const orderArea = fbOrder.area || "غير محددة";
                         const orderDetails = fbOrder.details || "لا توجد تفاصيل إضافية";
 
                         todayArchiveHtml += `
-                        <div class="archive-item searchable-archive-item" data-search="${fbOrder.id} ${orderArea} ${orderDetails}">
+                        <div class="archive-item searchable-archive-item" data-search="${fbOrder.id} ${orderArea} ${orderDetails} ${dName} ${dPhone}">
                             <div class="d-flex justify-content-between align-items-start w-100">
                                 <div>
-                                    <span class="fw-black text-dark" style="font-size: 0.9rem;">#${fbOrder.id}</span>
-                                    <div class="small text-muted fw-bold mt-1" style="font-size: 0.7rem;"><i data-lucide="bike" size="12"></i> الكابتن: ${dName}</div>
+                                    <span class="fw-black text-dark" style="font-size: 0.95rem;">#${fbOrder.id}</span>
                                 </div>
                                 <div class="text-end">
-                                    <span class="fw-black text-success" style="font-size: 1rem;">${priceVal} <small>د.ع</small></span>
+                                    <span class="fw-black text-success" style="font-size: 1.05rem;">${priceVal} <small>د.ع</small></span>
                                     <div class="small text-muted mt-1" style="font-size: 0.7rem;"><i data-lucide="clock" size="10"></i> ${orderTime}</div>
                                 </div>
                             </div>
                             <div class="archive-details-box w-100 text-start" dir="rtl">
+                                <div class="d-flex justify-content-between align-items-center mb-2 pb-2" style="border-bottom: 1px dashed rgba(15,23,42,0.1);">
+                                    <div class="fw-bold text-dark">
+                                        <i data-lucide="bike" size="12" style="color: var(--success);"></i> الكابتن: <span class="fw-black">${dName}</span>
+                                    </div>
+                                    ${isValidPhone ? `<a href="tel:${dPhone}" class="text-decoration-none d-flex align-items-center gap-1" style="background: #f0fdf4; color: #16a34a; padding: 4px 10px; border-radius: 8px; font-weight: 800; font-size: 0.75rem;"><i data-lucide="phone" size="12"></i> ${dPhone}</a>` : ''}
+                                </div>
                                 <div class="mb-2 fw-bold text-dark"><i data-lucide="map-pin" size="12" style="color: var(--accent);"></i> المنطقة: <span class="fw-normal">${orderArea}</span></div>
                                 <div class="fw-bold text-dark"><i data-lucide="info" size="12" style="color: var(--primary-blue);"></i> التفاصيل: <span class="fw-normal" style="user-select: text;">${orderDetails}</span></div>
                             </div>
@@ -1745,7 +1752,7 @@
             if (lastArchiveHtml !== todayArchiveHtml) {
                 document.getElementById('todayArchiveItems').innerHTML = todayArchiveHtml || `<div class="text-center text-muted fw-bold py-4 small" style="font-size:0.8rem; background: rgba(255,255,255,0.4); border-radius: 20px;">لم تكتمل أي طلبات اليوم بعد.</div>`;
                 lastArchiveHtml = todayArchiveHtml;
-                if (typeof lucide !== 'undefined') lucide.createIcons(); // تحديث الأيقونات للبطاقات الجديدة
+                if (typeof lucide !== 'undefined') lucide.createIcons();
             }
             
             if (window.currentLedgerData) {
@@ -1924,7 +1931,6 @@
         }
     }
 
-    // ⚡ دالة الإرسال لتدعم الإرسال السريع واليدوي
     document.getElementById('orderForm').onsubmit = function(e) {
         e.preventDefault();
 
@@ -1965,7 +1971,6 @@
                 const extra = document.getElementById('customerDetails').value.trim();
                 finalDetails = `الهاتف: ${custPhone} | ${extra}`;
             } else {
-                // ⚡ وضع الإرسال السريع: لا يحتاج سعر أو تفاصيل
                 if (finalArea === "أخرى") {
                     finalPrice = parseFloat(document.getElementById('customAreaPrice').value.trim()) || 0;
                 } else {
@@ -1987,7 +1992,6 @@
         }
     };
 
-    // ✨ [التحديث السحابي] استخدام Firebase Storage بدلاً من imgBB
     async function processPhotoOrderBackgroundSafe(base64Content, resName) {
         try {
             const uniqueName = Date.now() + "_" + Math.floor(Math.random() * 1000) + ".jpg";
