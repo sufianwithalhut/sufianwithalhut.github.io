@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 37.2 (مُنقح - أرشيف ذكي شامل خالي من التكرار) ---
-        const CURRENT_APP_VERSION = "37.2.Sufyan-Flawless";
+        // --- إصدار 37.3 (مُنقح - دمج نظام الحماية السحابية والتصاريح) ---
+        const CURRENT_APP_VERSION = "37.3.Sufyan-Secure";
         const RES_VERSION_KEY = 'hut_res_app_version';
         try {
             if (localStorage.getItem(RES_VERSION_KEY) !== CURRENT_APP_VERSION) {
@@ -789,6 +789,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getDatabase, ref, onValue, update, set, get } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
     import { getStorage, ref as storageRef, uploadString, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
+    import { getAuth, signInWithCustomToken, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
     if (typeof lucide !== 'undefined') lucide.createIcons();
 
@@ -853,6 +854,7 @@
     const app = initializeApp(firebaseConfig);
     const db  = getDatabase(app);
     const storage = getStorage(app); 
+    const auth = getAuth(app);
     
     let currentResName   = "";
     let isRegistering    = false;
@@ -860,7 +862,7 @@
     let base64Receipt    = null; 
     let myCustomPriceList= {};
     let waitingPollingTimer = null; 
-    let globalDriversInfo   = []; 
+    let globalDriversInfo    = []; 
     
     let pickerMap;
     let regLat = 35.468; 
@@ -1339,7 +1341,11 @@
 
     window.logout = function() {
         if (confirm("هل تريد تسجيل الخروج؟ سيتم مسح الذاكرة المؤقتة.")) {
-            localStorage.clear(); sessionStorage.clear(); location.reload();
+            signOut(auth).then(() => { 
+                localStorage.clear(); sessionStorage.clear(); location.reload();
+            }).catch(() => {
+                localStorage.clear(); sessionStorage.clear(); location.reload();
+            });
         }
     };
 
@@ -1550,6 +1556,12 @@
                         password: btoa(pass)
                     }));
                     
+                    // --- إضافة الحماية السحابية ---
+                    if (data.firebase_token) {
+                        signInWithCustomToken(auth, data.firebase_token).catch(e => console.error("Firebase Auth Error:", e));
+                    }
+                    // -----------------------------
+
                     const wAudio = document.getElementById('welcomeSound');
                     if (wAudio) { wAudio.currentTime = 0; wAudio.play().catch(() => {}); }
                     document.getElementById('waitingBox').classList.add('hidden-section');
@@ -1576,6 +1588,14 @@
         }
 
         if (data.status === "active" || data.status === "inactive") {
+            // --- إضافة الحماية السحابية ---
+            if (data.firebase_token) {
+                signInWithCustomToken(auth, data.firebase_token)
+                    .then(() => console.log("✅ تم تسجيل الدخول لفايربيس بأمان"))
+                    .catch(e => console.error("❌ Firebase Auth Error:", e));
+            }
+            // -----------------------------
+
             currentResName = data.name; localStorage.setItem('hut_res_phone', phone);
             localStorage.removeItem('hut_res_pending'); regPhone = phone;
             try { if (data.priceList) myCustomPriceList = JSON.parse(data.priceList); } catch(e) {}
@@ -2097,4 +2117,4 @@
     }
 </script>
 </body>
-</html>​
+</html>
