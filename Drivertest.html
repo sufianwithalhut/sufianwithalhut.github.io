@@ -350,6 +350,23 @@ window.__SND={alert:"UklGRvaoAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YdKoAAA
     const app = initializeApp(firebaseConfig);
     const db  = getDatabase(app);
 
+    /* Android Native Bridge */
+    window.__nativeLocation = function(lat, lng) {
+        lastSentLat = lat; lastSentLng = lng;
+        if (driverData) { driverData.currentLat = lat; driverData.currentLng = lng; }
+        if (isOnline) updateFirebaseLocationStatus('active');
+        document.getElementById('permissionOverlay').classList.add('hidden-section');
+    };
+    const _origToggle2 = window.toggleOnlineStatus;
+    window.toggleOnlineStatus = async function() {
+        await _origToggle2.apply(this, arguments);
+        const on = document.getElementById('onlineToggle')?.checked;
+        localStorage.setItem('was_online', on ? 'true' : 'false');
+        if (on) window.AndroidRadar?.startLocationService?.();
+        else window.AndroidRadar?.stopLocationService?.();
+    };
+
+
     /* ══ تهيئة أصوات Base64 ══ */
     (function(){
         const m={alertSound:'alert',doubleOrderSound:'double',cancelSound:'cancel',welcomeSound:'welcome',readySound:'ready'};
