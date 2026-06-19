@@ -14,6 +14,7 @@ try{if(localStorage.getItem(VK)!==V){localStorage.setItem(VK,V);if("caches"in wi
 <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAo1rmqUzieYZU3RIwXOAN87GkpNrp-_Hc&libraries=places"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -1031,6 +1032,29 @@ let staffSessions={},staffLog=[],staffRoster=[],_stInit=false,stEditMode=false,_
 
 try{firebase.initializeApp({apiKey:"AIzaSyAo1rmqUzieYZU3RIwXOAN87GkpNrp-_Hc",authDomain:"sufyan-delivery.firebaseapp.com",databaseURL:"https://sufyan-delivery-default-rtdb.europe-west1.firebasedatabase.app",projectId:"sufyan-delivery",storageBucket:"sufyan-delivery.firebasestorage.app",messagingSenderId:"941542380637",appId:"1:941542380637:web:9623fa6e627817ffeba9b4"});}catch(e){}
 const db=firebase.database();
+const auth=firebase.auth();
+
+/* ════ الحماية السحابية: استهلاك توكن الإدارة وتجديده ════ */
+let _adminTokenTimer=null;
+async function consumeAdminToken(tok,pass){
+  if(!tok){console.warn("⚠️ لم يصل firebase_token من السكربت — تحقق من مفاتيح الخدمة في Script Properties.");return;}
+  try{
+    await auth.signInWithCustomToken(tok);
+    scheduleAdminTokenRefresh(pass);
+  }catch(e){console.error("Firebase Auth (admin):",e);}
+}
+function scheduleAdminTokenRefresh(pass){
+  if(_adminTokenTimer)clearTimeout(_adminTokenTimer);
+  // التوكن صالح ساعة؛ نجدّده كل 50 دقيقة بطلب توكن جديد من السكربت
+  _adminTokenTimer=setTimeout(async()=>{
+    try{
+      const r=await fetch(API,{method:"POST",body:JSON.stringify({action:"VERIFY_MASTER_PASS",pass,token:TOK})});
+      const d=await r.json();
+      if(d&&d.success&&d.firebase_token){await auth.signInWithCustomToken(d.firebase_token);}
+      scheduleAdminTokenRefresh(pass);
+    }catch(e){console.error("تعذّر تجديد توكن الإدارة:",e);scheduleAdminTokenRefresh(pass);}
+  },50*60*1000);
+}
 
 function esc(s){if(s==null)return"";const d=document.createElement("div");d.textContent=String(s);return d.innerHTML;}
 function ej(s){return String(s??'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');}
@@ -1102,6 +1126,7 @@ window.doAuth=async function(){
     const d=await r.json();
     if(d.success){
       sessionStorage.setItem("hut_v17",MP);
+      await consumeAdminToken(d.firebase_token,pass);
       document.getElementById("auth").style.display="none";
       document.getElementById("app").classList.remove("dn");
       const a=document.getElementById("snd");
@@ -1982,6 +2007,8 @@ window.sendBC=function(type){
 };
 window.doLogout=function(){
   if(!confirm("تأكيد تسجيل الخروج؟"))return;
+  if(_adminTokenTimer)clearTimeout(_adminTokenTimer);
+  try{auth.signOut();}catch(e){}
   fbL.forEach(({ref,cb})=>ref.off("value",cb));fbL=[];
   stopStaffIdleTimer();
   gMap=null;gMarker=null;gAutoComplete=null;
