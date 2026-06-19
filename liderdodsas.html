@@ -6,8 +6,10 @@
 <title>سفيان — لوحة الموظفين</title>
 <meta name="theme-color" content="#0a1628">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<!-- مكتبات فايربيس (شاملة مكتبة Auth للحماية السحابية) -->
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 <!-- مكتبة الخرائط -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -259,6 +261,28 @@ let isMapOpen = false;
 /* Firebase */
 try{firebase.initializeApp({apiKey:"AIzaSyAo1rmqUzieYZU3RIwXOAN87GkpNrp-_Hc",authDomain:"sufyan-delivery.firebaseapp.com",databaseURL:"https://sufyan-delivery-default-rtdb.europe-west1.firebasedatabase.app",projectId:"sufyan-delivery",storageBucket:"sufyan-delivery.firebasestorage.app",messagingSenderId:"941542380637",appId:"1:941542380637:web:9623fa6e627817ffeba9b4"});}catch(e){}
 const db=firebase.database();
+const auth=firebase.auth();
+
+/* ════ الحماية السحابية: استهلاك توكن الموظف وتجديده ════ */
+let _staffTokenTimer=null;
+async function consumeStaffToken(tok,phone,pass){
+  if(!tok){console.warn("⚠️ لم يصل firebase_token من السكربت — تحقق من مفاتيح الخدمة.");return;}
+  try{
+    await auth.signInWithCustomToken(tok);
+    scheduleStaffTokenRefresh(phone,pass);
+  }catch(e){console.error("Firebase Auth (staff):",e);}
+}
+function scheduleStaffTokenRefresh(phone,pass){
+  if(_staffTokenTimer)clearTimeout(_staffTokenTimer);
+  _staffTokenTimer=setTimeout(async()=>{
+    try{
+      const d=await apiGet({action:"STAFF_LOGIN",phone,password:pass});
+      if(d&&d.success&&d.firebase_token){await auth.signInWithCustomToken(d.firebase_token);}
+      scheduleStaffTokenRefresh(phone,pass);
+    }catch(e){console.error("تعذّر تجديد توكن الموظف:",e);scheduleStaffTokenRefresh(phone,pass);}
+  },50*60*1000);
+}
+
 
 /* ════ UTILS ════ */
 function esc(s){if(s==null)return"";const d=document.createElement("div");d.textContent=String(s);return d.innerHTML;}
@@ -279,7 +303,16 @@ async function apiGet(params){
 /* ════ AUTH ════ */
 window.addEventListener("DOMContentLoaded",()=>{
   const saved=sessionStorage.getItem("staff_session");
-  if(saved){try{const s=JSON.parse(saved);STOKEN=s.token;EMP_NAME=s.name;EMP_PHONE=s.phone;enterApp();}catch(e){}}
+  if(saved){try{
+    const s=JSON.parse(saved);STOKEN=s.token;EMP_NAME=s.name;EMP_PHONE=s.phone;
+    enterApp();
+    // استعادة الحماية السحابية: نطلب توكناً جديداً بكلمة المرور المحفوظة
+    if(s.p){const pass=decodeURIComponent(escape(atob(s.p)));
+      apiGet({action:"STAFF_LOGIN",phone:EMP_PHONE,password:pass}).then(d=>{
+        if(d&&d.success&&d.firebase_token)consumeStaffToken(d.firebase_token,EMP_PHONE,pass);
+      }).catch(()=>{});
+    }
+  }catch(e){}}
 });
 window.doLogin=async function(){
   const phone=document.getElementById("sPhone").value.trim();
@@ -290,7 +323,8 @@ window.doLogin=async function(){
     const d=await apiGet({action:"STAFF_LOGIN",phone,password:pass});
     if(d.success){
       STOKEN=d.token;EMP_NAME=d.name;EMP_PHONE=d.phone;
-      sessionStorage.setItem("staff_session",JSON.stringify({token:STOKEN,name:EMP_NAME,phone:EMP_PHONE}));
+      sessionStorage.setItem("staff_session",JSON.stringify({token:STOKEN,name:EMP_NAME,phone:EMP_PHONE,p:btoa(unescape(encodeURIComponent(pass)))}));
+      await consumeStaffToken(d.firebase_token,EMP_PHONE,pass);
       enterApp();
     }else toast(d.msg||"فشل الدخول","e");
   }catch(e){toast("فشل الاتصال بالخادم","e");}
@@ -306,6 +340,8 @@ function enterApp(){
 window.doLogout=async function(){
   if(!confirm("تأكيد تسجيل الخروج؟"))return;
   try{await apiGet({action:"STAFF_LOGOUT",stoken:STOKEN});}catch(e){}
+  if(_staffTokenTimer)clearTimeout(_staffTokenTimer);
+  try{await auth.signOut();}catch(e){}
   fbL.forEach(({ref,cb})=>ref.off("value",cb));fbL=[];
   sessionStorage.clear();STOKEN="";location.reload();
 };
@@ -434,10 +470,12 @@ function setupFB(){
   };
   lRef.on("value",lCb);fbL.push({ref:lRef,cb:lCb});
   
+  /* Ledgers (for driver tier in assign dropdown) */
   const ledRef=db.ref("ledgers/drivers");
   const ledCb=snap=>{liveLed.drivers=snap.val()||{};};
   ledRef.on("value",ledCb);fbL.push({ref:ledRef,cb:ledCb});
   
+  /* نجلب أسماء الكباتن عبر STAFF_DRIVERS الآمنة */
   loadDriverNames();
 }
 async function loadDriverNames(){
