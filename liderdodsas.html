@@ -8,8 +8,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<!-- مكتبة الخرائط -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+
 <style>
 :root{
   --ink:#0a1628;--ink3:#4a6fa5;--ink4:#8bafd4;
@@ -57,11 +60,11 @@ button,input,select{font-family:'Cairo',sans-serif;}
 .s-hdr{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.95);backdrop-filter:blur(20px);
   border-bottom:1px solid var(--line);padding:12px 16px;padding-top:max(12px,env(safe-area-inset-top));
   display:flex;align-items:center;justify-content:space-between;gap:10px;}
-.s-hl{display:flex;align-items:center;gap:10px;}
-.s-logo{width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,var(--sky),var(--sky-d));
-  display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:var(--sh-sky);}
-.s-nm{font-size:.92rem;font-weight:900;}
-.s-role{font-size:.62rem;font-weight:700;color:var(--ink4);}
+.s-hl{display:flex;align-items:center;gap:12px;}
+.s-logo{width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,var(--sky),var(--sky-d));
+  display:flex;align-items:center;justify-content:center;font-size:22px;box-shadow:var(--sh-sky);}
+.s-nm{font-size:1.05rem;font-weight:900;}
+.s-role{font-size:.7rem;font-weight:800;color:var(--jade);margin-top:2px;}
 .s-hr{display:flex;align-items:center;gap:8px;}
 .s-clk{background:var(--sky-l);color:var(--sky-d);padding:6px 12px;border-radius:var(--rf);font-weight:900;font-size:.82rem;}
 .s-out{background:var(--rose-l);color:var(--rose);border:1px solid #fecaca;border-radius:11px;
@@ -69,7 +72,8 @@ button,input,select{font-family:'Cairo',sans-serif;}
 .s-out:active{transform:scale(.94);}
 
 .wrap{max-width:1200px;margin:0 auto;padding:14px;}
-.rt{font-size:.95rem;font-weight:900;display:flex;align-items:center;gap:7px;margin-bottom:12px;}
+.rt{font-size:.95rem;font-weight:900;display:flex;align-items:center;justify-content:space-between;gap:7px;margin-bottom:12px;}
+.rt-title{display:flex;align-items:center;gap:7px;}
 .rt-dot{width:8px;height:8px;border-radius:50%;background:var(--fire);animation:db 1.5s ease-in-out infinite;}
 @keyframes db{0%,100%{transform:scale(1)}50%{transform:scale(1.6)}}
 
@@ -84,6 +88,16 @@ button,input,select{font-family:'Cairo',sans-serif;}
 .kc-v{font-size:1.5rem;font-weight:900;line-height:1;}
 .kc-l{font-size:.66rem;font-weight:700;color:var(--ink4);margin-top:3px;}
 
+/* 🗺️ MAP STYLES */
+.map-btn{background:var(--base);border:1px solid var(--line);padding:6px 12px;border-radius:10px;font-size:0.75rem;font-weight:800;color:var(--sky-d);cursor:pointer;box-shadow:var(--sh-xs);display:flex;align-items:center;gap:5px;transition:0.2s;}
+.map-btn:active{transform:scale(0.95);}
+#liveMapContainer{width:100%;height:0;opacity:0;border-radius:20px;overflow:hidden;transition:all 0.4s ease;margin-bottom:0;}
+#liveMapContainer.open{height:350px;opacity:1;margin-bottom:16px;border:1px solid var(--line);box-shadow:var(--sh-sm);}
+.custom-div-icon{background:none;border:none;}
+.drv-marker{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:14px;border:3px solid #fff;box-shadow:0 4px 10px rgba(0,0,0,0.25);transition:0.3s;}
+.drv-marker.free{background:var(--jade);}
+.drv-marker.busy{background:var(--fire);}
+
 .fbar{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:14px;flex-wrap:wrap;}
 .fbar::-webkit-scrollbar{display:none;}
 .fp{flex-shrink:0;padding:7px 13px;border-radius:var(--rf);font-size:.76rem;font-weight:800;color:var(--ink3);
@@ -97,8 +111,9 @@ button,input,select{font-family:'Cairo',sans-serif;}
 .fp.fo{color:var(--fire);}.fp.fo.on{background:linear-gradient(135deg,var(--fire),var(--fire-d));}
 .fp.fa{color:var(--amber);}.fp.fa.on{background:linear-gradient(135deg,var(--amber),#d97706);}
 
-.og{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;}
-.oc{background:var(--base);border-radius:18px;padding:13px;border:1.5px solid var(--line2);
+/* الكروت تم توسيعها وتطوير السائقين بداخلها */
+.og{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;}
+.oc{background:var(--base);border-radius:18px;padding:15px;border:1.5px solid var(--line2);
   box-shadow:var(--sh-xs);position:relative;overflow:hidden;transition:all .2s;}
 .oc::after{content:'';position:absolute;right:0;top:10px;bottom:10px;width:3px;border-radius:99px;}
 .op::after{background:var(--rose);}.or::after{background:var(--amber);}.oa::after{background:var(--jade);}
@@ -109,24 +124,27 @@ button,input,select{font-family:'Cairo',sans-serif;}
 .oc-id{font-size:.92rem;font-weight:900;}
 .oc-tm{font-size:.65rem;font-weight:700;color:var(--ink4);margin-top:2px;}
 .oc-acts{display:flex;flex-direction:column;gap:6px;margin-bottom:10px;}
-.oc-body{display:flex;flex-direction:column;gap:8px;}
+.oc-body{display:flex;flex-direction:column;gap:10px;}
 .oc-row{display:flex;align-items:center;justify-content:space-between;}
 .oc-res{font-size:.86rem;font-weight:800;}
-.oc-pr{font-size:.92rem;font-weight:900;color:var(--jade);}
-.oc-ar{font-size:.73rem;font-weight:700;color:var(--ink3);display:flex;align-items:center;gap:4px;}
-.oc-dr{background:var(--sky-m);border-radius:10px;padding:8px 10px;display:flex;align-items:center;gap:7px;}
-.oc-dn{font-size:.75rem;font-weight:800;color:var(--sky-d);flex:1;min-width:0;}
-.oc-dn span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;}
-.oc-dc{display:flex;align-items:center;gap:5px;flex-shrink:0;}
+.oc-pr{font-size:.95rem;font-weight:900;color:var(--jade);}
+.oc-ar{font-size:.75rem;font-weight:700;color:var(--ink3);display:flex;align-items:center;gap:4px;}
+
+/* تطوير صندوق الكابتن (عمودي) ليظهر الاسم كاملاً */
+.oc-dr{background:var(--sky-m);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px;}
+.oc-dn{font-size:.85rem;font-weight:900;color:var(--sky-d);width:100%;}
+.oc-dn span{white-space:normal;display:block;line-height:1.4;} /* السماح بطي الاسم مهما كان طويلاً */
+.oc-dc{display:flex;align-items:center;justify-content:space-between;gap:6px;width:100%;border-top:1px dashed rgba(37,99,235,.15);padding-top:10px;}
+
 .ob{width:30px;height:30px;border-radius:9px;border:none;cursor:pointer;display:inline-flex;
   align-items:center;justify-content:center;transition:all .15s;flex-shrink:0;font-size:14px;}
 .ob:active{transform:scale(.85);}
 .b-ok{background:var(--jade-l);color:var(--jade);}.b-del{background:var(--rose-l);color:var(--rose);}
 .b-img{background:var(--sky-l);color:var(--sky-d);}
-.cb-sm{width:28px;height:28px;border-radius:8px;background:var(--jade-l);color:var(--jade);border:none;cursor:pointer;
-  display:flex;align-items:center;justify-content:center;}
-.asel{border:1.5px solid var(--line);border-radius:8px;padding:5px 8px;font-size:.7rem;font-weight:800;
-  max-width:130px;background:var(--base);color:var(--sky-d);outline:none;cursor:pointer;}
+.cb-sm{width:32px;height:32px;border-radius:8px;background:var(--jade-l);color:var(--jade);border:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.asel{flex:1;border:1.5px solid var(--line);border-radius:8px;padding:6px 8px;font-size:.75rem;font-weight:800;
+  background:var(--base);color:var(--sky-d);outline:none;cursor:pointer;}
 .stb{padding:3px 9px;border-radius:var(--rf);font-size:.67rem;font-weight:900;display:inline-block;}
 .stb-r{background:var(--rose-l);color:var(--rose);border:1px solid #fecaca;}
 .stb-w{background:var(--amber-l);color:var(--amber);border:1px solid #fde68a;}
@@ -137,7 +155,7 @@ button,input,select{font-family:'Cairo',sans-serif;}
 .dl-pill{position:absolute;top:9px;left:12px;background:var(--rose-l);color:var(--rose);padding:2px 8px;
   border-radius:var(--rf);font-size:.65rem;font-weight:900;border:1px solid #fecaca;}
 .rj-tag{background:var(--rose-l);color:var(--rose);font-size:.65rem;font-weight:800;padding:2px 6px;
-  border-radius:7px;border:1px solid #fecaca;display:inline-flex;align-items:center;gap:3px;margin-top:2px;}
+  border-radius:7px;border:1px solid #fecaca;display:inline-flex;align-items:center;gap:3px;margin-top:4px;}
 .empty-s{text-align:center;padding:42px 16px;color:var(--ink4);grid-column:1/-1;}
 .es-ic{width:64px;height:64px;border-radius:20px;background:var(--sky-l);display:inline-flex;
   align-items:center;justify-content:center;margin-bottom:12px;color:var(--sky);font-size:28px;}
@@ -182,21 +200,33 @@ button,input,select{font-family:'Cairo',sans-serif;}
 <div id="app" class="dn">
   <div class="s-hdr">
     <div class="s-hl">
-      <div class="s-logo">🧑‍💼</div>
-      <div><div class="s-nm" id="empName">موظف</div><div class="s-role">مراقب الرادار</div></div>
+      <div class="s-logo">👑</div>
+      <div>
+         <div class="s-nm">مدير <span id="empName" style="color: var(--sky-d);">موظف</span></div>
+         <div class="s-role">هؤلاء الكباتن في أمانتك، شكراً لك 🤍</div>
+      </div>
     </div>
     <div class="s-hr">
       <div class="s-clk" id="clk">00:00</div>
       <button class="s-out" onclick="doLogout()">🚪 خروج</button>
     </div>
   </div>
+  
   <div class="wrap">
     <div class="kpi-row">
       <div class="kc kb"><div class="kc-ic" style="background:var(--sky-l)">📦</div><div><div class="kc-v" id="vOrd">0</div><div class="kc-l">طلبات نشطة</div></div></div>
       <div class="kc kg"><div class="kc-ic" style="background:var(--jade-l)">🛵</div><div><div class="kc-v" id="vDrv">0</div><div class="kc-l">كباتن بالميدان</div></div></div>
       <div class="kc ko"><div class="kc-ic" style="background:var(--fire-l)">🔴</div><div><div class="kc-v" id="vPend">0</div><div class="kc-l">بانتظار كابتن</div></div></div>
     </div>
-    <div class="rt"><div class="rt-dot"></div> الرادار الميداني</div>
+    
+    <div class="rt">
+        <div class="rt-title"><div class="rt-dot"></div> الرادار الميداني</div>
+        <button class="map-btn" onclick="toggleMap()">🗺️ الخريطة</button>
+    </div>
+    
+    <!-- 🗺️ الخريطة الحية -->
+    <div id="liveMapContainer"></div>
+
     <div class="fbar" id="fbar">
       <button class="fp on" onclick="doFilt('all',this)">الكل <span class="fc" id="cA">0</span></button>
       <button class="fp fr" onclick="doFilt('pending',this)">بانتظار كابتن <span class="fc" id="cP">0</span></button>
@@ -221,31 +251,14 @@ let liveOrd=[],actDrv=new Set(),gDrivers=[],liveLed={drivers:{}};
 let drvLocs={},rfilt="all",pendCnt=0,fbConn=true,fbL=[];
 let radarHtml="",drvSelOpts="";
 
+/* Map State */
+let mapInstance = null;
+let mapMarkers = {};
+let isMapOpen = false;
+
 /* Firebase */
 try{firebase.initializeApp({apiKey:"AIzaSyAo1rmqUzieYZU3RIwXOAN87GkpNrp-_Hc",authDomain:"sufyan-delivery.firebaseapp.com",databaseURL:"https://sufyan-delivery-default-rtdb.europe-west1.firebasedatabase.app",projectId:"sufyan-delivery",storageBucket:"sufyan-delivery.firebasestorage.app",messagingSenderId:"941542380637",appId:"1:941542380637:web:9623fa6e627817ffeba9b4"});}catch(e){}
 const db=firebase.database();
-const auth=firebase.auth();
-
-/* ════ الحماية السحابية: استهلاك توكن الموظف وتجديده ════ */
-let _staffTokenTimer=null;
-async function consumeStaffToken(tok,phone,pass){
-  if(!tok){console.warn("⚠️ لم يصل firebase_token من السكربت — تحقق من مفاتيح الخدمة.");return;}
-  try{
-    await auth.signInWithCustomToken(tok);
-    scheduleStaffTokenRefresh(phone,pass);
-  }catch(e){console.error("Firebase Auth (staff):",e);}
-}
-function scheduleStaffTokenRefresh(phone,pass){
-  if(_staffTokenTimer)clearTimeout(_staffTokenTimer);
-  _staffTokenTimer=setTimeout(async()=>{
-    try{
-      const d=await apiGet({action:"STAFF_LOGIN",phone,password:pass});
-      if(d&&d.success&&d.firebase_token){await auth.signInWithCustomToken(d.firebase_token);}
-      scheduleStaffTokenRefresh(phone,pass);
-    }catch(e){console.error("تعذّر تجديد توكن الموظف:",e);scheduleStaffTokenRefresh(phone,pass);}
-  },50*60*1000);
-}
-
 
 /* ════ UTILS ════ */
 function esc(s){if(s==null)return"";const d=document.createElement("div");d.textContent=String(s);return d.innerHTML;}
@@ -266,16 +279,7 @@ async function apiGet(params){
 /* ════ AUTH ════ */
 window.addEventListener("DOMContentLoaded",()=>{
   const saved=sessionStorage.getItem("staff_session");
-  if(saved){try{
-    const s=JSON.parse(saved);STOKEN=s.token;EMP_NAME=s.name;EMP_PHONE=s.phone;
-    enterApp();
-    // استعادة الحماية السحابية: نطلب توكناً جديداً بكلمة المرور المحفوظة
-    if(s.p){const pass=decodeURIComponent(escape(atob(s.p)));
-      apiGet({action:"STAFF_LOGIN",phone:EMP_PHONE,password:pass}).then(d=>{
-        if(d&&d.success&&d.firebase_token)consumeStaffToken(d.firebase_token,EMP_PHONE,pass);
-      }).catch(()=>{});
-    }
-  }catch(e){}}
+  if(saved){try{const s=JSON.parse(saved);STOKEN=s.token;EMP_NAME=s.name;EMP_PHONE=s.phone;enterApp();}catch(e){}}
 });
 window.doLogin=async function(){
   const phone=document.getElementById("sPhone").value.trim();
@@ -286,8 +290,7 @@ window.doLogin=async function(){
     const d=await apiGet({action:"STAFF_LOGIN",phone,password:pass});
     if(d.success){
       STOKEN=d.token;EMP_NAME=d.name;EMP_PHONE=d.phone;
-      sessionStorage.setItem("staff_session",JSON.stringify({token:STOKEN,name:EMP_NAME,phone:EMP_PHONE,p:btoa(unescape(encodeURIComponent(pass)))}));
-      await consumeStaffToken(d.firebase_token,EMP_PHONE,pass);
+      sessionStorage.setItem("staff_session",JSON.stringify({token:STOKEN,name:EMP_NAME,phone:EMP_PHONE}));
       enterApp();
     }else toast(d.msg||"فشل الدخول","e");
   }catch(e){toast("فشل الاتصال بالخادم","e");}
@@ -303,14 +306,88 @@ function enterApp(){
 window.doLogout=async function(){
   if(!confirm("تأكيد تسجيل الخروج؟"))return;
   try{await apiGet({action:"STAFF_LOGOUT",stoken:STOKEN});}catch(e){}
-  if(_staffTokenTimer)clearTimeout(_staffTokenTimer);
-  try{await auth.signOut();}catch(e){}
   fbL.forEach(({ref,cb})=>ref.off("value",cb));fbL=[];
   sessionStorage.clear();STOKEN="";location.reload();
 };
 
 /* ════ CLOCK ════ */
 function startClk(){setInterval(()=>{document.getElementById("clk").textContent=new Date().toLocaleTimeString("ar-EG",{hour:"2-digit",minute:"2-digit"});},1000);}
+
+/* ════ MAP ENGINE ════ */
+window.toggleMap = function() {
+    const mc = document.getElementById("liveMapContainer");
+    isMapOpen = !isMapOpen;
+    if (isMapOpen) {
+        mc.classList.add("open");
+        if (!mapInstance) {
+            setTimeout(initMap, 400); // Wait for transition
+        } else {
+            setTimeout(() => mapInstance.invalidateSize(), 400);
+        }
+    } else {
+        mc.classList.remove("open");
+    }
+};
+
+function initMap() {
+    // إحداثيات كركوك الافتراضية
+    mapInstance = L.map('liveMapContainer', { zoomControl: false }).setView([35.468, 44.392], 13);
+    L.control.zoom({ position: 'bottomleft' }).addTo(mapInstance);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(mapInstance);
+    updateMap();
+}
+
+function updateMap() {
+    if (!mapInstance || !isMapOpen) return;
+    
+    const now = Date.now();
+    
+    // 1. مسح الكباتن غير المتصلين
+    Object.keys(mapMarkers).forEach(phone => {
+        if (!drvLocs[phone]) {
+            mapInstance.removeLayer(mapMarkers[phone]);
+            delete mapMarkers[phone];
+        }
+    });
+
+    // 2. تحديث ورسم المتصلين
+    Object.keys(drvLocs).forEach(phone => {
+        const d = drvLocs[phone];
+        if (!d.lat || !d.lng) return;
+        
+        const stale = (d.last_update ? (now - new Date(d.last_update).getTime()) : 999999) > 420000;
+        if (stale || d.status !== "active") {
+            if (mapMarkers[phone]) {
+                mapInstance.removeLayer(mapMarkers[phone]);
+                delete mapMarkers[phone];
+            }
+            return;
+        }
+
+        const cleanP = nP(phone);
+        const nameStr = dN(cleanP);
+        const initial = nameStr !== "غير محدد" ? nameStr.charAt(0) : "🛵";
+        
+        // التحقق مما إذا كان الكابتن يوصل طلباً الآن
+        const isBusy = liveOrd.some(o => nP(o[O.DRV]) === cleanP && !["pending_driver","system_routing","manual_pending"].includes(o[O.DRV]));
+        
+        const stateClass = isBusy ? "busy" : "free";
+        const latLng = [parseFloat(d.lat), parseFloat(d.lng)];
+        
+        const iconHtml = `<div class="drv-marker ${stateClass}">${initial}</div>`;
+        const icon = L.divIcon({ className: 'custom-div-icon', html: iconHtml, iconSize: [34, 34], iconAnchor: [17, 17] });
+
+        if (mapMarkers[phone]) {
+            mapMarkers[phone].setLatLng(latLng);
+            mapMarkers[phone].setIcon(icon);
+            // تحديث محتوى التولتيب إذا تغير
+            mapMarkers[phone].getTooltip().setContent(nameStr + (isBusy ? " (مشغول)" : " (متاح)"));
+        } else {
+            mapMarkers[phone] = L.marker(latLng, { icon: icon }).addTo(mapInstance);
+            mapMarkers[phone].bindTooltip(nameStr + (isBusy ? " (مشغول)" : " (متاح)"), { direction: 'top', offset: [0, -10] });
+        }
+    });
+}
 
 /* ════ FIREBASE ════ */
 function setupFB(){
@@ -339,8 +416,10 @@ function setupFB(){
     document.getElementById("vOrd").textContent=active.length;
     document.getElementById("vPend").textContent=np;
     updCnts();renderRadar();
+    if (typeof updateMap === 'function') updateMap(); // تحديث ألوان الكباتن على الخريطة
   };
   oRef.on("value",oCb);fbL.push({ref:oRef,cb:oCb});
+  
   /* Driver locations */
   const lRef=db.ref("drivers_locations");
   const lCb=snap=>{
@@ -351,15 +430,14 @@ function setupFB(){
     });
     document.getElementById("vDrv").textContent=actDrv.size;
     renderRadar();
+    if (typeof updateMap === 'function') updateMap(); // تحديث مواقع الكباتن على الخريطة
   };
   lRef.on("value",lCb);fbL.push({ref:lRef,cb:lCb});
-  /* Drivers list (names) — from ledgers we only get phones, so read a light copy */
-  const dvRef=db.ref("drivers_locations");
-  /* Ledgers (for driver tier in assign dropdown) */
+  
   const ledRef=db.ref("ledgers/drivers");
   const ledCb=snap=>{liveLed.drivers=snap.val()||{};};
   ledRef.on("value",ledCb);fbL.push({ref:ledRef,cb:ledCb});
-  /* نجلب أسماء الكباتن عبر STAFF_DRIVERS الآمنة (أسماء وأرقام فقط، بلا كلمات مرور) */
+  
   loadDriverNames();
 }
 async function loadDriverNames(){
@@ -436,14 +514,17 @@ function renderRadar(){
       </div>
       <div class="oc-body">
         <div class="oc-row"><div class="oc-res">🍽 ${esc(rN)}</div><div class="oc-pr">${oP||0} د.ع</div></div>
+        
+        <!-- طابق السائق الجديد المطور -->
         <div class="oc-dr">
           <div class="oc-dn"><span>🛵 ${esc(dn)}</span></div>
           <div class="oc-dc">
             ${hD?`<button class="cb-sm" onclick="window.open('tel:${jDP}')">📞</button>`:''}
-            ${hD&&!isSov?`<button class="ob b-del" style="width:auto;padding:0 8px;font-size:.68rem;font-weight:800;height:28px" onclick="wdOrder('${jOId}','${jDP}',this)">↩ سحب</button>`:''}
+            ${hD&&!isSov?`<button class="ob b-del" style="width:auto;padding:0 8px;font-size:.68rem;font-weight:800;height:32px" onclick="wdOrder('${jOId}','${jDP}',this)">↩ سحب</button>`:''}
             <select class="asel" onchange="asgnDrv('${jOId}',this.value,this)">${drvSelOpts}</select>
           </div>
         </div>
+
         ${oA&&oA!=="غير محدد"?`<div class="oc-ar">📍 ${esc(oA)}${rejH}</div>`:""}
       </div>
     </div>`;
