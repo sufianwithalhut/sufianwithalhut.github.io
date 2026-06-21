@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 37.3 (مُنقح - دمج نظام الحماية السحابية والتصاريح) ---
-        const CURRENT_APP_VERSION = "37.3.Sufyan-Secure";
+        // --- إصدار 37.4 (مُنقح - دمج نظام الحماية السحابية والتصاريح + إصلاح إعادة المصادقة) ---
+        const CURRENT_APP_VERSION = "37.4.Sufyan-Secure";
         const RES_VERSION_KEY = 'hut_res_app_version';
         try {
             if (localStorage.getItem(RES_VERSION_KEY) !== CURRENT_APP_VERSION) {
@@ -789,7 +789,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getDatabase, ref, onValue, update, set, get } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
     import { getStorage, ref as storageRef, uploadString, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
-    import { getAuth, signInWithCustomToken, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    import { getAuth, signInWithCustomToken, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
     if (typeof lucide !== 'undefined') lucide.createIcons();
 
@@ -876,6 +876,40 @@
     let liveActiveOrders = [];
 
     let currentCommissionType = 'fixed'; 
+
+    /* ════════════════════════════════════════════════════════════
+       🔐 إعادة المصادقة السحابية (الإصلاح الحاسم)
+       تطلب توكناً جديداً من السيرفر وتصادق فايربيس.
+       تُستدعى عند استعادة الجلسة المحفوظة وعند فقد المصادقة.
+    ════════════════════════════════════════════════════════════ */
+    window.ensureResAuth = async function(phone, pass) {
+        if (!phone || !pass) return;
+        let p = String(phone).replace(/[^\d]/g, '');
+        if (p.startsWith('0')) p = p.substring(1);
+        try {
+            const r = await fetch(`${API_URL}?action=checkRes&phone=${p}&password=${encodeURIComponent(pass)}&token=${API_TOKEN}`);
+            const d = await r.json();
+            if (d && d.firebase_token) {
+                await signInWithCustomToken(auth, d.firebase_token);
+                console.log("✅ المطعم: تمت إعادة المصادقة بنجاح");
+            } else {
+                console.warn("⚠️ لم يصل firebase_token عند إعادة مصادقة المطعم");
+            }
+        } catch (e) { console.error("فشل إعادة مصادقة المطعم:", e); }
+    };
+
+    // مراقب: إن ضاعت مصادقة فايربيس فجأة، نعيدها تلقائياً من الجلسة المحفوظة
+    onAuthStateChanged(auth, (user) => {
+        if (!user) {
+            const s = localStorage.getItem('hut_res_session');
+            if (s) {
+                try {
+                    const sess = JSON.parse(s);
+                    if (sess.phone && sess.password) ensureResAuth(sess.phone, atob(sess.password));
+                } catch (e) {}
+            }
+        }
+    });
 
     window.switchCommissionType = function(type) {
         currentCommissionType = type;
@@ -1318,6 +1352,7 @@
                     currentResName = session.name;
                     regPhone = session.phone;
                     if (session.lat && session.lng) { regLat = parseFloat(session.lat); regLng = parseFloat(session.lng); }
+                    if (session.password) { ensureResAuth(session.phone, atob(session.password)); }
                     enterDashboard(); return true;
                 }
             } catch(e) {}
@@ -2090,10 +2125,14 @@
             safePayType = sData.payType || 'المطعم يدفع';
         }
 
+        let normResPhone = String(safeResPhone || "").replace(/[^\d]/g, '');
+        if (normResPhone.startsWith('964')) normResPhone = normResPhone.slice(3);
+        normResPhone = normResPhone.replace(/^0+/, '');
+
         await set(ref(db, 'active_orders/' + uniqueId), {
             id: uniqueId, restaurant: resName, area: area, details: details, status: "pending_driver",
             driverPhone: "system_routing", price: price, timestamp: tsIso, photoUrl: imageUrl,
-            last_update: tsIso, resPhone: safeResPhone || "غير متوفر", resLat: regLat || 0, resLng: regLng || 0,
+            last_update: tsIso, resPhone: normResPhone || "غير متوفر", resLat: regLat || 0, resLng: regLng || 0,
             comm: safeComm, payType: safePayType, is_sovereign: false, last_offered_to: null, ready_for_pickup: false
         });
 
