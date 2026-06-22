@@ -474,9 +474,9 @@ function updateMap() {
         const iconHtml = `<div class="drv-marker ${stateClass}">${initial}</div>`;
         const icon = L.divIcon({ className: 'custom-div-icon', html: iconHtml, iconSize: [34, 34], iconAnchor: [17, 17] });
 
-        // 🚀 تحديث النافذة المنبثقة التفاعلية (Popup) واستخدام d.daily_count لطلبات اليوم فقط
+        // 🚀 تحديث النافذة المنبثقة التفاعلية (Popup)
         const idleMins = d.last_update ? Math.floor((now - new Date(d.last_update).getTime()) / 60000) : 0;
-        const compOrd = d.daily_count || 0; // حل المشكلة الأولى هنا
+        const compOrd = liveLed.drivers?.[cleanP]?.completed_orders || 0;
         let phoneNo = cleanP.startsWith('0') ? cleanP.substring(1) : cleanP;
         let waText = encodeURIComponent(`مرحباً كابتن ${nameStr}، `);
         
@@ -656,24 +656,8 @@ function setupFB(){
   
   loadDriverNames();
 }
-
-// 🚀 التعديل الثاني: تسريع جلب الأسماء وعرضها فوراً (من الذاكرة المؤقتة أولاً)
-async function loadDriverNames() {
-  const cached = sessionStorage.getItem("staff_gDrivers");
-  if (cached) {
-    gDrivers = JSON.parse(cached);
-    renderRadar();
-    if (typeof updateMap === 'function') updateMap();
-  }
-  try {
-    const d = await apiGet({ action: "STAFF_DRIVERS", stoken: STOKEN });
-    if (d && d.success && d.drivers) {
-      gDrivers = d.drivers;
-      sessionStorage.setItem("staff_gDrivers", JSON.stringify(gDrivers));
-      renderRadar();
-      if (typeof updateMap === 'function') updateMap();
-    }
-  } catch (e) {}
+async function loadDriverNames(){
+  try{const d=await apiGet({action:"STAFF_DRIVERS",stoken:STOKEN});if(d&&d.success&&d.drivers){gDrivers=d.drivers;renderRadar();}}catch(e){}
 }
 
 /* ════ RADAR ════ */
@@ -719,6 +703,7 @@ function renderRadar(){
     let clsCls,sbCls,sbTxt;
     if(isSov){clsCls="os";sbCls="stb-v";sbTxt="👑 سيادي";}
     else if(!hD||st==="pending_driver"||st==="manual_pending"){
+      // 🚀 إظهار "جاري الرنين" للرنين الآلي واليدوي
       if(hD&&(st==="manual_pending"||st==="pending_driver")){clsCls="or";sbCls="stb-w";sbTxt="⏳ جاري الرنين";}
       else{clsCls="op";sbCls="stb-r";sbTxt="🔴 بانتظار كابتن";}
     }
