@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 37.5 (مُنقح - الاستعلام الآمن متوافق مع قواعد حماية فايربيس) ---
-        const CURRENT_APP_VERSION = "37.5.Sufyan-Secure"; 
+        // --- إصدار 37.6 (مُنقح بالكامل - إصلاح تجميد المصادقة وتشغيل الجلسة الفوري) ---
+        const CURRENT_APP_VERSION = "37.6.Sufyan-Secure";
         const RES_VERSION_KEY = 'hut_res_app_version';
         try {
             if (localStorage.getItem(RES_VERSION_KEY) !== CURRENT_APP_VERSION) {
@@ -878,7 +878,7 @@
     let currentCommissionType = 'fixed'; 
 
     /* ════════════════════════════════════════════════════════════
-       🔐 إعادة المصادقة السحابية
+       🔐 نظام المصادقة السحابية للمطاعم
     ════════════════════════════════════════════════════════════ */
     window.ensureResAuth = async function(phone, pass) {
         if (!phone || !pass) return;
@@ -889,9 +889,7 @@
             const d = await r.json();
             if (d && d.firebase_token) {
                 await signInWithCustomToken(auth, d.firebase_token);
-                console.log("✅ المطعم: تمت إعادة المصادقة بنجاح");
-            } else {
-                console.warn("⚠️ لم يصل firebase_token عند إعادة مصادقة المطعم");
+                console.log("✅ المطعم: تمت إعادة المصادقة السحابية بنجاح");
             }
         } catch (e) { console.error("فشل إعادة مصادقة المطعم:", e); }
     };
@@ -981,7 +979,7 @@
         const areaNames = areaList.length > 0 ? areaList.join('، ') : 'مناطق كركوك';
 
         const promptText = `أنت خبير في معالجة طلبات التوصيل في العراق. اقرأ هذه الرسالة المنسوخة من الواتساب: "${text}" واستخرج منها البيانات التالية بدقة:
-1. السعر (price): المجموع الكلي كرقم فقط بدون أي فواصل. (مثال: إذا قال 15 الف، اكتب 15000).
+1. السعر (price): المجموع الكلي كرقم فقط بدون أي فواصل. (مثال: إذا قال 15 الف, اكتب 15000).
 2. الهاتف (phone): استخرج أي رقم هاتف يبدأ بـ 07.
 3. المنطقة (area): اسم المنطقة الأساسية. حاول مطابقتها مع هذه القائمة إن أمكن: [${areaNames}].
 4. التفاصيل الإضافية (details): استخرج أي كلام يدل على عنوان دقيق أو أقرب نقطة دالة، مثل: (قرب الجامع، بصف الحديقة الجبيرة، يم اسواق محمد، الخ...). لا تضع فيها الطلبات الغذائية بل ركز على العنوان الدقيق. إذا لم تجد، اتركها فارغة.
@@ -1008,8 +1006,7 @@
             if (data.error) throw new Error("فشل الاتصال بالذكاء الاصطناعي");
 
             let aiText = data.candidates[0].content.parts[0].text;
-            aiText = aiText.replace(/```json/g, "").replace(/
-```/g, "").trim();
+            aiText = aiText.replace(/```json/g, "").replace(/```/g, "").trim();
             const cleanJson = JSON.parse(aiText);
 
             if (cleanJson.phone) {
@@ -1363,15 +1360,6 @@
         return false;
     }
 
-    window.onload = function() {
-        if (!checkSavedSession()) {
-            const savedPhone = localStorage.getItem('hut_res_phone');
-            if (savedPhone) {
-                document.getElementById('checkPhone').value = savedPhone.startsWith('0') ? savedPhone : '0' + savedPhone;
-            }
-        }
-    };
-
     window.logout = function() {
         if (confirm("هل تريد تسجيل الخروج؟ سيتم مسح الذاكرة المؤقتة.")) {
             signOut(auth).then(() => { 
@@ -1550,6 +1538,7 @@
         isRegistering = true;
         document.getElementById('loginPassContainer').classList.add('hidden-section');
         document.getElementById('registerFields').classList.remove('hidden-section');
+        document.getElementById('checkPhone').disabled = true;
         const btn = document.getElementById('mainAuthBtn');
         btn.innerHTML = `إرسال طلب الانضمام <i data-lucide="send" size="16"></i>`;
         if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -1704,7 +1693,6 @@
     let globalLiveDebt = 0;
     let globalLiveCount = 0;
 
-    // 🚀 تحديث الاستعلام الآمن ليطابق قواعد الحماية في Firebase
     function startHotDataListeners() {
         let safeResPhone = regPhone;
         if (!safeResPhone) { const s = localStorage.getItem('hut_res_session'); if (s) safeResPhone = JSON.parse(s).phone; }
@@ -2150,6 +2138,14 @@
         
         window.removePhoto(); clearDraft();
         setTimeout(() => document.getElementById('orderStatusBox').classList.add('hidden-section'), 4500);
+    }
+
+    // 🚀 تشغيل وفحص الجلسة فوراً عند تحميل الموديول (بدلاً من فخ window.onload)
+    if (!checkSavedSession()) {
+        const savedPhone = localStorage.getItem('hut_res_phone');
+        if (savedPhone) {
+            document.getElementById('checkPhone').value = savedPhone.startsWith('0') ? savedPhone : '0' + savedPhone;
+        }
     }
 </script>
 </body>
