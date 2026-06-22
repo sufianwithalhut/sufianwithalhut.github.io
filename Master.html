@@ -2,7 +2,7 @@
 <html lang="ar" dir="rtl">
 <head>
 <script>
-const V="21.0",VK="hut_v21";
+const V="21.1",VK="hut_v21"; // تم تحديث رقم الإصدار لضمان مسح الكاش
 try{if(localStorage.getItem(VK)!==V){localStorage.setItem(VK,V);if("caches"in window)caches.keys().then(n=>n.forEach(k=>caches.delete(k)));}}catch(e){}
 </script>
 <meta charset="UTF-8">
@@ -1005,7 +1005,8 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
   </nav>
 </div>
 <script>
-const O={ID:0,RES:1,AREA:2,DETAILS:3,PRICE:4,STATUS:5,DRV:6,TIME:7,PHOTO:8,SOV:9,LU:10,LO:11,READY:12,COMM:13,PAY:14};
+// 🚀 التعديل الأول: إضافة DOUBLE: 15 للفهارس
+const O={ID:0,RES:1,AREA:2,DETAILS:3,PRICE:4,STATUS:5,DRV:6,TIME:7,PHOTO:8,SOV:9,LU:10,LO:11,READY:12,COMM:13,PAY:14,DOUBLE:15};
 const R={ID:0,NAME:1,PHONE:2,AREA:3,STATUS:4,COMM:5,LAT:6,LNG:7,PAY:8,C9:9,C10:10,C11:11,C12:12,PRICELIST:12,PASS:13};
 const D={ID:0,NAME:1,PHONE:2,AREA:3,STATUS:4,LAT:5,LNG:6,PASS:12,SHIFT:13};
 const API="https://script.google.com/macros/s/AKfycbzKDBjgPxmt_iDCphkjB6EY-cnag_aqwxrdNDrY9uqBRbTZYsqGWl4TJn4pANS8OVYm/exec";
@@ -1045,7 +1046,6 @@ async function consumeAdminToken(tok,pass){
 }
 function scheduleAdminTokenRefresh(pass){
   if(_adminTokenTimer)clearTimeout(_adminTokenTimer);
-  // التوكن صالح ساعة؛ نجدّده كل 50 دقيقة بطلب توكن جديد من السكربت
   _adminTokenTimer=setTimeout(async()=>{
     try{
       const r=await fetch(API,{method:"POST",body:JSON.stringify({action:"VERIFY_MASTER_PASS",pass,token:TOK})});
@@ -1181,11 +1181,12 @@ function setupFB(){
     const obj=snap.val();let active=[],arch=[];const now=Date.now();
     if(obj){Object.values(obj).forEach(o=>{
       if(!o.restaurant?.trim())return;
+      // 🚀 التعديل الثاني: إضافة جلب الختم الحقيقي للطلب المزدوج
       let a=[o.id||"",o.restaurant||"",o.area||"غير محدد",o.details||"طلب توصيل",
         o.price||0,o.status||"pending",o.driverPhone||"",
         o.last_update||o.timestamp||"",o.photoUrl||"",o.is_sovereign||false,
         o.last_update||"",o.last_offered_to||"",o.ready_for_pickup||false,
-        o.comm??null,o.payType||""];
+        o.comm??null,o.payType||"",o.is_double||false];
       const st=String(o.status||"").toLowerCase().trim();
       const DONE=["completed","مكتمل","settled","delivered","done","تم التسليم","تم","finished","complete"];
       const isDone=DONE.includes(st)||DONE.includes(o.status)||st==="deleted"||o.status==="deleted";
@@ -1409,8 +1410,8 @@ function filtEnt(type){
         <div style="display:flex;gap:4px">
           <button class="ea ea-a" title="تفعيل"   onclick="doAct('ACCEPT','${type}','${pj}',this)">✓</button>
           <button class="ea ea-p" title="استراحة" onclick="doAct('PAUSE','${type}','${pj}',this)">⏸</button>
-          <button class="ea ea-b" title="حظر"     onclick="doAct('BAN','${type}','${pj}',this)">🚫</button>
-          <button class="ea ea-d" title="حذف"     onclick="doAct('DEL','${type}','${pj}',this)">🗑</button>
+          <button class="ea ea-b" title="حظر"      onclick="doAct('BAN','${type}','${pj}',this)">🚫</button>
+          <button class="ea ea-d" title="حذف"      onclick="doAct('DEL','${type}','${pj}',this)">🗑</button>
           <button class="ea ea-e" title="تعديل"   onclick="opEdit('${type}','${pj}')">✏️</button>
         </div>
         <div style="display:flex;gap:4px">
@@ -1725,14 +1726,16 @@ function renderRadar(){
     if(!c.classList.contains("og"))c.className="og";
     const existIds=new Set([...c.querySelectorAll("[id^='oc-']")].map(el=>el.id));
     const newIds=new Set();
-    const dCnt={};list.forEach(o=>{const dp=o[O.DRV];if(dp&&!["pending_driver","system_routing","manual_pending"].includes(dp))dCnt[dp]=(dCnt[dp]||0)+1;});
+    
+    // 🚀 التعديل الثالث: قراءة isDoubleDB الحقيقية من السيرفر وإلغاء تخمين dCnt
     list.forEach(o=>{
-      const[oId,rN,oA,,oP,st,dp,oT,pU,isSov,,lastOff,isReady]=o;
+      const[oId,rN,oA,,oP,st,dp,oT,pU,isSov,,lastOff,isReady,, ,isDoubleDB]=o;
       const hD=dp&&!["pending_driver","system_routing","manual_pending"].includes(dp);
       const dn=hD?dN(dp):"جاري البحث...";
       const dMins=oT?Math.floor((now-new Date(oT).getTime())/60000):0;
       const tF=oT?new Date(oT).toLocaleTimeString("ar-EG",{hour:"2-digit",minute:"2-digit"}):"---";
-      const isDbl=hD&&dCnt[dp]>1;
+      const isDbl = isDoubleDB === true; // قراءة الختم الحقيقي بدلاً من التخمين
+
       let clsCls,sbCls,sbTxt;
       if(isSov){clsCls="os";sbCls="stb-v";sbTxt="👑 سيادي";}
       else if(!hD||st==="pending_driver"||st==="manual_pending"){
