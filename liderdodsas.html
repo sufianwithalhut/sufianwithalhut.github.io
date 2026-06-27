@@ -352,8 +352,6 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
 @keyframes popIn{from{opacity:0;transform:scale(.94) translateY(14px)}to{opacity:1;transform:none}}
 @keyframes sheetUp{from{transform:translateY(100%)}to{transform:none}}
 @keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
-.net-banner{background:var(--amber);color:#241a00;text-align:center;padding:11px 14px;font-size:.8rem;font-weight:800;line-height:1.55;position:relative;z-index:55;}
-.net-banner.crit{background:var(--red);color:#fff;}
 </style>
 </head>
 <body>
@@ -419,7 +417,6 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
 
 <!-- APP -->
 <div id="app" class="dn">
-  <div id="netBanner" class="net-banner dn"></div>
   <div class="s-hdr">
     <div class="s-hl">
       <div class="s-logo">👑</div>
@@ -850,58 +847,12 @@ document.addEventListener("click", (e) => {
 });
 
 /* ════ FIREBASE ════ */
-/* 🔄 يعيد حساب المؤشرات ويرسم الرادار من liveOrd الحالية.
-   يُستدعى من مستمع Firebase ومن الأفعال التفاؤلية. */
-function applyOrdersRender(){
-  const np=liveOrd.filter(o=>!o[O.DRV]||["pending_driver","system_routing","manual_pending"].includes(o[O.DRV])).length;
-  pendCnt=np;
-  const vo=document.getElementById("vOrd");if(vo)vo.textContent=liveOrd.length;
-  const vp=document.getElementById("vPend");if(vp)vp.textContent=np;
-  updCnts();renderRadar();scheduleMap();
-}
-
-/* ⚡ تحديث تفاؤلي للحالة المحلية بعد نجاح الفعل — يجعل الأزرار تنعكس على الشاشة فوراً
-   كما في لوحة الإدارة، دون انتظار التحديث اللحظي من Firebase (الذي قد يكون محجوباً على الشبكة).
-   إن لم ينجح الفعل فعلياً، فمستمع Firebase عند عودته يصحّح العرض تلقائياً. */
-function removeOrderLocal(oId){
-  liveOrd=liveOrd.filter(o=>String(o[O.ID])!==String(oId));
-  delete rawOrders[oId];
-  applyOrdersRender();
-}
-function updateOrderLocal(oId,changes){
-  const o=liveOrd.find(x=>String(x[O.ID])===String(oId));
-  if(o){
-    if(changes.drv!==undefined)o[O.DRV]=changes.drv;
-    if(changes.status!==undefined)o[O.STATUS]=changes.status;
-    o[O.TIME]=new Date().toISOString();
-  }
-  applyOrdersRender();
-}
-
-/* 🌐 شارة الاتصال: تنبّه الموظف فوراً عند انقطاع الإنترنت أو توقف التحديث اللحظي (Firebase). */
-function updateNetBanner(){
-  const b=document.getElementById("netBanner");if(!b)return;
-  if(!navigator.onLine){
-    b.textContent="❌ لا يوجد اتصال بالإنترنت — لن تُحفظ أي عملية حتى عودة الاتصال.";
-    b.classList.add("crit");b.classList.remove("dn");
-  }else if(!fbConn){
-    b.textContent="⚠️ التحديث اللحظي متوقف (قد يكون Firebase محجوباً على شبكتك). أفعالك تُحفظ وتظهر فوراً، لكن الطلبات الجديدة من المطاعم قد لا تظهر تلقائياً — جرّب VPN لاستعادة التحديث اللحظي.";
-    b.classList.remove("crit");b.classList.remove("dn");
-  }else{
-    b.classList.add("dn");
-  }
-}
-window.addEventListener("online",updateNetBanner);
-window.addEventListener("offline",updateNetBanner);
-
 function setupFB(){
   db.ref(".info/connected").on("value",s=>{
     fbConn=s.val()===true;
     const dot=document.getElementById("fbDot"),txt=document.getElementById("fbTxt");
     if(dot)dot.className=fbConn?"fb-dot":"fb-dot off";if(txt)txt.textContent=fbConn?"متصل":"غير متصل";
-    updateNetBanner();
   });
-  updateNetBanner();
   /* Orders */
   const oRef=db.ref("active_orders");
   const oCb=snap=>{
@@ -919,7 +870,11 @@ function setupFB(){
     rawOrders=raw;
     active.sort((a,b)=>new Date(b[O.TIME])-new Date(a[O.TIME]));
     liveOrd=active;
-    applyOrdersRender();
+    const np=active.filter(o=>!o[O.DRV]||["pending_driver","system_routing","manual_pending"].includes(o[O.DRV])).length;
+    pendCnt=np;
+    document.getElementById("vOrd").textContent=active.length;
+    document.getElementById("vPend").textContent=np;
+    updCnts();renderRadar();scheduleMap();
   };
   oRef.on("value",oCb);fbL.push({ref:oRef,cb:oCb});
 
@@ -1287,8 +1242,7 @@ window.forceComplete=async function(oId,el){
     const comm=order&&order[O.COMM]!=null?order[O.COMM]:0;
     const payType=order?order[O.PAY]||"":"";
     const d=await staffAction({action:"STAFF_COMPLETE",orderId:oId,comm:comm,payType:payType});
-    if(d.success){toast("✅ تم إكمال الطلب");removeOrderLocal(oId);}
-    else toast(d.msg||"فشل الإكمال","e");
+    if(d.success)toast("✅ تم إكمال الطلب");else toast(d.msg||"فشل الإكمال","e");
   }catch(e){toast("خطأ في الإكمال","e");}
   finally{if(el){el.disabled=false;el.classList.remove("loading");}}
 };
@@ -1297,8 +1251,7 @@ window.delOrder=async function(oId,el){
   if(el){el.disabled=true;el.classList.add("loading");}
   try{
     const d=await staffAction({action:"STAFF_DELETE",orderId:oId});
-    if(d.success){toast("تم النقل للملغية");removeOrderLocal(oId);}
-    else toast(d.msg||"فشل","e");
+    if(d.success)toast("تم النقل للملغية");else toast(d.msg||"فشل","e");
   }catch(e){toast("خطأ","e");}
   finally{if(el){el.disabled=false;el.classList.remove("loading");}}
 };
@@ -1306,8 +1259,7 @@ window.asgnDrv=async function(oId,dPhone,el){
   if(!dPhone)return;el.disabled=true;
   try{
     const d=await staffAction({action:"STAFF_ASSIGN",orderId:oId,driverPhone:dPhone});
-    if(d.success){toast("تم التعيين 👑");updateOrderLocal(oId,{drv:dPhone,status:"manual_pending"});}
-    else toast(d.msg||"فشل","e");
+    if(d.success)toast("تم التعيين 👑");else toast(d.msg||"فشل","e");
   }catch(e){toast("خطأ","e");}
   finally{el.disabled=false;}
 };
@@ -1316,8 +1268,7 @@ window.wdOrder=async function(oId,dPhone,el){
   if(el)el.disabled=true;
   try{
     const d=await staffAction({action:"STAFF_WITHDRAW",orderId:oId,driverPhone:dPhone});
-    if(d.success){toast("تم السحب");updateOrderLocal(oId,{drv:"system_routing",status:"pending_driver"});}
-    else toast(d.msg||"فشل","e");
+    if(d.success)toast("تم السحب");else toast(d.msg||"فشل","e");
   }catch(e){toast("خطأ","e");}
   finally{if(el)el.disabled=false;}
 };
