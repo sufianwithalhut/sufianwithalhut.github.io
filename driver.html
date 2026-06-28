@@ -841,12 +841,32 @@ window.__SND={alert:"UklGRvaoAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YdKoAAA
             const data = snap.val();
             if (data?.msg && data.ts && Date.now() - data.ts < 10000) showBroadcastModal(data.msg);
         });
+
+        // 📨 رسائل الإدارة/الموظفين المباشرة لهذا الكابتن — تصل فوراً كإشعار داخل التطبيق
+        if (driverData && driverData.phone) {
+            onValue(ref(db, 'driver_messages/' + driverData.phone), snap => {
+                const data = snap.val();
+                if (!data || !data.msg || !data.ts) return;
+                const tsMs = new Date(data.ts).getTime();
+                if (isNaN(tsMs) || (Date.now() - tsMs) > 10800000) return;           // تجاهل الرسائل الأقدم من 3 ساعات
+                if (localStorage.getItem('hut_last_dmsg_ts') === String(data.ts)) return; // منع تكرار عرض نفس الرسالة
+                localStorage.setItem('hut_last_dmsg_ts', String(data.ts));
+                showDirectMessageModal(data.msg, data.from || 'الإدارة');
+                if (navigator.vibrate) navigator.vibrate([200, 80, 200]);
+            });
+        }
     }
 
     function showBroadcastModal(message) {
         const ov = document.createElement('div'); ov.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:50000; display:flex; align-items:center; justify-content:center; padding:20px;';
         ov.innerHTML = `<div style="background:white; border-radius:30px; padding:30px; max-width:350px; width:100%; text-align:center;"><svg style="width:48px;height:48px;color:#1e3a8a;stroke:currentColor;stroke-width:2;fill:none;margin-bottom:15px;" viewBox="0 0 24 24"><path d="M3 11l19-9-9 19-2-8-8-2z"></path></svg><h3 style="font-weight:900; color:#1e3a8a; margin-bottom:10px;">تنبيه الإدارة</h3><p style="font-size:1.1rem; margin:15px 0; color:#0f172a; line-height:1.6;">${message}</p><button onclick="this.closest('div').parentElement.remove()" style="background:#1e3a8a; color:white; border:none; padding:12px 28px; border-radius:20px; font-weight:900; font-size:1rem; cursor:pointer;">حسناً</button></div>`;
         document.body.appendChild(ov); setTimeout(() => { if (ov.parentElement) ov.remove(); }, 8000);
+    }
+
+    function showDirectMessageModal(message, from) {
+        const ov = document.createElement('div'); ov.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:50000; display:flex; align-items:center; justify-content:center; padding:20px;';
+        ov.innerHTML = `<div style="background:white; border-radius:30px; padding:30px; max-width:350px; width:100%; text-align:center;"><svg style="width:48px;height:48px;color:#059669;stroke:currentColor;stroke-width:2;fill:none;margin-bottom:15px;" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg><h3 style="font-weight:900; color:#059669; margin-bottom:6px;">📨 رسالة من ${from}</h3><p style="font-size:1.15rem; margin:14px 0; color:#0f172a; line-height:1.7;">${message}</p><button onclick="this.closest('div').parentElement.remove()" style="background:#059669; color:white; border:none; padding:12px 28px; border-radius:20px; font-weight:900; font-size:1rem; cursor:pointer;">حسناً، فهمت</button></div>`;
+        document.body.appendChild(ov); setTimeout(() => { if (ov.parentElement) ov.remove(); }, 30000);
     }
 
     function startCountdown() {
