@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 37.6 (مُنقح بالكامل - إصلاح تجميد المصادقة وتشغيل الجلسة الفوري) ---
-        const CURRENT_APP_VERSION = "37.6.Sufyan-Secure";
+        // --- إصدار 37.4 (مُنقح - دمج نظام الحماية السحابية والتصاريح + إصلاح إعادة المصادقة) ---
+        const CURRENT_APP_VERSION = "37.4.Sufyan-Secure";
         const RES_VERSION_KEY = 'hut_res_app_version';
         try {
             if (localStorage.getItem(RES_VERSION_KEY) !== CURRENT_APP_VERSION) {
@@ -787,7 +787,7 @@
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getDatabase, ref, onValue, update, set, get, query, orderByChild, equalTo } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+    import { getDatabase, ref, onValue, update, set, get } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
     import { getStorage, ref as storageRef, uploadString, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
     import { getAuth, signInWithCustomToken, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
@@ -878,7 +878,9 @@
     let currentCommissionType = 'fixed'; 
 
     /* ════════════════════════════════════════════════════════════
-       🔐 نظام المصادقة السحابية للمطاعم
+       🔐 إعادة المصادقة السحابية (الإصلاح الحاسم)
+       تطلب توكناً جديداً من السيرفر وتصادق فايربيس.
+       تُستدعى عند استعادة الجلسة المحفوظة وعند فقد المصادقة.
     ════════════════════════════════════════════════════════════ */
     window.ensureResAuth = async function(phone, pass) {
         if (!phone || !pass) return;
@@ -889,11 +891,14 @@
             const d = await r.json();
             if (d && d.firebase_token) {
                 await signInWithCustomToken(auth, d.firebase_token);
-                console.log("✅ المطعم: تمت إعادة المصادقة السحابية بنجاح");
+                console.log("✅ المطعم: تمت إعادة المصادقة بنجاح");
+            } else {
+                console.warn("⚠️ لم يصل firebase_token عند إعادة مصادقة المطعم");
             }
         } catch (e) { console.error("فشل إعادة مصادقة المطعم:", e); }
     };
 
+    // مراقب: إن ضاعت مصادقة فايربيس فجأة، نعيدها تلقائياً من الجلسة المحفوظة
     onAuthStateChanged(auth, (user) => {
         if (!user) {
             const s = localStorage.getItem('hut_res_session');
@@ -979,7 +984,7 @@
         const areaNames = areaList.length > 0 ? areaList.join('، ') : 'مناطق كركوك';
 
         const promptText = `أنت خبير في معالجة طلبات التوصيل في العراق. اقرأ هذه الرسالة المنسوخة من الواتساب: "${text}" واستخرج منها البيانات التالية بدقة:
-1. السعر (price): المجموع الكلي كرقم فقط بدون أي فواصل. (مثال: إذا قال 15 الف, اكتب 15000).
+1. السعر (price): المجموع الكلي كرقم فقط بدون أي فواصل. (مثال: إذا قال 15 الف، اكتب 15000).
 2. الهاتف (phone): استخرج أي رقم هاتف يبدأ بـ 07.
 3. المنطقة (area): اسم المنطقة الأساسية. حاول مطابقتها مع هذه القائمة إن أمكن: [${areaNames}].
 4. التفاصيل الإضافية (details): استخرج أي كلام يدل على عنوان دقيق أو أقرب نقطة دالة، مثل: (قرب الجامع، بصف الحديقة الجبيرة، يم اسواق محمد، الخ...). لا تضع فيها الطلبات الغذائية بل ركز على العنوان الدقيق. إذا لم تجد، اتركها فارغة.
@@ -1360,6 +1365,15 @@
         return false;
     }
 
+    window.onload = function() {
+        if (!checkSavedSession()) {
+            const savedPhone = localStorage.getItem('hut_res_phone');
+            if (savedPhone) {
+                document.getElementById('checkPhone').value = savedPhone.startsWith('0') ? savedPhone : '0' + savedPhone;
+            }
+        }
+    };
+
     window.logout = function() {
         if (confirm("هل تريد تسجيل الخروج؟ سيتم مسح الذاكرة المؤقتة.")) {
             signOut(auth).then(() => { 
@@ -1374,6 +1388,7 @@
         document.getElementById('loadingOverlay').style.display = s ? 'flex' : 'none';
     };
 
+    // ⚡ التبويبات والذاكرة الذكية للمطعم
     window.switchTab = function(mode, triggerSave = true) {
         currentOrderMode = mode;
         document.getElementById('tabManual').classList.remove('active');
@@ -1538,7 +1553,6 @@
         isRegistering = true;
         document.getElementById('loginPassContainer').classList.add('hidden-section');
         document.getElementById('registerFields').classList.remove('hidden-section');
-        document.getElementById('checkPhone').disabled = true;
         const btn = document.getElementById('mainAuthBtn');
         btn.innerHTML = `إرسال طلب الانضمام <i data-lucide="send" size="16"></i>`;
         if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -1577,9 +1591,11 @@
                         password: btoa(pass)
                     }));
                     
+                    // --- إضافة الحماية السحابية ---
                     if (data.firebase_token) {
                         signInWithCustomToken(auth, data.firebase_token).catch(e => console.error("Firebase Auth Error:", e));
                     }
+                    // -----------------------------
 
                     const wAudio = document.getElementById('welcomeSound');
                     if (wAudio) { wAudio.currentTime = 0; wAudio.play().catch(() => {}); }
@@ -1607,11 +1623,13 @@
         }
 
         if (data.status === "active" || data.status === "inactive") {
+            // --- إضافة الحماية السحابية ---
             if (data.firebase_token) {
                 signInWithCustomToken(auth, data.firebase_token)
                     .then(() => console.log("✅ تم تسجيل الدخول لفايربيس بأمان"))
                     .catch(e => console.error("❌ Firebase Auth Error:", e));
             }
+            // -----------------------------
 
             currentResName = data.name; localStorage.setItem('hut_res_phone', phone);
             localStorage.removeItem('hut_res_pending'); regPhone = phone;
@@ -1694,20 +1712,7 @@
     let globalLiveCount = 0;
 
     function startHotDataListeners() {
-        let safeResPhone = regPhone;
-        if (!safeResPhone) { const s = localStorage.getItem('hut_res_session'); if (s) safeResPhone = JSON.parse(s).phone; }
-        
-        let cleanPhone = "";
-        if (safeResPhone) {
-            cleanPhone = safeResPhone.replace(/[^\d]/g, '');
-            if (cleanPhone.startsWith('964')) cleanPhone = cleanPhone.slice(3);
-            cleanPhone = cleanPhone.replace(/^0+/, '');
-        }
-
-        if (!cleanPhone) return;
-
-        const ordersRef = query(ref(db, 'active_orders'), orderByChild('resPhone'), equalTo(cleanPhone));
-        
+        const ordersRef = ref(db, 'active_orders');
         onValue(ordersRef, (snapshot) => {
             const activeFbOrders = snapshot.val() || {};
             let newLiveOrders    = []; let todaySalesTotal  = 0;
@@ -1717,6 +1722,7 @@
             globalLiveCount = 0;
 
             Object.values(activeFbOrders).forEach(fbOrder => {
+                if (fbOrder.restaurant !== currentResName) return;
                 if (fbOrder.status === 'deleted') return;
 
                 if (fbOrder.status === 'completed' || fbOrder.status === 'مكتمل') {
@@ -1810,18 +1816,27 @@
             }
         });
 
-        onValue(ref(db, `ledgers/restaurants/${cleanPhone}`), (snapshot) => {
-            const ledger = snapshot.val() || { completed_orders: 0, debt: 0 };
-            window.currentLedgerData = ledger; 
-            
-            document.getElementById('statMonthOrders').innerText = (ledger.completed_orders || 0) + globalLiveCount;
-            document.getElementById('statUnpaid').innerText = (parseFloat(ledger.debt) || 0) + globalLiveDebt;
-            
-            const s = localStorage.getItem('hut_res_session');
-            if (s) { document.getElementById('statPayType').innerText = (JSON.parse(s).payType || '').includes("مناصفة") ? "مناصفة" : "المطعم"; }
-        });
+        let safeResPhone = regPhone;
+        if (!safeResPhone) { const s = localStorage.getItem('hut_res_session'); if (s) safeResPhone = JSON.parse(s).phone; }
+        
+        if (safeResPhone) {
+            let cleanPhone = safeResPhone.replace(/[^\d]/g, '');
+            if(cleanPhone.startsWith('0')) cleanPhone = cleanPhone.substring(1);
+
+            onValue(ref(db, `ledgers/restaurants/${cleanPhone}`), (snapshot) => {
+                const ledger = snapshot.val() || { completed_orders: 0, debt: 0 };
+                window.currentLedgerData = ledger; 
+                
+                document.getElementById('statMonthOrders').innerText = (ledger.completed_orders || 0) + globalLiveCount;
+                document.getElementById('statUnpaid').innerText = (parseFloat(ledger.debt) || 0) + globalLiveDebt;
+                
+                const s = localStorage.getItem('hut_res_session');
+                if (s) { document.getElementById('statPayType').innerText = (JSON.parse(s).payType || '').includes("مناصفة") ? "مناصفة" : "المطعم"; }
+            });
+        }
     }
 
+    // دالة البحث الذكي داخل الأرشيف اليومي
     window.filterArchiveOrders = function() {
         const input = document.getElementById('searchArchiveInput').value.toLowerCase();
         const items = document.querySelectorAll('.searchable-archive-item');
@@ -2138,14 +2153,6 @@
         
         window.removePhoto(); clearDraft();
         setTimeout(() => document.getElementById('orderStatusBox').classList.add('hidden-section'), 4500);
-    }
-
-    // 🚀 تشغيل وفحص الجلسة فوراً عند تحميل الموديول (بدلاً من فخ window.onload)
-    if (!checkSavedSession()) {
-        const savedPhone = localStorage.getItem('hut_res_phone');
-        if (savedPhone) {
-            document.getElementById('checkPhone').value = savedPhone.startsWith('0') ? savedPhone : '0' + savedPhone;
-        }
     }
 </script>
 </body>
