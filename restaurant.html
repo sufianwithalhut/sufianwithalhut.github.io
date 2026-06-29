@@ -2,8 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 37.4 (مُنقح - دمج نظام الحماية السحابية والتصاريح + إصلاح إعادة المصادقة) ---
-        const CURRENT_APP_VERSION = "37.4.Sufyan-Secure";
+        // --- إصدار 37.5 (مُنقح - دمج اللمسة الإنسانية + عرض الوصل + التحديثات التقنية) ---
+        const CURRENT_APP_VERSION = "37.5.Sufyan-Friendly";
         const RES_VERSION_KEY = 'hut_res_app_version';
         try {
             if (localStorage.getItem(RES_VERSION_KEY) !== CURRENT_APP_VERSION) {
@@ -460,6 +460,13 @@
     <div class="spinner-grow" style="color: var(--primary-blue-dark);" role="status"></div>
 </div>
 
+<div id="imageViewerModal" onclick="this.style.display='none'" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(10px); z-index: 99999; align-items: center; justify-content: center; padding: 20px;">
+    <div style="position: relative; max-width: 100%; max-height: 100%;">
+        <button style="position: absolute; top: -40px; right: 0; background: rgba(255,255,255,0.2); border: 2px solid white; color: white; border-radius: 50%; width: 34px; height: 34px; font-weight: bold; cursor: pointer;">✕</button>
+        <img id="fullReceiptImage" src="" style="max-width: 100%; max-height: 80vh; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
+    </div>
+</div>
+
 <audio id="welcomeSound" src="https://actions.google.com/sounds/v1/water/water_drop.ogg"></audio>
 
 <div id="pasteModal">
@@ -468,7 +475,7 @@
             <i data-lucide="message-square-dashed" size="30"></i>
         </div>
         <h5 class="fw-black mb-2" style="color: var(--primary-blue-dark);">لصق رسالة الزبون</h5>
-        <p class="text-muted fw-bold mb-3" style="font-size: 0.75rem;">الصق الرسالة هنا وسيقوم الذكاء الاصطناعي بتعبئة الحقول أوتوماتيكياً لاستخراج المنطقة وتفاصيل العنوان الدقيقة.</p>
+        <p class="text-muted fw-bold mb-3" style="font-size: 0.75rem;">الصق الرسالة هنا وسيقوم ذكاء الحوت الاصطناعي بتعبئة الحقول أوتوماتيكياً لاستخراج المنطقة وتفاصيل العنوان الدقيقة ✨.</p>
         <textarea id="pasteTextInput" class="custom-input mb-3" rows="5" placeholder="مثال: أريد توصيل لحي الجامعة قرب مول بغداد، الحساب 15000، رقمي 077..."></textarea>
         <div class="d-flex gap-2">
             <button class="btn btn-light fw-bold" style="flex: 1; border-radius: 12px; font-size: 0.9rem;" onclick="closePasteModal()">إلغاء</button>
@@ -565,6 +572,10 @@
                     <button class="magical-submit-btn mt-2" id="mainAuthBtn" onclick="authAction()">
                         دخول المنصة <i data-lucide="arrow-left" size="18"></i>
                     </button>
+                    
+                    <div style="text-align: center; margin-top: 15px; font-size: 0.65rem; color: #94a3b8; font-weight: 700;">
+                        Powered by Al-Hout Cloud Infrastructure 🐳
+                    </div>
                 </div>
 
                 <div class="login-card hidden-section text-center" id="waitingBox">
@@ -623,6 +634,16 @@
             </button>
         </div>
 
+    </div>
+
+    <div id="friendlyMessageBanner" class="container mt-2 mb-3 hidden-section" style="animation: slideDown 0.5s ease;">
+        <div style="background: linear-gradient(135deg, #e0f2fe, #f8fafc); border: 1px solid #bae6fd; border-radius: 16px; padding: 12px 16px; display: flex; align-items: center; gap: 12px; box-shadow: 0 4px 15px rgba(59,130,246,0.05);">
+            <div id="friendlyIcon" style="font-size: 24px;">🌤️</div>
+            <div style="flex: 1;">
+                <div id="friendlyText" style="font-size: 0.8rem; font-weight: 800; color: var(--primary-blue-dark); line-height: 1.5;"></div>
+            </div>
+            <button onclick="document.getElementById('friendlyMessageBanner').style.display='none'" style="background: transparent; border: none; color: #94a3b8; padding: 4px;">✕</button>
+        </div>
     </div>
 
     <div class="container pb-5">
@@ -1705,6 +1726,9 @@
             }).catch(() => {});
 
         if (!hasCached) { window.buildCustomAreaDropdown(); restoreDraft(); }
+        
+        showFriendlyMessage();
+        
         startHotDataListeners();
     }
 
@@ -1784,7 +1808,7 @@
                         </div>`;
                     }
                 } else {
-                    newLiveOrders.push({ id: fbOrder.id, status: fbOrder.status, driverPhone: fbOrder.driverPhone || "system_routing", timestamp: fbOrder.timestamp, area: fbOrder.area, readyForPickup: fbOrder.ready_for_pickup || false });
+                    newLiveOrders.push({ id: fbOrder.id, status: fbOrder.status, driverPhone: fbOrder.driverPhone || "system_routing", timestamp: fbOrder.timestamp, area: fbOrder.area, readyForPickup: fbOrder.ready_for_pickup || false, photoUrl: fbOrder.photoUrl });
                 }
             });
 
@@ -1890,6 +1914,9 @@
             const showReadyBtn = hasDriver && (status === 'accepted' || status === 'heading' || status === 'arrived_at_res');
             const readyBtnHtml = showReadyBtn ? (readyForPickup ? `<span class="ready-pill"><i data-lucide="check-circle" size="10"></i> جاهز للاستلام</span>` : `<button class="btn-ready" onclick="markOrderReady('${orderId}', this)"><i data-lucide="package-check" size="14"></i> إبلاغ الكابتن بالجهوزية</button>`) : '';
 
+            const photoUrl = o.photoUrl || o.image; 
+            const imgBtnHtml = photoUrl ? `<button class="btn-call-mini" style="background:#e0f2fe; color:var(--primary-blue);" onclick="document.getElementById('fullReceiptImage').src='${photoUrl}'; document.getElementById('imageViewerModal').style.display='flex';" title="عرض الوصل"><i data-lucide="image" size="14"></i></button>` : '';
+
             activeOrdersHtml += `
             <div class="live-order-card" id="order-${orderId}">
                 <div class="order-header-row">
@@ -1900,6 +1927,7 @@
                     <div class="d-flex align-items-center gap-2">
                         ${readyBtnHtml}
                         ${isCancelable ? `<button class="btn-cancel-grace" onclick="cancelOrderGrace('${orderId}')">إلغاء</button>` : ''}
+                        ${imgBtnHtml}
                         ${hasDriver ? `<button class="btn-call-mini" onclick="window.open('tel:${driverPhone}')"><i data-lucide="phone" size="14"></i></button>` : ''}
                     </div>
                 </div>
@@ -2106,7 +2134,7 @@
         try {
             await finalizeOrderPlacementSilent(details, imageUrl, price, area, currentResName);
             btn.innerHTML = originalBtnHtml; btn.disabled = false;
-            showSuccessMessage(`<div style="background: var(--success); width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 8px; box-shadow: 0 4px 15px rgba(16,185,129,0.3);"><i data-lucide="check" size="24" color="white"></i></div><div class="fw-black" style="font-size: 1rem;">تم إرسال الطلب للرادار بنجاح! 🚀</div>`);
+            showSuccessMessage(`<div style="background: var(--success); width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 8px; box-shadow: 0 4px 15px rgba(16,185,129,0.3);"><i data-lucide="check" size="24" color="white"></i></div><div class="fw-black" style="font-size: 1rem;">تم إرسال الطلب عبر خوادم الحوت بنجاح! 🚀</div>`);
         } catch (e) { btn.innerHTML = originalBtnHtml; btn.disabled = false; alert("حدث خطأ غير متوقع."); }
     }
 
@@ -2153,6 +2181,48 @@
         
         window.removePhoto(); clearDraft();
         setTimeout(() => document.getElementById('orderStatusBox').classList.add('hidden-section'), 4500);
+    }
+
+    // نظام الرسائل الإنسانية الذكي
+    function showFriendlyMessage() {
+        const banner = document.getElementById('friendlyMessageBanner');
+        const textEl = document.getElementById('friendlyText');
+        const iconEl = document.getElementById('friendlyIcon');
+        
+        const hour = new Date().getHours();
+        const month = new Date().getMonth() + 1; // 1-12
+        const isSummer = month >= 6 && month <= 9;
+        const isWinter = month === 12 || month <= 2;
+        
+        let messages = [];
+        let icon = "🌤️";
+
+        // رسائل الصباح (من 6 صباحاً إلى 3 عصراً)
+        if (hour >= 6 && hour < 15) {
+            icon = isSummer ? "🔥" : (isWinter ? "🌧️" : "☕");
+            messages = [
+                "صباح الخير! بداية يوم جديد ورزق وفير إن شاء الله. 🤍",
+                "الكباتن هم شركاء النجاح، استقبلوهم بابتسامة لتسهيل يومهم ويومكم. 🤝",
+                isSummer ? "الجو حار جداً اليوم، الكباتن يبذلون جهداً مضاعفاً، كلمة طيبة أو قدح ماء بارد يصنع فارقاً كبيراً! 🧊" : "صباح الهمة!",
+                isWinter ? "صباح الخير.. الأجواء باردة، تجهيز الطلب بسرعة يساعد الكابتن على توصيله حاراً للزبون ويريحه من الوقوف بالبرد. 🧣" : "يوم موفق!"
+            ];
+        } 
+        // رسائل المساء والليل (من 3 عصراً فما فوق)
+        else {
+            icon = "🌙";
+            messages = [
+                "مساء الخير! نحن في أوقات الذروة، التعاون وسرعة التجهيز يصنعان تقييماً ممتازاً لمطعمكم. 🌟",
+                "أبطال التوصيل في الشوارع الآن لخدمة زبائنكم، شكراً لتعاونكم المستمر معهم. 🛵",
+                "نظام الحوت السحابي يراقب الأداء لضمان وصول طلباتكم بأسرع وقت. عمل موفق! 🐳"
+            ];
+        }
+
+        // اختيار رسالة عشوائية من القائمة المناسبة
+        const randomMsg = messages[Math.floor(Math.random() * messages.length)];
+        textEl.innerText = randomMsg;
+        iconEl.innerText = icon;
+        
+        banner.classList.remove('hidden-section');
     }
 </script>
 </body>
