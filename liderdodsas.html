@@ -601,6 +601,7 @@ let drvLocs={},rfilt="all",pendCnt=0,fbConn=true,fbL=[];
 let radarHtml="";
 let rawOrders={};        /* خريطة الطلبات الخام (للمسار الزمني) */
 let dailyMetrics={};     /* daily_metrics للوحة الشرف والرادار العكسي */
+let drvPresence={};      /* 🕐 drivers_presence — أوقات الفتح المحمية (من محرّك التوزيع) */
 let _hofTimer=null;      /* مؤقّت تحديث لوحة الشرف كل دقيقة */
 let _hofHtml="",_watchHtml="";   /* حُرّاس التجزئة — يمنعان إعادة الرسم بلا تغيير (إصلاح التكهرب) */
 let _hofPending=null;            /* مجمّع تحديثات لوحة الشرف */
@@ -992,6 +993,11 @@ function setupFB(){
   const dmCb=snap=>{dailyMetrics=snap.val()||{};scheduleHof();};
   dmRef.on("value",dmCb);fbL.push({ref:dmRef,cb:dmCb});
 
+  /* 🕐 drivers_presence — أوقات الفتح المحمية (يكتبها محرّك التوزيع، لا يمحوها تطبيق الكابتن) */
+  const prRef=db.ref("drivers_presence");
+  const prCb=snap=>{drvPresence=snap.val()||{};scheduleHof();};
+  prRef.on("value",prCb);fbL.push({ref:prRef,cb:prCb});
+
   loadDriverNames();
 }
 async function loadDriverNames(){
@@ -1130,7 +1136,7 @@ window.checkInCaptain=function(phone,name){
    👥 خانة الكباتن المتصلين اليوم — معلومات كاملة (جديد)
 ════════════════════════════════════════ */
 function fmtClock(iso){if(!iso)return"—";const d=new Date(iso);if(isNaN(d))return"—";return d.toLocaleTimeString("ar-EG",{hour:"2-digit",minute:"2-digit"});}
-function fmtDur(min){if(!min||min<1)return"—";const h=Math.floor(min/60),m=min%60;return h>0?`${h}س ${m}د`:`${m}د`;}
+function fmtDur(min){if(min==null)return"—";if(min<1)return"بدأ للتو";const h=Math.floor(min/60),m=min%60;return h>0?`${h}س ${m}د`:`${m}د`;}
 
 /* يجمع كل كابتن ظهر اليوم (من daily_metrics) أو متصل الآن (من drvLocs) */
 function crewToday(){
@@ -1142,7 +1148,7 @@ function crewToday(){
       phone:n,name:dN(n),
       completed:0,rejected:0,totalMin:0,avg:0,
       online:false,busy:false,
-      openTime:null,lastSeen:null,workedMin:0,
+      openTime:null,lastSeen:null,workedMin:null,
       ledgerTotal:liveLed.drivers?.[n]?.completed_orders||0
     };
     return map[n];
@@ -1169,11 +1175,15 @@ function crewToday(){
     const c=ensure(p);if(!c)return;
     c.online=isOnline;
     c.lastSeen=d.last_update||null;
-    /* وقت فتح التطبيق — بالتدرّج من الأدق للأقل دقة:
-       1) shift_start الصريح (الأدق — يُكتب عند بدء الشفت بعد تحديث Apps Script)
-       2) إن بدأ شفته اليوم: تقدير من shift_end ناقص مدة الشفت
-       3) احتياطي أخير: أقدم طابع زمني متاح لليوم (first_seen أو last_update) */
-    if(d.shift_start){
+    /* وقت فتح التطبيق — بالتدرّج من الأوثق:
+       1) drivers_presence (المحمي — يكتبه محرّك التوزيع، لا يمحوه تطبيق الكابتن) ✅
+       2) shift_start الصريح (عند بدء شفت رسمي)
+       3) تقدير من shift_end (لمن بدأ شفتاً اليوم)
+       4) first_seen_today (احتياطي — قد يُمحى بكتابات التطبيق الكاملة) */
+    const pr=drvPresence[n];
+    if(pr&&pr.date===t&&pr.first_seen){
+      c.openTime=pr.first_seen;
+    }else if(d.shift_start){
       c.openTime=d.shift_start;
     }else if(d.last_shift_date===t&&d.shift_end){
       const endMs=new Date(d.shift_end).getTime();
