@@ -1169,15 +1169,17 @@ function crewToday(){
     const c=ensure(p);if(!c)return;
     c.online=isOnline;
     c.lastSeen=d.last_update||null;
-    /* وقت فتح التطبيق: نستخدم shift_start الصريح إن وُجد (يُكتب من تطبيق الكابتن) */
-    if(d.last_shift_date===t){
-      if(d.shift_start){
-        c.openTime=d.shift_start;
-      }else if(d.shift_end){
-        /* تقدير احتياطي: shift_end ناقص 10 ساعات (مدة شفت افتراضية) حتى يُحدَّث تطبيق الكابتن */
-        const endMs=new Date(d.shift_end).getTime();
-        if(!isNaN(endMs))c.openTime=new Date(endMs-10*3600000).toISOString();
-      }
+    /* وقت فتح التطبيق — بالتدرّج من الأدق للأقل دقة:
+       1) shift_start الصريح (الأدق — يُكتب عند بدء الشفت بعد تحديث Apps Script)
+       2) إن بدأ شفته اليوم: تقدير من shift_end ناقص مدة الشفت
+       3) احتياطي أخير: أقدم طابع زمني متاح لليوم (first_seen أو last_update) */
+    if(d.shift_start){
+      c.openTime=d.shift_start;
+    }else if(d.last_shift_date===t&&d.shift_end){
+      const endMs=new Date(d.shift_end).getTime();
+      if(!isNaN(endMs))c.openTime=new Date(endMs-10*3600000).toISOString();
+    }else if(d.first_seen_today){
+      c.openTime=d.first_seen_today;
     }
     /* مدة العمل: من الفتح حتى آخر ظهور (أو الآن إن متصل) */
     if(c.openTime){
