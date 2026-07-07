@@ -189,6 +189,17 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
 .crew-empty{text-align:center;padding:24px;color:var(--ink4);font-size:.8rem;font-weight:700;
   grid-column:1/-1;background:var(--surface2);border-radius:11px;border:1px dashed var(--line);}
 .crew-collapsed .crew-grid{display:none;}
+.crew-collapsed .crew-srch-w{display:none;}
+/* حقل بحث كباتن اليوم */
+.crew-srch-w{position:relative;margin-bottom:12px;}
+.crew-srch-i{position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--ink4);pointer-events:none;font-size:13px;}
+.crew-srch{width:100%;background:var(--surface3);border:1.5px solid transparent;border-radius:11px;
+  padding:10px 38px 10px 34px;font-size:.8rem;font-weight:700;color:var(--ink);outline:none;transition:border-color .15s,background .15s;}
+.crew-srch:focus{background:#fff;border-color:var(--black);}
+.crew-srch-clear{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--ink4);
+  cursor:pointer;font-size:12px;width:20px;height:20px;border-radius:50%;background:var(--line);
+  display:none;align-items:center;justify-content:center;}
+.crew-srch-clear.show{display:flex;}
 
 /* ── KPIs ── */
 .kpi-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;}
@@ -342,6 +353,29 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
   font-size:.95rem;font-weight:900;cursor:pointer;transition:opacity .15s;}
 .msg-send:active{opacity:.85;}
 
+/* 👑 نافذة التعيين السيادي مع بحث */
+.asn-srch-w{position:relative;margin-bottom:14px;}
+.asn-srch-i{position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--ink4);pointer-events:none;font-size:14px;}
+.asn-srch{width:100%;background:var(--surface3);border:1.5px solid transparent;border-radius:12px;
+  padding:13px 40px 13px 14px;font-size:.9rem;font-weight:700;color:var(--ink);outline:none;transition:border-color .15s,background .15s;}
+.asn-srch:focus{background:#fff;border-color:var(--black);}
+.asn-list{display:flex;flex-direction:column;gap:7px;max-height:50vh;overflow-y:auto;margin-bottom:8px;}
+.asn-list::-webkit-scrollbar{width:0;}
+.asn-item{display:flex;align-items:center;gap:11px;background:var(--surface2);border:1px solid var(--line);
+  border-radius:12px;padding:11px 13px;cursor:pointer;transition:border-color .12s,background .12s;text-align:right;}
+.asn-item:hover{background:#fff;border-color:var(--black);}
+.asn-item:active{transform:scale(.99);}
+.asn-av{width:38px;height:38px;border-radius:11px;background:#fff;border:1px solid var(--line);
+  display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;font-weight:900;color:var(--ink2);}
+.asn-info{flex:1;min-width:0;}
+.asn-nm{font-size:.86rem;font-weight:900;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.asn-meta{font-size:.66rem;font-weight:700;color:var(--ink4);margin-top:2px;direction:ltr;text-align:right;}
+.asn-badge{font-size:.62rem;font-weight:900;padding:3px 9px;border-radius:99px;flex-shrink:0;}
+.asn-badge.b-free{background:var(--green-l);color:var(--green-d);}
+.asn-badge.b-busy{background:var(--red-l);color:var(--red);}
+.asn-empty{text-align:center;padding:26px;color:var(--ink4);font-size:.82rem;font-weight:700;
+  background:var(--surface2);border-radius:12px;border:1px dashed var(--line);}
+
 /* Timeline */
 .tl-flags{margin-bottom:14px;}
 .tl-flag{background:var(--amber-l);border:1px solid #f6e2c0;color:var(--amber-d);
@@ -425,6 +459,21 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
   </div>
 </div>
 
+<!-- 👑 نافذة التعيين السيادي مع بحث -->
+<div id="assignModal" class="sheet-bg" onclick="clSheet('assignModal')">
+  <div class="sheet" onclick="event.stopPropagation()">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">👑 تعيين سيادي <span id="assignOrderId" style="color:var(--ink4)"></span></div>
+    <div class="sheet-sub">ابحث واختر الكابتن لإسناد الطلب له مباشرةً</div>
+    <div class="asn-srch-w">
+      <span class="asn-srch-i">🔍</span>
+      <input type="text" id="assignSearch" class="asn-srch" placeholder="ابحث عن كابتن بالاسم أو الرقم..." oninput="filterAssign()" autocomplete="off">
+    </div>
+    <div id="assignList" class="asn-list"></div>
+    <button class="sheet-cancel" onclick="clSheet('assignModal')">إلغاء</button>
+  </div>
+</div>
+
 <!-- AUTH -->
 <div id="auth">
   <div class="auth-box">
@@ -477,6 +526,11 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
           <span class="crew-count" id="crewCount">0 متصل</span>
         </div>
         <button class="crew-toggle" id="crewToggle" onclick="toggleCrew()">▲ إخفاء</button>
+      </div>
+      <div class="crew-srch-w">
+        <span class="crew-srch-i">🔍</span>
+        <input type="text" id="crewSearch" class="crew-srch" placeholder="ابحث عن كابتن بالاسم أو الرقم..." oninput="filterCrew()" autocomplete="off">
+        <span class="crew-srch-clear" id="crewSearchClear" onclick="clearCrewSearch()">✕</span>
       </div>
       <div id="crewGrid" class="crew-grid"></div>
     </div>
@@ -544,7 +598,7 @@ const MSG_TEMPLATES = [
 let STOKEN="",EMP_NAME="",EMP_PHONE="";
 let liveOrd=[],actDrv=new Set(),gDrivers=[],liveLed={drivers:{}};
 let drvLocs={},rfilt="all",pendCnt=0,fbConn=true,fbL=[];
-let radarHtml="",drvSelOpts="";
+let radarHtml="";
 let rawOrders={};        /* خريطة الطلبات الخام (للمسار الزمني) */
 let dailyMetrics={};     /* daily_metrics للوحة الشرف والرادار العكسي */
 let _hofTimer=null;      /* مؤقّت تحديث لوحة الشرف كل دقيقة */
@@ -552,6 +606,7 @@ let _hofHtml="",_watchHtml="";   /* حُرّاس التجزئة — يمنعان
 let _hofPending=null;            /* مجمّع تحديثات لوحة الشرف */
 let _msgPhone="",_msgName="";    /* حالة منشئ الرسالة */
 let _crewHtml="",_crewCollapsed=false;   /* 👥 خانة كباتن اليوم */
+let _crewSearch="";                       /* مصطلح بحث كباتن اليوم */
 
 /* Map State */
 let mapInstance = null;
@@ -1145,23 +1200,30 @@ function crewToday(){
 
 function renderCrew(){
   const box=document.getElementById("crewGrid");if(!box)return;
-  const list=crewToday();
+  let list=crewToday();
   /* ترتيب: المتصلون أولاً، ثم الأكثر إنجازاً */
   list.sort((a,b)=>{
     if(a.online!==b.online)return a.online?-1:1;
     return b.completed-a.completed;
   });
 
+  /* العدّاد يعكس الكل (قبل الفلترة) ليبقى دقيقاً */
   const onlineCount=list.filter(c=>c.online).length;
   const cc=document.getElementById("crewCount");
   if(cc)cc.textContent=`${onlineCount} متصل · ${list.length} اليوم`;
 
+  /* 🔍 فلترة البحث: بالاسم أو الرقم (لا تؤثر على العدّاد) */
+  const q=_crewSearch.trim().toLowerCase();
+  const shown=q?list.filter(c=>c.name.toLowerCase().includes(q)||c.phone.includes(q)):list;
+
   let html;
   if(!list.length){
     html=`<div class="crew-empty">🌙 لم يفتح أي كابتن تطبيقه اليوم بعد.</div>`;
+  }else if(!shown.length){
+    html=`<div class="crew-empty">🔍 لا يوجد كابتن يطابق "${esc(_crewSearch)}"</div>`;
   }else{
     html="";
-    list.forEach(c=>{
+    shown.forEach(c=>{
       const stCls=c.busy?"busy":(c.online?"on":"off");
       const stTxt=c.busy?"🔴 مشغول":(c.online?"🟢 متصل":"⚫ غير متصل");
       const initial=c.name!=="غير محدد"?c.name.charAt(0):"🛵";
@@ -1200,6 +1262,21 @@ window.toggleCrew=function(){
   _crewCollapsed=!_crewCollapsed;
   document.getElementById("crewBox").classList.toggle("crew-collapsed",_crewCollapsed);
   document.getElementById("crewToggle").textContent=_crewCollapsed?"▼ إظهار":"▲ إخفاء";
+};
+
+/* 🔍 بحث كباتن اليوم — يفلتر البطاقات فوراً */
+window.filterCrew=function(){
+  _crewSearch=document.getElementById("crewSearch").value;
+  document.getElementById("crewSearchClear").classList.toggle("show",_crewSearch.length>0);
+  _crewHtml="";  /* أبطِل حارس التجزئة ليعيد الرسم فوراً */
+  renderCrew();
+};
+window.clearCrewSearch=function(){
+  document.getElementById("crewSearch").value="";
+  _crewSearch="";
+  document.getElementById("crewSearchClear").classList.remove("show");
+  _crewHtml="";
+  renderCrew();
 };
 
 /* تحديث لوحة الشرف والرادار العكسي وكباتن اليوم كل دقيقة (الحُرّاس يمنعون أي رسم بلا تغيير) */
@@ -1343,9 +1420,6 @@ function renderRadar(){
   if(rfilt==="dlyr")list=list.filter(o=>o[O.STATUS]==="arrived_at_res"&&o[O.TIME]&&(now-new Date(o[O.TIME]).getTime())/60000>10);
   if(rfilt==="dlyd")list=list.filter(o=>["picked_up","في الطريق","heading"].includes(o[O.STATUS])&&o[O.TIME]&&(now-new Date(o[O.TIME]).getTime())/60000>20);
 
-  let opts='<option value="" disabled selected>تعيين يدوي</option>';
-  gDrivers.forEach(d=>{const n=nP(d.phone);if(actDrv.has(n)){const cp=liveLed.drivers?.[n]?.completed_orders||0;opts+=`<option value="${esc(String(d.phone))}">${cp>=100?"💎":cp>=30?"⭐":"🟢"} ${esc(d.name)}</option>`;}});
-  drvSelOpts=opts;
   const c=document.getElementById("radar");
   if(!list.length){c.innerHTML=`<div class="empty-s"><div class="es-ic">🎯</div><div class="es-t">الرادار نظيف</div></div>`;radarHtml="";return;}
 
@@ -1405,7 +1479,7 @@ function renderRadar(){
             ${hD?`<button class="cb-sm" onclick="window.open('tel:${jDP}')">📞</button>`:''}
             ${msgBtn}
             ${wdBtn}
-            <select class="asel" onchange="asgnDrv('${jOId}',this.value,this)">${drvSelOpts}</select>
+            <button class="asel" style="cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px" onclick="openAssign('${jOId}')">👑 تعيين كابتن</button>
           </div>
         </div>
 
@@ -1438,13 +1512,92 @@ window.delOrder=async function(oId,el){
   }catch(e){toast("خطأ","e");}
   finally{if(el){el.disabled=false;el.classList.remove("loading");}}
 };
-window.asgnDrv=async function(oId,dPhone,el){
-  if(!dPhone)return;el.disabled=true;
+window.asgnDrv=async function(oId,dPhone){
+  if(!dPhone)return;
   try{
     const d=await staffAction({action:"STAFF_ASSIGN",orderId:oId,driverPhone:dPhone});
     if(d.success)toast("تم التعيين 👑");else toast(d.msg||"فشل","e");
   }catch(e){toast("خطأ","e");}
-  finally{el.disabled=false;}
+};
+
+/* ════════════════════════════════════════
+   👑 نافذة التعيين السيادي مع بحث
+════════════════════════════════════════ */
+let _assignOrderId="",_assignSearch="";
+
+window.openAssign=function(oId){
+  _assignOrderId=oId;
+  _assignSearch="";
+  document.getElementById("assignOrderId").textContent="#"+oId;
+  document.getElementById("assignSearch").value="";
+  renderAssignList();
+  opSheet("assignModal");
+  /* تركيز حقل البحث تلقائياً على الأجهزة المكتبية */
+  setTimeout(()=>{const el=document.getElementById("assignSearch");if(el&&window.innerWidth>768)el.focus();},100);
+};
+
+window.filterAssign=function(){
+  _assignSearch=document.getElementById("assignSearch").value;
+  renderAssignList();
+};
+
+/* يبني قائمة الكباتن المتاحين (النشطين) مع بحث + حالة الانشغال */
+function renderAssignList(){
+  const box=document.getElementById("assignList");if(!box)return;
+
+  /* حساب المشغولين */
+  const busySet=new Set();
+  liveOrd.forEach(o=>{
+    const dp=o[O.DRV];
+    if(dp&&!["pending_driver","system_routing","manual_pending"].includes(dp))busySet.add(nP(dp));
+  });
+
+  /* الكباتن النشطون فقط (المتصلون بالميدان) */
+  let avail=[];
+  gDrivers.forEach(d=>{
+    const n=nP(d.phone);
+    if(!actDrv.has(n))return;  /* المتاحون بالميدان فقط */
+    const cp=liveLed.drivers?.[n]?.completed_orders||0;
+    avail.push({phone:n,name:d.name||dN(n),ledger:cp,busy:busySet.has(n)});
+  });
+
+  /* بحث بالاسم أو الرقم */
+  const q=_assignSearch.trim().toLowerCase();
+  if(q)avail=avail.filter(c=>c.name.toLowerCase().includes(q)||c.phone.includes(q));
+
+  /* ترتيب: المتاحون (غير المشغولين) أولاً، ثم الأكثر إنجازاً */
+  avail.sort((a,b)=>{
+    if(a.busy!==b.busy)return a.busy?1:-1;
+    return b.ledger-a.ledger;
+  });
+
+  if(!avail.length){
+    box.innerHTML=`<div class="asn-empty">${q?`🔍 لا يوجد كابتن متاح يطابق "${esc(_assignSearch)}"`:"🌙 لا يوجد كباتن نشطون بالميدان حالياً"}</div>`;
+    return;
+  }
+
+  let html="";
+  avail.forEach(c=>{
+    const tier=c.ledger>=100?"💎":c.ledger>=30?"⭐":"🟢";
+    const initial=c.name!=="غير محدد"?c.name.charAt(0):"🛵";
+    const badge=c.busy?`<span class="asn-badge b-busy">🔴 مشغول</span>`:`<span class="asn-badge b-free">🟢 متاح</span>`;
+    html+=`<div class="asn-item" onclick="doAssign('${ej(c.phone)}')">
+      <div class="asn-av">${esc(initial)}</div>
+      <div class="asn-info">
+        <div class="asn-nm">${tier} ${esc(c.name)}</div>
+        <div class="asn-meta">${esc(c.phone)} · ${c.ledger} طلب إجمالي</div>
+      </div>
+      ${badge}
+    </div>`;
+  });
+  box.innerHTML=html;
+}
+
+/* تنفيذ التعيين من النافذة */
+window.doAssign=async function(dPhone){
+  if(!_assignOrderId||!dPhone)return;
+  clSheet("assignModal");
+  await asgnDrv(_assignOrderId,dPhone);
 };
 window.wdOrder=async function(oId,dPhone,el){
   if(!confirm("سحب الطلب وإعادته للرادار؟"))return;
