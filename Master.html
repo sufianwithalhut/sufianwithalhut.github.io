@@ -2,8 +2,7 @@
 <html lang="ar" dir="rtl">
 <head>
 <script>
-// 🛡️ V22.0 "Fortress" — رفع رقم الإصدار يفرض مسح الكاش على كل الأجهزة
-const V="22.0",VK="hut_v22";
+const V="21.1",VK="hut_v21"; // تم تحديث رقم الإصدار لضمان مسح الكاش
 try{if(localStorage.getItem(VK)!==V){localStorage.setItem(VK,V);if("caches"in window)caches.keys().then(n=>n.forEach(k=>caches.delete(k)));}}catch(e){}
 </script>
 <meta charset="UTF-8">
@@ -12,8 +11,6 @@ try{if(localStorage.getItem(VK)!==V){localStorage.setItem(VK,V);if("caches"in wi
 <meta name="theme-color" content="#0a1628">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<!-- ⚠️ ملاحظة أمنية: هذا مفتاح متصفح عام حتماً — قيّده من Google Cloud Console
-     بـ HTTP referrer لنطاق اللوحة فقط + حصره بواجهات Maps/Places -->
 <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAo1rmqUzieYZU3RIwXOAN87GkpNrp-_Hc&libraries=places"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
@@ -620,7 +617,7 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
   font-size:.76rem;font-weight:800;cursor:pointer;
   display:inline-flex;align-items:center;gap:5px;
   background:var(--sky);color:#fff;box-shadow:var(--sh-sky);}
-/* ═══ تحسينات تبويب الموظفين ═══ */
+/* ═══ تحسينات تبويب الموظفين (جديد V21) ═══ */
 .staff-hero{background:linear-gradient(135deg,#1e3a8a,#2563eb);border-radius:var(--r5);
   padding:16px 18px;margin-bottom:16px;color:#fff;display:flex;align-items:center;
   justify-content:space-between;gap:12px;box-shadow:var(--sh-sky);}
@@ -803,7 +800,7 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
   <div class="auth-box">
     <div class="auth-mark">🏢</div>
     <div class="auth-h">مكتب سفيان</div>
-    <div class="auth-s">الإدارة العليا — Fortress V22.0</div>
+    <div class="auth-s">الإدارة العليا — Fortress V21.0</div>
     <input type="password" id="mPW" class="auth-in" placeholder="••••••••" autocomplete="off" onkeypress="if(event.key==='Enter')doAuth()">
     <button class="auth-btn" id="authB" onclick="doAuth()">دخول لوحة التحكم</button>
   </div>
@@ -812,7 +809,7 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
   <aside class="sidebar">
     <div class="sidebar-head">
       <div class="sidebar-logo">🏢</div>
-      <div><div class="sidebar-name">مكتب سفيان</div><div class="sidebar-ver">V22.0 • كركوك</div></div>
+      <div><div class="sidebar-name">مكتب سفيان</div><div class="sidebar-ver">V21.0 • كركوك</div></div>
     </div>
     <span class="sidebar-sec">الرصد والتحليل</span>
     <button class="nb on" id="nb-live" onclick="goTab('live',this)">
@@ -994,7 +991,7 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
     </div>
     <div id="pg-audit" class="pg tab-p">
       <div class="pg-ttl">سجل التدقيق</div>
-      <div class="arch-alert" style="margin-bottom:12px">🕒 سجل التدقيق محفوظ تراكمياً — منذ CF-6.0 لم يعد يُمحى ليلياً 🔧[خ٢٢]. يُعرض هنا آخر 120 حدثاً.</div>
+      <div class="arch-alert" style="margin-bottom:12px">🕒 يُحفظ سجل التدقيق ليوم واحد — يُصفّره النظام تلقائياً في التقرير الليلي (3 فجراً).</div>
       <div class="srch-w" style="margin-bottom:16px"><span class="si">🔍</span><input type="text" id="auSch" class="srch" placeholder="ابحث في السجل..." oninput="renderAudit()"></div>
       <div id="auList"></div>
     </div>
@@ -1008,39 +1005,12 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
   </nav>
 </div>
 <script>
-/* ═══════════════════════════════════════════════════════════════
-   🛡️ لوحة الإدارة V22.0 "Fortress" — متناسقة مع النظام المحصّن
-   (قواعد V2.0 + GAS V16.0 + CF-6.0)
-   ما تغيّر عن V21.1:
-   🔧[خ١]  getGlobalData صارت بوابة إدارية: نداؤها يتطلب ATOK
-           (ADMIN_API_TOKEN) المنفصل — لا يوجد إلا في هذه اللوحة.
-           ملاحظة: أعمدة كلمات المرور تصل الآن معمّاة "•••" — اللوحة
-           لا تعرضها أصلاً فلا شيء ينكسر.
-   🔧[خ٣]  التوكن المحروق HUT_SECURE_99 استُبدل بموضعَي التوكنين.
-   🩹      كل مستمعات فايربيس صارت ذاتية الشفاء عبر listen():
-           عند أي رفض قراءة (انتهاء توكن الساعة، انقطاع) تُعاد
-           المصادقة بـ VERIFY_MASTER_PASS ويُعاد الربط تلقائياً —
-           فايربيس يفصل المستمع المرفوض نهائياً ولا يعيده بنفسه.
-   🔧[خ٧]  nP() تحوّل الأرقام العربية/الفارسية (تطبيع موحّد مع
-           GAS/CF) — البحث برقم عربي يعمل الآن.
-   🔧[خ٢٢] نص تنبيه سجل التدقيق حُدّث: CF-6.0 لم يعد يمحو
-           admin_audit_trail ليلياً — السجل تراكمي.
-   ملاحظة: الكتابات المباشرة على فايربيس (إكمال/إلغاء/تعيين/سحب/
-   بث/تدقيق) متوافقة مع قواعد V2.0 لأن توكن اللوحة يحمل دور admin.
-   delOrder أصلاً يكتب status:'deleted' لا حذفاً — متوافق مع منع
-   الحذف الجديد.
-═══════════════════════════════════════════════════════════════ */
+// 🚀 التعديل الأول: إضافة DOUBLE: 15 للفهارس
 const O={ID:0,RES:1,AREA:2,DETAILS:3,PRICE:4,STATUS:5,DRV:6,TIME:7,PHOTO:8,SOV:9,LU:10,LO:11,READY:12,COMM:13,PAY:14,DOUBLE:15};
 const R={ID:0,NAME:1,PHONE:2,AREA:3,STATUS:4,COMM:5,LAT:6,LNG:7,PAY:8,C9:9,C10:10,C11:11,C12:12,PRICELIST:12,PASS:13};
 const D={ID:0,NAME:1,PHONE:2,AREA:3,STATUS:4,LAT:5,LNG:6,PASS:12,SHIFT:13};
-/* ⚠️ بعد إعادة نشر سكربت GAS V16.0 قد يتغيّر رابط النشر — حدّثه هنا. */
 const API="https://script.google.com/macros/s/AKfycbzKDBjgPxmt_iDCphkjB6EY-cnag_aqwxrdNDrY9uqBRbTZYsqGWl4TJn4pANS8OVYm/exec";
-/* 🔧[خ٣] توكن التطبيقات العام (API_TOKEN من Script Properties). */
-const TOK="ضع_توكن_التطبيقات_الجديد_هنا";
-/* 🔧[خ١] التوكن الإداري المنفصل (ADMIN_API_TOKEN) — لهذه اللوحة فقط،
-   لا يُوضع في أي تطبيق كابتن/مطعم/ليدر أبداً. بدونه يرفض السيرفر
-   getGlobalData برسالة "مرفوض — يتطلب صلاحية إدارية". */
-const ATOK="ضع_توكن_الإدارة_المنفصل_هنا";
+const TOK="HUT_SECURE_99";
 const TITLES={live:"الرصد الميداني",orders:"سجل اليوم",restaurants:"إدارة المطاعم",drivers:"إدارة الأسطول",staff:"إدارة الموظفين",aiops:"مركز القيادة",audit:"سجل التدقيق"};
 
 let MP="",gD=null;
@@ -1058,7 +1028,7 @@ let gMap=null,gMarker=null,gAutoComplete=null;
 let dc=null,pc=null,archHtml="",drvSelOpts="";
 let _auInit=false,_alInit=false;
 
-/* ─── حالة نظام الموظفين ─── */
+/* ─── حالة نظام الموظفين (V21) ─── */
 let staffSessions={},staffLog=[],staffRoster=[],_stInit=false,stEditMode=false,_stIdleTimer=null;
 
 try{firebase.initializeApp({apiKey:"AIzaSyAo1rmqUzieYZU3RIwXOAN87GkpNrp-_Hc",authDomain:"sufyan-delivery.firebaseapp.com",databaseURL:"https://sufyan-delivery-default-rtdb.europe-west1.firebasedatabase.app",projectId:"sufyan-delivery",storageBucket:"sufyan-delivery.firebasestorage.app",messagingSenderId:"941542380637",appId:"1:941542380637:web:9623fa6e627817ffeba9b4"});}catch(e){}
@@ -1086,52 +1056,9 @@ function scheduleAdminTokenRefresh(pass){
   },50*60*1000);
 }
 
-/* 🩹 شفاء المصادقة عند رفض القراءة — نداء واحد جارٍ مهما تعددت المستمعات */
-let _reauthInFlight=null;
-function healAdminAuth(){
-  if(_reauthInFlight)return _reauthInFlight;
-  _reauthInFlight=(async()=>{
-    let ok=false;
-    try{
-      if(MP){
-        const r=await fetch(API,{method:"POST",body:JSON.stringify({action:"VERIFY_MASTER_PASS",pass:MP,token:TOK})});
-        const d=await r.json();
-        if(d&&d.success&&d.firebase_token){await auth.signInWithCustomToken(d.firebase_token);ok=true;}
-      }
-    }catch(e){}
-    _reauthInFlight=null;
-    return ok;
-  })();
-  return _reauthInFlight;
-}
-
-/* 🩹 مستمع ذاتي الشفاء: mkRef دالة تُعيد ref/query (لدعم limitToLast عند
-   إعادة الربط). فايربيس يفصل المستمع المرفوض نهائياً — هنا نشفي
-   المصادقة ونعيد الربط بأنفسنا. */
-function listen(mkRef,cb){
-  const ref=mkRef();
-  const cancel=async(err)=>{
-    console.warn("🔒 رُفضت القراءة:",err&&err.message);
-    const ok=await healAdminAuth();
-    setTimeout(()=>listen(mkRef,cb),ok?1200:15000);
-  };
-  ref.on("value",cb,cancel);
-  fbL.push({ref,cb});
-}
-
 function esc(s){if(s==null)return"";const d=document.createElement("div");d.textContent=String(s);return d.innerHTML;}
 function ej(s){return String(s??'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');}
-/* 🔧[خ٧] التطبيع الموحّد حرفياً مع GAS V16.0 و CF-6.0:
-   أرقام عربية/فارسية → لاتينية، إسقاط 964، إسقاط كل الأصفار البادئة. */
-function nP(p){
-  if(!p)return"";
-  let s=String(p);
-  const ar=['٠','١','٢','٣','٤','٥','٦','٧','٨','٩'],fa=['۰','۱','۲','۳','۴','۵','۶','۷','۸','۹'];
-  for(let i=0;i<10;i++){s=s.split(ar[i]).join(String(i));s=s.split(fa[i]).join(String(i));}
-  s=s.replace(/[^\d]/g,"");
-  if(s.startsWith("964"))s=s.slice(3);
-  return s.replace(/^0+/,"");
-}
+function nP(p){if(!p)return"";let s=String(p).replace(/[^\d]/g,"");if(s.startsWith("964"))s=s.slice(3);return s.replace(/^0+/,"");}
 function dN(p){
   if(!p)return"غير محدد";
   const found=gD?.drivers.find(x=>nP(x[D.PHONE])===nP(p));
@@ -1146,8 +1073,6 @@ function toast(m,t="s"){
   c.appendChild(el);
   setTimeout(()=>{el.style.opacity="0";el.style.transition=".3s";setTimeout(()=>el.remove(),320);},3200);
 }
-/* الكتابة على admin_audit_trail مسموحة لدور admin في قواعد V2.0.
-   🔧[خ٢٢] السجل تراكمي الآن — CF-6.0 لم يعد يمحوه ليلياً. */
 function logAudit(a,d){db.ref("admin_audit_trail").push({action:a,details:d,timestamp:new Date().toISOString(),user:"admin"}).catch(()=>{});}
 function opMod(id){document.getElementById(id).classList.add("open");}
 function clMod(id){document.getElementById(id).classList.remove("open");}
@@ -1201,8 +1126,6 @@ window.doAuth=async function(){
     const d=await r.json();
     if(d.success){
       sessionStorage.setItem("hut_v17",MP);
-      /* المصادقة تكتمل هنا قبل setupFB — فالمستمعات تُربط دائماً
-         بجلسة admin فعلية (شرط القراءة في قواعد V2.0). */
       await consumeAdminToken(d.firebase_token,pass);
       document.getElementById("auth").style.display="none";
       document.getElementById("app").classList.remove("dn");
@@ -1224,13 +1147,8 @@ function startClk(){
 
 async function loadData(){
   try{
-    /* 🔧[خ١] getGlobalData تتطلب الآن التوكن الإداري المنفصل atoken */
-    const r=await fetch(`${API}?action=getGlobalData&token=${TOK}&atoken=${encodeURIComponent(ATOK)}&ts=${Date.now()}`);
+    const r=await fetch(`${API}?action=getGlobalData&token=${TOK}&ts=${Date.now()}`);
     const data=await r.json();
-    if(data&&data.success===false){
-      toast(data.msg||"مرفوض — تحقق من ضبط ATOK (توكن الإدارة) في اللوحة وفي Script Properties","e");
-      return;
-    }
     const now=Date.now();
     data.drivers.forEach(d=>{const ov=ovr.d[d[D.PHONE]];if(ov&&now-ov.ts<120000)d[D.STATUS]=ov.status;else if(ov)delete ovr.d[d[D.PHONE]];});
     data.restaurants.forEach(r=>{const ov=ovr.r[r[R.PHONE]];if(ov&&now-ov.ts<120000)r[R.STATUS]=ov.status;else if(ov)delete ovr.r[r[R.PHONE]];});
@@ -1250,7 +1168,6 @@ async function loadData(){
 }
 
 function setupFB(){
-  /* مؤشر الاتصال — لا يحتاج مصادقة، يبقى ربطاً مباشراً */
   db.ref(".info/connected").on("value",snap=>{
     fbConn=snap.val()===true;
     const dot=document.getElementById("fbDot"),txt=document.getElementById("fbTxt"),cs=document.getElementById("fbCS");
@@ -1259,10 +1176,12 @@ function setupFB(){
     if(cs)cs.textContent=fbConn?"🟢 متصل":"🔴 منقطع";
     updTicker();
   });
+  const oRef=db.ref("active_orders");
   const oCb=snap=>{
     const obj=snap.val();let active=[],arch=[];const now=Date.now();
     if(obj){Object.values(obj).forEach(o=>{
       if(!o.restaurant?.trim())return;
+      // 🚀 التعديل الثاني: إضافة جلب الختم الحقيقي للطلب المزدوج
       let a=[o.id||"",o.restaurant||"",o.area||"غير محدد",o.details||"طلب توصيل",
         o.price||0,o.status||"pending",o.driverPhone||"",
         o.last_update||o.timestamp||"",o.photoUrl||"",o.is_sovereign||false,
@@ -1303,7 +1222,8 @@ function setupFB(){
     const bd=document.getElementById("bnDot");if(bd)bd.classList.toggle("on",np>0);
     updRadarCnts();renderRadar();updHeat();updResMk();renderArch();updTicker();renderCharts();
   };
-  listen(()=>db.ref("active_orders"),oCb);
+  oRef.on("value",oCb);fbL.push({ref:oRef,cb:oCb});
+  const lRef=db.ref("drivers_locations");
   const lCb=snap=>{
     const locs=snap.val();if(!locs)return;
     const now=Date.now();actDrv.clear();
@@ -1334,27 +1254,32 @@ function setupFB(){
     updTicker();
     if(gD&&document.getElementById("pg-drivers").classList.contains("on"))filtEnt("DRV");
   };
-  listen(()=>db.ref("drivers_locations"),lCb);
+  lRef.on("value",lCb);fbL.push({ref:lRef,cb:lCb});
+  const ledRef=db.ref("ledgers");
   const ledCb=snap=>{
     liveLed=snap.val()||{drivers:{},restaurants:{}};
     if(gD){updBadges("RES",gD.restaurants);updBadges("DRV",gD.drivers);}
     patchCards("RES");patchCards("DRV");updTicker();
   };
-  listen(()=>db.ref("ledgers"),ledCb);
+  ledRef.on("value",ledCb);fbL.push({ref:ledRef,cb:ledCb});
+  const dmRef=db.ref("daily_metrics");
   const dmCb=snap=>{liveMet=snap.val()||{};if(gD&&document.getElementById("pg-drivers").classList.contains("on"))filtEnt("DRV");};
-  listen(()=>db.ref("daily_metrics"),dmCb);
+  dmRef.on("value",dmCb);fbL.push({ref:dmRef,cb:dmCb});
+  const shRef=db.ref("system_settings/shifts_enabled");
   const shCb=snap=>{shiftsOn=snap.val()!==false;updShiftsUI();};
-  listen(()=>db.ref("system_settings/shifts_enabled"),shCb);
+  shRef.on("value",shCb);fbL.push({ref:shRef,cb:shCb});
+  const hcRef=db.ref("system_settings/health_check");
   const hcCb=snap=>{
     const hc=snap.val();const el=document.getElementById("hcSt");
     if(el&&hc!=null){const age=Date.now()-(typeof hc==="number"?hc:new Date(hc).getTime());
       el.textContent=age<300000?"مستقر":"متأخر";el.style.color=age<300000?"var(--jade)":"var(--amber)";}
   };
-  listen(()=>db.ref("system_settings/health_check"),hcCb);
+  hcRef.on("value",hcCb);fbL.push({ref:hcRef,cb:hcCb});
   const _days=[];
   for(let i=0;i<3;i++){const d=new Date();d.setDate(d.getDate()-i);_days.push(d.toISOString().split("T")[0]);}
   compArch=[];compByDay={};
   _days.forEach(day=>{
+    const cRef=db.ref("completed_orders/"+day);
     const cCb=snap=>{
       const obj=snap.val();const arr=[];
       if(obj)Object.values(obj).forEach(o=>{
@@ -1368,12 +1293,13 @@ function setupFB(){
       compArch=[].concat.apply([],Object.values(compByDay));
       renderArch();
     };
-    listen(()=>db.ref("completed_orders/"+day),cCb);
+    cRef.on("value",cCb);fbL.push({ref:cRef,cb:cCb});
   });
+  const rlRef=db.ref("restaurants_locations");
   const rlCb=snap=>{liveResLoc=snap.val()||{};updResMk();};
-  listen(()=>db.ref("restaurants_locations"),rlCb);
-  if(!_alInit){_alInit=true;listen(()=>db.ref("system_alerts").limitToLast(60),snap=>{alData=[];const v=snap.val();if(v)Object.keys(v).forEach(k=>alData.unshift({id:k,...v[k]}));updTicker();if(document.getElementById("pg-aiops").classList.contains("on"))renderAlerts();});}
-  if(!_auInit){_auInit=true;listen(()=>db.ref("admin_audit_trail").limitToLast(120),snap=>{auData=[];const v=snap.val();if(v)Object.keys(v).forEach(k=>auData.unshift(v[k]));if(document.getElementById("pg-audit").classList.contains("on"))renderAudit();});}
+  rlRef.on("value",rlCb);fbL.push({ref:rlRef,cb:rlCb});
+  if(!_alInit){_alInit=true;db.ref("system_alerts").limitToLast(60).on("value",snap=>{alData=[];const v=snap.val();if(v)Object.keys(v).forEach(k=>alData.unshift({id:k,...v[k]}));updTicker();if(document.getElementById("pg-aiops").classList.contains("on"))renderAlerts();});}
+  if(!_auInit){_auInit=true;db.ref("admin_audit_trail").limitToLast(120).on("value",snap=>{auData=[];const v=snap.val();if(v)Object.keys(v).forEach(k=>auData.unshift(v[k]));if(document.getElementById("pg-audit").classList.contains("on"))renderAudit();});}
   setupStaffFB();
   updRadarCnts();updTicker();
 }
@@ -1800,20 +1726,24 @@ function renderRadar(){
     if(!c.classList.contains("og"))c.className="og";
     const existIds=new Set([...c.querySelectorAll("[id^='oc-']")].map(el=>el.id));
     const newIds=new Set();
+    
+    // 🚀 التعديل الثالث: قراءة isDoubleDB الحقيقية من السيرفر وإلغاء تخمين dCnt
     list.forEach(o=>{
       const[oId,rN,oA,,oP,st,dp,oT,pU,isSov,,lastOff,isReady,, ,isDoubleDB]=o;
       const hD=dp&&!["pending_driver","system_routing","manual_pending"].includes(dp);
       const dn=hD?dN(dp):"جاري البحث...";
       const dMins=oT?Math.floor((now-new Date(oT).getTime())/60000):0;
       const tF=oT?new Date(oT).toLocaleTimeString("ar-EG",{hour:"2-digit",minute:"2-digit"}):"---";
-      const isDbl = isDoubleDB === true; // قراءة الختم الحقيقي من السيرفر — لا تخمين
+      const isDbl = isDoubleDB === true; // قراءة الختم الحقيقي بدلاً من التخمين
 
-      let clsCls,sbCls,sbTxt;
+            let clsCls,sbCls,sbTxt;
       if(isSov){clsCls="os";sbCls="stb-v";sbTxt="👑 سيادي";}
       else if(!hD||st==="pending_driver"||st==="manual_pending"){
+        // 🚀 التعديل: إظهار "جاري الرنين" إذا كان هناك كابتن حقيقي (hD) والحالة يدوية أو آلية
         if(hD&&(st==="manual_pending"||st==="pending_driver")){clsCls="or";sbCls="stb-w";sbTxt="⏳ جاري الرنين";}
         else{clsCls="op";sbCls="stb-r";sbTxt="🔴 بانتظار كابتن";}
       }
+
       else if(st==="picked_up"||st==="في الطريق"||st==="heading"){clsCls="oa";sbCls="stb-g";sbTxt="🟢 بالطريق";}
       else if(st==="arrived_at_res"){clsCls="oar";sbCls="stb-o";sbTxt="🟠 في المطعم";}
       else{clsCls="oh";sbCls="stb-b";sbTxt="🔵 متوجه";}
@@ -1893,8 +1823,6 @@ function updRadarCnts(){
   Object.keys(m).forEach(k=>m[k].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=c[k];}));
 }
 
-/* الكتابات المباشرة أدناه (إكمال/إلغاء/تعيين/سحب) متوافقة مع قواعد V2.0:
-   توكن اللوحة يحمل دور admin والدور الإداري مستثنى من قيود الحقول. */
 window.forceComplete=function(oId,el){
   if(!MP)return toast("انتهت الجلسة","e");
   if(!confirm("تأكيد إكمال الطلب؟ ستُحتسب المحاسبة تلقائياً في التقرير الليلي."))return;
@@ -1912,8 +1840,6 @@ window.forceComplete=function(oId,el){
     const card=el?.closest(".oc");if(card){card.style.opacity="0";setTimeout(()=>card.remove(),260);}
   }).catch(()=>toast("خطأ في الإكمال","e")).finally(()=>{if(el){el.disabled=false;el.classList.remove("loading");}});
 };
-/* delOrder يكتب status:'deleted' (لا حذف عقدة) — هذا ما تسمح به قواعد V2.0
-   حتى للطلبات، والحذف الفعلي محصور بمحرك الأرشفة السيرفري. */
 window.delOrder=function(oId,el){
   if(!confirm("إلغاء الطلب؟"))return;
   if(el){el.disabled=true;el.classList.add("loading");}
@@ -1931,9 +1857,6 @@ window.asgnDrv=function(oId,dPhone,el){
     .then(r=>r.json()).then(d=>{if(d.success){toast("تم التعيين السيادي 👑");logAudit("assignDriver",`طلب #${oId} ← ${dN(dPhone)}`);}else toast("خطأ","e");})
     .catch(()=>toast("تم الإرسال")).finally(()=>el.disabled=false);
 };
-/* ملاحظة V16.0: نداء DECLINE_ORDER هنا يسجّل الرفض في daily_metrics فقط —
-   🔧[خ١٣] لم يعد يُنقص daily_count (الخصم الشرعي الوحيد في سحب الموظف
-   staffWithdrawOrder لأن الطلب هناك قُبل فعلاً وزاد العدّاد). */
 window.wdOrder=function(oId,dPhone,el){
   if(!confirm("سحب الطلب وإعادته للرادار؟"))return;
   if(el)el.disabled=true;
@@ -1947,7 +1870,7 @@ window.wdOrder=function(oId,dPhone,el){
 window.arcSrt=function(col){
   if(arcSC===col)arcSD=arcSD==="asc"?"desc":"asc";
   else{arcSC=col;arcSD=col==="date"?"desc":"asc";}
-  ["id","date","price","comm"].forEach(x=>{const el=document.getElementById("si-"+x);if(el){el.textContent=x===arcSC?(arcSD==="asc"?"↑":"↓"):"⇅";el.style.color=x===arcSC?"var(--sky)":"";}});
+  ["id","date","price","comm"].forEach(x=>{const el=document.getElementById("si-"+x);if(el){el.textContent=x===arcSC?(arcSD==="asc"?"↑":"↓"):"⇅";el.style.color=x===arcSC?"var(--sky)":"";}}); 
   renderArch();
 };
 function renderArch(){
@@ -2127,13 +2050,12 @@ function renderAlerts(){
 }
 
 /* ═══════════════════════════════════════════
-   🧑‍💼 نظام إدارة الموظفين — مربوط بـ GAS V16.0 + Firebase
-   (V22.0: مستمعا staff_sessions و staff_activity_log صارا
-    ذاتيي الشفاء عبر listen — قواعد V2.0 تجعلهما قراءة admin فقط)
+   🧑‍💼 نظام إدارة الموظفين (V21) — مربوط بـ V14 + Firebase
 ═══════════════════════════════════════════ */
 function setupStaffFB(){
   if(_stInit)return;
   _stInit=true;
+  const sRef=db.ref("staff_sessions");
   const sCb=snap=>{
     staffSessions=snap.val()||{};
     let online=0;Object.values(staffSessions).forEach(s=>{if(s&&s.online===true)online++;});
@@ -2141,13 +2063,14 @@ function setupStaffFB(){
     const bsd=document.getElementById("bnStaffDot");if(bsd)bsd.classList.toggle("on",online>0);
     if(document.getElementById("pg-staff").classList.contains("on")){renderStaffOnline();renderStaffList();updStaffKPIs();}
   };
-  listen(()=>db.ref("staff_sessions"),sCb);
+  sRef.on("value",sCb);fbL.push({ref:sRef,cb:sCb});
+  const lRef=db.ref("staff_activity_log").limitToLast(200);
   const lCb=snap=>{
     staffLog=[];const v=snap.val();
     if(v)Object.keys(v).forEach(k=>staffLog.unshift({id:k,...v[k]}));
     if(document.getElementById("pg-staff").classList.contains("on")){renderStaffLog();renderStaffList();updStaffKPIs();}
   };
-  listen(()=>db.ref("staff_activity_log").limitToLast(200),lCb);
+  lRef.on("value",lCb);fbL.push({ref:lRef,cb:lCb});
 }
 async function loadStaffRoster(){
   if(!MP)return;
@@ -2413,4 +2336,4 @@ function startStaffIdleTimer(){
 function stopStaffIdleTimer(){if(_stIdleTimer){clearInterval(_stIdleTimer);_stIdleTimer=null;}}
 </script>
 </body>
-</html>
+</html>​​​​​​​​
