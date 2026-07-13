@@ -2,18 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        // --- إصدار 39.0 (Fortress 🛡️ — متناسق مع القواعد المحصّنة V2.0 + GAS V16.0 + CF-6.0) ---
-        //  ما تغيّر عن 38.0:
-        //  🔧[خ١]  إزالة getGlobalData نهائياً (صارت بوابة إدارية) — الإحداثيات وقائمة
-        //          الأسعار تصل الآن من استجابة تسجيل الدخول checkRes.
-        //  🔧[خ٥]  الإلغاء لم يعد حذفاً فعلياً (القواعد تمنعه) بل status='deleted' —
-        //          الطلب الملغى صار مؤرشَفاً وقابلاً للتدقيق بدل أن يتبخر.
-        //  🔧[خ٧]  تطبيع رقم النظام موحّد حرفياً مع السيرفرين (إسقاط 964 وكل الأصفار).
-        //  🔧[خ٢٣] قراءة الطلبات باستعلام مفهرس على resPhone بدل العقدة كاملة —
-        //          القاعدة الجديدة ترفض القراءة الكاملة لغير الإدارة.
-        //  🔒 ضمان مصادقة فايربيس قبل أي كتابة (القواعد لم تعد تقبل مجهولاً).
-        //  🛵 اسم الكابتن من drivers_locations/{phone}/name بدل شيت السائقين.
-        const CURRENT_APP_VERSION = "39.0.Sufyan-Fortress";
+        // --- إصدار 38.0 (رسالة صوتية ذكية 🎙️ + اللمسة الإنسانية + عرض الوصل) ---
+        const CURRENT_APP_VERSION = "38.0.Sufyan-Voice";
         const RES_VERSION_KEY = 'hut_res_app_version';
         try {
             if (localStorage.getItem(RES_VERSION_KEY) !== CURRENT_APP_VERSION) {
@@ -915,23 +905,15 @@
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    // 🔧[خ٢٣] استيراد أدوات الاستعلام المفهرس — القراءة الكاملة صارت ممنوعة بالقواعد
-    import { getDatabase, ref, onValue, update, set, get, query, orderByChild, equalTo } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+    import { getDatabase, ref, onValue, update, set, get } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
     import { getStorage, ref as storageRef, uploadString, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
     import { getAuth, signInWithCustomToken, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
     if (typeof lucide !== 'undefined') lucide.createIcons();
 
-    // ⚠️ بعد إعادة نشر سكربت GAS V16.0 قد يتغيّر رابط النشر — حدّثه هنا.
     const API_URL   = "https://script.google.com/macros/s/AKfycbzKDBjgPxmt_iDCphkjB6EY-cnag_aqwxrdNDrY9uqBRbTZYsqGWl4TJn4pANS8OVYm/exec";
-    // 🔧[خ١/خ٣] التوكن القديم HUT_SECURE_99 محروق (كان مكشوفاً في الشيفرة المتداولة).
-    //   ضع هنا API_TOKEN **الجديد** الذي ضبطته في Script Properties — توكن التطبيقات
-    //   فقط، وليس ADMIN_API_TOKEN الذي لا يوضع في أي تطبيق أبداً.
-    const API_TOKEN = "HUT_APP_160C5EFB7BC52B3362ED46D98038AA53";
+    const API_TOKEN = "HUT_SECURE_99";
 
-    // ⚠️ ملاحظة أمنية: هذا مفتاح Gemini في المتصفح = مفتاح عام مهما جُزّئ.
-    //   قيّده من Google Cloud Console: حصر بـ generativelanguage API + HTTP referrer
-    //   لنطاق تطبيقك فقط، وضع سقف استهلاك يومي.
     const SECRET_PARTS = ["AIzaSyB", "KMRsl", "Ko5hg5m", "11gHy4Z", "dM7_efk", "tiDwxU"];
 
     async function fetchGeminiWithRetry(payload, timeoutMs = 25000) {
@@ -998,6 +980,7 @@
     let base64Receipt    = null; 
     let myCustomPriceList= {};
     let waitingPollingTimer = null; 
+    let globalDriversInfo    = []; 
     
     let pickerMap;
     let regLat = 35.468; 
@@ -1013,38 +996,14 @@
     let currentCommissionType = 'fixed'; 
 
     /* ════════════════════════════════════════════════════════════
-       🔧[خ٧] تطبيع رقم النظام — **مطابق حرفياً** لدالة normalizePhone
-       في GAS V16.0 و CF-6.0: أرقام عربية → لاتينية، إسقاط 964،
-       إسقاط كل الأصفار البادئة.
-       جوهري: auth.uid الصادر من السيرفر هو هذه الصيغة بالضبط، والقواعد
-       تقارن resPhone == auth.uid حرفياً — أي انحراف = رفض الكتابة.
-       (النسخة القديمة كانت تُبقي 964 وتُسقط صفراً واحداً → مطعم مسجّل
-       بمفتاح الدولة كانت طلباته وديونه تحت مفتاح منشقّ.)
-    ════════════════════════════════════════════════════════════ */
-    function normalizeSystemPhone(raw) {
-        if (!raw) return "";
-        let p = String(raw);
-        const ar = ['٠','١','٢','٣','٤','٥','٦','٧','٨','٩'];
-        const fa = ['۰','۱','۲','۳','۴','۵','۶','۷','۸','۹'];
-        for (let i = 0; i < 10; i++) {
-            p = p.split(ar[i]).join(String(i));
-            p = p.split(fa[i]).join(String(i));
-        }
-        p = p.replace(/\D/g, '');
-        if (p.startsWith('964')) p = p.slice(3);
-        p = p.replace(/^0+/, '');
-        return p;
-    }
-
-    /* ════════════════════════════════════════════════════════════
-       🔐 إعادة المصادقة السحابية + مزامنة بيانات المنشأة
-       تطلب توكناً جديداً من السيرفر وتصادق فايربيس، وتلتقط في الطريق
-       قائمة الأسعار والإحداثيات المحدثة من استجابة checkRes —
-       🔧[خ١] هذا يعوّض getGlobalData الملغاة (صارت بوابة إدارية).
+       🔐 إعادة المصادقة السحابية (الإصلاح الحاسم)
+       تطلب توكناً جديداً من السيرفر وتصادق فايربيس.
+       تُستدعى عند استعادة الجلسة المحفوظة وعند فقد المصادقة.
     ════════════════════════════════════════════════════════════ */
     window.ensureResAuth = async function(phone, pass) {
-        if (!phone || !pass) return false;
-        const p = normalizeSystemPhone(phone);
+        if (!phone || !pass) return;
+        let p = String(phone).replace(/[^\d]/g, '');
+        if (p.startsWith('0')) p = p.substring(1);
         try {
             const r = await fetch(`${API_URL}?action=checkRes&phone=${p}&password=${encodeURIComponent(pass)}&token=${API_TOKEN}`);
             const d = await r.json();
@@ -1054,51 +1013,8 @@
             } else {
                 console.warn("⚠️ لم يصل firebase_token عند إعادة مصادقة المطعم");
             }
-            // مزامنة البيانات الحية من استجابة الدخول (بديل getGlobalData)
-            if (d) applyServerProfile(d, p);
-            return !!(d && d.firebase_token);
-        } catch (e) { console.error("فشل إعادة مصادقة المطعم:", e); return false; }
+        } catch (e) { console.error("فشل إعادة مصادقة المطعم:", e); }
     };
-
-    // تحديث الحالة المحلية من استجابة checkRes (قائمة الأسعار، الإحداثيات، العمولة)
-    function applyServerProfile(d, normPhone) {
-        try {
-            if (d.priceList) {
-                const fresh = JSON.parse(d.priceList);
-                if (JSON.stringify(fresh) !== JSON.stringify(myCustomPriceList)) {
-                    myCustomPriceList = fresh;
-                    savePriceListToCache(myCustomPriceList);
-                    window.buildCustomAreaDropdown();
-                }
-            }
-        } catch(e) {}
-        // 📍 تتطلب رقعة GAS الصغيرة (إرجاع lat/lng في checkRes) — انظر ملاحظات النشر.
-        if (d.lat != null && d.lng != null && Number(d.lat) !== 0) {
-            regLat = parseFloat(d.lat); regLng = parseFloat(d.lng);
-        }
-        try {
-            const s = JSON.parse(localStorage.getItem('hut_res_session') || '{}');
-            if (normPhone) s.phone = normPhone;
-            if (d.name) s.name = d.name;
-            if (d.comm !== undefined) s.comm = d.comm || '0';
-            if (d.payType) s.payType = d.payType;
-            if (regLat && regLng) { s.lat = regLat; s.lng = regLng; }
-            localStorage.setItem('hut_res_session', JSON.stringify(s));
-        } catch(e) {}
-    }
-
-    // 🔒 حارس المصادقة: القواعد الجديدة ترفض أي كتابة بلا توكن — لا نكتب قبل التأكد
-    async function requireCloudAuth() {
-        if (auth.currentUser) return true;
-        const s = localStorage.getItem('hut_res_session');
-        if (s) {
-            try {
-                const sess = JSON.parse(s);
-                if (sess.phone && sess.password) await ensureResAuth(sess.phone, atob(sess.password));
-            } catch (e) {}
-        }
-        return !!auth.currentUser;
-    }
 
     // مراقب: إن ضاعت مصادقة فايربيس فجأة، نعيدها تلقائياً من الجلسة المحفوظة
     onAuthStateChanged(auth, (user) => {
@@ -1708,8 +1624,8 @@
 
         if (!rawPhone) return alert("يرجى إدخال رقم الهاتف");
         
-        // 🔧[خ٧] التطبيع الموحّد (يُسقط 964 أيضاً — كان يُسقط الصفر فقط)
-        const phone = normalizeSystemPhone(rawPhone);
+        let phone = rawPhone.replace(/[^\d]/g, ''); 
+        if(phone.startsWith('0')) phone = phone.substring(1);
 
         if (isRegistering) {
             const regPassword = document.getElementById('regPassword').value.trim();
@@ -1753,11 +1669,6 @@
             localStorage.setItem('hut_res_phone', phone);
             localStorage.setItem('hut_res_pending', phone);
             localStorage.setItem('hut_res_pending_pass', btoa(password));
-            // 📍 نحفظ إحداثيات التسجيل محلياً فوراً — تُستعمل للطلبات إلى أن
-            //    يؤكدها السيرفر عبر استجابة checkRes.
-            try {
-                localStorage.setItem('hut_res_reg_coords', JSON.stringify({ lat, lng }));
-            } catch(e) {}
             showWaitingRoom();
         }).catch(() => { window.showLoading(false); alert("حدث خطأ أثناء الإرسال."); });
     }
@@ -1788,7 +1699,8 @@
         let rawPhone = document.getElementById('checkPhone').value.trim() || localStorage.getItem('hut_res_pending');
         if (!rawPhone) return;
         
-        const phone = normalizeSystemPhone(rawPhone);
+        let phone = rawPhone.replace(/[^\d]/g, ''); 
+        if(phone.startsWith('0')) phone = phone.substring(1);
         
         let pass  = document.getElementById('checkPassword').value.trim();
         if (!pass) {
@@ -1807,25 +1719,19 @@
                     regPhone = phone;
                     try { if (data.priceList) myCustomPriceList = JSON.parse(data.priceList); } catch(e) {}
                     
-                    // إحداثيات التسجيل المحفوظة (إن وُجدت) ريثما يردّ السيرفر بها
-                    try {
-                        const rc = JSON.parse(localStorage.getItem('hut_res_reg_coords') || 'null');
-                        if (rc && rc.lat) { regLat = parseFloat(rc.lat); regLng = parseFloat(rc.lng); }
-                    } catch(e) {}
-
                     const commRaw = data.comm || '0';
                     localStorage.setItem('hut_res_session', JSON.stringify({
                         phone, name: data.name, payType: data.payType || 'المطعم يدفع',
                         comm: commRaw, 
                         timestamp: Date.now(),
-                        password: btoa(pass),
-                        lat: regLat, lng: regLng
+                        password: btoa(pass)
                     }));
-                    applyServerProfile(data, phone);
                     
+                    // --- إضافة الحماية السحابية ---
                     if (data.firebase_token) {
                         signInWithCustomToken(auth, data.firebase_token).catch(e => console.error("Firebase Auth Error:", e));
                     }
+                    // -----------------------------
 
                     const wAudio = document.getElementById('welcomeSound');
                     if (wAudio) { wAudio.currentTime = 0; wAudio.play().catch(() => {}); }
@@ -1834,7 +1740,7 @@
                 } else if (data.status === "banned") {
                     clearInterval(waitingPollingTimer); localStorage.removeItem('hut_res_pending'); localStorage.removeItem('hut_res_pending_pass');
                     alert("⚠️ حساب محظور."); location.reload();
-                } else if (data.status === "wrong_password" || data.status === "rate_limited" || data.status === "no_password_set") {
+                } else if (data.status === "wrong_password" || data.status === "rate_limited") {
                     clearInterval(waitingPollingTimer); localStorage.removeItem('hut_res_pending'); localStorage.removeItem('hut_res_pending_pass');
                     alert("كلمة المرور تغيرت أو تم حظر الحساب مؤقتاً."); location.reload();
                 }
@@ -1852,17 +1758,14 @@
             return alert("🛡️ تم حظر محاولات الدخول مؤقتاً لحمايتك بسبب كثرة الإدخال الخاطئ. يرجى المحاولة بعد 15 دقيقة.");
         }
 
-        // 🔧[خ١٨] حالة جديدة من GAS V16.0: حساب قديم بلا كلمة مرور محفوظة
-        if (data.status === "no_password_set") {
-            return alert("🔒 حسابك مسجّل بلا كلمة مرور (نظام قديم). تواصل مع الإدارة لضبط كلمة مرور لحسابك ثم عاود الدخول.");
-        }
-
         if (data.status === "active" || data.status === "inactive") {
+            // --- إضافة الحماية السحابية ---
             if (data.firebase_token) {
                 signInWithCustomToken(auth, data.firebase_token)
                     .then(() => console.log("✅ تم تسجيل الدخول لفايربيس بأمان"))
                     .catch(e => console.error("❌ Firebase Auth Error:", e));
             }
+            // -----------------------------
 
             currentResName = data.name; localStorage.setItem('hut_res_phone', phone);
             localStorage.removeItem('hut_res_pending'); regPhone = phone;
@@ -1875,7 +1778,6 @@
                 timestamp: Date.now(),
                 password: btoa(passAttempt)
             }));
-            applyServerProfile(data, phone);
             enterDashboard();
         } else if (data.status === "pending" || data.status === "waiting") {
             localStorage.setItem('hut_res_phone', phone); 
@@ -1906,12 +1808,39 @@
         const prefMode = localStorage.getItem('hut_res_preferred_mode') || 'manual';
         window.switchTab(prefMode, false);
 
-        // 🔧[خ١] أُزيل نداء getGlobalData نهائياً — كان يسحب شيتات كاملة (بكلمات
-        //   المرور!) وصار بوابة إدارية. قائمة الأسعار والإحداثيات تصل الآن من
-        //   استجابة checkRes (في handleLogin/ensureResAuth) ومن الكاش المحلي.
         const hasCached = loadPriceListFromCache();
-        window.buildCustomAreaDropdown();
-        restoreDraft();
+        if (hasCached) { window.buildCustomAreaDropdown(); restoreDraft(); }
+
+        fetch(`${API_URL}?action=getGlobalData&token=${API_TOKEN}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data && data.restaurants) {
+                    const resInfo = data.restaurants.find(r => r[1] === currentResName);
+                    if (resInfo) {
+                        if (resInfo[6] && resInfo[7]) { 
+                            regLat = parseFloat(resInfo[6]); regLng = parseFloat(resInfo[7]); 
+                            try {
+                                let sessionObj = JSON.parse(localStorage.getItem('hut_res_session') || '{}');
+                                sessionObj.lat = regLat; sessionObj.lng = regLng;
+                                localStorage.setItem('hut_res_session', JSON.stringify(sessionObj));
+                            } catch(e) {}
+                        }
+                        if (resInfo[2]) regPhone = resInfo[2];
+                        if (resInfo[12] && resInfo[12].trim() !== "") {
+                            try {
+                                const freshList = JSON.parse(resInfo[12]);
+                                if (JSON.stringify(freshList) !== JSON.stringify(myCustomPriceList)) {
+                                    myCustomPriceList = freshList; savePriceListToCache(myCustomPriceList);
+                                    window.buildCustomAreaDropdown();
+                                }
+                            } catch(e) {}
+                        }
+                    }
+                }
+                if (data && data.drivers) globalDriversInfo = data.drivers;
+            }).catch(() => {});
+
+        if (!hasCached) { window.buildCustomAreaDropdown(); restoreDraft(); }
         
         showFriendlyMessage();
         
@@ -1921,161 +1850,128 @@
     let globalLiveDebt = 0;
     let globalLiveCount = 0;
 
-    // 🛵 اسم الكابتن: كان يأتي من شيت السائقين عبر getGlobalData (ملغاة).
-    //   الآن نقرأ drivers_locations/{phone}/name (السيرفر يختمه عند دخول الكابتن —
-    //   انظر رقعة GAS في ملاحظات النشر). بكاش محلي + إعادة رسم عند الوصول.
-    const driverNameCache = {};
-    const driverNameFetching = new Set();
-    function getDriverNameCached(phone) {
-        if (!phone || ["system_routing","pending_driver","manual_pending",""].includes(String(phone))) return null;
-        if (driverNameCache[phone] !== undefined) return driverNameCache[phone];
-        if (!driverNameFetching.has(phone)) {
-            driverNameFetching.add(phone);
-            get(ref(db, `drivers_locations/${phone}/name`))
-                .then(s => {
-                    driverNameCache[phone] = s.val() || "";
-                    // اسم جديد وصل → أعِد بناء القوائم لتظهر الأسماء
-                    lastActiveHtml = ""; lastArchiveHtml = "";
-                    rebuildOrderLists();
-                })
-                .catch(() => { driverNameCache[phone] = ""; })
-                .finally(() => driverNameFetching.delete(phone));
-        }
-        return null;
-    }
-    function driverDisplayName(phone) {
-        const n = getDriverNameCached(phone);
-        return (n && n.trim()) ? n : "كابتن التوصيل";
-    }
-
-    let lastOrdersSnapshot = {};
-
     function startHotDataListeners() {
+        const ordersRef = ref(db, 'active_orders');
+        onValue(ordersRef, (snapshot) => {
+            const activeFbOrders = snapshot.val() || {};
+            let newLiveOrders    = []; let todaySalesTotal  = 0;
+            let todayArchiveHtml = ''; const todayISO       = new Date().toISOString().split('T')[0];
+
+            globalLiveDebt = 0;
+            globalLiveCount = 0;
+
+            Object.values(activeFbOrders).forEach(fbOrder => {
+                if (fbOrder.restaurant !== currentResName) return;
+                if (fbOrder.status === 'deleted') return;
+
+                if (fbOrder.status === 'completed' || fbOrder.status === 'مكتمل') {
+                    const orderISO = new Date(fbOrder.timestamp).toISOString().split('T')[0];
+                    if (orderISO === todayISO) {
+                        const priceVal = parseFloat(fbOrder.price) || 0;
+                        todaySalesTotal += priceVal;
+                        
+                        globalLiveCount++;
+                        let commStr = String(fbOrder.comm || '0');
+                        let payType = String(fbOrder.payType || '');
+                        let resComm = 0;
+                        if (!commStr.includes('شهري')) {
+                            if (commStr.includes('/')) {
+                                resComm = parseFloat(commStr.split('/')[1]) || 0;
+                            } else {
+                                let val = parseFloat(commStr) || 0;
+                                resComm = payType.includes("مناصفة") ? (val / 2) : val;
+                            }
+                        }
+                        globalLiveDebt += resComm;
+
+                        const orderTime = new Date(fbOrder.timestamp).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+                        let dName = "غير معروف";
+                        let dPhone = fbOrder.driverPhone || "";
+                        
+                        if (globalDriversInfo.length > 0) {
+                            const dInfo = globalDriversInfo.find(d => String(d[2]) === String(fbOrder.driverPhone));
+                            if (dInfo) {
+                                dName = dInfo[1];
+                            }
+                        }
+                        
+                        const isValidPhone = dPhone && !["system_routing", "pending_driver", "manual_pending"].includes(dPhone);
+                        const orderArea = fbOrder.area || "غير محددة";
+                        const orderDetails = fbOrder.details || "لا توجد تفاصيل إضافية";
+
+                        todayArchiveHtml += `
+                        <div class="archive-item searchable-archive-item" data-search="${fbOrder.id} ${orderArea} ${orderDetails} ${dName} ${dPhone}">
+                            <div class="d-flex justify-content-between align-items-start w-100">
+                                <div>
+                                    <span class="fw-black text-dark" style="font-size: 0.95rem;">#${fbOrder.id}</span>
+                                </div>
+                                <div class="text-end">
+                                    <span class="fw-black text-success" style="font-size: 1.05rem;">${priceVal} <small>د.ع</small></span>
+                                    <div class="small text-muted mt-1" style="font-size: 0.7rem;"><i data-lucide="clock" size="10"></i> ${orderTime}</div>
+                                </div>
+                            </div>
+                            <div class="archive-details-box w-100 text-start" dir="rtl">
+                                <div class="d-flex justify-content-between align-items-center mb-2 pb-2" style="border-bottom: 1px dashed rgba(15,23,42,0.1);">
+                                    <div class="fw-bold text-dark">
+                                        <i data-lucide="bike" size="12" style="color: var(--success);"></i> الكابتن: <span class="fw-black">${dName}</span>
+                                    </div>
+                                    ${isValidPhone ? `<a href="tel:${dPhone}" class="text-decoration-none d-flex align-items-center gap-1" style="background: #f0fdf4; color: #16a34a; padding: 4px 10px; border-radius: 8px; font-weight: 800; font-size: 0.75rem;"><i data-lucide="phone" size="12"></i> ${dPhone}</a>` : ''}
+                                </div>
+                                <div class="mb-2 fw-bold text-dark"><i data-lucide="map-pin" size="12" style="color: var(--accent);"></i> المنطقة: <span class="fw-normal">${orderArea}</span></div>
+                                <div class="fw-bold text-dark"><i data-lucide="info" size="12" style="color: var(--primary-blue);"></i> التفاصيل: <span class="fw-normal" style="user-select: text;">${orderDetails}</span></div>
+                            </div>
+                        </div>`;
+                    }
+                } else {
+                    newLiveOrders.push({ id: fbOrder.id, status: fbOrder.status, driverPhone: fbOrder.driverPhone || "system_routing", timestamp: fbOrder.timestamp, area: fbOrder.area, readyForPickup: fbOrder.ready_for_pickup || false, photoUrl: fbOrder.photoUrl });
+                }
+            });
+
+            newLiveOrders.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            liveActiveOrders = newLiveOrders; renderActiveOrdersUI();
+            
+            const routingIcon = document.getElementById('headerRoutingIcon');
+            const centerContainer = document.getElementById('headerCenterContainer');
+            if (routingIcon && centerContainer) {
+                if (liveActiveOrders.length > 0) {
+                    routingIcon.classList.add('active');
+                    centerContainer.classList.add('active');
+                } else {
+                    routingIcon.classList.remove('active');
+                    centerContainer.classList.remove('active');
+                }
+            }
+
+            document.getElementById('todayTotalSales').innerHTML = `${todaySalesTotal} <small class="fs-6">د.ع</small>`;
+            if (lastArchiveHtml !== todayArchiveHtml) {
+                document.getElementById('todayArchiveItems').innerHTML = todayArchiveHtml || `<div class="text-center text-muted fw-bold py-4 small" style="font-size:0.8rem; background: rgba(255,255,255,0.4); border-radius: 20px;">لم تكتمل أي طلبات اليوم بعد.</div>`;
+                lastArchiveHtml = todayArchiveHtml;
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            }
+            
+            if (window.currentLedgerData) {
+                document.getElementById('statMonthOrders').innerText = (window.currentLedgerData.completed_orders || 0) + globalLiveCount;
+                document.getElementById('statUnpaid').innerText = (parseFloat(window.currentLedgerData.debt) || 0) + globalLiveDebt;
+            }
+        });
+
         let safeResPhone = regPhone;
         if (!safeResPhone) { const s = localStorage.getItem('hut_res_session'); if (s) safeResPhone = JSON.parse(s).phone; }
-        const myPhone = normalizeSystemPhone(safeResPhone);
-        if (!myPhone) { console.error("❌ لا يمكن بدء المستمعات بلا رقم منشأة."); return; }
-
-        // 🔧[خ٢٣] استعلام مفهرس على resPhone بدل قراءة العقدة كاملة:
-        //   القاعدة الجديدة ترفض onValue على active_orders كلها لغير الإدارة،
-        //   وتسمح فقط بـ query.orderByChild == 'resPhone' && query.equalTo == auth.uid.
-        //   مكسب جانبي: لم نعد نحمّل طلبات كل المدينة إلى جوال المطعم.
-        const myOrdersQuery = query(ref(db, 'active_orders'), orderByChild('resPhone'), equalTo(myPhone));
-        onValue(myOrdersQuery, (snapshot) => {
-            lastOrdersSnapshot = snapshot.val() || {};
-            rebuildOrderLists();
-        }, (err) => {
-            console.error("❌ مستمع الطلبات رُفض:", err && err.message);
-            // غالباً: المصادقة لم تكتمل بعد → نعيد المصادقة ثم يُعاد الاتصال تلقائياً
-            requireCloudAuth();
-        });
-
-        onValue(ref(db, `ledgers/restaurants/${myPhone}`), (snapshot) => {
-            const ledger = snapshot.val() || { completed_orders: 0, debt: 0 };
-            window.currentLedgerData = ledger; 
-            
-            document.getElementById('statMonthOrders').innerText = (ledger.completed_orders || 0) + globalLiveCount;
-            document.getElementById('statUnpaid').innerText = (parseFloat(ledger.debt) || 0) + globalLiveDebt;
-            
-            const s = localStorage.getItem('hut_res_session');
-            if (s) { document.getElementById('statPayType').innerText = (JSON.parse(s).payType || '').includes("مناصفة") ? "مناصفة" : "المطعم"; }
-        });
-    }
-
-    function rebuildOrderLists() {
-        const activeFbOrders = lastOrdersSnapshot;
-        let newLiveOrders    = []; let todaySalesTotal  = 0;
-        let todayArchiveHtml = ''; const todayISO       = new Date().toISOString().split('T')[0];
-
-        globalLiveDebt = 0;
-        globalLiveCount = 0;
-
-        Object.values(activeFbOrders).forEach(fbOrder => {
-            if (!fbOrder) return;
-            // الاستعلام أصلاً يقيّد على resPhone — لا حاجة لفلترة بالاسم بعد اليوم
-            if (fbOrder.status === 'deleted') return;
-
-            if (fbOrder.status === 'completed' || fbOrder.status === 'مكتمل') {
-                const orderISO = new Date(fbOrder.timestamp).toISOString().split('T')[0];
-                if (orderISO === todayISO) {
-                    const priceVal = parseFloat(fbOrder.price) || 0;
-                    todaySalesTotal += priceVal;
-                    
-                    globalLiveCount++;
-                    let commStr = String(fbOrder.comm || '0');
-                    let payType = String(fbOrder.payType || '');
-                    let resComm = 0;
-                    if (!commStr.includes('شهري')) {
-                        if (commStr.includes('/')) {
-                            resComm = parseFloat(commStr.split('/')[1]) || 0;
-                        } else {
-                            let val = parseFloat(commStr) || 0;
-                            resComm = payType.includes("مناصفة") ? (val / 2) : val;
-                        }
-                    }
-                    globalLiveDebt += resComm;
-
-                    const orderTime = new Date(fbOrder.timestamp).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
-                    const dPhone = fbOrder.driverPhone || "";
-                    const dName = driverDisplayName(dPhone);
-                    
-                    const isValidPhone = dPhone && !["system_routing", "pending_driver", "manual_pending"].includes(dPhone);
-                    const orderArea = fbOrder.area || "غير محددة";
-                    const orderDetails = fbOrder.details || "لا توجد تفاصيل إضافية";
-
-                    todayArchiveHtml += `
-                    <div class="archive-item searchable-archive-item" data-search="${fbOrder.id} ${orderArea} ${orderDetails} ${dName} ${dPhone}">
-                        <div class="d-flex justify-content-between align-items-start w-100">
-                            <div>
-                                <span class="fw-black text-dark" style="font-size: 0.95rem;">#${fbOrder.id}</span>
-                            </div>
-                            <div class="text-end">
-                                <span class="fw-black text-success" style="font-size: 1.05rem;">${priceVal} <small>د.ع</small></span>
-                                <div class="small text-muted mt-1" style="font-size: 0.7rem;"><i data-lucide="clock" size="10"></i> ${orderTime}</div>
-                            </div>
-                        </div>
-                        <div class="archive-details-box w-100 text-start" dir="rtl">
-                            <div class="d-flex justify-content-between align-items-center mb-2 pb-2" style="border-bottom: 1px dashed rgba(15,23,42,0.1);">
-                                <div class="fw-bold text-dark">
-                                    <i data-lucide="bike" size="12" style="color: var(--success);"></i> الكابتن: <span class="fw-black">${dName}</span>
-                                </div>
-                                ${isValidPhone ? `<a href="tel:${dPhone}" class="text-decoration-none d-flex align-items-center gap-1" style="background: #f0fdf4; color: #16a34a; padding: 4px 10px; border-radius: 8px; font-weight: 800; font-size: 0.75rem;"><i data-lucide="phone" size="12"></i> ${dPhone}</a>` : ''}
-                            </div>
-                            <div class="mb-2 fw-bold text-dark"><i data-lucide="map-pin" size="12" style="color: var(--accent);"></i> المنطقة: <span class="fw-normal">${orderArea}</span></div>
-                            <div class="fw-bold text-dark"><i data-lucide="info" size="12" style="color: var(--primary-blue);"></i> التفاصيل: <span class="fw-normal" style="user-select: text;">${orderDetails}</span></div>
-                        </div>
-                    </div>`;
-                }
-            } else {
-                newLiveOrders.push({ id: fbOrder.id, status: fbOrder.status, driverPhone: fbOrder.driverPhone || "system_routing", timestamp: fbOrder.timestamp, area: fbOrder.area, readyForPickup: fbOrder.ready_for_pickup || false, photoUrl: fbOrder.photoUrl });
-            }
-        });
-
-        newLiveOrders.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-        liveActiveOrders = newLiveOrders; renderActiveOrdersUI();
         
-        const routingIcon = document.getElementById('headerRoutingIcon');
-        const centerContainer = document.getElementById('headerCenterContainer');
-        if (routingIcon && centerContainer) {
-            if (liveActiveOrders.length > 0) {
-                routingIcon.classList.add('active');
-                centerContainer.classList.add('active');
-            } else {
-                routingIcon.classList.remove('active');
-                centerContainer.classList.remove('active');
-            }
-        }
+        if (safeResPhone) {
+            let cleanPhone = safeResPhone.replace(/[^\d]/g, '');
+            if(cleanPhone.startsWith('0')) cleanPhone = cleanPhone.substring(1);
 
-        document.getElementById('todayTotalSales').innerHTML = `${todaySalesTotal} <small class="fs-6">د.ع</small>`;
-        if (lastArchiveHtml !== todayArchiveHtml) {
-            document.getElementById('todayArchiveItems').innerHTML = todayArchiveHtml || `<div class="text-center text-muted fw-bold py-4 small" style="font-size:0.8rem; background: rgba(255,255,255,0.4); border-radius: 20px;">لم تكتمل أي طلبات اليوم بعد.</div>`;
-            lastArchiveHtml = todayArchiveHtml;
-            if (typeof lucide !== 'undefined') lucide.createIcons();
-        }
-        
-        if (window.currentLedgerData) {
-            document.getElementById('statMonthOrders').innerText = (window.currentLedgerData.completed_orders || 0) + globalLiveCount;
-            document.getElementById('statUnpaid').innerText = (parseFloat(window.currentLedgerData.debt) || 0) + globalLiveDebt;
+            onValue(ref(db, `ledgers/restaurants/${cleanPhone}`), (snapshot) => {
+                const ledger = snapshot.val() || { completed_orders: 0, debt: 0 };
+                window.currentLedgerData = ledger; 
+                
+                document.getElementById('statMonthOrders').innerText = (ledger.completed_orders || 0) + globalLiveCount;
+                document.getElementById('statUnpaid').innerText = (parseFloat(ledger.debt) || 0) + globalLiveDebt;
+                
+                const s = localStorage.getItem('hut_res_session');
+                if (s) { document.getElementById('statPayType').innerText = (JSON.parse(s).payType || '').includes("مناصفة") ? "مناصفة" : "المطعم"; }
+            });
         }
     }
 
@@ -2094,30 +1990,19 @@
         });
     };
 
-    // 🔧[خ٥] الإلغاء بالحذف الفعلي (null) صار **ممنوعاً** بالقواعد الجديدة —
-    //   وكان أصلاً ثغرة محو الدين. الإلغاء الآن = status:'deleted' فيمرّ الطلب
-    //   الملغى بأرشيف الفجر كـ"ملغى" ويبقى قابلاً للتدقيق.
-    window.cancelOrderGrace = async function(orderId) {
+    window.cancelOrderGrace = function(orderId) {
         if (!confirm("تأكيد الإلغاء؟")) return;
         const card = document.getElementById(`order-${orderId}`);
         if (card) { card.style.opacity = '0'; setTimeout(() => card.style.display = 'none', 300); }
         actionBlacklist.push(String(orderId)); setTimeout(() => { actionBlacklist = actionBlacklist.filter(id => id !== String(orderId)); }, BLACKLIST_TTL_MS);
-        
-        await requireCloudAuth();
-        update(ref(db, `active_orders/${orderId}`), {
-            status: 'deleted',
-            last_update: new Date().toISOString(),
-            cancelled_by: 'restaurant'
-        }).catch(() => {
+        update(ref(db), {[`active_orders/${orderId}`]: null}).catch(() => {
             if (card) { card.style.opacity = '1'; card.style.display = ''; } actionBlacklist = actionBlacklist.filter(id => id !== String(orderId));
-            alert("تعذّر الإلغاء — قد يكون الكابتن استلم الطلب بالفعل.");
         });
     };
 
-    window.markOrderReady = async function(orderId, btn) {
+    window.markOrderReady = function(orderId, btn) {
         btn.disabled = true;
-        await requireCloudAuth();
-        update(ref(db, `active_orders/${orderId}`), { ready_for_pickup: true, ready_ts: new Date().toISOString() })
+        update(ref(db), {[`active_orders/${orderId}/ready_for_pickup`]: true, [`active_orders/${orderId}/ready_ts`]: new Date().toISOString()})
             .then(() => { btn.classList.add('sent'); btn.innerHTML = `<i data-lucide="check" size="12"></i> جاهز`; if (typeof lucide !== 'undefined') lucide.createIcons({ root: btn.parentElement }); })
             .catch(() => { btn.disabled = false; });
     };
@@ -2134,7 +2019,8 @@
 
             let driverName = 'يبحث عن كابتن...'; let step = 1, fillWidth = "0%";
             if (hasDriver) {
-                driverName = driverDisplayName(driverPhone);
+                const dInfo = globalDriversInfo.find(d => String(d[2]) === String(driverPhone));
+                if (dInfo) driverName = dInfo[1];
                 if (status === 'picked_up' || status === 'في الطريق') { step = 4; fillWidth = "100%"; }
                 else if (status === 'arrived_at_res') { step = 3; fillWidth = "66%"; }
                 else { step = 2; fillWidth = "33%"; }
@@ -2256,7 +2142,7 @@
             if (Math.abs(regLat - 35.468) < 0.001 && Math.abs(regLng - 44.392) < 0.001) {
                 const s = JSON.parse(localStorage.getItem('hut_res_session') || '{}');
                 if (s.lat && s.lng) { regLat = parseFloat(s.lat); regLng = parseFloat(s.lng); } 
-                else { alert("⚠️ لم تصل إحداثيات مطعمك بعد — سجّل خروجاً ثم دخولاً، أو تواصل مع الإدارة لتحديث موقعك."); return; }
+                else { alert("⚠️ انتظر ثواني ليتم تحميل الخريطة."); return; }
             }
 
             if (finalArea === "أخرى" || !finalArea) {
@@ -2364,10 +2250,7 @@
             await finalizeOrderPlacementSilent(details, imageUrl, price, area, currentResName);
             btn.innerHTML = originalBtnHtml; btn.disabled = false;
             showSuccessMessage(`<div style="background: var(--success); width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 8px; box-shadow: 0 4px 15px rgba(16,185,129,0.3);"><i data-lucide="check" size="24" color="white"></i></div><div class="fw-black" style="font-size: 1rem;">تم إرسال الطلب عبر خوادم الحوت بنجاح! 🚀</div>`);
-        } catch (e) { 
-            btn.innerHTML = originalBtnHtml; btn.disabled = false; 
-            alert(e && e.message === 'NO_PHONE' ? "⚠️ رقم المنشأة غير متوفر — سجّل خروجاً ثم دخولاً." : "حدث خطأ غير متوقع."); 
-        }
+        } catch (e) { btn.innerHTML = originalBtnHtml; btn.disabled = false; alert("حدث خطأ غير متوقع."); }
     }
 
     async function finalizeOrderPlacementSilent(details, imageUrl, price, area, resName) {
@@ -2385,29 +2268,18 @@
             safePayType = sData.payType || 'المطعم يدفع';
         }
 
-        // 🔧[خ٧] المفتاح الموحّد — يجب أن يساوي auth.uid حرفياً وإلا رفضت القواعد
-        const normResPhone = normalizeSystemPhone(safeResPhone);
-        // القاعدة الجديدة توجب resPhone == auth.uid — "غير متوفر" القديمة كانت
-        // ستُنشئ طلباً يتيماً مالياً؛ الآن نوقف الإرسال بدلها.
-        if (!normResPhone) throw new Error('NO_PHONE');
+        let normResPhone = String(safeResPhone || "").replace(/[^\d]/g, '');
+        if (normResPhone.startsWith('964')) normResPhone = normResPhone.slice(3);
+        normResPhone = normResPhone.replace(/^0+/, '');
 
-        // 🔒 القواعد الجديدة ترفض الكتابة بلا مصادقة — نضمنها قبل set
-        const authed = await requireCloudAuth();
-        if (!authed) throw new Error('NO_AUTH');
-
-        // 📌 ملاحظة: comm/payType هنا للعرض الفوري فقط — مُعقِّم الطلبات في CF
-        //   (orderSanitizer) يدهسهما بالقيم الموثوقة من restaurants_config.
-        //   والقواعد توجب: status='pending_driver' و driverPhone='system_routing'
-        //   و timestamp موجوداً عند الإنشاء — كلها محققة أدناه.
         await set(ref(db, 'active_orders/' + uniqueId), {
             id: uniqueId, restaurant: resName, area: area, details: details, status: "pending_driver",
             driverPhone: "system_routing", price: price, timestamp: tsIso, photoUrl: imageUrl,
-            last_update: tsIso, resPhone: normResPhone, resLat: regLat || 0, resLng: regLng || 0,
-            comm: safeComm, payType: safePayType, is_sovereign: false, ready_for_pickup: false
+            last_update: tsIso, resPhone: normResPhone || "غير متوفر", resLat: regLat || 0, resLng: regLng || 0,
+            comm: safeComm, payType: safePayType, is_sovereign: false, last_offered_to: null, ready_for_pickup: false
         });
 
-        // 🔧 أُزيل نداء NEW_ORDER إلى GAS — كان معالجه فارغاً ({success:true})
-        //   ولا يفعل شيئاً سوى استهلاك حصة السكربت.
+        fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'NEW_ORDER', token: API_TOKEN, frontendId: uniqueId, restaurantName: resName, area, price, details, image: imageUrl }) }).catch(() => {});
     }
 
     function showSuccessMessage(customHTML) {
