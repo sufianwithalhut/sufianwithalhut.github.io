@@ -2,7 +2,7 @@
 <html lang="ar" dir="rtl">
 <head>
     <script>
-        const CURRENT_APP_VERSION = "13.0-Guardian";
+        const CURRENT_APP_VERSION = "14.0-Fortress";
         try {
             if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
                 localStorage.setItem('hut_app_version', CURRENT_APP_VERSION);
@@ -16,7 +16,7 @@
     </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>كباتن سفيان | نظام الحوت V13.0</title>
+    <title>كباتن سفيان | نظام الحوت V14.0</title>
     <meta name="theme-color" content="#1e3a8a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -475,11 +475,45 @@ window.__SND={alert:"UklGRvaoAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YdKoAAA
 </div>
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getDatabase, ref, onValue, update, get, increment } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+    import { getDatabase, ref, onValue, update, get, increment, query, orderByChild, equalTo } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
     import { getAuth, signInWithCustomToken, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
+    /* ═══════════════════════════════════════════════════════════════
+       🛡️ تطبيق الكابتن V14.0 "Fortress" — متوافق مع قواعد V2.0
+       ما تغيّر عن V13.0-Guardian:
+       🔧[خ٨]  كتابة الموقع صارت حقلاً-حقلاً (lat/lng/status/last_update)
+               بدل استبدال العقدة كاملة — يحفظ حقل name ويطابق قواعد
+               الكتابة الحقلية. أُزيلت كتابة shift_end (سيرفرية حصراً).
+       🔧[خ٢٣] قراءة الطلبات صارت استعلاماً مفهرساً
+               orderByChild('driverPhone').equalTo(هاتفي) — الكابتن لا
+               يرى إلا طلباته وعروضه، والقواعد الجديدة ترفض غير ذلك.
+       🔧[خ٧]  nP() موحّدة (أرقام عربية/فارسية + إسقاط 964 والأصفار) —
+               driverData.phone يطابق uid التوكن ومفاتيح القاعدة دائماً.
+       🔧[خ١]  أُزيل نداء getGlobalData من القبول (صار بوابة إدارية) —
+               إحداثيات المطعم من الطلب نفسه أو restaurants_locations.
+       🔧[خ١٣] الرفض صار عبر بوابة DECLINE_ORDER السيرفرية (القواعد
+               تمنع الكابتن من تغيير driverPhone، والسيرفر يسجّل
+               الرفض في daily_metrics دون خصم daily_count).
+       🩹      الإكمال انفصل لكتابتين: حقول الطلب (مضمونة) ثم مقاييس
+               العرض (أفضل جهد) — كي لا يُفشل رفضُ مسارٍ التحديثَ الذرّي.
+       🩹      كل المستمعات الدائمة ذاتية الشفاء عبر listen(): أي رفض
+               قراءة → إعادة مصادقة single-flight → إعادة ربط تلقائية.
+       🔧[خ٣]  التوكن المحروق استُبدل بموضع التوكن الجديد.
+       ═══════════════════════════════════════════════════════════════ */
     const API_URL   = "https://script.google.com/macros/s/AKfycbzKDBjgPxmt_iDCphkjB6EY-cnag_aqwxrdNDrY9uqBRbTZYsqGWl4TJn4pANS8OVYm/exec";
-    const API_TOKEN = "HUT_SECURE_99";
+    /* 🔧[خ٣] توكن التطبيقات العام الجديد (API_TOKEN من Script Properties) */
+    const API_TOKEN = "ضع_توكن_التطبيقات_الجديد_هنا";
+
+    /* 🔧[خ٧] التطبيع الموحّد حرفياً مع GAS V16.0 و CF-6.0 ولوحات الإدارة */
+    function nP(p) {
+        if (!p) return "";
+        let s = String(p);
+        const ar = ['٠','١','٢','٣','٤','٥','٦','٧','٨','٩'], fa = ['۰','۱','۲','۳','۴','۵','۶','۷','۸','۹'];
+        for (let i = 0; i < 10; i++) { s = s.split(ar[i]).join(String(i)); s = s.split(fa[i]).join(String(i)); }
+        s = s.replace(/[^\d]/g, "");
+        if (s.startsWith("964")) s = s.slice(3);
+        return s.replace(/^0+/, "");
+    }
     const firebaseConfig = {
       apiKey: "AIzaSyAo1rmqUzieYZU3RIwXOAN87GkpNrp-_Hc", authDomain: "sufyan-delivery.firebaseapp.com",
       databaseURL: "https://sufyan-delivery-default-rtdb.europe-west1.firebasedatabase.app",
@@ -502,7 +536,7 @@ window.__SND={alert:"UklGRvaoAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YdKoAAA
     // يُرجع true عند النجاح، false عند الفشل (حساب محظور/خطأ/شبكة).
     async function ensureFirebaseAuth(phone, pass) {
       try {
-        const cleanPhone = String(phone || "").replace(/^0+/, '');
+        const cleanPhone = nP(phone);
         const r = await fetch(`${API_URL}?action=checkDriver&phone=${cleanPhone}&password=${encodeURIComponent(pass || "")}&token=${API_TOKEN}`);
         const data = await r.json();
         if (data && data.firebase_token) {
@@ -540,6 +574,38 @@ window.__SND={alert:"UklGRvaoAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YdKoAAA
         try { if (window.AndroidRadar && AndroidRadar.subscribeToDriverTopic) AndroidRadar.subscribeToDriverTopic(driverData.phone); } catch(e) {}
       }
     });
+
+    /* 🩹 شفاء المصادقة عند رفض القراءة — نداء واحد جارٍ مهما تعددت المستمعات */
+    let _reauthInFlight = null;
+    function healAuth() {
+        if (_reauthInFlight) return _reauthInFlight;
+        _reauthInFlight = (async () => {
+            let ok = false;
+            try {
+                const sp = sessionStorage.getItem('hut_driver_pass');
+                if (sp && driverData && driverData.phone) {
+                    const r = await ensureFirebaseAuth(driverData.phone, atob(sp));
+                    ok = !!(r && r.ok);
+                }
+            } catch (e) {}
+            _reauthInFlight = null;
+            return ok;
+        })();
+        return _reauthInFlight;
+    }
+
+    /* 🩹 مستمع ذاتي الشفاء: فايربيس يفصل المستمع المرفوض نهائياً ولا يعيده —
+       هنا نلتقط الرفض، نشفي المصادقة، ونعيد الربط بأنفسنا. mkRef دالة
+       تعيد ref/query (لدعم الاستعلامات المفهرسة عند إعادة الربط). */
+    function listen(mkRef, cb) {
+        const r = mkRef();
+        const onErr = async (err) => {
+            console.warn("🔒 رُفضت القراءة:", err && err.message);
+            const ok = await healAuth();
+            setTimeout(() => listen(mkRef, cb), ok ? 1200 : 15000);
+        };
+        onValue(r, cb, onErr);
+    }
 
     /* Android Native Bridge */
     window.__nativeLocation = function(lat, lng) {
@@ -633,7 +699,12 @@ window.__SND={alert:"UklGRvaoAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YdKoAAA
         const syncEl = document.getElementById('syncStatus');
         if (syncEl) { syncEl.style.display = 'flex'; document.getElementById('syncText').innerText = `مزامنة ${offlineActionQueue.length}...`; }
         let f = [];
-        for (const action of offlineActionQueue) { try { await fetch(action.url, { method: 'GET', mode: 'no-cors', cache: 'no-store' }); } catch (err) { f.push(action); } }
+        for (const action of offlineActionQueue) {
+            try {
+                if (action.type === 'multi' && action.updates) { await update(ref(db), action.updates); } /* 🩹 كان الطابور يتجاهل تحديثات الإكمال المؤجلة */
+                else if (action.url) { await fetch(action.url, { method: 'GET', mode: 'no-cors', cache: 'no-store' }); }
+            } catch (err) { f.push(action); }
+        }
         offlineActionQueue = f; localStorage.setItem('hut_offline_queue', JSON.stringify(offlineActionQueue));
         if (syncEl) syncEl.style.display = 'none'; isProcessingQueue = false;
     }
@@ -729,6 +800,7 @@ window.__SND={alert:"UklGRvaoAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YdKoAAA
                 const s = JSON.parse(ss); const pass = sessionStorage.getItem('hut_driver_pass');
                 if (pass) document.getElementById('driverPassword').value = atob(pass);
                 if ((Date.now() - s.timestamp) / 3600000 < 24) {
+                    s.phone = nP(s.phone); /* 🔧[خ٧] جلسات V13 القديمة قد تحمل صيغة غير مطبَّعة */
                     driverData = s; document.getElementById('driverPhone').value = s.phone;
                     // 🛡️ تجديد توكن فايربيس قبل الدخول (يمنع انقطاع الكابتن صباحاً بعد قفل القواعد).
                     // الجلسة المحفوظة لا تحمل توكناً، لذا نطلب واحداً طازجاً من السكربت أولاً.
@@ -757,7 +829,8 @@ window.__SND={alert:"UklGRvaoAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YdKoAAA
     function authAction() {
         let raw = document.getElementById('driverPhone').value.trim(), pass = document.getElementById('driverPassword').value.trim();
         if (!raw) return alert("يرجى إدخال رقم الهاتف");
-        let phone = raw.replace(/^0+/, '');
+        let phone = nP(raw); /* 🔧[خ٧] يطابق uid التوكن ومفاتيح القاعدة */
+        if (!phone) return alert("رقم الهاتف غير صالح");
         if (isRegistering) {
             const name = document.getElementById('driverName').value.trim(), rp = document.getElementById('regPassword').value.trim(), sh = document.getElementById('regShift').value;
             if (!name) return alert("يرجى كتابة الاسم الثلاثي"); if (!rp) return alert("يرجى إنشاء كلمة مرور.");
@@ -803,7 +876,7 @@ window.__SND={alert:"UklGRvaoAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YdKoAAA
 
     window.checkWaitingStatus = function(isManual = false) {
         let raw = document.getElementById('driverPhone').value.trim() || localStorage.getItem('hut_driver_pending'); if (!raw) return;
-        let phone = raw.replace(/^0+/, ''), pass = document.getElementById('driverPassword').value.trim();
+        let phone = nP(raw), pass = document.getElementById('driverPassword').value.trim();
         if (!pass) { const sp = sessionStorage.getItem('hut_driver_pending_pass'); if (sp) pass = atob(sp); }
         if (isManual) document.getElementById('waitingStatusText').innerText = "جاري التحقق...";
         fetch(`${API_URL}?action=checkDriver&phone=${phone}&password=${encodeURIComponent(pass)}&token=${API_TOKEN}`)
@@ -902,11 +975,18 @@ window.__SND={alert:"UklGRvaoAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YdKoAAA
 
     function adjustHeartbeatInterval() { if (heartbeatInterval) clearInterval(heartbeatInterval); if (!isOnline || !driverData) return; heartbeatInterval = setInterval(sendHeartbeat, activeOrders.length > 0 ? 10000 : 20000); }
     function sendHeartbeat() { if (!isOnline || !driverData) return; if (!lastSentLat && navigator.geolocation) navigator.geolocation.getCurrentPosition(pos => { lastSentLat = pos.coords.latitude; lastSentLng = pos.coords.longitude; updateFirebaseLocationStatus('active'); }); else updateFirebaseLocationStatus('active'); }
+    /* 🔧[خ٨] كتابة حقلية: استبدال العقدة كاملة كان يمحو name (الذي يختمه
+       السيرفر عند الدخول) وسترفضه قواعد V2.0 (الكتابة على العقدة الأم
+       للإدارة فقط، والحقول الأربعة أدناه فقط للكابتن نفسه).
+       shift_end أُزيلت — يكتبها START_SHIFT سيرفرياً حصراً. */
     function updateFirebaseLocationStatus(s) {
-        if (lastSentLat && lastSentLng && driverData) {
-            const u = {}; u[`drivers_locations/${driverData.phone}`] = { lat: lastSentLat, lng: lastSentLng, status: s, last_update: new Date().toISOString() };
-            if (driverData.shiftEnd) u[`drivers_locations/${driverData.phone}`].shift_end = driverData.shiftEnd;
-            update(ref(db), u);
+        if (lastSentLat && lastSentLng && driverData && driverData.phone) {
+            const p = driverData.phone, u = {};
+            u[`drivers_locations/${p}/lat`] = Number(lastSentLat);
+            u[`drivers_locations/${p}/lng`] = Number(lastSentLng);
+            u[`drivers_locations/${p}/status`] = s;
+            u[`drivers_locations/${p}/last_update`] = new Date().toISOString();
+            update(ref(db), u).catch(async () => { const ok = await healAuth(); if (ok) update(ref(db), u).catch(() => {}); });
         }
     }
 
@@ -1133,24 +1213,24 @@ window.__SND={alert:"UklGRvaoAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YdKoAAA
         const today = new Date().toISOString().split('T')[0];
 
         /* إنجازات اليوم (للهدف ومعدّل القبول) */
-        onValue(ref(db, `daily_metrics/${driverData.phone}/${today}/completed_orders`), s => {
+        listen(() => ref(db, `daily_metrics/${driverData.phone}/${today}/completed_orders`), s => {
             _todayDone = Number(s.val() || 0); refreshDashboardExtras();
         });
-        onValue(ref(db, `daily_metrics/${driverData.phone}/${today}/rejected_orders`), s => {
+        listen(() => ref(db, `daily_metrics/${driverData.phone}/${today}/rejected_orders`), s => {
             _todayRejected = Number(s.val() || 0); refreshDashboardExtras();
         });
         /* الإجمالي التراكمي (للمستوى) */
-        onValue(ref(db, `ledgers/drivers/${driverData.phone}/completed_orders`), s => {
+        listen(() => ref(db, `ledgers/drivers/${driverData.phone}/completed_orders`), s => {
             _lifetimeOrders = Number(s.val() || 0); refreshDashboardExtras();
         });
         /* محصّلات اليوم */
-        onValue(ref(db, `daily_ledgers/${driverData.phone}/${today}`), s => {
+        listen(() => ref(db, `daily_ledgers/${driverData.phone}/${today}`), s => {
             const d = s.val() || {}; let t = 0;
             Object.values(d).forEach(r => { t += (parseFloat(r.price) || 0); });
             _todayEarnings = t; refreshDashboardExtras();
         });
-        /* 🆓 الدوام الحر — يطابق Code.gs V15.3 */
-        onValue(ref(db, 'system_settings/shifts_enabled'), s => {
+        /* 🆓 الدوام الحر — يطابق Code.gs */
+        listen(() => ref(db, 'system_settings/shifts_enabled'), s => {
             window._shiftsEnabled = (s.val() !== false);
         });
 
@@ -1171,16 +1251,16 @@ window.__SND={alert:"UklGRvaoAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YdKoAAA
             return;
         }
         _hotListenersReady = true;
-        onValue(ref(db, `drivers_locations/${driverData.phone}/account_status`), snap => {
+        listen(() => ref(db, `drivers_locations/${driverData.phone}/account_status`), snap => {
             if (snap.val() === "banned") { alert("تم حظر حسابك."); localStorage.removeItem('hut_driver_session'); sessionStorage.clear(); location.reload(); }
         });
-        onValue(ref(db, `ledgers/drivers/${driverData.phone}`), snap => {
+        listen(() => ref(db, `ledgers/drivers/${driverData.phone}`), snap => {
             const l = snap.val() || { completed_orders: 0, debt: 0 };
             document.getElementById('statOrdersCount').innerText = l.completed_orders || 0;
             document.getElementById('statDebt').innerHTML = `${l.debt || 0} <small class="fs-6">د.ع</small>`;
         });
         const todayStr = new Date().toISOString().split('T')[0];
-        onValue(ref(db, `daily_ledgers/${driverData.phone}/${todayStr}`), snap => {
+        listen(() => ref(db, `daily_ledgers/${driverData.phone}/${todayStr}`), snap => {
             const daily = snap.val() || {}; let total = 0, html = '';
             Object.values(daily).sort((a, b) => b.timestamp - a.timestamp).forEach(r => {
                 total += r.price; const t = new Date(r.timestamp).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
@@ -1189,22 +1269,27 @@ window.__SND={alert:"UklGRvaoAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YdKoAAA
             document.getElementById('ledgerTotalCash').innerHTML = `${total} <small class="fs-5">د.ع</small>`;
             document.getElementById('ledgerList').innerHTML = html || '<div class="text-center text-muted fw-bold py-4">لا توجد رحلات اليوم.</div>';
         });
-        onValue(ref(db, `daily_metrics/${driverData.phone}/${todayStr}/rejected_orders`), snap => {
+        listen(() => ref(db, `daily_metrics/${driverData.phone}/${todayStr}/rejected_orders`), snap => {
             todayRejections = snap.val() || 0; const re = document.getElementById('rejectionCounter'), rc = document.getElementById('rejectionCount');
             if (re && rc) { if (todayRejections > 0) { re.classList.remove('hidden-section'); rc.innerText = todayRejections; if (todayRejections >= 5) re.style.background = 'rgba(239,68,68,.2)'; } else re.classList.add('hidden-section'); }
         });
-        onValue(ref(db, 'active_orders'), snap => {
+        /* 🔧[خ٢٣] استعلام مفهرس: القاعدة تعيد فقط الطلبات التي driverPhone
+           فيها = هاتفي (عروضاً كانت أم مقبولة). قواعد V2.0 ترفض القراءة
+           الكاملة أصلاً، وهذا يقلّص النقل من كل الطلبات إلى طلباتي فقط.
+           ملاحظة: طلب سُحب مني/أُلغي/أُرشف يختفي من نتيجة الاستعلام —
+           لذا (!fb) تعني الآن "انتهى أو سُحب منك". */
+        listen(() => query(ref(db, 'active_orders'), orderByChild('driverPhone'), equalTo(driverData.phone)), snap => {
             const fbOrds = snap.val() || {};
-            const myId = String(driverData.phone).replace(/^0+/, '').trim();
+            const myId = nP(driverData.phone);
             /* إصلاح mutation: تجميع الإزالات أولاً */
             const toRemove = [];
             for (let i = activeOrders.length - 1; i >= 0; i--) {
                 const o = activeOrders[i], fb = fbOrds[o.id];
-                if (!fb) { toRemove.push({id: o.id, msg: "تم حذف هذا الطلب أو إنهاءه."}); continue; }
+                if (!fb) { toRemove.push({id: o.id, msg: "انتهى هذا الطلب أو سُحب منك."}); continue; }
                 const st = String(fb.status || '').toLowerCase();
                 const DONE = ['completed','مكتمل','settled','delivered','done','تم التسليم','تم','deleted'];
                 if (DONE.includes(st) || DONE.includes(fb.status)) { toRemove.push({id: o.id, msg: "تم إنهاء الطلب"}); continue; }
-                const fbPhone = String(fb.driverPhone || "").replace(/^0+/, '').trim();
+                const fbPhone = nP(fb.driverPhone);
                 if (fbPhone && fbPhone !== myId && fb.status !== 'pending_driver' && fb.status !== 'manual_pending') toRemove.push({id: o.id, msg: "تم سحب الطلب وتعيينه لكابتن آخر."});
             }
             toRemove.forEach(({id, msg}) => forceRemoveActiveOrder(msg, id));
@@ -1225,7 +1310,7 @@ window.__SND={alert:"UklGRvaoAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YdKoAAA
             if (isOnline) {
                 Object.values(fbOrds).forEach(fbOrder => {
                     if (!fbOrder.restaurant || fbOrder.restaurant.trim() === "" || fbOrder.restaurant === "undefined") return;
-                    const safeFbPhone = String(fbOrder.driverPhone || "").replace(/^0+/, '').trim();
+                    const safeFbPhone = nP(fbOrder.driverPhone);
                     const isForMe = (safeFbPhone === myId) && (fbOrder.status === "pending_driver" || fbOrder.status === "manual_pending");
                     if (!isForMe) return;
                     if (activeOrders.find(o => String(o.id) === String(fbOrder.id))) return;
@@ -1247,14 +1332,14 @@ window.__SND={alert:"UklGRvaoAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YdKoAAA
         });
         startExtraListeners();
 
-        onValue(ref(db, 'system_broadcast'), snap => {
+        listen(() => ref(db, 'system_broadcast'), snap => {
             const data = snap.val();
             if (data?.msg && data.ts && Date.now() - data.ts < 10000) showBroadcastModal(data.msg);
         });
 
         // 📨 رسائل الإدارة/الموظفين المباشرة لهذا الكابتن — تصل فوراً كإشعار داخل التطبيق
         if (driverData && driverData.phone) {
-            onValue(ref(db, 'driver_messages/' + driverData.phone), snap => {
+            listen(() => ref(db, 'driver_messages/' + driverData.phone), snap => {
                 const data = snap.val();
                 if (!data || !data.msg || !data.ts) return;
                 const tsMs = new Date(data.ts).getTime();
@@ -1290,19 +1375,19 @@ window.__SND={alert:"UklGRvaoAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YdKoAAA
         }, 1000);
     }
 
+    /* 🔧[خ١٣] الرفض عبر بوابة GAS حصراً: قواعد V2.0 تثبّت driverPhone على
+       الكابتن (لا يستطيع إرجاعه لـ system_routing بنفسه)، والسيرفر يسجّل
+       الرفض في daily_metrics دون أي خصم من daily_count — الخصم الشرعي
+       الوحيد يبقى في سحب الموظف staffWithdrawOrder. */
     window.declineOrder = function() {
         if (currentOrderData?.is_sovereign) return alert("هذا تعيين إداري لا يمكن تجاهله.");
         clearInterval(countdownInterval); document.getElementById('orderAlertOverlay').classList.add('hidden-section'); _stopAlarm();
         if (!currentOrderData) return;
-        const now = new Date().toISOString(), updates = {};
-        updates[`active_orders/${currentOrderData.id}/status`] = "pending_driver";
-        updates[`active_orders/${currentOrderData.id}/driverPhone`] = "system_routing";
-        updates[`active_orders/${currentOrderData.id}/last_update`] = now;
-        updates[`active_orders/${currentOrderData.id}/last_offered_to`] = driverData.phone;
-        updates[`active_orders/${currentOrderData.id}/last_offered_time`] = now;
-        updates[`active_orders/${currentOrderData.id}/is_sovereign`] = false;
-        updates[`daily_metrics/${driverData.phone}/${now.split('T')[0]}/rejected_orders`] = increment(1);
-        todayRejections++; update(ref(db), updates); currentOrderData = null;
+        const oid = currentOrderData.id;
+        todayRejections++; /* تفاؤلي — مستمع rejected_orders سيزامن الرقم الحقيقي */
+        fetch(`${API_URL}?action=DECLINE_ORDER&orderId=${encodeURIComponent(oid)}&driverPhone=${driverData.phone}&token=${API_TOKEN}`)
+            .catch(() => { /* عند ضعف الشبكة: حارس CF سيعيد الطلب للرادار تلقائياً */ });
+        currentOrderData = null;
     };
 
     window.acceptOrder = async function() {
@@ -1310,13 +1395,18 @@ window.__SND={alert:"UklGRvaoAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YdKoAAA
         btn.innerHTML = `<div class="spinner-border spinner-border-sm text-white"></div> جاري تأمين الطلب...`; btn.disabled = true;
         clearInterval(countdownInterval); _stopAlarm();
         setTimeout(async () => {
+            /* 🔧[خ١] getGlobalData صارت بوابة إدارية (كانت تسرّب بيانات كل
+               الشركاء بكلمات مرورهم لأي كابتن). الطلبات الحديثة تحمل
+               resPhone/resLat/resLng/comm/payType مختومة من السيرفر؛
+               وعند غياب الإحداثيات فقط نقرأ restaurants_locations
+               (قراءتها متاحة لكل مصادَق). */
             try {
-                if (!currentOrderData.resPhone || !currentOrderData.resLat) {
-                    const r = await fetch(`${API_URL}?action=getGlobalData&token=${API_TOKEN}`); const data = await r.json();
-                    const ri = data.restaurants.find(r => r[1] === currentOrderData.resName);
-                    if (ri) { currentOrderData.resPhone = ri[2]; currentOrderData.resArea = ri[3]; currentOrderData.resLat = ri[6]; currentOrderData.resLng = ri[7]; currentOrderData.comm = parseFloat(ri[5]) || 0; currentOrderData.payType = ri[8] || "المطعم يدفع"; }
-                    else currentOrderData.resPhone = "غير متوفر";
+                if (currentOrderData.resPhone && !currentOrderData.resLat) {
+                    const snap = await get(ref(db, `restaurants_locations/${nP(currentOrderData.resPhone)}`));
+                    const loc = snap.val();
+                    if (loc && loc.lat && loc.lng) { currentOrderData.resLat = parseFloat(loc.lat); currentOrderData.resLng = parseFloat(loc.lng); }
                 }
+                if (!currentOrderData.resPhone) currentOrderData.resPhone = "غير متوفر";
             } catch(e) { if (!currentOrderData.resPhone) currentOrderData.resPhone = "غير متوفر"; }
             finalizeAccept();
         }, 1500);
@@ -1491,33 +1581,43 @@ window.__SND={alert:"UklGRvaoAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YdKoAAA
                 const ts = new Date().toISOString().split('T')[0];
                 const dm = Math.max(1, Math.floor((Date.now() - order.acceptedTime) / 60000));
                 const nowIso = new Date().toISOString();
-                const updates = {};
-                updates[`active_orders/${id}/status`] = 'completed';
-                updates[`active_orders/${id}/status_ar`] = 'مكتمل';
-                updates[`active_orders/${id}/completed_at`] = nowIso;
-                updates[`active_orders/${id}/last_update`] = nowIso;
-                /* 💰 إصلاح العمولة: نكتب العمولة ونوع الدفع صراحةً كي يحسبها المؤرشف بدقة */
-                updates[`active_orders/${id}/comm`] = (order.comm !== undefined && order.comm !== null && order.comm !== '') ? order.comm : 0;
-                updates[`active_orders/${id}/payType`] = order.payType || 'المطعم يدفع';
-                updates[`daily_metrics/${driverData.phone}/${ts}/completed_orders`] = increment(1);
-                updates[`daily_metrics/${driverData.phone}/${ts}/total_delivery_minutes`] = increment(dm);
-                updates[`daily_ledgers/${driverData.phone}/${ts}/${id}`] = {
+                /* 🩹 فصل الذرّية: التحديث القديم كان يخلط حقول الطلب (مسموحة
+                   للكابتن) مع daily_metrics/daily_ledgers — والتحديث متعدد
+                   المسارات ذرّي: رفضُ مسارٍ واحد يُفشل الإكمال كله.
+                   الآن: (أ) حقول الطلب = الكتابة المضمونة الحاسمة؛
+                   (ب) مقاييس العرض = أفضل جهد منفصل. */
+                const updA = {};
+                updA[`active_orders/${id}/status`] = 'completed';
+                updA[`active_orders/${id}/status_ar`] = 'مكتمل';
+                updA[`active_orders/${id}/completed_at`] = nowIso;
+                updA[`active_orders/${id}/last_update`] = nowIso;
+                /* 💰 العمولة ونوع الدفع صراحةً كي يحسبها المؤرشف بدقة —
+                   بنفس القيم المختومة أصلاً (القواعد تثبّت comm الموجودة) */
+                updA[`active_orders/${id}/comm`] = (order.comm !== undefined && order.comm !== null && order.comm !== '') ? order.comm : 0;
+                updA[`active_orders/${id}/payType`] = order.payType || 'المطعم يدفع';
+                const updB = {};
+                updB[`daily_metrics/${driverData.phone}/${ts}/completed_orders`] = increment(1);
+                updB[`daily_metrics/${driverData.phone}/${ts}/total_delivery_minutes`] = increment(dm);
+                updB[`daily_ledgers/${driverData.phone}/${ts}/${id}`] = {
                     orderId: id, resName: order.resName, area: order.area,
                     price: order.price, comm: order.comm || 0, timestamp: Date.now()
                 };
 
-                const ok = await guaranteedUpdate(updates, `active_orders/${id}/status`, 'completed');
+                const ok = await guaranteedUpdate(updA, `active_orders/${id}/status`, 'completed');
 
                 if (!ok) {
                     /* ❌ فشل مؤكد — نُبقي الطلب ونُخبر الكابتن بصراحة (لا نكذب عليه) */
                     btn.innerHTML = orig; btn.disabled = false;
                     try {
-                        offlineActionQueue.push({ type: 'multi', updates: updates, ts: Date.now() });
+                        offlineActionQueue.push({ type: 'multi', updates: updA, ts: Date.now() });
+                        offlineActionQueue.push({ type: 'multi', updates: updB, ts: Date.now() });
                         localStorage.setItem('hut_offline_queue', JSON.stringify(offlineActionQueue));
                     } catch (e) {}
                     showToast('⚠️ تعذّر تسجيل التسليم — ضعف الاتصال.<br>سيُرسل تلقائياً عند عودة الشبكة. لا تُغلق التطبيق.', 'error');
                     return;
                 }
+                /* (ب) مقاييس العرض — لا تعطّل الإكمال إن رُفضت أو فشلت */
+                update(ref(db), updB).catch(() => {});
 
                 /* ✅ نجاح مؤكد من السيرفر — الآن فقط نُزيل الطلب */
                 const card = document.getElementById(`order-${id}`);
