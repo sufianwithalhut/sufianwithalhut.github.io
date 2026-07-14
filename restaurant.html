@@ -13,7 +13,7 @@
         //          القاعدة الجديدة ترفض القراءة الكاملة لغير الإدارة.
         //  🔒 ضمان مصادقة فايربيس قبل أي كتابة (القواعد لم تعد تقبل مجهولاً).
         //  🛵 اسم الكابتن من drivers_locations/{phone}/name بدل شيت السائقين.
-        const CURRENT_APP_VERSION = "39.0.Sufyan-Fortress";
+        const CURRENT_APP_VERSION = "39.2.Sufyan-Fortress";
         const RES_VERSION_KEY = 'hut_res_app_version';
         try {
             if (localStorage.getItem(RES_VERSION_KEY) !== CURRENT_APP_VERSION) {
@@ -1060,8 +1060,27 @@
         } catch (e) { console.error("فشل إعادة مصادقة المطعم:", e); return false; }
     };
 
-    // تحديث الحالة المحلية من استجابة checkRes (قائمة الأسعار، الإحداثيات، العمولة)
+    // تحديث الحالة المحلية من استجابة checkRes (قائمة الأسعار، الإحداثيات، العمولة، الاسم)
     function applyServerProfile(d, normPhone) {
+        /* 🩹[خ٣٣] الاسم من السيرفر لا من الجلسة القديمة:
+           جلسة localStorage تعيش 24 ساعة وتحمل الاسم المحفوظ وقت الدخول.
+           فإن تغيّر اسم المطعم في الشيت (أو استُعمل الجهاز لحساب آخر سابقاً)،
+           بقيت الجلسة تكتب الاسم القديم مع الهاتف الصحيح — فيظهر الطلب باسم
+           مطعم آخر! الآن كل مصادقة تُزامن الاسم من هوية الهاتف. */
+        try {
+            const srvName = String(d.name || "").trim();
+            if (srvName && srvName !== String(currentResName || "").trim()) {
+                console.warn("🔄 تصحيح اسم المطعم: «" + currentResName + "» → «" + srvName + "»");
+                currentResName = srvName;
+                const el = document.getElementById('resTitle');
+                if (el) el.innerText = srvName;
+                try {
+                    const s = JSON.parse(localStorage.getItem('hut_res_session') || '{}');
+                    s.name = srvName;
+                    localStorage.setItem('hut_res_session', JSON.stringify(s));
+                } catch (e) {}
+            }
+        } catch (e) {}
         try {
             if (d.priceList) {
                 const fresh = JSON.parse(d.priceList);
@@ -2383,7 +2402,7 @@
     }
 
     async function finalizeOrderPlacementSilent(details, imageUrl, price, area, resName) {
-        const uniqueId    = "HUT-" + Math.floor(Date.now() / 1000);
+
         const tsIso       = new Date().toISOString();
         let safeResPhone  = regPhone; 
         let safeComm = '0'; 
@@ -2402,6 +2421,31 @@
         // القاعدة الجديدة توجب resPhone == auth.uid — "غير متوفر" القديمة كانت
         // ستُنشئ طلباً يتيماً مالياً؛ الآن نوقف الإرسال بدلها.
         if (!normResPhone) throw new Error('NO_PHONE');
+
+        /* 🩹[خ٣٤] تصادم معرّفات الطلبات — العلّة الحقيقية لاختلاط هوية الطلبات!
+           كان: "HUT-" + الثواني فقط. فمطعمان يرسلان في الثانية نفسها يحصلان
+           على **المعرّف نفسه**، والثاني يكتب فوق الأول بـset() — فيضيع طلب،
+           وتختلط الحقول (اسم من طلب، هاتف وإحداثيات من آخر).
+           بحساب عيد الميلاد: في ساعة بـ300 طلب، احتمال التصادم ≈ 100%.
+           الحل: بصمة المطعم (آخر 4 أرقام) + ملي-ثانية + حرف عشوائي.
+           تبقى الصيغة "HUT-..." مقروءة ومتوافقة مع الواجهات والأرشيف كلها. */
+        const uniqueId = "HUT-" + Math.floor(Date.now() / 1000)
+                       + "-" + String(normResPhone).slice(-4)
+                       + String(Date.now() % 1000).padStart(3, "0")
+                       + Math.floor(Math.random() * 36).toString(36);
+
+        /* 🩹[خ٣٣] حزام أخير: لا نرسل اسماً لا يخصّ هذا الهاتف.
+           إن اختلف الاسم المحفوظ في الجلسة عن الاسم المرافق لهذا الهاتف،
+           نأخذ الاسم الحيّ (currentResName) الذي يُزامنه applyServerProfile
+           من السيرفر عند كل مصادقة. والمعقِّم في CF يختم الاسم الموثوق
+           نهائياً من restaurants_config — فلا يُنسب طلب لمطعم آخر أبداً. */
+        try {
+            const sName = String(currentResName || '').trim();
+            if (sName && String(resName || '').trim() !== sName) {
+                console.warn('🔄 تصحيح اسم الطلب قبل الإرسال: «' + resName + '» → «' + sName + '»');
+                resName = sName;
+            }
+        } catch (e) {}
 
         // 🔒 القواعد الجديدة ترفض الكتابة بلا مصادقة — نضمنها قبل set
         const authed = await requireCloudAuth();
