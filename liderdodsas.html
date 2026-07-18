@@ -626,6 +626,15 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
 .cbb.sending{opacity:.55;}
 .cbb.failed{background:#fef2f2!important;color:#7f1d1d!important;border:1.5px solid #fca5a5;}
 .cbb-rt{font-size:.62rem;font-weight:900;color:#b91c1c;cursor:pointer;margin-top:4px;}
+.ct-unread-sep{display:flex;align-items:center;gap:9px;margin:14px 2px 10px;}
+.ct-unread-sep::before,.ct-unread-sep::after{content:"";flex:1;height:1.5px;background:#fca5a5;border-radius:2px;}
+.ct-unread-sep span{background:#ef4444;color:#fff;font-size:.62rem;font-weight:900;padding:3px 12px;border-radius:999px;}
+.ct-jump{position:absolute;bottom:96px;inset-inline-start:50%;transform:translateX(50%);
+  background:#0f1e3d;color:#fff;border:0;border-radius:999px;padding:8px 16px;font-size:.73rem;
+  font-weight:900;cursor:pointer;font-family:inherit;box-shadow:0 6px 20px rgba(8,15,30,.35);
+  display:none;z-index:5;align-items:center;gap:6px;}
+.ct-jump.on{display:inline-flex;}
+.ct-main{position:relative;}
 .ct-day{text-align:center;margin:12px 0 8px;}
 .ct-day span{background:rgba(15,30,61,.08);color:#4b5c74;font-size:.62rem;font-weight:900;
   padding:4px 13px;border-radius:999px;backdrop-filter:blur(2px);}
@@ -891,6 +900,7 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
         <div style="display:grid;grid-template-rows:auto 1fr;min-height:0">
           <div id="ccClaimZone"></div>
           <div class="ct-msgs" id="ctMsgs"></div>
+        <button class="ct-jump" id="ctJump" onclick="ccJumpBottom()">⬇ <span id="ctJumpTxt">رسائل جديدة</span></button>
         </div>
         <div class="ct-qr" id="ctQr">
           <div class="ct-qr-tabs" id="ctQrTabs"></div>
@@ -2287,11 +2297,15 @@ const QUICK_REPLIES=[
 function _ccBeep(){try{const a=new (window.AudioContext||window.webkitAudioContext)();const o=a.createOscillator(),g=a.createGain();o.connect(g);g.connect(a.destination);o.frequency.value=880;g.gain.setValueAtTime(.12,a.currentTime);g.gain.exponentialRampToValueAtTime(.001,a.currentTime+.35);o.start();o.stop(a.currentTime+.35);}catch(e){}}
 
 /* إشعار سطح المكتب — يُطلب الإذن مرة واحدة عند أول محادثة واردة */
+let _notifAsked=false;
 function _ccNotify(title,body){
   try{
     if(!("Notification" in window))return;
     if(Notification.permission==="granted"){new Notification(title,{body:body,tag:"hut-chat"});}
-    else if(Notification.permission!=="denied"){Notification.requestPermission().catch(()=>{});}
+    else if(Notification.permission!=="denied"&&!_notifAsked){
+      _notifAsked=true;                       /* مرة واحدة لا مع كل رسالة */
+      Notification.requestPermission().catch(()=>{});
+    }
   }catch(e){}
 }
 
@@ -2321,9 +2335,11 @@ function startChatCenter(){
     const b=document.getElementById("chatFabBdg");
     b.textContent=totalUnread;b.classList.toggle("on",totalUnread>0);
     if(totalUnread>_ccPrevUnread){
-      _ccBeep();
       const last=Object.values(_ccChats).sort((a,b2)=>(b2.last_msg_at||0)-(a.last_msg_at||0))[0];
-      if(last&&last.last_from==='driver'){
+      /* 🔕 لا تنبيه على محادثة مفتوحة أمامه فعلاً — إزعاج بلا فائدة */
+      const viewing=last&&_ccActive&&nP(last.driver_phone||'')===nP(_ccActive)&&document.hasFocus();
+      if(!viewing)_ccBeep();
+      if(!viewing&&last&&last.last_from==='driver'){
         const nm=esc(last.driver_name||'كابتن'),tx=esc(String(last.last_msg||'').slice(0,40));
         toast(`💬 ${nm}: ${tx}`);
         _ccNotify(`💬 ${last.driver_name||'كابتن'}`,String(last.last_msg||''));
@@ -2459,9 +2475,10 @@ function _ccDriverOrders(phone){
   }catch(e){return [];}
 }
 const THREAD_PAGE=35;
-let _ccOlderShown=false,_ccHiddenOlder=0;
+let _ccUnreadAt=0;
+let _ccOlderShown=false,_ccHiddenOlder=0,_ccWinStart=null;
 window.ccLoadOlder=function(){
-  _ccOlderShown=true;
+  _ccOlderShown=true;_ccWinStart=null;
   const msgs=document.getElementById("ctMsgs");
   const keep=msgs.scrollHeight;
   _ccRenderedKeys=new Set();msgs.innerHTML="";msgs.dataset.lastDay="";
@@ -2659,8 +2676,10 @@ window.ccLocate=function(p){
 };
 /* إشعار نظام عبر بوابة GAS (driver_messages) — يظهر للكابتن حتى والتطبيق مغلق */
 window.ccPush=function(p,name){
-  const t=prompt("نصّ الإشعار الذي سيصل الكابتن "+name+":");
-  if(!t||!t.trim())return;
+  /* لا prompt(): محجوب في بعض المتصفحات ويوقف الصفحة. نستعمل نافذة اللوحة. */
+  if(typeof window.msgCaptain==='function')return window.msgCaptain(p,name,'');
+  const t=(document.getElementById("ctInput")||{}).value||"";
+  if(!t.trim())return toast("اكتب النصّ في حقل الرسالة ثم اضغط الإشعار","e");
   apiGet({action:"STAFF_MESSAGE",driverPhone:p,msg:t.trim()})
     .then(d=>{
       if(d&&d.success)toast("أُرسل الإشعار ✅");
@@ -2716,7 +2735,10 @@ window.ccQuick=function(gi,ii){
 
 /* ════ اختصارات لوحة المفاتيح ════ */
 window.ccKeydown=function(e){
-  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendLeaderMsg();return;}
+  /* على الجوال Enter = سطر جديد (كأي تطبيق مراسلة)؛ الإرسال بالزرّ.
+     على الكمبيوتر Enter يرسل و Shift+Enter سطر جديد. */
+  const isTouch=window.matchMedia&&window.matchMedia('(pointer:coarse)').matches;
+  if(e.key==='Enter'&&!e.shiftKey&&!isTouch){e.preventDefault();sendLeaderMsg();return;}
   if(e.key==='Escape'){e.preventDefault();backToList();return;}
   if((e.ctrlKey||e.metaKey)&&e.key>='1'&&e.key<='9'){
     e.preventDefault();ccQuick(_ccQrCat,parseInt(e.key)-1);
@@ -2763,7 +2785,7 @@ window.openThread=function(phone){
   const inp=document.getElementById("ctInput");
   inp.value=_ccDrafts[phone]||"";inp.style.height='auto';
   document.getElementById("ctMsgs").innerHTML="";
-  _ccOlderShown=false;
+  _ccOlderShown=false;_ccWinStart=null;_ccNewWhileUp=0;_ccUnreadAt=Number(c.unread_leader||0);
   /* ⚡ الرسائل أولاً — تظهر المحادثة فوراً */
   renderThread(true);
   /* ثم السياق والردود في الإطار التالي: لا تجميد عند الفتح */
@@ -2777,6 +2799,26 @@ window.openThread=function(phone){
 /* ════ رسم الخيط — تراكمي لا إعادة بناء ════
    الرسم القديم كان يعيد بناء innerHTML كاملاً عند كل لقطة، فيقطع التحديد
    ويُقفز التمرير ويُثقل الجهاز مع طول المحادثة. الآن نُلحق الجديد فقط. */
+/* حبّة "رسائل جديدة" + فاصل غير المقروء */
+let _ccNewWhileUp=0;
+function _ccUpdJump(){
+  const j=document.getElementById("ctJump"),t=document.getElementById("ctJumpTxt");
+  if(!j||!t)return;
+  if(_ccNewWhileUp>0){t.textContent=_ccNewWhileUp+" رسالة جديدة";j.classList.add("on");}
+  else j.classList.remove("on");
+}
+window.ccJumpBottom=function(){
+  const m=document.getElementById("ctMsgs");if(!m)return;
+  m.scrollTo({top:m.scrollHeight,behavior:'smooth'});
+  _ccNewWhileUp=0;_ccUpdJump();
+};
+function _ccBindMsgScroll(){
+  const m=document.getElementById("ctMsgs");if(!m||m.dataset.bound)return;
+  m.dataset.bound="1";
+  m.addEventListener('scroll',()=>{
+    if(m.scrollHeight-m.scrollTop-m.clientHeight<60){_ccNewWhileUp=0;_ccUpdJump();}
+  },{passive:true});
+}
 function renderThread(force){
   if(!_ccActive)return;
   const c=_ccChats[_ccActive]||{};
@@ -2785,22 +2827,41 @@ function renderThread(force){
 
   if(c.status==='claimed'&&nP(c.claimed_by)===me){
     zone.innerHTML=`<button class="ct-claim" style="background:linear-gradient(135deg,#64748b,#475569);box-shadow:none" onclick="closeConversation()">🔒 إغلاق المحادثة</button>`;
+    _ccSetComposer(true);
   }else if(c.status==='claimed'){
-    zone.innerHTML=`<div class="ct-note">هذه المحادثة مع الليدر <b>${esc(c.claimed_by_name||'')}</b> — ردّك سينقلها إليك.</div>`;
+    /* 🛡️ محادثة ليدر آخر = مراقبة فقط.
+       كان الحقل مفتوحاً فيردّ ليدران على الكابتن نفسه — وهذا بالضبط ما
+       يمنعه نظام الاستلام. الآن: قفل صريح وزرّ استحواذ واعٍ. */
+    zone.innerHTML=`<div class="ct-note">👁 مراقبة فقط — المحادثة مع الليدر <b>${esc(c.claimed_by_name||'')}</b>.
+      <button onclick="ccTakeOver()" style="margin-inline-start:8px;border:0;background:#b45309;color:#fff;
+        border-radius:8px;padding:4px 11px;font-size:.7rem;font-weight:900;cursor:pointer;font-family:inherit">
+        استحواذ</button></div>`;
+    _ccSetComposer(false,`المحادثة مع ${c.claimed_by_name||'ليدر آخر'} — اضغط «استحواذ» للردّ`);
   }else if(c.status==='closed'){
     zone.innerHTML=`<div class="ct-note">المحادثة مغلقة — ردّك يعيد فتحها باسمك.</div>`;
+    _ccSetComposer(true);
   }else{
     zone.innerHTML=`<button class="ct-claim" onclick="claimChat()">✅ استلام المحادثة — سيصل الكابتن إشعار بانضمامك</button>`;
+    _ccSetComposer(true);
   }
 
+  _ccBindMsgScroll();
   const mm=c.messages||{};
   let keys=Object.keys(mm).sort();
   /* ⚡ [أداء] محادثة طويلة لا تُرسم كاملة عند الفتح — آخر THREAD_PAGE فقط.
-     الأقدم بزرّ. (فتح محادثة بـ60 رسالة كان يجمّد 53 مللي.) */
+     🐛 [إصلاح حرج] وحدّ النافذة يُحفظ في _ccWinStart: بدونه كانت أول رسالة
+     جديدة تُعيد حقن كل الرسائل القديمة المخفيّة **أسفل** الجديدة، فينقلب
+     ترتيب المحادثة أمام الليدر. الآن ما دون النافذة لا يُرسم إلا بطلب صريح. */
   if(force&&!_ccOlderShown&&keys.length>THREAD_PAGE){
     _ccHiddenOlder=keys.length-THREAD_PAGE;
     keys=keys.slice(-THREAD_PAGE);
-  }else{_ccHiddenOlder=0;}
+    _ccWinStart=keys[0];
+  }else if(force){
+    _ccHiddenOlder=0;_ccWinStart=null;
+  }else{
+    _ccHiddenOlder=0;
+    if(_ccWinStart&&!_ccOlderShown)keys=keys.filter(k=>k>=_ccWinStart);
+  }
   const atBottom=msgs.scrollHeight-msgs.scrollTop-msgs.clientHeight<80;
 
   if(force){msgs.innerHTML="";_ccRenderedKeys=new Set();msgs.dataset.lastDay="";}
@@ -2817,7 +2878,9 @@ function renderThread(force){
     _ccRenderedKeys.add(k);
     if(m.from==='leader'){
       Object.keys(_ccPending).forEach(pk=>{
-        if(_ccPending[pk].text===m.text){
+        /* المطابقة بمعرّف العميل (cid) لا بالنصّ — رسالتان بنفس النصّ
+           كانتا تُسقطان الفقاعة الخطأ. النصّ احتياط للرسائل القديمة. */
+        if((m.cid&&m.cid===pk)||(!m.cid&&_ccPending[pk].text===m.text)){
           const ghost=document.getElementById("pnd-"+pk);
           if(ghost)ghost.remove();
           delete _ccPending[pk];
@@ -2832,6 +2895,10 @@ function renderThread(force){
       buf+=`<div class="ct-day"><span>${esc(label)}</span></div>`;
     }
     const mine=m.from==='leader';
+    if(force&&_ccUnreadAt>0&&!mine){
+      const remaining=keys.filter(x=>x>=k&&mm[x]&&mm[x].from==='driver').length;
+      if(remaining===_ccUnreadAt){buf+=`<div class="ct-unread-sep"><span>${_ccUnreadAt} رسالة لم تُقرأ</span></div>`;_ccUnreadAt=0;}
+    }
     buf+=`<div class="cbb ${mine?'cbb-me':'cbb-dr'}">${mine?'':`<div class="cbb-nm">${esc(m.name||'كابتن')}</div>`}<div>${esc(m.text)}</div><div class="cbb-tm">${fmtHM(m.ts||Date.now())}</div></div>`;
     added=true;
   });
@@ -2844,9 +2911,35 @@ function renderThread(force){
   if(!keys.length&&!Object.keys(_ccPending).length&&!msgs.children.length){
     msgs.innerHTML='<div class="cc-empty" style="padding:30px">لا رسائل بعد</div>';
   }
-  if(added&&(atBottom||force))msgs.scrollTop=msgs.scrollHeight;
+  /* 🌐 سلوك منصّات الدعم: لا نخطف موضع القراءة.
+     إن كان الليدر يقرأ الأعلى ووصلت رسالة، لا نُنزله قسراً — نُظهر حبّة
+     "رسائل جديدة" ينقرها متى شاء. النزول التلقائي فقط إن كان أصلاً بالأسفل. */
+  if(added&&(atBottom||force)){
+    msgs.scrollTop=msgs.scrollHeight;
+    _ccNewWhileUp=0;_ccUpdJump();
+  }else if(added){
+    _ccNewWhileUp+=1;_ccUpdJump();
+  }
   if(Number(c.unread_leader||0)>0)db.ref(`driver_chats/${_ccActive}/unread_leader`).set(0).catch(()=>{});
 }
+
+/* قفل/فتح حقل الكتابة بحسب ملكية المحادثة */
+function _ccSetComposer(enabled,hint){
+  const inp=document.getElementById("ctInput"),btn=document.getElementById("ctSend"),qr=document.getElementById("ctQr");
+  if(!inp||!btn)return;
+  inp.disabled=!enabled;btn.disabled=!enabled;
+  inp.placeholder=enabled?"اكتب ردّك للكابتن...":(hint||"مراقبة فقط");
+  inp.style.opacity=enabled?"1":".6";
+  if(qr)qr.style.display=enabled?"":"none";
+}
+window.ccTakeOver=function(){
+  if(!_ccActive)return;
+  const c=_ccChats[_ccActive]||{};
+  if(!confirm(`المحادثة الآن مع ${c.claimed_by_name||'ليدر آخر'}.\n\nالاستحواذ ينقلها إليك ويُسجَّل باسمك. متأكد؟`))return;
+  db.ref(`driver_chats/${_ccActive}`).update({
+    status:'claimed',claimed_by:EMP_PHONE,claimed_by_name:EMP_NAME,claimed_at:new Date().toISOString()
+  }).then(()=>toast("انتقلت المحادثة إليك ✅")).catch(()=>toast("تعذّر الاستحواذ","e"));
+};
 
 window.claimChat=function(){
   if(!_ccActive)return;
@@ -2883,7 +2976,7 @@ window.sendLeaderMsg=async function(){
 
   const base=`driver_chats/${target}`;
   const u={};
-  u[`${base}/messages/${key}`]={from:'leader',name:EMP_NAME||'الليدر',text:txt,ts:Date.now()};
+  u[`${base}/messages/${key}`]={from:'leader',name:EMP_NAME||'الليدر',text:txt,ts:Date.now(),cid:pk};
   u[`${base}/last_msg`]=txt.slice(0,60);
   u[`${base}/last_msg_at`]=Date.now();
   u[`${base}/last_from`]='leader';
