@@ -7,17 +7,21 @@ const CACHE_NAME = 'AlHut-Core-V13.0';
 const CDN_CACHE_NAME = 'AlHut-CDNs-V13.0';
 
 // قائمة الملفات الأساسية للنظام
+// 🩹 [كاش الأوفلاين] تصحيح حالة الأحرف: GitHub Pages حسّاس لها، وكانت القائمة
+//   تطلب 'Restaurant.html' و'Driver.html' بينما الملفان بحروف صغيرة — فيعودان
+//   بـ404 ويُتخطّيان بصمت (cache.add(...).catch). النتيجة: تطبيقا الكابتن
+//   والمطعم بلا قشرة أوفلاين إطلاقاً، وهما الأشدّ حاجة إليها (الكابتن على
+//   الطريق بشبكة متقطّعة). أُزيل كذلك manifest_driver.json و driver-logo.png
+//   لأنهما غير موجودَين في المستودع — أعِدهما هنا فور رفعهما.
 const ASSETS_TO_CACHE = [
   './',
   './Master.html',
-  './Restaurant.html', 
-  './Driver.html',     
+  './restaurant.html',
+  './driver.html',
   './manifest_master.json',
   './manifest_restaurant.json',
-  './manifest_driver.json',
   './master-logo.png',
-  './rest-logo.png',
-  './driver-logo.png'
+  './rest-logo.png'
 ];
 
 // 1. التثبيت (Install)
