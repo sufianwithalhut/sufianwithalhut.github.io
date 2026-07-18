@@ -1043,16 +1043,63 @@ function esc(s){if(s==null)return"";const d=document.createElement("div");d.text
 function ej(s){return String(s??'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');}
 /* 🔧[خ٧] التطبيع الموحّد حرفياً مع GAS V16.0 و CF-6.0:
    أرقام عربية/فارسية → لاتينية، إسقاط 964، إسقاط كل الأصفار البادئة. */
+/* ⚡ [أداء] ذاكرة تطبيع الأرقام.
+   nP كانت تُنادى عشرات الآلاف من المرات في كل دورة رسم (dN وحدها كانت
+   تناديها مرّتين لكل كابتن لكل طلب). النتيجة نفسها دائماً لنفس المدخل،
+   فحفظها يوفّر الجزء الأكبر من زمن الرسم. */
+const _nPCache=new Map();
 function nP(p){
   if(!p)return"";
-  let s=String(p);
+  const key=String(p);
+  const hit=_nPCache.get(key);
+  if(hit!==undefined)return hit;
+  let s=key;
   const ar=['٠','١','٢','٣','٤','٥','٦','٧','٨','٩'],fa=['۰','۱','۲','۳','۴','۵','۶','۷','۸','۹'];
   for(let i=0;i<10;i++){s=s.split(ar[i]).join(String(i));s=s.split(fa[i]).join(String(i));}
   s=s.replace(/[^\d]/g,"");
   if(s.startsWith("964"))s=s.slice(3);
-  return s.replace(/^0+/,"");
+  s=s.replace(/^0+/,"");
+  if(_nPCache.size>4000)_nPCache.clear();   /* سقف أمان للذاكرة */
+  _nPCache.set(key,s);
+  return s;
 }
-function dN(p){if(!p)return"غير محدد";const f=gDrivers.find(x=>nP(x.phone)===nP(p));if(f&&f.name)return f.name;const ph=String(p).replace(/[^0-9]/g,"");return ph.length>4?"0"+ph.slice(-4):ph;}
+
+/* ⚡ [أداء] فهرس أسماء الكباتن بدل المسح الخطّي.
+   كانت dN تمسح gDrivers كاملاً لكل طلب: 60 كابتن × 220 طلب = 13,200 نداء
+   لـnP في كل رسم (قياس فعلي: 121 مللي). الآن بحث بمفتاح — O(1). */
+let _dnIndex=null;
+function _dnRebuild(){
+  _dnIndex=new Map();
+  (gDrivers||[]).forEach(x=>{const k=nP(x.phone);if(k&&x.name)_dnIndex.set(k,x.name);});
+  /* رافد ثانٍ: الأسماء المحفوظة في drivers_locations (يكتبها السيرفر عند الدخول) */
+  Object.keys(drvLocs||{}).forEach(p=>{const k=nP(p);if(k&&!_dnIndex.has(k)&&drvLocs[p]&&drvLocs[p].name)_dnIndex.set(k,drvLocs[p].name);});
+}
+function dnInvalidate(){_dnIndex=null;}
+function dN(p){
+  if(!p)return"غير محدد";
+  if(!_dnIndex)_dnRebuild();
+  const hit=_dnIndex.get(nP(p));
+  if(hit)return hit;
+  const ph=String(p).replace(/[^0-9]/g,"");
+  return ph.length>4?"0"+ph.slice(-4):ph;
+}
+
+/* ⚡ [أداء] مُنسّقا الوقت والتاريخ يُنشآن مرة واحدة.
+   Intl.DateTimeFormat مكلف الإنشاء؛ كان يُنشأ لكل طلب (قياس: 116 مللي
+   لـ220 طلباً). النسخة الواحدة المُعاد استخدامها أسرع بأضعاف. */
+const _FMT_HM=new Intl.DateTimeFormat('ar-EG',{hour:'2-digit',minute:'2-digit'});
+const _FMT_DAY=new Intl.DateTimeFormat('ar-EG',{weekday:'long',day:'numeric',month:'long'});
+const _hmCache=new Map();
+function fmtHM(v){
+  if(!v)return"---";
+  const hit=_hmCache.get(v);
+  if(hit!==undefined)return hit;
+  let out="---";
+  try{const d=new Date(v);out=isNaN(d)?"---":_FMT_HM.format(d);}catch(e){}
+  if(_hmCache.size>3000)_hmCache.clear();
+  _hmCache.set(v,out);
+  return out;
+}
 function toast(m,t="s"){const c=document.getElementById("toasts"),el=document.createElement("div");el.className=`ti t${t}`;el.innerHTML=`<div class="ti-ico">${t==="s"?"✅":"❌"}</div><span style="flex:1">${m}</span>`;c.appendChild(el);setTimeout(()=>{el.style.opacity="0";el.style.transition=".3s";setTimeout(()=>el.remove(),320);},3000);}
 function opImg(u){if(!u)return;document.getElementById("imgFull").src=u;document.getElementById("imgModal").style.display="flex";}
 function clImg(){document.getElementById("imgModal").style.display="none";document.getElementById("imgFull").src="";}
@@ -1422,7 +1469,7 @@ function attachDataListeners(){
         o.price||0,o.status||"pending",o.driverPhone||"",o.last_update||o.timestamp||"",
         o.photoUrl||"",o.is_sovereign||false,o.last_update||"",o.last_offered_to||"",o.ready_for_pickup||false,o.comm??null,o.payType||"", o.is_double||false]);
     });
-    rawOrders=raw;
+    rawOrders=raw;_ordIdx=null;_onlineCache=null;
     active.sort((a,b)=>new Date(b[O.TIME])-new Date(a[O.TIME]));
     liveOrd=active;
     const np=active.filter(o=>!o[O.DRV]||["pending_driver","system_routing","manual_pending"].includes(o[O.DRV])).length;
@@ -1434,7 +1481,7 @@ function attachDataListeners(){
 
   /* Driver locations — قراءة لأي مصادَق */
   listen("drivers_locations",snap=>{
-    const locs=snap.val()||{};drvLocs=locs;const now=Date.now();actDrv.clear();
+    const locs=snap.val()||{};drvLocs=locs;dnInvalidate();const now=Date.now();actDrv.clear();
     Object.keys(locs).forEach(phone=>{
       const d=locs[phone];const stale=(d.last_update?(now-new Date(d.last_update).getTime()):999999)>420000;
       if(d.status==="active"&&d.lat&&d.lng&&!stale)actDrv.add(nP(phone));
@@ -1457,7 +1504,7 @@ function attachDataListeners(){
   loadDriverNames();
 }
 async function loadDriverNames(){
-  try{const d=await staffAction({action:"STAFF_DRIVERS"});if(d&&d.success&&d.drivers){gDrivers=d.drivers;renderRadar();renderHallOfFame();renderWatchList();renderCrew();}}catch(e){}
+  try{const d=await staffAction({action:"STAFF_DRIVERS"});if(d&&d.success&&d.drivers){gDrivers=d.drivers;dnInvalidate();renderRadar();renderHallOfFame();renderWatchList();renderCrew();}}catch(e){}
 }
 
 /* ════════════════════════════════════════
@@ -1591,7 +1638,7 @@ window.checkInCaptain=function(phone,name){
 /* ════════════════════════════════════════
    👥 خانة الكباتن المتصلين اليوم — معلومات كاملة
 ════════════════════════════════════════ */
-function fmtClock(iso){if(!iso)return"—";const d=new Date(iso);if(isNaN(d))return"—";return d.toLocaleTimeString("ar-EG",{hour:"2-digit",minute:"2-digit"});}
+function fmtClock(iso){if(!iso)return"—";const v=fmtHM(iso);return v==="---"?"—":v;}
 function fmtDur(min){if(min==null)return"—";if(min<1)return"بدأ للتو";const h=Math.floor(min/60),m=min%60;return h>0?`${h}س ${m}د`:`${m}د`;}
 
 /* يجمع كل كابتن ظهر اليوم (من daily_metrics) أو متصل الآن (من drvLocs) */
@@ -1780,7 +1827,7 @@ window.doSendMsg=async function(){
 /* ════════════════════════════════════════
    📜 شريط المسار الزمني للطلب
 ════════════════════════════════════════ */
-function fmtT(iso){if(!iso)return null;const d=new Date(iso);if(isNaN(d))return null;return d.toLocaleTimeString("ar-EG",{hour:"2-digit",minute:"2-digit"});}
+function fmtT(iso){if(!iso)return null;const v=fmtHM(iso);return v==="---"?null:v;}
 function minsBetween(a,b){if(!a||!b)return 0;return Math.max(0,Math.floor((new Date(b).getTime()-new Date(a).getTime())/60000));}
 function statusLabel(st){
   const m={
@@ -1852,6 +1899,7 @@ window.openTimeline=function(oId){
 
 /* ════ RADAR ════ */
 window.doFilt=function(f,btn){
+  radarResetPage();
   rfilt=f;
   document.getElementById("fbar").querySelectorAll(".fp").forEach(b=>b.classList.toggle("on",(b.getAttribute("onclick")||"").includes("'"+f+"'")));
   renderRadar();
@@ -1881,6 +1929,34 @@ function scheduleRadar(){
   },600);
 }
 
+/* ⚡ [أداء] الرسم على صفحات بدل الكومة كاملة.
+   كان الرادار يبني نصّ HTML لكل الطلبات (220 طلباً = 5496 عقدة DOM،
+   قياس فعلي: 103 مللي لكل رسم) بينما لا يظهر على الشاشة إلا ستة.
+   الآن نرسم صفحة ونزيدها عند اقتراب المستخدم من الأسفل — فيهبط زمن
+   الرسم الأول إلى جزء صغير ويبقى الـDOM خفيفاً مهما كثرت الطلبات. */
+const RADAR_PAGE=30;
+let _radarShown=RADAR_PAGE,_radarScrollBound=false;
+function radarResetPage(){_radarShown=RADAR_PAGE;}
+function _bindRadarScroll(){
+  if(_radarScrollBound)return;
+  const c=document.getElementById("radar");if(!c)return;
+  /* نراقب أقرب حاوية قابلة للتمرير (اللوحة نفسها غالباً) */
+  let sc=c.parentElement;
+  while(sc&&sc!==document.body){
+    const oy=getComputedStyle(sc).overflowY;
+    if(oy==='auto'||oy==='scroll')break;
+    sc=sc.parentElement;
+  }
+  const target=(sc&&sc!==document.body)?sc:window;
+  const onScroll=()=>{
+    const el=(target===window)?document.documentElement:target;
+    const near=(el.scrollHeight-el.scrollTop-el.clientHeight)<600;
+    if(near&&_radarShown<liveOrd.length){_radarShown+=RADAR_PAGE;radarHtml="";renderRadar();}
+  };
+  target.addEventListener('scroll',onScroll,{passive:true});
+  _radarScrollBound=true;
+}
+
 function renderRadar(){
   const now=Date.now();let list=[...liveOrd];
   if(rfilt==="pending")list=list.filter(o=>!o[O.DRV]||["pending_driver","system_routing","manual_pending"].includes(o[O.DRV]));
@@ -1892,13 +1968,18 @@ function renderRadar(){
   const c=document.getElementById("radar");
   if(!list.length){c.innerHTML=`<div class="empty-s"><div class="es-ic">🎯</div><div class="es-t">الرادار نظيف</div></div>`;radarHtml="";return;}
 
+  _bindRadarScroll();
+  const _total=list.length;
+  if(_radarShown>_total)_radarShown=Math.max(RADAR_PAGE,_total);
+  const _page=list.slice(0,_radarShown);
+
   let html="";
-  list.forEach(o=>{
+  _page.forEach(o=>{
     const[oId,rN,oA,,oP,st,dp,oT,pU,isSov,,lastOff,isReady,, ,isDoubleDB]=o;
     const hD=dp&&!["pending_driver","system_routing","manual_pending"].includes(dp);
     const dn=hD?dN(dp):"جاري البحث...";
     const dMins=oT?Math.floor((now-new Date(oT).getTime())/60000):0;
-    const tF=oT?new Date(oT).toLocaleTimeString("ar-EG",{hour:"2-digit",minute:"2-digit"}):"---";
+    const tF=fmtHM(oT);
     const isDbl = isDoubleDB === true;
 
     let clsCls,sbCls,sbTxt;
@@ -1956,6 +2037,11 @@ function renderRadar(){
       </div>
     </div>`;
   });
+  if(_total>_page.length){
+    html+=`<div style="text-align:center;padding:14px 10px">
+      <button class="cc-f" style="padding:9px 20px;font-size:.8rem" onclick="_radarShown+=RADAR_PAGE*2;radarHtml='';renderRadar()">
+        ⬇ عرض المزيد — ${_total-_page.length} طلباً متبقياً</button></div>`;
+  }
   if(radarHtml!==html){c.innerHTML=html;radarHtml=html;}
 }
 
@@ -2327,7 +2413,7 @@ function renderChatList(){
   }else{
     arr.forEach(c=>{
       const ub=Number(c.unread_leader||0);
-      const t=c.last_msg_at?new Date(c.last_msg_at).toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'}):'';
+      const t=c.last_msg_at?fmtHM(c.last_msg_at):'';
       const on=_ccIsOnline(c.phone);
       h+=`<div class="cc-conv" onclick="openThread('${esc(c.phone)}')">
         <div class="cc-av" style="${on?'box-shadow:0 0 0 2.5px #86efac':''}">🛵</div>
@@ -2345,15 +2431,43 @@ function renderChatList(){
 }
 
 /* ════ شريط السياق — الميزة التوقيعية ════ */
+/* ⚡ [أداء] حالة الاتصال تُحسب مرة لكل دورة رسم لا مرة لكل بطاقة.
+   كانت كل بطاقة تُنشئ Date وتقارن — عشرات المرات في الرسمة الواحدة. */
+let _onlineCache=null,_onlineCacheAt=0;
 function _ccIsOnline(phone){
-  const d=drvLocs[nP(phone)];
-  if(!d||d.status!=='active'||!d.last_update)return false;
-  return (Date.now()-new Date(d.last_update).getTime())<7*60000;
+  const now=Date.now();
+  if(!_onlineCache||now-_onlineCacheAt>3000){
+    _onlineCache=new Map();_onlineCacheAt=now;
+    Object.keys(drvLocs||{}).forEach(p=>{
+      const d=drvLocs[p];if(!d)return;
+      const ok=d.status==='active'&&d.last_update&&(now-new Date(d.last_update).getTime())<7*60000;
+      _onlineCache.set(nP(p),!!ok);
+    });
+  }
+  return _onlineCache.get(nP(phone))===true;
 }
+/* ⚡ [أداء] فهرس طلبات الكابتن — كان يمسح كل الطلبات في كل نداء. */
+let _ordIdx=null,_ordIdxLen=-1;
 function _ccDriverOrders(phone){
-  const p=nP(phone);
-  try{return (liveOrd||[]).filter(o=>nP(o[O.DRV])===p);}catch(e){return [];}
+  try{
+    if(!_ordIdx||_ordIdxLen!==(liveOrd||[]).length){
+      _ordIdx=new Map();_ordIdxLen=(liveOrd||[]).length;
+      (liveOrd||[]).forEach(o=>{const k=nP(o[O.DRV]);if(!k)return;
+        if(!_ordIdx.has(k))_ordIdx.set(k,[]);_ordIdx.get(k).push(o);});
+    }
+    return _ordIdx.get(nP(phone))||[];
+  }catch(e){return [];}
 }
+const THREAD_PAGE=35;
+let _ccOlderShown=false,_ccHiddenOlder=0;
+window.ccLoadOlder=function(){
+  _ccOlderShown=true;
+  const msgs=document.getElementById("ctMsgs");
+  const keep=msgs.scrollHeight;
+  _ccRenderedKeys=new Set();msgs.innerHTML="";msgs.dataset.lastDay="";
+  renderThread(true);
+  msgs.scrollTop=msgs.scrollHeight-keep;   /* حافظ على موضع القراءة */
+};
 let _ccCtxFolded=(window.innerWidth<1180);
 window.ccToggleCtx=function(){
   _ccCtxFolded=!_ccCtxFolded;
@@ -2392,7 +2506,7 @@ function renderCtx(){
 
   /* وقت الفتح اليوم */
   const pr=drvPresence[p];
-  const openChip=pr&&pr.first_seen?`<span class="ctx-p">🕐 فتح <b>${new Date(pr.first_seen).toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'})}</b></span>`:'';
+  const openChip=pr&&pr.first_seen?`<span class="ctx-p">🕐 فتح <b>${fmtHM(pr.first_seen)}</b></span>`:'';
 
   /* إنجاز اليوم */
   let doneChip='';
@@ -2433,8 +2547,13 @@ function renderCtx(){
     });
   }
 
-  /* 🗺️ الخريطة الحيّة: موقع الكابتن مقابل مطعم طلبه — يكشف إن كان في الموقع فعلاً */
-  h+=`<div class="ctx-hd">موقعه الآن</div><div class="ctx-map" id="ctxMap"></div>`;
+  /* 🗺️ الخريطة بنقرة لا تلقائياً.
+     Leaflet + تحميل البلاطات على شبكة خلوية كان مصدر تهنيج على الآيباد
+     والهواتف. الآن لا تُنشأ أي نسخة ولا يُطلب أي بلاطة حتى يطلبها الليدر. */
+  h+=`<div class="ctx-hd">موقعه الآن</div>
+    <div id="ctxMapWrap">
+      <button class="ctx-a" style="width:100%" onclick="ccShowMap('${esc(p)}')">🗺️ عرض موقعه على الخريطة</button>
+    </div>`;
 
   /* أفعال فورية دون مغادرة المحادثة */
   h+=`<div class="ctx-hd">إجراءات</div>
@@ -2455,7 +2574,6 @@ function renderCtx(){
   /* أفرغ الوجهة الأخرى كي لا تتكرر معرّفات ctxMap/ctxNote في الـDOM */
   const other=isMobile?document.getElementById("ctSide"):document.getElementById("ctCtx");
   if(other&&other!==el)other.innerHTML=isMobile?'':'<button class="ctx-fold" onclick="ccToggleCtx()" id="ctxFoldBtn">▾ تفاصيل الكابتن</button>';
-  _ccDrawMap(p,orders);
 }
 
 /* ── استخراج أرقام الأطراف من بيانات اللوحة القائمة ──
@@ -2483,6 +2601,14 @@ window.ccFinish=function(oid){
    نُنشئ نسخة Leaflet واحدة ونعيد استخدامها (لا نسخة لكل محادثة).
    المكتبة محمّلة أصلاً في اللوحة، والإحداثيات من drvLocs و rawOrders. */
 let _ctxMap=null,_ctxLayers=[];
+/* تُنادى بنقرة فقط — تستبدل الزرّ بحاوية خريطة ثم تبنيها */
+window.ccShowMap=function(phone){
+  const wrap=document.getElementById("ctxMapWrap");if(!wrap)return;
+  if(typeof L==='undefined'){wrap.innerHTML='<div class="ctx-mapnote">مكتبة الخرائط غير محمّلة</div>';return;}
+  wrap.innerHTML='<div class="ctx-map" id="ctxMap"></div>';
+  const orders=_ccDriverOrders(phone);
+  _ccDrawMap(nP(phone),orders);
+};
 function _ccDrawMap(phone,orders){
   const box=document.getElementById("ctxMap");
   if(!box||typeof L==='undefined')return;
@@ -2637,8 +2763,15 @@ window.openThread=function(phone){
   const inp=document.getElementById("ctInput");
   inp.value=_ccDrafts[phone]||"";inp.style.height='auto';
   document.getElementById("ctMsgs").innerHTML="";
-  renderCtx();renderQuickReplies();renderThread(true);
-  setTimeout(()=>{const m=document.getElementById("ctMsgs");if(m)m.scrollTop=m.scrollHeight;},60);
+  _ccOlderShown=false;
+  /* ⚡ الرسائل أولاً — تظهر المحادثة فوراً */
+  renderThread(true);
+  /* ثم السياق والردود في الإطار التالي: لا تجميد عند الفتح */
+  requestAnimationFrame(()=>{
+    if(_ccActive!==phone)return;
+    renderCtx();renderQuickReplies();
+    const m=document.getElementById("ctMsgs");if(m)m.scrollTop=m.scrollHeight;
+  });
 };
 
 /* ════ رسم الخيط — تراكمي لا إعادة بناء ════
@@ -2661,18 +2794,27 @@ function renderThread(force){
   }
 
   const mm=c.messages||{};
-  const keys=Object.keys(mm).sort();
+  let keys=Object.keys(mm).sort();
+  /* ⚡ [أداء] محادثة طويلة لا تُرسم كاملة عند الفتح — آخر THREAD_PAGE فقط.
+     الأقدم بزرّ. (فتح محادثة بـ60 رسالة كان يجمّد 53 مللي.) */
+  if(force&&!_ccOlderShown&&keys.length>THREAD_PAGE){
+    _ccHiddenOlder=keys.length-THREAD_PAGE;
+    keys=keys.slice(-THREAD_PAGE);
+  }else{_ccHiddenOlder=0;}
   const atBottom=msgs.scrollHeight-msgs.scrollTop-msgs.clientHeight<80;
 
   if(force){msgs.innerHTML="";_ccRenderedKeys=new Set();msgs.dataset.lastDay="";}
 
   let lastDay=msgs.dataset.lastDay||"";
   let added=false;
+  /* ⚡ [أداء] تجميع الدفعة في نصّ واحد ثم إدراجها مرة واحدة.
+     كان كل رسالة insertAdjacentHTML مستقلة → 60 إعادة تخطيط متتالية
+     (قياس فعلي: 84 مللي لفتح محادثة). الآن كتابة DOM واحدة. */
+  let buf="";
   keys.forEach(k=>{
     if(_ccRenderedKeys.has(k))return;
     const m=mm[k];if(!m||!m.text)return;
     _ccRenderedKeys.add(k);
-    /* الرسالة وصلت من فايربيس → أزل نظيرتها المتفائلة إن وُجدت */
     if(m.from==='leader'){
       Object.keys(_ccPending).forEach(pk=>{
         if(_ccPending[pk].text===m.text){
@@ -2686,15 +2828,17 @@ function renderThread(force){
     const dayKey=d.toDateString();
     if(dayKey!==lastDay){
       lastDay=dayKey;
-      const label=d.toLocaleDateString('ar-EG',{weekday:'long',day:'numeric',month:'long'});
-      msgs.insertAdjacentHTML('beforeend',`<div class="ct-day"><span>${esc(label)}</span></div>`);
+      let label="";try{label=_FMT_DAY.format(d);}catch(e){label="";}
+      buf+=`<div class="ct-day"><span>${esc(label)}</span></div>`;
     }
     const mine=m.from==='leader';
-    const t=d.toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'});
-    msgs.insertAdjacentHTML('beforeend',
-      `<div class="cbb ${mine?'cbb-me':'cbb-dr'}">${mine?'':`<div class="cbb-nm">${esc(m.name||'كابتن')}</div>`}<div>${esc(m.text)}</div><div class="cbb-tm">${t}</div></div>`);
+    buf+=`<div class="cbb ${mine?'cbb-me':'cbb-dr'}">${mine?'':`<div class="cbb-nm">${esc(m.name||'كابتن')}</div>`}<div>${esc(m.text)}</div><div class="cbb-tm">${fmtHM(m.ts||Date.now())}</div></div>`;
     added=true;
   });
+  if(_ccHiddenOlder>0&&!msgs.querySelector('.ct-older')){
+    buf=`<div class="ct-day ct-older"><span style="cursor:pointer" onclick="ccLoadOlder()">⬆ عرض ${_ccHiddenOlder} رسالة أقدم</span></div>`+buf;
+  }
+  if(buf)msgs.insertAdjacentHTML('beforeend',buf);
   msgs.dataset.lastDay=lastDay;
 
   if(!keys.length&&!Object.keys(_ccPending).length&&!msgs.children.length){
