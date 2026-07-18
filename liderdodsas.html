@@ -894,7 +894,10 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
         <button class="cc-f"    data-f="all"    onclick="ccSetFilter('all')">الكل<span class="n" id="fnAll">0</span></button>
         <button class="cc-f"    data-f="closed" onclick="ccSetFilter('closed')">مغلقة<span class="n" id="fnClosed">0</span></button>
       </div>
-      <button class="bc-btn" onclick="bcOpen()">📣 بثّ موجّه لفئة من الكباتن</button>
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <button class="cc-f" id="ccSortBtn" onclick="ccSetSort()" style="flex:0 0 auto">🕐 الأحدث أولاً</button>
+        <button class="bc-btn" onclick="bcOpen()" style="margin-top:0;flex:1">📣 بثّ موجّه</button>
+      </div>
     </div>
     <div class="cc-body" id="ccList"><div class="cc-empty">لا محادثات بعد.<br>حين يراسلك كابتن ستظهر هنا فوراً 💬</div></div>
     <div class="cc-thread">
@@ -2254,6 +2257,7 @@ function _uiCloseCenter(){
 }
 
 let _ccChats={},_ccActive=null,_ccPrevUnread=0,_ccStarted=false;
+let _ccSort="recent";
 let _ccFilter="inbox",_ccSearch="",_ccListSig="",_ccCtxSig="",_ccQrCat=0;
 let _ccDrafts={};              /* مسوّدة لكل محادثة — التنقّل لا يضيّع ما كتبته */
 let _ccPending={};             /* رسائل قيد الإرسال (عرض متفائل) */
@@ -2373,6 +2377,15 @@ function startChatCenter(){
 }
 
 /* ════ المرشّحات والبحث ════ */
+window.ccSetSort=function(){
+  _ccSort=(_ccSort==='recent')?'wait':'recent';
+  const b=document.getElementById("ccSortBtn");
+  if(b){
+    b.textContent=_ccSort==='recent'?'🕐 الأحدث أولاً':'⏱ الأطول انتظاراً';
+    b.classList.toggle('on',_ccSort==='wait');
+  }
+  _ccListSig="";renderChatList();
+};
 window.ccSetFilter=function(f){
   _ccFilter=f;
   document.querySelectorAll(".cc-f").forEach(b=>b.classList.toggle("on",b.dataset.f===f));
@@ -2436,12 +2449,17 @@ function renderChatList(){
     if(n)n.textContent=cnt[k];
   });
 
-  /* الترتيب: الأطول انتظاراً أولاً — من ينتظر ردّاً يسبق من رُدّ عليه */
+  /* 🐛 [إصلاح] الترتيب كان «الأطول انتظاراً أولاً»، فالرسالة التي تصل الآن
+     (انتظارها صفر) تهبط أسفل كل المنتظرين — فلا يراها الليدر وهي أهمّ ما
+     يجب أن يراه. الافتراضي الآن **الأحدث أولاً** كأي تطبيق مراسلة، مع إبقاء
+     ترتيب الانتظار كخيار للمسح الدوري على المتأخّرات. */
   const arr=all.filter(c=>_ccPassFilter(c)&&_ccMatch(c)).sort((a,b)=>{
-    const wa=_ccWait(a),wb=_ccWait(b);
-    if(wa!==null&&wb===null)return -1;
-    if(wa===null&&wb!==null)return 1;
-    if(wa!==null&&wb!==null&&wa!==wb)return wb-wa;
+    if(_ccSort==='wait'){
+      const wa=_ccWait(a),wb=_ccWait(b);
+      if(wa!==null&&wb===null)return -1;
+      if(wa===null&&wb!==null)return 1;
+      if(wa!==null&&wb!==null&&wa!==wb)return wb-wa;
+    }
     return (b.last_msg_at||0)-(a.last_msg_at||0);
   });
 
