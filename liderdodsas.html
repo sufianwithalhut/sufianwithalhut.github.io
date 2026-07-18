@@ -308,7 +308,10 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
 .es-ic{width:60px;height:60px;border-radius:18px;background:var(--surface3);display:inline-flex;
   align-items:center;justify-content:center;margin-bottom:12px;color:var(--ink3);font-size:26px;}
 .es-t{font-size:.88rem;font-weight:800;color:var(--ink3);}
-#fbSt{position:fixed;bottom:14px;left:14px;background:var(--black);border-radius:var(--rf);padding:7px 13px;
+/* 🐛 [إصلاح] كان يغطّي زرّ المراسلات: كلاهما في الزاوية نفسها والمؤشّر
+   z-index:800 فوق الزرّ 90. رُفع فوقه بمقدار ارتفاع الزرّ + فاصل،
+   ومع احترام منطقة الأمان في الهواتف ذات الشريط السفلي. */
+#fbSt{position:fixed;bottom:calc(86px + env(safe-area-inset-bottom));left:14px;background:var(--black);border-radius:var(--rf);padding:7px 13px;
   box-shadow:var(--sh-md);display:flex;align-items:center;gap:6px;font-weight:700;font-size:.72rem;z-index:800;color:#fff;}
 .fb-dot{width:7px;height:7px;border-radius:50%;background:var(--green);}.fb-dot.off{background:var(--red);}
 .loading{color:transparent!important;pointer-events:none;position:relative;}
@@ -561,7 +564,9 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
   cursor:pointer;padding:2px 0 7px;font-family:inherit;display:none;align-items:center;
   justify-content:center;gap:5px;}
 @media (max-width:1179px){.ctx-fold{display:flex;}}
-.ct-ctx.folded>*:not(.ctx-fold):not(.ctx-row:first-of-type){display:none!important;}
+/* الطيّ يخفي الثانوي فقط — الحالة والطلبات تبقى مرئية دائماً */
+.ct-ctx.folded .ctx-more{display:none;}
+.ctx-more{margin-top:2px;}
 .ctx-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;}
 .ctx-p{display:inline-flex;align-items:center;gap:4px;background:#fff;border:1px solid #e7ecf4;
   border-radius:10px;padding:5px 9px;font-size:.7rem;font-weight:800;color:#3d4c63;
@@ -1010,7 +1015,7 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
       <div class="ct-side" id="ctSide"></div>
       <div class="ct-main">
         <div class="ct-ctx" id="ctCtx">
-          <button class="ctx-fold" onclick="ccToggleCtx()" id="ctxFoldBtn">▾ تفاصيل الكابتن</button>
+          <button class="ctx-fold" onclick="ccToggleCtx()" id="ctxFoldBtn">▸ إجراءات ومزيد</button>
         </div>
         <div style="display:grid;grid-template-rows:auto 1fr;min-height:0">
           <div id="ccClaimZone"></div>
@@ -2639,7 +2644,7 @@ window.ccToggleCtx=function(){
   const el=document.getElementById("ctCtx");
   if(el)el.classList.toggle("folded",_ccCtxFolded);
   const b=document.getElementById("ctxFoldBtn");
-  if(b)b.textContent=_ccCtxFolded?"▸ تفاصيل الكابتن":"▾ تفاصيل الكابتن";
+  if(b)b.textContent=_ccCtxFolded?"▸ إجراءات ومزيد":"▾ إخفاء الإجراءات";
 };
 function _ccCtxTarget(){
   /* الكمبيوتر → العمود الجانبي · الجوال → الشريط القابل للطي */
@@ -2712,16 +2717,16 @@ function renderCtx(){
     });
   }
 
-  /* 🗺️ الخريطة بنقرة لا تلقائياً.
-     Leaflet + تحميل البلاطات على شبكة خلوية كان مصدر تهنيج على الآيباد
-     والهواتف. الآن لا تُنشأ أي نسخة ولا يُطلب أي بلاطة حتى يطلبها الليدر. */
-  h+=`<div class="ctx-hd">موقعه الآن</div>
+  /* 🐛 [إصلاح] كان الطيّ يخفي **كل شيء** عدا صفّ الحالة، فلا يرى الليدر على
+     الهاتف طلبيةَ الكابتن ولا أرقام أطرافها — وهي أهمّ ما في الشاشة.
+     الآن: الحالة والطلبات ظاهرة دائماً، ولا يُطوى إلا الثانوي (إجراءات
+     التواصل والخريطة والملاحظة) داخل ctx-more. */
+  h+=`<div class="ctx-more">
+    <div class="ctx-hd">موقعه الآن</div>
     <div id="ctxMapWrap">
       <button class="ctx-a" style="width:100%" onclick="ccShowMap('${esc(p)}')">🗺️ عرض موقعه على الخريطة</button>
-    </div>`;
-
-  /* أفعال فورية دون مغادرة المحادثة */
-  h+=`<div class="ctx-hd">إجراءات</div>
+    </div>
+    <div class="ctx-hd">إجراءات</div>
     <div class="ctx-acts">
       <button class="ctx-a" onclick="ccCall('${esc(p)}')">📞 اتصال</button>
       <button class="ctx-a" onclick="ccWhats('${esc(p)}')">💬 واتساب</button>
@@ -2729,16 +2734,18 @@ function renderCtx(){
       <button class="ctx-a" onclick="ccPush('${esc(p)}','${esc((c.driver_name||'كابتن').replace(/'/g,''))}')">🔔 إشعار</button>
     </div>
     <textarea class="ctx-note" id="ctxNote" rows="1" placeholder="ملاحظة داخلية عن هذه المحادثة (لا يراها الكابتن)..."
-      oninput="ccNoteSave(this.value)">${esc(c.notes||'')}</textarea>`;
+      oninput="ccNoteSave(this.value)">${esc(c.notes||'')}</textarea>
+  </div>`;
+
 
   if(h===_ccCtxSig)return;
   _ccCtxSig=h;
   const isMobile=el.id==='ctCtx';
-  el.innerHTML=(isMobile?`<button class="ctx-fold" onclick="ccToggleCtx()" id="ctxFoldBtn">${_ccCtxFolded?'▸':'▾'} تفاصيل الكابتن</button>`:'')+h;
+  el.innerHTML=(isMobile?`<button class="ctx-fold" onclick="ccToggleCtx()" id="ctxFoldBtn">${_ccCtxFolded?'▸ إجراءات ومزيد':'▾ إخفاء الإجراءات'}</button>`:'')+h;
   if(isMobile&&_ccCtxFolded)el.classList.add("folded");
   /* أفرغ الوجهة الأخرى كي لا تتكرر معرّفات ctxMap/ctxNote في الـDOM */
   const other=isMobile?document.getElementById("ctSide"):document.getElementById("ctCtx");
-  if(other&&other!==el)other.innerHTML=isMobile?'':'<button class="ctx-fold" onclick="ccToggleCtx()" id="ctxFoldBtn">▾ تفاصيل الكابتن</button>';
+  if(other&&other!==el)other.innerHTML=isMobile?'':'<button class="ctx-fold" onclick="ccToggleCtx()" id="ctxFoldBtn">▸ إجراءات ومزيد</button>';
 }
 
 /* ── استخراج أرقام الأطراف من بيانات اللوحة القائمة ──
