@@ -929,54 +929,76 @@
     //   فقط، وليس ADMIN_API_TOKEN الذي لا يوضع في أي تطبيق أبداً.
     const API_TOKEN = "HUT_APP_160C5EFB7BC52B3362ED46D98038AA53";
 
-    // ⚠️ ملاحظة أمنية: هذا مفتاح Gemini في المتصفح = مفتاح عام مهما جُزّئ.
-    //   قيّده من Google Cloud Console: حصر بـ generativelanguage API + HTTP referrer
-    //   لنطاق تطبيقك فقط، وضع سقف استهلاك يومي.
-    const SECRET_PARTS = ["AIzaSyB", "KMRsl", "Ko5hg5m", "11gHy4Z", "dM7_efk", "tiDwxU"];
+    /* ══════════════════════════════════════════════════════════════════════
+       🔐 مفتاح Gemini غادر المتصفّح نهائياً.
+       ──────────────────────────────────────────────────────────────────────
+       كان مجزّأً إلى SECRET_PARTS ثم يُجمع بـjoin('') في السطر التالي —
+       أي مفتاح عام لمن يفتح أدوات المطوّر. التجزئة لم تكن حمايةً قط.
+       صار التحليل كلّه في Cloud Functions، والمصادقة برمز هوية فايربيس
+       الذي يحمله المطعم أصلاً — بلا أي مفتاح مشترك في التطبيق (خطأ خ٢).
+       ══════════════════════════════════════════════════════════════════════ */
+    const AI_ENDPOINT = "https://europe-west1-sufyan-delivery.cloudfunctions.net/aiOrderIntake";
+    const AI_QUEUE_KEY = "hut_ai_queue";
 
-    async function fetchGeminiWithRetry(payload, timeoutMs = 25000) {
-        const MAX_RETRIES = 3;
-        const activeKey = SECRET_PARTS.join('');
-        
-        for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-            try {
-                const response = await fetch(
-                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${activeKey}`,
-                    {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload),
-                        signal: controller.signal
-                    }
-                );
-
-                clearTimeout(timeoutId);
-
-                if (!response.ok) {
-                    const errTxt = await response.text();
-                    throw new Error(`HTTP ${response.status}: ${errTxt}`);
-                }
-
-                const data = await response.json();
-                if (!data.candidates || data.candidates.length === 0) {
-                    throw new Error("لم يتم إرجاع أي نص.");
-                }
-                return data;
-
-            } catch (error) {
-                clearTimeout(timeoutId);
-                console.warn(`Gemini Attempt ${attempt + 1} failed:`, error.message);
-                if (attempt === MAX_RETRIES - 1) {
-                    return { error: true, msg: error.message };
-                }
-                await new Promise(r => setTimeout(r, 1000));
-            }
+    /* إرسال إلى بوّابة الذكاء. لا ينتظره الكاشير في مسارَي الصوت والوصل —
+       لذلك أي فشل يُحفظ محلياً ويُعاد لاحقاً، فلا يضيع طلب بصمت. */
+    async function sendToAI(payload, { queueOnFail = true } = {}) {
+        try {
+            const ok = await requireCloudAuth();
+            if (!ok) throw new Error("NO_AUTH");
+            const token = await auth.currentUser.getIdToken();
+            const r = await fetch(AI_ENDPOINT, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+                body: JSON.stringify(payload)
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data.ok) throw new Error(data.err || ("HTTP " + r.status));
+            return data;
+        } catch (e) {
+            if (queueOnFail) queueAI(payload);
+            throw e;
         }
     }
 
+    function queueAI(payload) {
+        try {
+            const q = JSON.parse(localStorage.getItem(AI_QUEUE_KEY) || "[]");
+            q.push({ payload, ts: Date.now(), tries: 0 });
+            localStorage.setItem(AI_QUEUE_KEY, JSON.stringify(q.slice(-12)));
+        } catch (e) {}
+    }
+
+    /* إعادة إرسال ما فشل — عند الإقلاع وكل دقيقة وعند عودة الشبكة */
+    let aiQueueBusy = false;
+    async function flushAIQueue() {
+        if (aiQueueBusy || !navigator.onLine) return;
+        let q = [];
+        try { q = JSON.parse(localStorage.getItem(AI_QUEUE_KEY) || "[]"); } catch (e) { return; }
+        if (!q.length) return;
+        aiQueueBusy = true;
+        const batch = q.splice(0, q.length);
+        localStorage.setItem(AI_QUEUE_KEY, JSON.stringify(q));
+        const fail = [];
+        for (const item of batch) {
+            try { await sendToAI(item.payload, { queueOnFail: false }); }
+            catch (e) {
+                item.tries = (item.tries || 0) + 1;
+                if (item.tries < 6) fail.push(item);
+            }
+        }
+        try {
+            const cur = JSON.parse(localStorage.getItem(AI_QUEUE_KEY) || "[]");
+            localStorage.setItem(AI_QUEUE_KEY, JSON.stringify([...fail, ...cur].slice(-12)));
+        } catch (e) {}
+        aiQueueBusy = false;
+    }
+    window.addEventListener("online", flushAIQueue);
+    setInterval(flushAIQueue, 60000);
+    setTimeout(flushAIQueue, 4000);
+
+    /* أُزيلت fetchGeminiWithRetry: لم يعد التطبيق ينادي Gemini مباشرة.
+       التحليل كلّه يمرّ ببوّابة الذكاء في Cloud Functions. */
     const firebaseConfig = {
       apiKey: "AIzaSyAo1rmqUzieYZU3RIwXOAN87GkpNrp-_Hc",
       authDomain: "sufyan-delivery.firebaseapp.com",
@@ -1218,22 +1240,11 @@
   "details": "..."
 }`;
 
-        const payload = {
-            "contents": [{ "parts": [{ "text": promptText }] }],
-            "generationConfig": { 
-                "temperature": 0.1,
-                "response_mime_type": "application/json"
-            }
-        };
-
+        /* تحليل النصّ المنسوخ يبقى **منتظِراً**: الكاشير يراجع الحقول التي
+           تُملأ قبل الإرسال، فإخفاء الانتظار هنا يفقده فرصة التصحيح. */
         try {
-            const data = await fetchGeminiWithRetry(payload); 
-            
-            if (data.error) throw new Error("فشل الاتصال بالذكاء الاصطناعي");
-
-            let aiText = data.candidates[0].content.parts[0].text;
-            aiText = aiText.replace(/```json/g, "").replace(/```/g, "").trim();
-            const cleanJson = JSON.parse(aiText);
+            const resp = await sendToAI({ kind: "text", text: promptText }, { queueOnFail: false });
+            const cleanJson = resp.result || {};
 
             if (cleanJson.phone) {
                 const { clean } = window.normalizeCustomerPhone(cleanJson.phone);
@@ -2209,71 +2220,11 @@
         if (lastActiveHtml !== activeOrdersHtml) { document.getElementById('activeOrdersList').innerHTML = activeOrdersHtml || `<div class="text-center text-muted fw-bold py-4 small" style="font-size: 0.8rem; background: rgba(255,255,255,0.4); border-radius: 20px;"><i data-lucide="inbox" size="24" class="mb-2 opacity-50"></i><br>لا توجد طلبات نشطة حالياً.</div>`; lastActiveHtml = activeOrdersHtml; if (typeof lucide !== 'undefined') lucide.createIcons(); }
     }
 
-    async function extractDataFromImageBg(base64Data) {
-        const areaList = Object.keys(myCustomPriceList);
-        const areaNames = areaList.length > 0 ? areaList.join('، ') : 'مناطق كركوك';
-        
-        const restaurantHints = {
-            "TAPIOCA": "تجاهل الرقم 07701004176 تماماً لأنه للمطعم. ركز على الرقم والمنطقة في أسفل الوصل.",
-            "Firefly Burger": "تجاهل الرقم 07829980468 والرقم 07821100939. ابحث عن اسم المنطقة بعد كلمة (Road:) أو بجوارها.",
-            "مندي صنعاء اليمن": "المنطقة واسم الزبون مكتوبان في منتصف الوصل تحت كلمة (العنوان) و (الزبون). تجاهل أرقام الدلفري السفلية.",
-            "افران فلسطين": "الوصل مكتوب غالباً بخط اليد. المنطقة مكتوبة بعد كلمة (العنوان) أو بخط مائل كبير.",
-            "IBO bakery": "تجاهل الرقم 07750000801. ركز على المنطقة المكتوبة بجوار (كراج بغداد) أو تحتها.",
-            "قصابة اياد 2": "تجاهل الأرقام السفلية (07701316536 وغيرها). رقم الزبون موجود في الأعلى بجوار (رقم الهاتف) والمنطقة بجوار (العنوان).",
-            "مطعم الديوان": "وصل مكتوب بخط يدوي بحت. اقرأ الكتابة اليدوية بدقة شديدة لاستخراج المنطقة وتجاهل المطبوع.",
-            "قصابة الأخوين": "تجاهل الأرقام السفلية (0772... و 0770...). منطقة الزبون ورقم هاتفه موجودة في قسم (السيد، الموبايل، العنوان)."
-        };
-
-        const currentHint = restaurantHints[currentResName] ? "ملاحظة لهذا المطعم: " + restaurantHints[currentResName] : "تجاهل أرقام المطعم المطبوعة.";
-
-        const promptText = `استخرج البيانات التالية من هذا الوصل:
-1. السعر (price): المجموع الكلي النهائي كرقم فقط بدون أي فواصل.
-2. الهاتف (phone): ابحث عن هاتف الزبون (يبدأ بـ 07). ${currentHint}
-3. المنطقة (area): اقرأ الكلمات المطبوعة أو المكتوبة بخط اليد. حاول مطابقتها مع هذه القائمة إن أمكن: [${areaNames}].
-
-في حال عدم وجود سعر أو هاتف، اترك القيمة فارغة ""، ولكن استخرج المنطقة دائماً.
-يجب إرجاع النتيجة بصيغة JSON نقي فقط:
-{
-  "price": "...",
-  "phone": "...",
-  "area": "..."
-}`;
-
-        const base64Content = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
-
-        const payload = {
-            "contents": [{
-                "parts": [
-                    { "text": promptText },
-                    { "inline_data": { "mime_type": "image/jpeg", "data": base64Content } }
-                ]
-            }],
-            "generationConfig": {
-                "temperature": 0.1,
-                "response_mime_type": "application/json"
-            }
-        };
-
-        try {
-            const data = await fetchGeminiWithRetry(payload);
-            
-            if (data.error) {
-                console.error("AI Error:", data.msg);
-                return { error: true, msg: data.msg, area: "يحتاج مراجعة (انظر الصورة)" };
-            }
-
-            let aiText = data.candidates[0].content.parts[0].text;
-            aiText = aiText.replace(/```json/g, "").replace(/```/g, "").trim();
-            const cleanJson = JSON.parse(aiText);
-            
-            return cleanJson;
-
-        } catch (e) { 
-            console.error("Parse Error Details:", e);
-            return { error: true, msg: e.message, area: "يحتاج مراجعة (انظر الصورة)" }; 
-        }
-    }
-
+    /* أُزيلت extractDataFromImageBg: التحليل انتقل إلى بوّابة الذكاء. */
+    /* ⬇️ [استعادة] معالج إرسال الاستمارة.
+       حُذف سهواً مع حذف extractDataFromImageBg — امتدّ الحذف إلى ما بعدها
+       فابتلعه. وبلا معالج تُرسَل الاستمارة أصلاً فتتحدّث الصفحة ولا يُرسَل
+       شيء. أُعيد كما كان حرفاً بحرف؛ فرع الصورة ينادي النسخة الجديدة. */
     document.getElementById('orderForm').onsubmit = function(e) {
         e.preventDefault();
 
@@ -2335,58 +2286,15 @@
         }
     };
 
+    /* 🧾 الوصل — صار سطرين.
+       كان يرفع الصورة للتخزين وينادي Gemini بالتوازي ثم يبني الطلب هنا.
+       كل ذلك انتقل إلى بوّابة الذكاء: الرفع والتحليل وبناء الطلب في مكان
+       واحد، بمفتاح محميّ، ومضمونٌ إتمامه ولو أُغلق التطبيق بعد الإرسال. */
     async function processPhotoOrderBackgroundSafe(base64Content, resName) {
         try {
-            const uniqueName = Date.now() + "_" + Math.floor(Math.random() * 1000) + ".jpg";
-            const imgRef = storageRef(storage, 'receipts/' + uniqueName);
-            
-            const uploadPromise = uploadString(imgRef, base64Content, 'base64')
-                .then(snapshot => getDownloadURL(snapshot.ref))
-                .catch(e => { console.error("Upload failed", e); return ""; });
-                
-            const aiPromise = extractDataFromImageBg(base64Content);
-
-            const results = await Promise.allSettled([uploadPromise, aiPromise]);
-            const uploadResult = results[0]; 
-            const aiResult = results[1];
-
-            let imageUrl = "";
-            if (uploadResult.status === 'fulfilled' && uploadResult.value) { 
-                imageUrl = uploadResult.value; 
-            }
-
-            let finalPrice = 0;
-            let finalPhone = ""; 
-            let finalArea = "تحديد ذكي (انظر الوصل)"; 
-            let finalDetails = "مسح ذكي - وصل مصور";
-
-            if (aiResult.status === 'fulfilled' && !aiResult.value.error) {
-                if (aiResult.value.price) { 
-                    let cleanStr = String(aiResult.value.price).replace(/\D/g, '');
-                    finalPrice = parseInt(cleanStr) || 0; 
-                }
-                if (aiResult.value.phone) {
-                    const { clean } = window.normalizeCustomerPhone(aiResult.value.phone);
-                    finalPhone = clean || aiResult.value.phone;
-                    finalDetails = `الهاتف: ${finalPhone} | ${finalDetails}`;
-                }
-                if (aiResult.value.area) {
-                    const matched = matchAreaWithList(aiResult.value.area, myCustomPriceList);
-                    if (matched) {
-                        finalArea = `${matched.name} (توصيل: ${matched.price})`;
-                    } else {
-                        finalArea = `${aiResult.value.area} (مستخرج آلياً)`;
-                    }
-                }
-            } else {
-                finalArea = "يحتاج مراجعة (انظر الصورة)";
-                finalDetails = "⚠️ فشل التحليل الذكي | " + finalDetails;
-            }
-
-            await finalizeOrderPlacementSilent(finalDetails, imageUrl, finalPrice, finalArea, resName);
-
+            await sendToAI({ kind: "receipt", data: base64Content, mime: "image/jpeg", resName: resName });
         } catch (e) {
-            console.error("Background processing completely failed:", e);
+            console.error("receipt intake failed (queued):", e && e.message);
         }
     }
 
@@ -2549,7 +2457,17 @@
     async function startVoiceRecording() {
         if (voiceIsRecording) return;
         try {
-            voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            /* 🎚️ الكلام يكفيه أحادي بـ16kHz. الافتراضي غالباً ستيريو 48kHz —
+               أي حِمل أضعافاً بلا فائدة، ويُحسّ على شبكة خلوية. */
+            voiceStream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    channelCount: 1,
+                    sampleRate: 16000,
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
+                }
+            }).catch(() => navigator.mediaDevices.getUserMedia({ audio: true }));
         } catch (e) {
             alert("⚠️ لا يمكن الوصول للميكروفون. تأكد من منح إذن التسجيل للتطبيق من إعدادات المتصفح.");
             return;
@@ -2557,7 +2475,7 @@
         voiceMimeType = pickSupportedAudioMime();
         voiceChunks = [];
         try {
-            voiceMediaRecorder = new MediaRecorder(voiceStream, { mimeType: voiceMimeType });
+            voiceMediaRecorder = new MediaRecorder(voiceStream, { mimeType: voiceMimeType, audioBitsPerSecond: 24000 });
         } catch (e) {
             // بعض الأجهزة ترفض تمرير mimeType — نتركه افتراضياً
             voiceMediaRecorder = new MediaRecorder(voiceStream);
@@ -2658,106 +2576,36 @@
         reader.readAsDataURL(blob);
     }
 
-    // تحليل الصوت عبر Gemini (نظير extractDataFromImageBg)
-    async function extractDataFromAudioBg(base64Content, mimeType) {
-        const areaList = Object.keys(myCustomPriceList);
-        const areaNames = areaList.length > 0 ? areaList.join('، ') : 'مناطق كركوك';
+    /* ══════════════════════════════════════════════════════════════════════
+       🎙️ الصوت — هنا كان البطء المحسوس كلّه.
+       ──────────────────────────────────────────────────────────────────────
+       كان الترتيب: سجّل ← **انتظر Gemini** ← أظهر النجاح ← أرسل الطلب.
+       والكاشير لا يراجع شيئاً في هذا المسار — يُرسَل الطلب بما فهمه الذكاء
+       مهما كان. فالانتظار كان محض هدر: ثوانٍ يقفها الكاشير بلا فائدة.
 
-        const promptText = `استمع لهذه الرسالة الصوتية من كاشير مطعم يصف طلب توصيل في العراق (لهجة عراقية)، واستخرج البيانات التالية بدقة:
-1. السعر (price): المبلغ الكلي كرقم فقط بدون فواصل. (مثال: "خمسة عشر ألف" أو "خمستعش" = 15000، "عشرين الف" = 20000، "الف وخمسمية" = 1500).
-2. الهاتف (phone): أي رقم هاتف يبدأ بـ 07 إن ذُكر. اكتبه أرقاماً.
-3. المنطقة (area): اسم المنطقة الأساسية. حاول مطابقتها مع هذه القائمة إن أمكن: [${areaNames}].
-4. التفاصيل الإضافية (details): أي وصف للعنوان الدقيق أو أقرب نقطة دالة (مثل: قرب الجامع، بصف الحديقة، يم الاسواق). ركّز على العنوان لا على الأكل.
-
-في حال عدم ذكر سعر أو هاتف، اترك القيمة فارغة ""، لكن استخرج المنطقة دائماً.
-يجب إرجاع النتيجة بصيغة JSON نقي فقط، بدون أي نص إضافي:
-{
-  "price": "...",
-  "phone": "...",
-  "area": "...",
-  "details": "..."
-}`;
-
-        const payload = {
-            "contents": [{
-                "parts": [
-                    { "text": promptText },
-                    { "inline_data": { "mime_type": mimeType, "data": base64Content } }
-                ]
-            }],
-            "generationConfig": {
-                "temperature": 0.1,
-                "response_mime_type": "application/json"
-            }
-        };
-
-        try {
-            const data = await fetchGeminiWithRetry(payload, 30000);
-            if (data.error) {
-                console.error("Audio AI Error:", data.msg);
-                return { error: true, msg: data.msg };
-            }
-            let aiText = data.candidates[0].content.parts[0].text;
-            aiText = aiText.replace(/```json/g, "").replace(/```/g, "").trim();
-            return JSON.parse(aiText);
-        } catch (e) {
-            console.error("Audio Parse Error:", e);
-            return { error: true, msg: e.message };
-        }
-    }
-
-    // المعالجة الكاملة: تحليل → بناء الطلب → إرسال فوري (مثل الوصل)
+       صار: سجّل ← **نجاح فوري** ← ينتقل للزبون التالي، والتحليل وبناء
+       الطلب يجريان في السيرفر. وأي فشل إرسال يُحفظ في طابور يُعاد تلقائياً.
+       ══════════════════════════════════════════════════════════════════════ */
     async function processVoiceOrder(base64Content, mimeType, resName) {
+        // ① النجاح أولاً — هذا هو الفرق الذي يشعر به الكاشير
+        showSuccessMessage(`<div style="background: var(--success); width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px;"><i data-lucide="mic" style="color:#fff;width:26px;height:26px;"></i></div>
+            <div style="font-weight:900;font-size:1.05rem;">تم إرسال الطلب الصوتي ✅</div>
+            <div style="font-size:.85rem;opacity:.8;margin-top:4px;">يجري تحليله وإدخاله للرادار الآن</div>`);
+        resetVoiceUI();
+
+        // ② الإرسال بعدها — لا ينتظره أحد
         try {
-            const aiResult = await extractDataFromAudioBg(base64Content, mimeType);
-
-            let finalPrice = 0;
-            let finalPhone = "";
-            let finalArea = "تحديد صوتي (راجع الطلب)";
-            let finalDetails = "🎙️ طلب صوتي";
-
-            if (aiResult && !aiResult.error) {
-                if (aiResult.price) {
-                    const cleanStr = String(aiResult.price).replace(/\D/g, '');
-                    finalPrice = parseInt(cleanStr) || 0;
-                }
-                if (aiResult.phone) {
-                    const { clean } = window.normalizeCustomerPhone(aiResult.phone);
-                    finalPhone = clean || aiResult.phone;
-                }
-                if (aiResult.area) {
-                    const matched = matchAreaWithList(aiResult.area, myCustomPriceList);
-                    if (matched) {
-                        finalArea = `${matched.name} (توصيل: ${matched.price})`;
-                        // إن لم يذكر الكاشير سعر الطلب، سعر التوصيل معروف من القائمة
-                        if (finalPrice === 0) finalPrice = 0;
-                    } else {
-                        finalArea = `${aiResult.area} (صوتي)`;
-                    }
-                }
-                // بناء التفاصيل
-                const extra = aiResult.details ? aiResult.details : "";
-                if (finalPhone) {
-                    finalDetails = `الهاتف: ${finalPhone} | 🎙️ ${extra || "طلب صوتي"}`;
-                } else if (extra) {
-                    finalDetails = `🎙️ ${extra}`;
-                }
-            } else {
-                finalArea = "يحتاج مراجعة (طلب صوتي)";
-                finalDetails = "⚠️ تعذّر تحليل الصوت | 🎙️ طلب صوتي";
+            const r = await sendToAI({ kind: "voice", data: base64Content, mime: mimeType, resName: resName });
+            /* الطلب أُنشئ لكن التحليل فشل: نُعلم الكاشير بهدوء — فقد يصحّحه
+               من شاشة الطلبات بدل أن يكتشفه الليدر متأخّراً. */
+            if (r && r.parsed === false) {
+                console.warn("voice parsed=false:", r.err);
+                setTimeout(() => {
+                    try { alert("⚠️ أُرسل الطلب الصوتي لكن تعذّر تحليله — راجعه من قائمة طلباتك."); } catch (e) {}
+                }, 600);
             }
-
-            // رسالة نجاح فورية (مثل الوصل)
-            showSuccessMessage(`<div style="background: var(--success); width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 8px; box-shadow: 0 4px 15px rgba(16,185,129,0.3);"><i data-lucide="check" size="24" color="white"></i></div><div class="fw-black" style="font-size: 1rem;">تم تحليل الرسالة الصوتية وإرسالها! 🎙️🚀</div><div style="font-size: 0.75rem; opacity: 0.8; font-weight: 500; margin-top:4px;">جارٍ توجيهها للكباتن.</div>`);
-
-            await finalizeOrderPlacementSilent(finalDetails, "", finalPrice, finalArea, resName);
-
-            resetVoiceUI();
-
         } catch (e) {
-            console.error("Voice order processing failed:", e);
-            alert("حدث خطأ أثناء معالجة الطلب الصوتي، حاول مجدداً.");
-            resetVoiceUI();
+            console.error("voice intake failed (queued):", e && e.message);
         }
     }
 
