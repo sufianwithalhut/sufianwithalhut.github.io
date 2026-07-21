@@ -946,6 +946,27 @@
         try {
             const ok = await requireCloudAuth();
             if (!ok) throw new Error("NO_AUTH");
+
+            /* ══════════════════════════════════════════════════════════════
+               🗺️ قائمة مناطقك وأسعارها — ترافق كل نداء
+               ──────────────────────────────────────────────────────────────
+               حين كان التحليل في المتصفّح كانت matchAreaWithList تقرأ
+               myCustomPriceList مباشرةً، فيأتي سعر التوصيل تلقائياً مع
+               اسم المنطقة. وبعد نقل التحليل للسيرفر انقطعت الصلة: السيرفر
+               يبحث عن cfg.priceList في restaurants_config، و
+               mirrorRestaurantConfig لا يعكس هذا الحقل أصلاً — فلا قائمة
+               ولا سعر، وتعود المنطقة بلا رقم.
+
+               الحلّ: نرسلها مع الطلب. المطعم مالك قائمته وهي محمّلة عنده
+               أصلاً، فلا استعلام إضافي ولا تأخير.
+               (العمولة تبقى من السيرفر — يدهسها orderSanitizer.)
+               ══════════════════════════════════════════════════════════════ */
+            try {
+                if (myCustomPriceList && Object.keys(myCustomPriceList).length) {
+                    payload = Object.assign({}, payload, { areas: myCustomPriceList });
+                }
+            } catch (e) {}
+
             const token = await auth.currentUser.getIdToken();
             const r = await fetch(AI_ENDPOINT, {
                 method: "POST",
