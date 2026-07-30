@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-  🦈 تطبيق الكابتن — V15.0 "Owned"
+  🦈 تطبيق الكابتن — V15.1 "Owned"
   ═══════════════════════════════════════════════════════════════════════
   رقع هذه الدفعة (كلها أُصلحت من تشخيص مؤكَّد لا من تخمين):
     🔴 [١] fbStatus: حارسا الموقع كانا يمنعان **الانصراف** أيضاً — فالكابتن
@@ -1399,7 +1399,11 @@ async function fbAuth(phone,pass){
     const r=await gasFetch(`${API_URL}?action=checkDriver&phone=${ph}&password=${encodeURIComponent(pass||'')}&token=${API_TOKEN}`);
     const d=await r.json();
     if(d&&d.firebase_token){
-      await signInWithCustomToken(auth,d.firebase_token);
+      /* 🛡️ [V15.1] كانت عارية — ونداء identitytoolkit على مقبس نصف مفتوح
+         لا يستقرّ، وtry المحيطة لا تلتقط وعداً لا يستقرّ. فيدور زرّ الدخول
+         أبداً والكابتن لا يدخل التطبيق أصلاً. نفس صنف عطب القبول، لكن على
+         أول باب يطرقه. */
+      await withTimeout(signInWithCustomToken(auth,d.firebase_token), 12000, 'signin');
       pushTokenToNative(d.firebase_token);
       schedTok(phone,pass);
       /* 🔐 [V15] توكن الجلسة — يفحصه Code.gs V18 في DRIVER_UPDATE و
@@ -2913,8 +2917,8 @@ window.openChat=async function(){
   try{
     const s=await withTimeout(get(ref(db,cPath()+'/status')), NET_TIMEOUT_MS, 'chat'); const st=s.val();   /* 🛡️ [V15] القراءة العارية الثانية */
     if(!st||st==='closed'){
-      await update(ref(db,cPath()),{status:'open',driver_name:drv.name||'',driver_phone:drv.phone,
-        opened_at:new Date().toISOString(),claimed_by:null,claimed_by_name:null,claimed_at:null,unread_leader:0,unread_driver:0});
+      await withTimeout(update(ref(db,cPath()),{status:'open',driver_name:drv.name||'',driver_phone:drv.phone,
+        opened_at:new Date().toISOString(),claimed_by:null,claimed_by_name:null,claimed_at:null,unread_leader:0,unread_driver:0}), NET_TIMEOUT_MS, 'chatopen');
     }
     update(ref(db,cPath()),{unread_driver:0}).catch(()=>{});
   }catch(e){toast('تعذّر فتح المحادثة — تحقّق من الاتصال','bad');}
@@ -2932,7 +2936,7 @@ window.sendChat=async function(){
   u[`${cPath()}/last_from`]='driver';
   u[`${cPath()}/unread_leader`]=increment(1);
   u[`${cPath()}/driver_name`]=drv.name||'';
-  try{await update(ref(db),u); i.value=''; i.style.height='auto';}
+  try{await withTimeout(update(ref(db),u), NET_TIMEOUT_MS, 'chatsend'); i.value=''; i.style.height='auto';}
   catch(e){toast('لم تُرسل الرسالة — أعد المحاولة','bad');}
   b.disabled=false;
 };
