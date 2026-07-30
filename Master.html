@@ -35,10 +35,11 @@ try{if(localStorage.getItem(VK)!==V){localStorage.setItem(VK,V);if("caches"in wi
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
 <!-- [V17] دوال السحابة — لنداء orderCommand في وضع الظلّ -->
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-functions-compat.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" defer></script>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js" defer></script>
+<!-- 🗑️ [حذف] Leaflet + leaflet-heat + Chart.js — نحو 355 ك.ب و عشرات طلبات
+     بلاطات basemaps.cartocdn مع كل تحريك. الخريطة الحيّة والرسمان أُزيلا بطلبك.
+     ⚠️ خرائط جوجل (مُنتقي موقع المطعم) **باقية** — وهي تُحمَّل عند الطلب فقط
+     عبر loadGoogleMaps()، فلا تكلّف فتح اللوحة شيئاً. وحذفها يعني تعذّر ضبط
+     إحداثيات أي مطعم — ومطعمٌ بلا إحداثيات **لا تُوزَّع طلباته إطلاقاً**. -->
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -867,9 +868,6 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
           <div class="mst">🛵 <span class="v-drv">0</span></div>
           <div class="mst">🍽 <span class="v-res">0</span></div>
         </div>
-        <div id="amap" style="width:100%;height:100%"></div>
-        <div class="fab fab-exp" onclick="togFS()"><span id="fsI">⛶</span></div>
-        <div class="fab fab-cxl" id="btnCxl" onclick="cxlTrack()">✕</div>
         <button class="fab-bc" onclick="opMod('bcModal')">📣</button>
       </div>
       <div class="b-sheet">
@@ -907,8 +905,8 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
         <div class="ak akr"><div class="ak-ic r">💵</div><div class="ak-n"><span id="akCm">0</span><span class="ku" style="font-size:.78rem;color:var(--ink4)"> د.ع</span></div><div class="ak-l">إجمالي العمولات</div></div>
         <div class="ak akg"><div class="ak-ic g">📈</div><div class="ak-n"><span id="akRv">0</span><span class="ku" style="font-size:.78rem;color:var(--ink4)"> د.ع</span></div><div class="ak-l">إيرادات المطاعم</div></div>
       </div>
-      <div class="chart-bx"><div class="chart-tt">📊 أداء اليوم</div><div style="height:220px;position:relative"><canvas id="dchart"></canvas></div></div>
-      <div class="chart-bx"><div class="chart-tt">🥧 نسبة الإكمال</div><div style="height:200px;position:relative"><canvas id="pchart"></canvas></div></div>
+      <!-- 🗑️ حُذف الرسمان (Chart.js). الأرقام نفسها معروضة في بطاقات الإحصاء أعلاه
+           بصفر مكتبة وصفر canvas. -->
       <div class="tb-box">
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px">
           <div><label class="el">بحث</label><input type="text" id="arcSch" class="fc" placeholder="رقم، مطعم..." oninput="renderArch()"></div>
@@ -1059,7 +1057,8 @@ const TITLES={live:"الرصد الميداني",orders:"سجل اليوم",rest
 let MP="",gD=null;
 let liveOrd=[],archOrd=[],compArch=[],compByDay={};
 let liveLed={drivers:{},restaurants:{}},liveMet={},liveResLoc={};
-let drvMk={},resMk={},actDrv=new Set();
+/* 🗑️ drvMk و resMk حُذفا مع الخريطة الحيّة. actDrv باقٍ — عدّاد النشطين. */
+let actDrv=new Set();
 let ovr={o:{},d:{},r:{}};
 let rfilt="all",resSF="mostOrders",drvSF="mostOrders";
 let arcSC="date",arcSD="desc";
@@ -1068,7 +1067,8 @@ let fbL=[],shiftsOn=true;
 let auData=[],alData=[];
 let eType=null,ePh=null,eCT="fixed";
 let gMap=null,gMarker=null,gAutoComplete=null;
-let dc=null,pc=null,archHtml="",drvSelOpts="";
+/* 🗑️ dc و pc (كائنا Chart.js) حُذفا مع الرسمين. */
+let archHtml="",drvSelOpts="";
 let _auInit=false,_alInit=false;
 
 /* ─── حالة نظام الموظفين ─── */
@@ -1177,8 +1177,8 @@ function scheduleDerived(){
   if(_derivedT)return;
   _derivedT=setTimeout(()=>{
     _derivedT=null;
-    if(document.getElementById("pg-live").classList.contains("on")){renderRadar();updHeat();updResMk();}
-    if(document.getElementById("pg-orders").classList.contains("on")){renderArch();renderCharts();}
+    if(document.getElementById("pg-live").classList.contains("on")){renderRadar();}
+    if(document.getElementById("pg-orders").classList.contains("on")){renderArch();}
   },250);
 }
 const _drvListDebounced=debounce(()=>{if(gD&&document.getElementById("pg-drivers").classList.contains("on"))filtEnt("DRV");},600);
@@ -1247,7 +1247,7 @@ window.doAuth=async function(){
       document.getElementById("app").classList.remove("dn");
       const a=document.getElementById("snd");
       a.volume=0;a.play().then(()=>{a.pause();a.currentTime=0;a.volume=1;}).catch(()=>{});
-      startClk();initMap();loadData();setupFB();
+      startClk();loadData();setupFB();
     }else{MP="";toast("رمز المرور غير صحيح","e");}
   }catch(e){MP="";toast("فشل الاتصال بالخادم","e");}
   finally{btn.classList.remove("loading");btn.disabled=false;}
@@ -1276,10 +1276,6 @@ async function loadData(){
     data.drivers.forEach(d=>{const ov=ovr.d[d[D.PHONE]];if(ov&&now-ov.ts<120000)d[D.STATUS]=ov.status;else if(ov)delete ovr.d[d[D.PHONE]];});
     data.restaurants.forEach(r=>{const ov=ovr.r[r[R.PHONE]];if(ov&&now-ov.ts<120000)r[R.STATUS]=ov.status;else if(ov)delete ovr.r[r[R.PHONE]];});
     gD=data;
-    Object.keys(drvMk).forEach(phone=>{
-      const nm=esc(dN(phone));
-      if(drvMk[phone]._dnm!==nm){drvMk[phone].setIcon(makeDrvIcon(nm));drvMk[phone]._dnm=nm;}
-    });
     if(document.getElementById("arcRS").options.length===1){
       data.restaurants.slice(1).forEach(r=>document.getElementById("arcRS").innerHTML+=`<option value="${esc(r[R.NAME])}">${esc(r[R.NAME])}</option>`);
       data.drivers.slice(1).forEach(d=>document.getElementById("arcDS").innerHTML+=`<option value="${esc(String(d[D.PHONE]))}">${esc(d[D.NAME])}</option>`);
@@ -1351,25 +1347,12 @@ function setupFB(){
     Object.keys(locs).forEach(phone=>{
       const d=locs[phone];
       const stale=(d.last_update?(now-new Date(d.last_update).getTime()):999999)>420000;
-      if(d.status==="active"&&d.lat&&d.lng&&!stale){
-        actDrv.add(nP(phone));
-        const dnm=esc(dN(phone));
-        if(drvMk[phone]){
-          drvMk[phone].setLatLng([parseFloat(d.lat),parseFloat(d.lng)]);
-          drvMk[phone].setIcon(makeDrvIcon(dnm));
-          drvMk[phone]._dnm=dnm;
-        }else if(typeof map!=="undefined"){
-          const m=L.marker([parseFloat(d.lat),parseFloat(d.lng)],{icon:makeDrvIcon(dnm)});
-          m._dnm=dnm;
-          drvCluster.addLayer(m);
-          drvMk[phone]=m;
-        }
-      }else if(drvMk[phone]){
-        if(typeof drvCluster!=="undefined")drvCluster.removeLayer(drvMk[phone]);
-        delete drvMk[phone];
-      }
+      /* ⚡ [حذف] كان هنا تحريك علامة كل كابتن على الخريطة مع **كل نبضة**:
+         setLatLng + setIcon (وsetIcon تُعيد بناء عنصر DOM كاملاً). بأسطول
+         عشرين كابتناً ينبضون كل 10–20 ثانية = 60–120 عملية DOM في الدقيقة،
+         وهي أثقل مصدر تقطيع في اللوحة. الآن: عدٌّ فقط. */
+      if(d.status==="active"&&d.lat&&d.lng&&!stale) actDrv.add(nP(phone));
     });
-    Object.keys(drvMk).forEach(p=>{if(!locs[p]){if(typeof drvCluster!=="undefined")drvCluster.removeLayer(drvMk[p]);delete drvMk[p];}});
     document.querySelectorAll(".v-drv").forEach(e=>e.textContent=actDrv.size);
     if(gD){updBadges("DRV",gD.drivers);}
     updTicker();
@@ -1412,7 +1395,9 @@ function setupFB(){
     };
     listen(()=>db.ref("completed_orders/"+day),cCb);
   });
-  const rlCb=snap=>{liveResLoc=snap.val()||{};updResMk();};
+  /* 🗑️ كان يُعيد بناء **كل** علامات المطاعم على الخريطة مع كل لقطة
+     (removeLayer + L.marker لكل مطعم). الآن: تخزين فقط. */
+  const rlCb=snap=>{liveResLoc=snap.val()||{};};
   listen(()=>db.ref("restaurants_locations"),rlCb);
   if(!_alInit){_alInit=true;listen(()=>db.ref("system_alerts").limitToLast(60),snap=>{alData=[];const v=snap.val();if(v)Object.keys(v).forEach(k=>alData.unshift({id:k,...v[k]}));updTicker();if(document.getElementById("pg-aiops").classList.contains("on"))renderAlerts();});}
   if(!_auInit){_auInit=true;listen(()=>db.ref("admin_audit_trail").limitToLast(120),snap=>{auData=[];const v=snap.val();if(v)Object.keys(v).forEach(k=>auData.unshift(v[k]));if(document.getElementById("pg-audit").classList.contains("on"))renderAudit();});}
@@ -1748,71 +1733,21 @@ window.svEdit=async function(){
   finally{btn.disabled=false;btn.classList.remove("loading");}
 };
 
-let map,heatL,drvCluster,trkPoly=null;
-function makeDrvIcon(name){
-  return L.divIcon({className:"drv-marker-wrap",html:`<div class="dm dm-on">🛵</div><div class="dm-label">${name||"?"}</div>`,iconSize:[80,52],iconAnchor:[40,16]});
-}
-function initMap(){
-  map=L.map("amap",{zoomControl:false,attributionControl:false}).setView([35.468,44.392],13);
-  L.control.zoom({position:"bottomright"}).addTo(map);
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",{maxZoom:19,subdomains:"abcd"}).addTo(map);
-  heatL=L.heatLayer([],{radius:28,blur:18,maxZoom:14,gradient:{0.3:"#fed7aa",0.6:"#fb923c",0.85:"#f97316",1.0:"#ea580c"}}).addTo(map);
-  drvCluster=L.layerGroup().addTo(map);
-  setTimeout(()=>map.invalidateSize(),400);
-}
-window.togFS=function(){
-  const w=document.getElementById("mapWrap"),s=document.querySelector(".b-sheet"),ic=document.getElementById("fsI");
-  isFS=!isFS;
-  if(isFS){w.classList.add("fs");if(s)s.style.display="none";ic.textContent="⊡";}
-  else{w.classList.remove("fs");if(s)s.style.display="";ic.textContent="⛶";}
-  setTimeout(()=>map.invalidateSize(),100);
-  setTimeout(()=>map.invalidateSize(),400);
-};
-window.cxlTrack=function(){
-  if(trkPoly){map.removeLayer(trkPoly);trkPoly=null;}
-  Object.values(drvMk).forEach(m=>m.setOpacity(1));
-  Object.values(resMk).forEach(m=>m.setOpacity(1));
-  document.getElementById("btnCxl").style.display="none";
-  map.setView([35.468,44.392],13,{animate:true});
-};
-window.trackDriver=function(dPhone,rNm){
-  if(!map||!gD)return;
-  let dLat,dLng;
-  if(drvMk[String(dPhone)]){const p=drvMk[String(dPhone)].getLatLng();dLat=p.lat;dLng=p.lng;}
-  else{const d=gD.drivers.find(x=>nP(x[D.PHONE])===nP(dPhone));if(d){dLat=parseFloat(d[D.LAT]);dLng=parseFloat(d[D.LNG]);}}
-  if(!dLat||isNaN(dLat)||isNaN(dLng))return toast("📍 لا يوجد موقع حي للكابتن","e");
-  Object.values(drvMk).forEach(m=>m.setOpacity(.3));
-  Object.values(resMk).forEach(m=>m.setOpacity(.3));
-  if(drvMk[String(dPhone)])drvMk[String(dPhone)].setOpacity(1);
-  if(trkPoly){map.removeLayer(trkPoly);trkPoly=null;}
-  const r=findResByName(rNm);
-  const co=rCoords(r);const rLat=co?co[0]:NaN,rLng=co?co[1]:NaN;
-  let bounds=[[dLat,dLng]];
-  if(!isNaN(rLat)&&!isNaN(rLng)){
-    bounds.push([rLat,rLng]);
-    if(resMk[rNm])resMk[rNm].setOpacity(1);
-    trkPoly=L.polyline([[dLat,dLng],[rLat,rLng]],{color:"#f97316",weight:5,dashArray:"12,12",className:"path-anim"}).addTo(map);
-    map.fitBounds(bounds,{padding:[44,44],maxZoom:16,animate:true});
-  }else map.flyTo([dLat,dLng],16,{duration:1.1});
-  document.getElementById("btnCxl").style.display="flex";
-  goTab("live");
-  setTimeout(()=>map.invalidateSize(),350);
-};
-function updHeat(){
-  if(!heatL||!gD)return;
-  const pts=[];liveOrd.forEach(o=>{const r=findRes(o);const co=rCoords(r);if(co)pts.push([co[0],co[1],1]);});
-  heatL.setLatLngs(pts);
-}
-function updResMk(){
-  if(!map||!gD)return;
-  Object.keys(resMk).forEach(k=>{map.removeLayer(resMk[k]);delete resMk[k];});
-  [...new Set(liveOrd.map(o=>o[O.RES]))].forEach(rNm=>{
-    const r=findResByName(rNm);
-    const co=rCoords(r);
-    if(co){const ico=L.divIcon({className:"",html:'<div class="rp">🍽</div>',iconSize:[21,21],iconAnchor:[10,10]});
-      resMk[rNm]=L.marker(co,{icon:ico}).addTo(map);}
-  });
-}
+/* ═══════════════════════════════════════════════════════════════════════
+   🗑️ [حُذفت] كتلة الخريطة الحيّة بالكامل
+   ───────────────────────────────────────────────────────────────────────
+   كانت: initMap · makeDrvIcon · togFS · cxlTrack · trackDriver · updHeat
+         · updResMk  ومعها drvMk/resMk/heatL/drvCluster/trkPoly.
+
+   ولماذا كانت أثقل ممّا تبدو: كل كابتن يكتب نبضته كل 10–20 ثانية، وlCb
+   كانت تُحرّك علامته على الخريطة مع **كل** لقطة — أي 60–120 عملية DOM في
+   الدقيقة بأسطول عشرين كابتناً، فوق بلاطات cartocdn التي تُطلب مع كل تحريك.
+
+   ⚠️ trackDriver كان يناديها زر «📍 مسار» في بطاقة الطلب — أُزيل الزر.
+   ⚠️ خرائط جوجل (loadGoogleMaps · gMap · gMarker · Autocomplete) **باقية**
+      كما هي: هي أداة إدخال إحداثيات المطعم لا ميزة عرض، وبدونها يتوقّف
+      توزيع طلبات أي مطعم بلا موقع.
+   ═══════════════════════════════════════════════════════════════════════ */
 
 window.goTab=function(name){
   document.querySelectorAll(".pg").forEach(t=>t.classList.remove("on"));
@@ -1822,10 +1757,10 @@ window.goTab=function(name){
     b.classList.toggle("on",oc.includes("'"+name+"'"));
   });
   const dh=document.getElementById("dhT");if(dh)dh.textContent=TITLES[name]||"لوحة التحكم";
-  if(name==="live"&&typeof map!=="undefined"){setTimeout(()=>map.invalidateSize(),320);renderRadar();updHeat();updResMk();}
+  if(name==="live"){renderRadar();}
   if(name==="audit")renderAudit();
   if(name==="aiops")renderAlerts();
-  if(name==="orders"){renderArch();renderCharts();}
+  if(name==="orders"){renderArch();}
   if(name==="restaurants"&&gD)filtEnt("RES");
   if(name==="drivers"&&gD)filtEnt("DRV");
   if(name==="staff"){loadStaffRoster();renderStaffOnline();renderStaffList();renderStaffLog();updStaffKPIs();startStaffIdleTimer();}
@@ -1925,7 +1860,7 @@ function bBtns(hD,jOId,jDP,jRN,jPU,isReady,sbCls,sbTxt){
   if(isReady)h+=`<span class="rdy-badge" style="font-size:.58rem;flex-shrink:0">✔ جاهز</span>`;
   h+=`</div>`;
   h+=`<div style="display:flex;align-items:center;gap:4px;margin-top:5px">`;
-  if(hD)h+=`<button class="b-tr" onclick="trackDriver('${jDP}','${jRN}')">📍 مسار</button>`;
+  /* 🗑️ زر «📍 مسار» أُزيل مع الخريطة الحيّة — لم يعد له ما يفتحه. */
   if(jPU)h+=`<button class="ob b-img" onclick="opImg('${jPU}')" title="صورة">🖼</button>`;
   h+=`<button class="ob b-ok" onclick="forceComplete('${jOId}',this)" title="إكمال">✓</button>`;
   h+=`<button class="ob b-del" onclick="delOrder('${jOId}',this)" title="إلغاء">✕</button>`;
@@ -2171,24 +2106,9 @@ window.expCSV=function(){
   setTimeout(()=>URL.revokeObjectURL(url),900);
   toast(`✅ تم تصدير ${rows.length} طلب`);
 };
-function renderCharts(){
-  if(typeof Chart==="undefined")return;
-  const seen=new Set();const all=[];
-  [].concat(archOrd,compArch).forEach(o=>{const k=String(o[O.ID]);if(k&&seen.has(k))return;if(k)seen.add(k);all.push(o);});
-  const comp=all.filter(o=>!["deleted"].includes(o[O.STATUS])).length;
-  const canc=all.filter(o=>o[O.STATUS]==="deleted").length;
-  // ⚡ تحديث البيانات مكانها إن وُجد الرسم (كان destroy+new مع كل تحديث = بطء)
-  const c1=document.getElementById("dchart");
-  if(c1){
-    if(dc){dc.data.datasets[0].data=[comp,canc];dc.update("none");}
-    else dc=new Chart(c1,{type:"bar",data:{labels:["مكتمل","ملغي"],datasets:[{data:[comp,canc],backgroundColor:["rgba(5,150,105,.8)","rgba(239,68,68,.8)"],borderRadius:8,borderSkipped:false}]},options:{responsive:true,maintainAspectRatio:false,animation:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{stepSize:1,font:{family:"Cairo"}},grid:{color:"rgba(37,99,235,.04)"}},x:{ticks:{font:{family:"Cairo"}}}}}});
-  }
-  const c2=document.getElementById("pchart");
-  if(c2){
-    if(pc){pc.data.datasets[0].data=[comp,canc];pc.update("none");}
-    else pc=new Chart(c2,{type:"doughnut",data:{labels:["مكتمل","ملغي"],datasets:[{data:[comp,canc],backgroundColor:["rgba(5,150,105,.85)","rgba(239,68,68,.85)"],borderWidth:3,borderColor:"#fff"}]},options:{responsive:true,maintainAspectRatio:false,animation:false,plugins:{legend:{position:"bottom",labels:{font:{family:"Cairo",size:11},padding:16}}}}});
-  }
-}
+/* 🗑️ [حُذفت] renderCharts — كانت تُنشئ رسمَي Chart.js («مكتمل مقابل ملغي»).
+   المعلومة نفسها معروضة في بطاقات الإحصاء أعلى الصفحة بصفر مكتبة. */
+
 function updTicker(){
   const el=document.getElementById("tickTx");if(!el)return;
   let msg;
