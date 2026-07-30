@@ -1,4 +1,22 @@
 <!DOCTYPE html>
+<!--
+  🍽️ تطبيق المطاعم — V40.0 "Owned"
+  ═══════════════════════════════════════════════════════════════════════
+  ✅ الإنشاء من السيرفر (createOrder) — والمسار القديم يبقى سقوطاً آمناً.
+     يُغلق ثلاثة أعطال معاً:
+       ① حقن JavaScript عبر مُعرّف طلب يختاره المطعم
+       ② ازدواج الطلب عند إعادة الإرسال (cid — اختبار القبول الرابع)
+       ③ العمولة المزوّرة من العميل
+  ✅ orderCommand('CANCEL') في وضع الظلّ — قياس بلا اعتماد
+  ✅ رصد منظّم (client_events)
+
+  🎛️ USE_SERVER_CREATE = true  ← اجعله false للتراجع الفوري بلا نشر
+
+  ⚠️ يتطلّب قبله: database.rules.json V3.0  و  index.js CF-8.0
+  ⚠️ ولا يُنشر ".write": false قبل أن يقرأ الرصد صفر create_fallback
+     و صفر create_legacy لسبعة أيام متصلة.
+  ═══════════════════════════════════════════════════════════════════════
+-->
 <html lang="ar" dir="rtl">
 <head>
     <script>
@@ -919,6 +937,7 @@
     import { getDatabase, ref, onValue, update, set, get, query, orderByChild, equalTo } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
     import { getStorage, ref as storageRef, uploadString, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
     import { getAuth, signInWithCustomToken, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-functions.js";
 
     if (typeof lucide !== 'undefined') lucide.createIcons();
 
@@ -1181,6 +1200,105 @@
     }
 
     // 🔒 حارس المصادقة: القواعد الجديدة ترفض أي كتابة بلا توكن — لا نكتب قبل التأكد
+    /* ═══════════════════════════════════════════════════════════════════════
+       🆕 [V40] وحدة الإنشاء السيرفري
+       ─────────────────────────────────────────────────────────────────────
+       لماذا يُنشئ السيرفر الطلب بدل المطعم؟ ثلاثة أعطال بإصلاح واحد:
+
+       ① **حقن JavaScript.** مفاتيح فايربيس تمنع . $ # [ ] / — ولا تمنع
+          علامة التنصيص. والمطعم هو من يختار المفتاح (uniqueId أدناه).
+          فمُعرّفٌ يحتوي " يُلصَق بلا تهريب في نصّ إشعار السحب داخل
+          SufyanMessagingService، ثم يُنفَّذ في WebView كل كابتن عبر
+          pushEventToWeb — ومعه جسر AndroidRadar كاملاً.
+          (والقواعد V3.0 تُغلقه أيضاً بتقييد المفتاح — حزامان لا واحد.)
+
+       ② **ازدواج الطلب.** cid يجعل إعادة الإرسال تعود بنفس المُعرّف —
+          وهو اختبار القبول الرابع في README عندك: «مطعم يرسل وصلاً ثم
+          يقطع الشبكة ويعيدها ⇒ طلب واحد لا اثنان».
+
+       ③ **العمولة المزوّرة.** تُقرأ من restaurants_config لا من الحمولة،
+          فيسقط الاعتماد على orderSanitizer ليدهسها بعد الإنشاء.
+
+       وسقوطٌ آمن للمسار القديم: إن كانت الدالة غير منشورة أو المصادقة
+       ناقصة — أي حين نتيقّن أن **شيئاً لم يُنشأ** — نكتب مباشرةً كما كنا.
+       أمّا عند المهلة أو العطل الداخلي فلا نسقط: قد يكون الطلب أُنشئ،
+       فننبّه المطعم ليعيد الضغط — وcid يضمن أن الإعادة لا تُنتج توأماً.
+       ═══════════════════════════════════════════════════════════════════════ */
+    const fns = getFunctions(app, 'europe-west1');
+    const USE_SERVER_CREATE = true;   // اجعله false للتراجع الفوري بلا نشر
+
+    /* مفتاح النيّة: بصمة المحتوى + نافذة ١٥ دقيقة. فالضغط مرّتين على نفس
+       الطلب يعيد نفس المفتاح، وطلبٌ مختلف يأخذ مفتاحاً جديداً.
+       (١٥ دقيقة تطابق نوافذ التكرار في CF فلا يتعارض الحارسان.) */
+    function orderFingerprint(resPhone, details, price, area) {
+        const s = [resPhone, String(details || '').trim(), String(price || ''), String(area || '').trim()].join('|');
+        let h1 = 0x811c9dc5, h2 = 0x1000193;
+        for (let i = 0; i < s.length; i++) {
+            h1 = ((h1 ^ s.charCodeAt(i)) * 16777619) >>> 0;
+            h2 = ((h2 + s.charCodeAt(i) * 31) ^ (h2 >>> 7)) >>> 0;
+        }
+        return 'f' + h1.toString(36) + h2.toString(36);
+    }
+
+    function orderCid(fp) {
+        let m = {};
+        try { m = JSON.parse(localStorage.getItem('hut_cids') || '{}'); } catch (e) { m = {}; }
+        const now = Date.now();
+        Object.keys(m).forEach(k => { if (now - (m[k].t || 0) > 20 * 60000) delete m[k]; });
+        if (!(m[fp] && (now - m[fp].t) < 15 * 60000)) {
+            m[fp] = { id: 'c' + now.toString(36) + Math.random().toString(36).slice(2, 10), t: now };
+        }
+        try { localStorage.setItem('hut_cids', JSON.stringify(m)); } catch (e) {}
+        return m[fp].id;
+    }
+
+    /* أعطالٌ نتيقّن معها أن السيرفر لم يُنشئ شيئاً ⇒ السقوط للمسار القديم آمن. */
+    function isSafeToFallback(code) {
+        const c = String(code || '').toLowerCase();
+        return c.indexOf('unauthenticated') > -1 || c.indexOf('permission-denied') > -1
+            || c.indexOf('not-found') > -1     || c.indexOf('unimplemented') > -1
+            || c.indexOf('invalid-argument') > -1;
+    }
+
+    function resTrack(ev, meta) {
+        try {
+            const ph = (window.__resPhone || '');
+            if (!ph || !auth.currentUser) return;
+            const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+            const rec = { ev: String(ev).slice(0, 40), ts: new Date().toISOString() };
+            if (meta && meta.orderId) rec.oid = String(meta.orderId).slice(0, 80);
+            if (meta && meta.reason)  rec.why = String(meta.reason).slice(0, 60);
+            set(ref(db, `client_events/${ph}/${id}`), rec).catch(() => {});
+        } catch (e) {}
+    }
+
+    /* يعيد مُعرّف الطلب، أو يرمي 'SERVER_UNSURE' إن تعذّر التيقّن. */
+    async function createOrderOnServer(payload) {
+        const fp  = orderFingerprint(payload.resPhone, payload.details, payload.price, payload.area);
+        const cid = orderCid(fp);
+        let lastCode = '';
+        for (let i = 1; i <= 3; i++) {
+            try {
+                const call = httpsCallable(fns, 'createOrder');
+                const r = await Promise.race([
+                    call(Object.assign({}, payload, { cid: cid })),
+                    new Promise((_, rej) => setTimeout(() => rej(new Error('cid_timeout')), 15000))
+                ]);
+                const oid = r && r.data && r.data.orderId;
+                if (!oid) throw new Error('no_order_id');
+                resTrack(r.data.dedup ? 'create_dedup' : 'create_server', { orderId: oid });
+                return oid;
+            } catch (e) {
+                lastCode = String((e && (e.code || e.message)) || '');
+                if (isSafeToFallback(lastCode)) { resTrack('create_fallback', { reason: lastCode }); return null; }
+                if (i === 3) break;
+                await new Promise(r => setTimeout(r, 800 * i));
+            }
+        }
+        resTrack('create_unsure', { reason: lastCode });
+        throw new Error('SERVER_UNSURE');
+    }
+
     async function requireCloudAuth() {
         if (auth.currentUser) return true;
         const s = localStorage.getItem('hut_res_session');
@@ -2198,6 +2316,18 @@
         actionBlacklist.push(String(orderId)); setTimeout(() => { actionBlacklist = actionBlacklist.filter(id => id !== String(orderId)); }, BLACKLIST_TTL_MS);
         
         await requireCloudAuth();
+        /* [V40] قياس في الظلّ: يُقيّم السيرفر الأمر ويُسجّل حكمه ولا يكتب
+           حرفاً. fire-and-forget داخل try — لا تُنتظَر فلا تستطيع تعليق
+           الإلغاء ولا تعطيله. المسار القديم أدناه هو المسؤول الوحيد. */
+        try {
+            httpsCallable(fns, 'orderCommand')({
+                opId: 'sh-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10),
+                orderId: String(orderId), command: 'CANCEL', shadow: true
+            }).then(r => { const v = (r && r.data && r.data.verdict) || '?';
+                           if (v !== 'allow') resTrack('shadow_reject', { orderId: orderId, reason: v }); })
+              .catch(() => {});
+        } catch (e) {}
+
         update(ref(db, `active_orders/${orderId}`), {
             status: 'deleted',
             last_update: new Date().toISOString(),
@@ -2440,6 +2570,8 @@
             if (e && e.message === 'DUPLICATE_CANCELLED') throw e;
         }
 
+        /* [V40] مُعرّف احتياطي — يُستعمل فقط إن سقطنا للمسار القديم أدناه. */
+
         // 🔒 القواعد الجديدة ترفض الكتابة بلا مصادقة — نضمنها قبل set
         const authed = await requireCloudAuth();
         if (!authed) throw new Error('NO_AUTH');
@@ -2448,12 +2580,42 @@
         //   (orderSanitizer) يدهسهما بالقيم الموثوقة من restaurants_config.
         //   والقواعد توجب: status='pending_driver' و driverPhone='system_routing'
         //   و timestamp موجوداً عند الإنشاء — كلها محققة أدناه.
+        window.__resPhone = normResPhone;   // [V40] للرصد
+
+        /* ═══════════════════════════════════════════════════════════════════
+           [V40] ① السيرفر أولاً. المُعرّف يولّده هو، فيسقط حقن JS من أصله،
+           وcid يضمن أن إعادة الإرسال لا تُنتج توأماً.
+           ═══════════════════════════════════════════════════════════════════ */
+        if (USE_SERVER_CREATE) {
+            let serverId = null, unsure = false;
+            try {
+                serverId = await createOrderOnServer({
+                    resPhone: normResPhone, details: details, area: area,
+                    price: price, photoUrl: imageUrl, restaurant: resName
+                });
+            } catch (e) {
+                if (String(e && e.message) === 'SERVER_UNSURE') unsure = true;
+                else serverId = null;
+            }
+
+            /* لا نسقط للمسار القديم هنا: قد يكون الطلب أُنشئ فعلاً على
+               السيرفر ولم يصلنا الردّ. إنشاء توأم أسوأ من طلب متأخّر.
+               وcid يجعل إعادة الضغط آمنة تماماً — نفس النيّة، نفس الطلب. */
+            if (unsure) throw new Error('SERVER_UNSURE');
+            if (serverId) return;                    // ✅ أُنشئ على السيرفر
+            /* serverId === null ⇒ تيقّنّا أن شيئاً لم يُنشأ ⇒ المسار القديم */
+        }
+
+        /* ② المسار القديم — يبقى كاملاً وبلا تغيير حرف واحد.
+           هذا هو ما يُحذف **آخر** شيء: لا قبل أن يقرأ الرصد صفر
+           create_fallback لأيام، ولا قبل نشر ".write": false. */
         await set(ref(db, 'active_orders/' + uniqueId), {
             id: uniqueId, restaurant: resName, area: area, details: details, status: "pending_driver",
             driverPhone: "system_routing", price: price, timestamp: tsIso, photoUrl: imageUrl,
             last_update: tsIso, resPhone: normResPhone, resLat: regLat || 0, resLng: regLng || 0,
             comm: safeComm, payType: safePayType, is_sovereign: false, ready_for_pickup: false
         });
+        resTrack('create_legacy', { orderId: uniqueId });
 
         // 🔧 أُزيل نداء NEW_ORDER إلى GAS — كان معالجه فارغاً ({success:true})
         //   ولا يفعل شيئاً سوى استهلاك حصة السكربت.
