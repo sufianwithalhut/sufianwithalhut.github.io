@@ -49,7 +49,7 @@
      الآن: رقمٌ واحد يُشتقّ منه كل شيء — الشاشة والإعدادات ومسح الكاش.
      **وأي تسليم جديد يجب أن يرفعه، وإلا لم يصل.**
      ═══════════════════════════════════════════════════════════════════════ */
-  const CURRENT_APP_VERSION = "15.8-Owned";
+  const CURRENT_APP_VERSION = "15.9-Owned";
   window.APP_VERSION = CURRENT_APP_VERSION;
   /* اطبعه في شاشة الدخول فور جهوز الصفحة — نصّاً واحداً لا نسختين. */
   document.addEventListener('DOMContentLoaded', function(){
@@ -2074,10 +2074,30 @@ window.toggleOnline=async function(){
       try{
         const r=await gasFetch(`${API_URL}?action=START_SHIFT&phone=${drv.phone}&token=${API_TOKEN}&stoken=${encodeURIComponent(getStoken())}`); const d=await r.json();
         if(d.success){drv.shiftEnd=d.shift_end;localStorage.setItem('suf_session',JSON.stringify(drv));}
-        else{toast(d.msg||'تعذّر بدء الشفت','bad');document.getElementById('onlineTog').checked=false;isOnline=false;
-          lbl.className='tog-lbl';lbl.innerText='في استراحة';return;}
-      }catch(e){toast('تعذّر الاتصال','bad');document.getElementById('onlineTog').checked=false;isOnline=false;
-        lbl.className='tog-lbl';lbl.innerText='في استراحة';return;}
+        /* ═══════════════════════════════════════════════════════════════
+           🚨 [V15.9] **فشل START_SHIFT لم يعد يمنع العمل.**
+           ───────────────────────────────────────────────────────────────
+           كان يُطفئ المفتاح ويخرج — فيبقى الكابتن عاطلاً وإن كان كل شيء
+           آخر سليماً. وفحصتُ ما تفعله فعلاً:
+               تكتب shift_end · status:"active" · last_update
+
+           و**غياب shift_end يعني «بلا انتهاء»** في المحرك:
+               if (driver.shift_end && new Date(driver.shift_end) < now) return;
+           فالشرط لا يتحقّق أصلاً، والكابتن **مرشَّح كامل الأهلية**.
+
+           و status:"active" يكتبها fbStatus مباشرةً إلى فايربيس بعد قليل —
+           بلا مرورٍ بـApps Script إطلاقاً.
+
+           ⇒ الفعل الوحيد الذي تنفرد به START_SHIFT هو **توقيت نهاية الشفت**،
+             وهو تنظيمٌ لا شرطُ عمل. فمنعُ الكابتن لأجله خسارةٌ صافية.
+
+           الآن: تحذيرٌ صريح، والعمل يمضي. والشفت بلا نهاية تلقائية حتى
+           يعود الاتصال — ينهيه الكابتن بزرّ الاستراحة كالمعتاد.
+           ═══════════════════════════════════════════════════════════════ */
+        else{ toast('⚠️ '+(d.msg||'تعذّر تسجيل الشفت')+' — تعمل بلا توقيت نهاية','warn');
+              track('shift_degraded',{why:String(d.msg||'').slice(0,60)}); }
+      }catch(e){ toast('⚠️ تعذّر تسجيل الشفت — تعمل بلا توقيت نهاية','warn');
+                 track('shift_degraded',{why:'net'}); }
     }
     rad.classList.remove('off'); rad.classList.add('on');
     document.getElementById('radarT').innerText='الرادار يعمل 📡';
