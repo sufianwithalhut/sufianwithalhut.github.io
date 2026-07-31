@@ -2232,7 +2232,14 @@ window.delOrder=async function(oId,el){
 window.asgnDrv=async function(oId,dPhone){
   if(!dPhone)return;
   try{
-    const d=await staffAction({action:"STAFF_ASSIGN",orderId:oId,driverPhone:dPhone});
+    let d=await staffAction({action:"STAFF_ASSIGN",orderId:oId,driverPhone:dPhone});
+    /* 🛡️ [V19.2] الخادم يرفض التعيين لكابتن غير متاح ويُعيد السبب.
+       والتأكيد يُرسل force=1 — فيبقى القرار للّيدر، لكنه **قرارٌ يعلمه**
+       بدل تعيينٍ أعمى يرنّ هاتف كابتن مغلقٍ تطبيقه. */
+    if(d && d.needsConfirm){
+      if(!confirm(d.msg || 'الكابتن غير متاح — أتؤكّد التعيين القسري؟')) return;
+      d=await staffAction({action:"STAFF_ASSIGN",orderId:oId,driverPhone:dPhone,force:"true"});
+    }
     if(d.success)toast("تم التعيين 👑");else toast(d.msg||"فشل","e");
   }catch(e){toast("خطأ","e");}
 };
