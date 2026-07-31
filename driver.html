@@ -1961,7 +1961,23 @@ function paintToggle(on){
   isOnline  = !!on;
   if(lbl){ lbl.className = on ? 'tog-lbl on' : 'tog-lbl';
            lbl.innerText = on ? 'متاح للطلبات' : 'في استراحة'; }
-  if(rad) rad.style.display = on ? '' : 'none';
+  /* ═══════════════════════════════════════════════════════════════════
+     🔴 [V15.6] **أُزيل rad.style.display — كان يُخفي المفتاح نفسه.**
+     ───────────────────────────────────────────────────────────────────
+     المفتاح (#onlineTog) **داخل** صندوق #radar في بنية الصفحة. فكتابتي
+     في V15.4:   rad.style.display = on ? '' : 'none';
+     جعلت كل انتقال إلى «استراحة» يُخفي الصندوق **ومعه زرّ التفعيل** —
+     فيبقى الكابتن بلا وسيلة للعودة إلا بإعادة تحميل الصفحة.
+
+     وتصادمَ مع renderOrders التي تملك هذا الحقل أصلاً (تُخفي الرادار عند
+     وجود طلبات وتُظهره عند خلوّها). فكاتبان لخاصية واحدة بقاعدتين
+     متناقضتين ⇒ ظهورٌ واختفاء وارتعاش.
+
+     وهو الدرس نفسه الذي طاردناه في السيرفر: **كاتبان لحقل واحد.**
+     فـpaintToggle تملك المفتاح واللافتة والنبض — والتخطيط لصاحبه.
+     ═══════════════════════════════════════════════════════════════════ */
+  if(rad){ if(on){ rad.classList.remove('off'); rad.classList.add('on'); }
+           else  { rad.classList.add('off');    rad.classList.remove('on'); } }
   /* adjustHB هي الآلية الصحيحة — تضبط الفاصل بحسب الحمولة (10 ث مع طلب،
      20 ث بلا طلب) وتُلغي القديم أولاً. ولا نُنشئ مؤقّتاً بيدنا. */
   if(on){ adjustHB(); awake(); }
@@ -2019,8 +2035,14 @@ function startDayRollover(initial){
 
 window.toggleOnline=async function(){
   isOnline=document.getElementById('onlineTog').checked;
-  _mirrorOn = true;                                   // [V15.4] لا تعكس فعلنا نحن
-  setTimeout(()=>{ _mirrorOn = false; }, 4000);
+  /* 🔴 [V15.6] كان الحجب بمؤقّت أعمى (٤ ث) — وعملية التفعيل قد تطول أكثر
+     (انتظار GPS حتى 5 ث + كتابة حتى 6 ث). فتنفكّ المرآة والعملية جارية،
+     فتُبدّل المفتاح وتُظهر رسائل في منتصف الطريق.
+     الآن: يُرفع الحجب **عند اكتمال العملية**، وحزامٌ أقصاه 15 ث كي لا
+     يبقى الحجب أبداً إن رُميَ استثناء. */
+  _mirrorOn = true;
+  if(window._mirTmr) clearTimeout(window._mirTmr);
+  window._mirTmr = setTimeout(()=>{ _mirrorOn = false; }, 15000);
   const lbl=document.getElementById('togLbl'), rad=document.getElementById('radar');
   if(isOnline){
     lbl.className='tog-lbl on'; lbl.innerText='متاح للطلبات';
@@ -2052,6 +2074,8 @@ window.toggleOnline=async function(){
           ()=>res(),{enableHighAccuracy:true,timeout:5000}));
       }
       const okNet = await fbStatus('active');
+      _mirrorOn = false;                     // [V15.6] انتهت العملية
+      if(window._mirTmr){ clearTimeout(window._mirTmr); window._mirTmr=null; }
       if(okNet) armDisconnect(true);   /* [V15] السيرفر يُنصرِف عنك إن انقطعت */
       if(!okNet){
         /* 🪞 [V15.5] كان صندوق الرادار وحده يتغيّر، والمفتاح واللافتة يبقيان
@@ -2082,6 +2106,8 @@ window.toggleOnline=async function(){
        محاولة. والنبض يتوقّف بعدها، فلا شيء في التطبيق كلّه يعيد الكتابة. */
     (async()=>{
       const off = await fbStatus('inactive');
+      _mirrorOn = false;                       // [V15.6] انتهت العملية
+      if(window._mirTmr){ clearTimeout(window._mirTmr); window._mirTmr=null; }
       if(off){ unawake(); track('break_ok'); _mirrorOn=false; paintToggle(false); return; }
       track('break_fail');
       /* 🪞 [V15.5] **المفتاح يعود مضاءً — لأنه ما زال متاحاً فعلاً.**
