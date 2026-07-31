@@ -1738,8 +1738,20 @@ function checkSession(){
     showDash();
     const sv=localStorage.getItem('suf_orders');
     if(sv){active=JSON.parse(sv);active.forEach(o=>{if(!o.acceptedTime)o.acceptedTime=Date.now();});}
-    if(d.shiftEnd&&new Date(d.shiftEnd)>new Date()){document.getElementById('onlineTog').checked=true;toggleOnline();}
-    else{document.getElementById('onlineTog').checked=false;toggleOnline();}
+    /* 🪞 [V15.4] لا نشتقّ الحالة من shiftEnd ولا نفرضها — نقرؤها من حيث
+       يقرؤها المحرك، ثم نعكسها. فإن تعذّرت القراءة نُبقي المفتاح مُطفأً
+       **ونقول ذلك صراحةً** بدل الادّعاء. */
+    (async()=>{
+      try{
+        const st = await withTimeout(get(ref(db,`drivers_locations/${d.phone}/status`)),
+                                     NET_TIMEOUT_MS, 'mystatus');
+        paintToggle(String(st.val()||'') === 'active');
+      }catch(e){
+        paintToggle(false);
+        toast('⚠️ تعذّرت قراءة حالتك — حدّث الصفحة للتأكّد','warn');
+      }
+      listenMyStatus();
+    })();
     return true;
   }catch(e){}}
   else if(p){document.getElementById('phone').value=p;const pp=sessionStorage.getItem('suf_pend_pass');
@@ -1918,6 +1930,58 @@ function shadowCommand(command, orderId){
   }catch(e){}
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   🪞 [V15.4] مرآة الحالة — المفتاح يعكس السيرفر ولا يدّعي
+   ─────────────────────────────────────────────────────────────────────
+   العطب الذي كشفه سؤالك: عند فتح التطبيق كان المفتاح يُشتقّ من shiftEnd:
+
+       if(d.shiftEnd && new Date(d.shiftEnd) > new Date()) checked=true;
+       else checked=false;
+
+   وshiftEnd يخصّ **نافذة الشفت** لا التوفّر الحالي. فكابتنٌ بلا shiftEnd
+   صالح يرى المفتاح مُطفأً — بينما الخدمة الأصلية تكتب status:"active"
+   كل تحديث موقع، والمحرك يراه حرّاً كامل الأهلية فيُرسل له.
+
+   ⇒ **واجهةٌ تدّعي حالةً لم تتحقّق منها.** والكابتن يقرّر بناءً عليها:
+     يظنّ نفسه مستريحاً فيبتعد عن هاتفه، والطلبات تصله وتموت.
+     وهذا أسوأ من غياب المفتاح: الصمت يُبقيه حذراً، والكذب يُطمئنه.
+
+   والمصدر الوحيد للحقيقة هو **ما يقرؤه المحرك نفسه**:
+       drivers_locations/{phone}/status
+
+   فنعكسه حيّاً. وأي جهة غيّرته — الخدمة الأصلية · onDisconnect · كنّاس
+   الأشباح · نهاية الشفت — تظهر في المفتاح خلال لحظة بلا تدخّل.
+   ═══════════════════════════════════════════════════════════════════════ */
+let _mirrorOn = false;      // يمنع حلقة التغذية الراجعة أثناء التطبيق
+function paintToggle(on){
+  const t=document.getElementById('onlineTog'), lbl=document.getElementById('togLbl'),
+        rad=document.getElementById('radar');
+  if(!t) return;
+  t.checked = !!on;
+  isOnline  = !!on;
+  if(lbl){ lbl.className = on ? 'tog-lbl on' : 'tog-lbl';
+           lbl.innerText = on ? 'متاح للطلبات' : 'في استراحة'; }
+  if(rad) rad.style.display = on ? '' : 'none';
+  /* adjustHB هي الآلية الصحيحة — تضبط الفاصل بحسب الحمولة (10 ث مع طلب،
+     20 ث بلا طلب) وتُلغي القديم أولاً. ولا نُنشئ مؤقّتاً بيدنا. */
+  if(on){ adjustHB(); awake(); }
+  else  { if(hbTimer){ clearInterval(hbTimer); hbTimer=null; } unawake(); }
+}
+
+function listenMyStatus(){
+  if(!drv||!drv.phone) return;
+  listen(()=>ref(db,`drivers_locations/${drv.phone}/status`), snap=>{
+    const on = String(snap.val()||'') === 'active';
+    if(_mirrorOn) return;                       // نحن من غيّرها للتوّ
+    if(on === isOnline) return;                 // لا تغيير
+    paintToggle(on);
+    /* أخبره حين يتغيّر بلا فعلٍ منه — فلا يُفاجَأ بطلب وهو يظنّ نفسه مستريحاً. */
+    toast(on ? 'ℹ️ حالتك عند الخادم: **متاح للطلبات**'
+             : 'ℹ️ حالتك عند الخادم: **في استراحة**', on?'ok':'info');
+    track(on?'mirror_on':'mirror_off');
+  });
+}
+
 /* ───────────── إعادة محاولة الانصراف — النبض متوقّف فلا بديل ───────────── */
 let offRetryTimer=null;
 function scheduleOffRetry(){
@@ -1926,7 +1990,8 @@ function scheduleOffRetry(){
     if(isOnline){ clearInterval(offRetryTimer); offRetryTimer=null; return; }
     if(await fbStatus('inactive')){
       clearInterval(offRetryTimer); offRetryTimer=null; unawake();
-      track('break_ok_retry'); toast('✅ تأكّد انصرافك','ok');
+      _mirrorOn = false; paintToggle(false);          // [V15.5]
+      track('break_ok_retry'); toast('✅ تأكّد انصرافك — لن تصلك طلبات','ok');
       document.getElementById('radarT').innerText='الرادار متوقف';
       document.getElementById('radarD').innerText='فعّل «متاح للطلبات» لبدء الشفت';
     }
@@ -1954,6 +2019,8 @@ function startDayRollover(initial){
 
 window.toggleOnline=async function(){
   isOnline=document.getElementById('onlineTog').checked;
+  _mirrorOn = true;                                   // [V15.4] لا تعكس فعلنا نحن
+  setTimeout(()=>{ _mirrorOn = false; }, 4000);
   const lbl=document.getElementById('togLbl'), rad=document.getElementById('radar');
   if(isOnline){
     lbl.className='tog-lbl on'; lbl.innerText='متاح للطلبات';
@@ -1987,6 +2054,12 @@ window.toggleOnline=async function(){
       const okNet = await fbStatus('active');
       if(okNet) armDisconnect(true);   /* [V15] السيرفر يُنصرِف عنك إن انقطعت */
       if(!okNet){
+        /* 🪞 [V15.5] كان صندوق الرادار وحده يتغيّر، والمفتاح واللافتة يبقيان
+           «متاح للطلبات» بينما الخادم يقول inactive. والمرآة لا تُصلحه:
+           onValue لا يُطلق حدثاً بلا **تغيّر**، والحالة لم تتغيّر (بقيت
+           inactive). فنُصحّحه صراحةً. */
+        _mirrorOn = false;
+        paintToggle(false);
         document.getElementById('radarT').innerText='⚠️ لم يتأكّد التفعيل';
         document.getElementById('radarD').innerHTML='<b style="color:#DC2626">لم يصل تفعيلك للخادم — لن تصلك طلبات.</b><br>تحقّق من الشبكة وGPS ثم أعد المحاولة.';
         rad.classList.remove('on'); rad.classList.add('off');
@@ -2009,12 +2082,18 @@ window.toggleOnline=async function(){
        محاولة. والنبض يتوقّف بعدها، فلا شيء في التطبيق كلّه يعيد الكتابة. */
     (async()=>{
       const off = await fbStatus('inactive');
-      if(off){ unawake(); track('break_ok'); return; }
+      if(off){ unawake(); track('break_ok'); _mirrorOn=false; paintToggle(false); return; }
       track('break_fail');
+      /* 🪞 [V15.5] **المفتاح يعود مضاءً — لأنه ما زال متاحاً فعلاً.**
+         كانت الرسالة تقول «ما زلت متاحاً» بينما المفتاح مُطفأ واللافتة تقول
+         «في استراحة». فالنصّ يقول الحقيقة والمفتاح يكذب — **والكابتن يقرأ
+         المفتاح لا النصّ.** وإعادة المحاولة تعمل خلفاً، فإن نجحت أطفأته. */
+      _mirrorOn = false;
+      paintToggle(true);
       document.getElementById('radarT').innerText='⚠️ لم يتأكّد الانصراف';
       document.getElementById('radarD').innerHTML=
         '<b style="color:#DC2626">ما زلت متاحاً عند الخادم — قد تصلك طلبات.</b><br>جاري إعادة المحاولة…';
-      toast('⚠️ لم يصل انصرافك للخادم — نعيد المحاولة','bad');
+      toast('⚠️ لم يصل انصرافك — أنت ما زلت متاحاً','bad');
       scheduleOffRetry();
     })();
     if(hbTimer){clearInterval(hbTimer);hbTimer=null;}
@@ -2120,7 +2199,12 @@ function startSystem(){
 
 /* ══════════════ الإعدادات ══════════════ */
 window.openSettings=function(){
-  try{const v=document.getElementById('appVerLbl');if(v)v.textContent=CURRENT_APP_VERSION;}catch(e){}
+  /* 🔧 [V15.2] كان CURRENT_APP_VERSION غير معرَّف إطلاقاً — رصده ESLint.
+     وrefereceError كان يُبتلع في catch الفارغة، فتبقى خانة النسخة فارغة
+     أبداً بلا أن يعرف أحد. عطبٌ تجميلي، لكنه من صنف الفشل الصامت نفسه. */
+  try{ const v=document.getElementById('appVerLbl');
+       if(v) v.textContent = (window.APP_VERSION || 'V15.2') +
+             ' · ' + (localStorage.getItem('suf_build_src')||'?'); }catch(e){}
   document.getElementById('goalStp').innerText=DAILY_GOAL;
   document.getElementById('remTog').checked=(localStorage.getItem('suf_rem')!=='off');
   document.getElementById('siHrs').innerText=(drv?.shiftHours||'--')+' س';
@@ -2599,6 +2683,46 @@ function removeOrder(msg,id){
 }
 window.closeCancel=function(){document.getElementById('cancelOv').classList.add('dn');stopAlarm();};
 function esc(x){const d=document.createElement('div');d.textContent=String(x??'');return d.innerHTML;}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   🔴 [V15.2] sid — تعقيم مُعرّف الطلب قبل حقنه في HTML
+   ───────────────────────────────────────────────────────────────────────────
+   العطب: o.id **حقلٌ يكتبه تطبيق المطعم** (لا مفتاح العقدة الذي قيّدناه في
+   قواعد V3.0)، و.validate لا تذكره إطلاقاً. وكان يُحقَن خاماً في ستة مواضع
+   منها **داخل onclick**:
+       onclick="orderAction('${o.id}','accept',this)"
+   فمُعرّفٌ مثل   x');alert(document.cookie);//   يُنتج:
+       onclick="orderAction('x');alert(document.cookie);//','accept',this)"
+   ⇒ يُنفَّذ. ومع جسر AndroidRadar في التطبيق الأصلي يصير الوصول كاملاً.
+
+   و esc() **لا تكفي**: تُهرّب < > & فقط، والعلامة المفردة هي الفاصل داخل
+   onclick فتمرّ. مُثبَت بالتنفيذ.
+
+   والعلاج بالتعقيم لا بالتهريب: مُعرّفات الطلبات كلها [A-Za-z0-9-] بحكم
+   buildOrderId و uniqueId — فالإسقاط بلا خسارة على الصحيح، وقاطعٌ للخبيث.
+   ═══════════════════════════════════════════════════════════════════════════ */
+function sid(x){ return String(x??'').replace(/[^A-Za-z0-9_-]/g,'').slice(0,64); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   🔴 [V15.2] jss — تهريب **السياق المزدوج**: سلسلة JS داخل سمة HTML.
+   ───────────────────────────────────────────────────────────────────────────
+   في   onclick="smartWa('${x}', …)"   يمرّ النصّ بمحلّلين متتاليين:
+       ① محلّل HTML   يفكّ السمة عند  "  ويفكّ الكيانات
+       ② محلّل JS     يفكّ السلسلة عند  '
+   فـesc() وحدها لا تكفي (تُهرّب < > & فقط)، ولا الهروب بالشرطة المائلة وحده
+   (تفكّه المرحلة الأولى). نُهرّب للطبقتين معاً: الشرطة والعلامتان والسطر
+   الجديد لـJS، ثم < > & للـHTML.
+
+   ولا تُستعمل إلا في هذا السياق — للنصّ العادي esc() هي الصحيحة. */
+function jss(x){
+  return String(x??'')
+    .replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;')
+    .replace(/\r?\n/g,' ')
+    .replace(/&(?!quot;)/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* رقمٌ للعرض — لا نثق بأن price رقمٌ لأن المسار القديم يكتبه من العميل. */
+function num(x){ const n=Number(String(x??'').replace(/[^\d.-]/g,'')); return isNaN(n)?0:n; }
 function modal(icon,title,body,kind){
   const ov=document.createElement('div'); ov.className='mod-ov';
   ov.innerHTML=`<div class="mod"><div class="mod-i mi-${kind}">${icon}</div>
@@ -2668,14 +2792,14 @@ function renderOrders(){
     const photo=(o.photoUrl&&String(o.photoUrl).startsWith('http'))?`<button class="act a-img" onclick="openReceipt('${o.photoUrl}')">${ICO.img} الوصل</button>`:'';
     if(!o.resArea) enrichOrder(o);
     const pick = o.resArea ? ` (${esc(o.resArea)})` : '';
-    html+=`<div class="ord" id="o-${o.id}">
+    html+=`<div class="ord" id="o-${sid(o.id)}">
       <div class="ord-strip ${strip}"></div>
       <div class="ord-b">
         <div class="ord-hd">
-          <div><div class="ord-no">#${o.id}</div><div class="ord-tags">${tags}</div>
-            <div id="t-${o.id}" class="ord-tm tm-ok">${ICO.clk} --:--</div></div>
-          <div class="ord-pr"><div class="ord-pv">${o.price}<small> د.ع</small></div>
-            <button class="sup" onclick="openChat()" style="margin-top:9px;">${ICO.sup} ليدر<span class="sup-dot" id="d-${o.id}"></span></button></div>
+          <div><div class="ord-no">#${sid(o.id)}</div><div class="ord-tags">${tags}</div>
+            <div id="t-${sid(o.id)}" class="ord-tm tm-ok">${ICO.clk} --:--</div></div>
+          <div class="ord-pr"><div class="ord-pv">${num(o.price).toLocaleString('ar-EG')}<small> د.ع</small></div>
+            <button class="sup" onclick="openChat()" style="margin-top:9px;">${ICO.sup} ليدر<span class="sup-dot" id="d-${sid(o.id)}"></span></button></div>
         </div>
         <div class="steps">
           <div class="step ${step>=1?(step===1?'now':'done'):''}"><div class="step-d">${step>1?'✓':'1'}</div><span class="step-l">قبلت</span></div>
@@ -2694,11 +2818,11 @@ function renderOrders(){
           <div class="rp dn2"><div class="rp-t">🏠 التسليم إلى (${esc(o.area)})</div><div class="rp-n">${esc(det)}</div>
             <div class="acts">
               ${cp?`<button class="act a-call" onclick="openLink('tel:${cp}')">${ICO.call} اتصال</button>`:''}
-              ${cp?`<button class="act a-wa" onclick="smartWa('${cp}','${esc(o.resName)}','${esc(o.area)}','${o.id}','${o.price}')">${ICO.wa} رسالة الزبون</button>`:''}
+              ${cp?`<button class="act a-wa" onclick="smartWa('${jss(cp)}','${jss(o.resName)}','${jss(o.area)}','${sid(o.id)}','${num(o.price)}')">${ICO.wa} رسالة الزبون</button>`:''}
               ${photo}
             </div></div>
         </div>
-        <button class="cta ${bCls}" ${dis} onclick="orderAction('${o.id}','${act}',this)">${bTxt}</button>
+        <button class="cta ${bCls}" ${dis} onclick="orderAction('${sid(o.id)}','${sid(act)}',this)">${bTxt}</button>
       </div></div>`;
   });
   if(lastHtml!==html){box.innerHTML=html;lastHtml=html;
@@ -2825,28 +2949,21 @@ window.orderAction=function(id,act,btn){
       uA[`active_orders/${id}/last_update`]=now;
       const uB={};
       /* ═══════════════════════════════════════════════════════════════════
-         🔴 [V15] حارس المضاعفة. increment ليست صامدة للتكرار، و withTimeout
-         **تسابق مؤقّتاً وتترك النداء يعيش في الخلفية** (تعليقك أنت في هذا
-         الملف). فالمهلة ليست فشلاً بل عدمَ علم:
-           كتابة تحتاج ٧ ثوانٍ · NET_TIMEOUT_MS=6000 ⇒ .catch يعمل ⇒ للطابور
-           ⇒ الكتابة الأصلية تنجح بعد ثانية ⇒ الطابور يعيدها ⇒ زيادة ثانية.
-         وincrement() في نسختك تُعيد { ".sv": { increment: n } } — كائناً
-         عادياً يعبر JSON.stringify سليماً تماماً، فإعادة الإرسال زيادة
-         كاملة صحيحة لا كتابة فاسدة تُرفض. لا شيء كان يمنع التضخّم.
+         🔢 [V15.3] **أُزيلت الزيادة من هنا** — صارت في السيرفر.
+         ─────────────────────────────────────────────────────────────────
+         السبب: زرّ التطبيق واحدٌ من أربعة مسارات لإنهاء الطلب (معه
+         COMPLETE_ORDER الاحتياطي · إكمال الليدر · إكمال الإدارة)، وكان
+         **وحده** يزيد العدّاد. فكابتن أنجز 15 يقرأ 9.
 
-         علاج اليوم: طلبٌ عُدّ مرة لا يُعدّ ثانية أبداً — أياً كان المسار.
-         فالخطأ يصير نقصاً (يُصلَح من daily_ledgers الصامد) لا تضخّماً
-         (خفيّاً لا يُكشف). والعلاج الجذري: تنتقل العدّادات إلى السيرفر مع
-         orderCommand، حيث opId يجعل الزيادة ذرّية وصامدة — فتُحذف هذه
-         الكتلة كلها يومَ يخرج DELIVER من وضع الظلّ.
+         الآن trackDriverCompletion في CF تزيده عند تحوّل الحالة إلى
+         «منتهٍ» **مهما كان المسار**، بختمٍ ذرّي في counted_orders.
+         ⇒ كاتبٌ واحد لا أربعة، ورقمٌ صحيح دائماً.
+
+         وسقط معها حارس suf_counted المحلي — كان مسكّناً لغياب الكاتب
+         الواحد، ولم يعد له معنى. والكلفة: العدّاد يتأخّر ثانية بدل
+         الفورية، ويظهر عبر مستمع daily_metrics نفسه.
          ═══════════════════════════════════════════════════════════════════ */
-      let _cnt=[]; try{ _cnt=JSON.parse(localStorage.getItem('suf_counted')||'[]'); }catch(e){ _cnt=[]; }
-      const _alreadyCounted = _cnt.indexOf(String(id)) > -1;
-      if(!_alreadyCounted){
-        uB[`daily_metrics/${drv.phone}/${ts}/completed_orders`]=increment(1);
-        uB[`daily_metrics/${drv.phone}/${ts}/total_delivery_minutes`]=increment(dmin);
-        try{ _cnt.push(String(id)); localStorage.setItem('suf_counted',JSON.stringify(_cnt.slice(-400))); }catch(e){}
-      } else { track('count_dedup', { orderId: id }); }
+      /* (لا زيادة هنا — السيرفر يتولّاها) */
       uB[`daily_ledgers/${drv.phone}/${ts}/${id}`]={orderId:id,resName:o.resName,area:o.area,price:o.price,comm:o.comm||0,timestamp:Date.now()};
 
       let ok=await guaranteedWrite(uA,`active_orders/${id}/status`,'completed');
