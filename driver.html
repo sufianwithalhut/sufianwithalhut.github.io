@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-  🦈 تطبيق الكابتن — V15.1 "Owned"
+  🦈 تطبيق الكابتن — V16.0 "Owned"   ← النسخة الحالية (CURRENT_APP_VERSION)
   ═══════════════════════════════════════════════════════════════════════
   رقع هذه الدفعة (كلها أُصلحت من تشخيص مؤكَّد لا من تخمين):
     🔴 [١] fbStatus: حارسا الموقع كانا يمنعان **الانصراف** أيضاً — فالكابتن
@@ -49,7 +49,7 @@
      الآن: رقمٌ واحد يُشتقّ منه كل شيء — الشاشة والإعدادات ومسح الكاش.
      **وأي تسليم جديد يجب أن يرفعه، وإلا لم يصل.**
      ═══════════════════════════════════════════════════════════════════════ */
-  const CURRENT_APP_VERSION = "15.9-Owned";
+  const CURRENT_APP_VERSION = "16.0-Owned";
   window.APP_VERSION = CURRENT_APP_VERSION;
   /* اطبعه في شاشة الدخول فور جهوز الصفحة — نصّاً واحداً لا نسختين. */
   document.addEventListener('DOMContentLoaded', function(){
@@ -2059,6 +2059,7 @@ function startDayRollover(initial){
 
 window.toggleOnline=async function(){
   isOnline=document.getElementById('onlineTog').checked;
+  availEpoch++;            /* [V16.0] أبطل كل كتابةٍ معلّقة من قبل هذا القرار */
   /* 🔴 [V15.6] كان الحجب بمؤقّت أعمى (٤ ث) — وعملية التفعيل قد تطول أكثر
      (انتظار GPS حتى 5 ث + كتابة حتى 6 ث). فتنفكّ المرآة والعملية جارية،
      فتُبدّل المفتاح وتُظهر رسائل في منتصف الطريق.
@@ -2111,13 +2112,14 @@ window.toggleOnline=async function(){
        إطلاقاً — وهي إحدى الشكاوى الثلاث التي تُنتج «لا تصلني طلبات».
        الآن: لا خضرة إلا بتأكيد من الخادم، وإلا رسالة صريحة بالأحمر.
        ═══════════════════════════════════════════════════════════════════ */
+    const ep0 = availEpoch;                 /* [V16.0] حقبة لحظة القرار */
     (async ()=>{
       if(navigator.geolocation){
         await new Promise(res=>navigator.geolocation.getCurrentPosition(
           pp=>{markFix(pp.coords.latitude,pp.coords.longitude,pp.coords.accuracy);res();},
           ()=>res(),{enableHighAccuracy:true,timeout:5000}));
       }
-      const okNet = await fbStatus('active');
+      const okNet = await fbStatus('active', ep0);   /* [V16.0] حقبة هذا القرار */
       _mirrorOn = false;                     // [V15.6] انتهت العملية
       if(window._mirTmr){ clearTimeout(window._mirTmr); window._mirTmr=null; }
       if(okNet) armDisconnect(true);   /* [V15] السيرفر يُنصرِف عنك إن انقطعت */
@@ -2149,7 +2151,7 @@ window.toggleOnline=async function(){
        كان: fbStatus('inactive') بلا await وبلا فحص للنتيجة وبلا إعادة
        محاولة. والنبض يتوقّف بعدها، فلا شيء في التطبيق كلّه يعيد الكتابة. */
     (async()=>{
-      const off = await fbStatus('inactive');
+      const off = await fbStatus('inactive');   /* الانصراف بلا حقبة — يُنفَّذ دائماً */
       _mirrorOn = false;                       // [V15.6] انتهت العملية
       if(window._mirTmr){ clearTimeout(window._mirTmr); window._mirTmr=null; }
       if(off){ unawake(); track('break_ok'); _mirrorOn=false; paintToggle(false); return; }
@@ -2174,10 +2176,14 @@ window.toggleOnline=async function(){
 function adjustHB(){if(hbTimer)clearInterval(hbTimer);if(!isOnline||!drv)return;hbTimer=setInterval(heartbeat,active.length?10000:20000);}
 function heartbeat(){
   if(!isOnline||!drv)return;
+  /* [V16.0] التقط الحقبة **الآن** ومرّرها — فإن تغيّرت قبل وصول الموقع
+     أُلغيت الكتابة. وهذا هو موضع العطب بالضبط: الاستدعاء أدناه يبقى
+     معلّقاً حتى عشر ثوانٍ، والقرار قد يتغيّر خلالها. */
+  const ep = availEpoch;
   armDisconnect(false);   /* [V15] إعادة التسليح بخنق ٤ دقائق */
-  if(lastLat&&lastLng){ fbStatus('active'); return; }
+  if(lastLat&&lastLng){ fbStatus('active', ep); return; }
   if(navigator.geolocation)navigator.geolocation.getCurrentPosition(
-    p=>{ markFix(p.coords.latitude,p.coords.longitude,p.coords.accuracy); fbStatus('active'); },
+    p=>{ markFix(p.coords.latitude,p.coords.longitude,p.coords.accuracy); fbStatus('active', ep); },
     ()=>showLocBanner(true,'تعذّر تحديد موقعك — فعّل GPS'),
     {enableHighAccuracy:true,timeout:10000,maximumAge:0});
 }
@@ -2185,7 +2191,51 @@ function heartbeat(){
 /* 🔧[خ٨] كتابة حقلية فقط — القواعد تسمح للكابتن بهذه الحقول الأربعة على
    عقدته وحدها. shift_end أُزيلت: يكتبها START_SHIFT سيرفرياً، وكتابتها
    من العميل كانت سترفض وتمحو حقل name الذي يختمه GAS V16.1. */
-async function fbStatus(st){
+/* ═══════════════════════════════════════════════════════════════════════════
+   🔴 [V16.0] **حقبة التوفّر — تُبطل كل كتابة تأخّرت عن قرارها.**
+   ───────────────────────────────────────────────────────────────────────────
+   العطب الذي كشفه التشغيل: «أضغط في استراحة ومع ذلك تصلني طلبات — خصوصاً
+   وقت الزخم».
+
+   والآلية سباقٌ صريح:
+       heartbeat() → navigator.geolocation.getCurrentPosition(
+           p => { markFix(...); fbStatus('active'); },     ← بلا فحص ثانٍ
+           ..., { timeout: 10000 } )                       ← معلّقة حتى 10 ث
+
+       ث 0.0  نبضة تنطلق · الموقع معلّق
+       ث 2.1  الكابتن يضغط «استراحة» · isOnline=false · hbTimer يُلغى
+       ث 2.4  fbStatus('inactive') ✅ يصل
+       ث 4.7  🔴 رجع الموقع ⇒ fbStatus('active') — والقرار تغيّر منذ ثانيتين
+       ث 60   المحرك يراه متاحاً ⇒ طلبٌ جديد
+
+   **ولماذا في الزخم أسوأ؟** الفاصل `active.length ? 10000 : 20000`:
+   مع طلبات تنبض كل عشر ثوانٍ ونافذة التعليق عشر — فنافذة الخطر تقارب
+   المئة بالمئة من الوقت. ومع طلبٍ محمول يكون الكابتن متحرّكاً فيبطؤ GPS.
+
+   ولا يكفي فحص isOnline في نداءٍ واحد: كل كتابة مؤجَّلة (النبض · الموقع
+   الأصلي · إعادة المحاولة · الطابور) تحمل الخطر نفسه.
+
+   فالعلاج **حقبة**: كل تبديل توفّر يرفع العدّاد، وكل كتابة تلتقط حقبتها
+   وقت الطلب. فإن تغيّرت قبل وصولها — تُلغى. ولا مفعول لقرارٍ عفا عليه
+   قرارٌ أحدث.
+   ═══════════════════════════════════════════════════════════════════════════ */
+let availEpoch = 0;
+
+async function fbStatus(st, epoch){
+  /* 🛡️ [V16.0] كتابةٌ من حقبةٍ ماضية تُلغى بلا ضجيج. */
+  if (epoch !== undefined && epoch !== availEpoch) {
+    try{ track('stale_status_drop',{want:st,epoch:epoch,now:availEpoch}); }catch(e){}
+    return false;
+  }
+  /* وحتى بلا حقبة صريحة: لا نكتب active ونحن في استراحة. */
+  if (st === 'active' && !isOnline) {
+    try{ track('stale_status_drop',{want:'active',reason:'offline'}); }catch(e){}
+    return false;
+  }
+  return await _fbStatusRaw(st);
+}
+
+async function _fbStatusRaw(st){
   /* [ب] كانت لا تُعيد شيئاً: المفتاح يخضرّ ويُكتب «الرادار يعمل 📡» قبل
      الكتابة، وإن فشلت ابتلعها catch فارغ. فيجلس الكابتن ساعات مقتنعاً أنه
      متاح، و status عندك inactive فلا يراه استعلام المحرك إطلاقاً.
@@ -2251,7 +2301,7 @@ window.__nativeEvent=function(ev){
   }catch(e){}
 };
 window.__nativeLocation=function(lat,lng,acc){markFix(lat,lng,acc);showLocBanner(false);
-if(isOnline)fbStatus('active');document.getElementById('permOv').classList.add('dn');};
+if(isOnline)fbStatus('active', availEpoch);document.getElementById('permOv').classList.add('dn');};
 
 function startSystem(){
   if(isOnline){awake();adjustHB();}
