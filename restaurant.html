@@ -31,7 +31,7 @@
         //          القاعدة الجديدة ترفض القراءة الكاملة لغير الإدارة.
         //  🔒 ضمان مصادقة فايربيس قبل أي كتابة (القواعد لم تعد تقبل مجهولاً).
         //  🛵 اسم الكابتن من drivers_locations/{phone}/name بدل شيت السائقين.
-        const CURRENT_APP_VERSION = "39.2.Sufyan-Fortress";
+        const CURRENT_APP_VERSION = "40.0.Sufyan-Swept";   /* 🔴 [V41-ج] بلا رفعه لا تُمسح الأصول ولا يصل التحديث كاشيراً واحداً */
         const RES_VERSION_KEY = 'hut_res_app_version';
         try {
             if (localStorage.getItem(RES_VERSION_KEY) !== CURRENT_APP_VERSION) {
@@ -1749,7 +1749,7 @@
         let html = '';
         Object.keys(myCustomPriceList).sort().forEach(area => {
             const price = myCustomPriceList[area];
-            html += `<div class="dropdown-item-area" onclick="selectDropdownArea('${escapeHtml(area).replace(/'/g,"&#39;")}', ${Number(price)||0})">
+            html += `<div class="dropdown-item-area" onclick="selectDropdownArea('${jss(area)}', ${Number(price)||0})">
                         <span>${escapeHtml(area)}</span>
                         <span class="area-price-tag">${price} د.ع</span>
                      </div>`;
@@ -2397,6 +2397,28 @@
 
        ⚠️ يُستعمل في نصّ HTML وفي قيمة سمة معاً، لذا نُهرّب " و ' أيضاً.
        ═══════════════════════════════════════════════════════════════════════ */
+    /* ═══════════════════════════════════════════════════════════════════════
+       🔴 [V41-ج] sid و jss — **منقولتان حرفياً من driver.html**
+       ───────────────────────────────────────────────────────────────────────
+       ولم تُكتَبا هنا من جديد عمداً: النمط واحد، وتعليقهما هناك يشرح لماذا
+       escapeHtml وحدها لا تكفي في سياق onclick.
+
+       المشكلة: في   onclick="f('${x}')"   يمرّ النصّ بمحلّلين متتاليين —
+       محلّل HTML يفكّ السمة **ويفكّ الكيانات**، ثم محلّل JS يفكّ السلسلة
+       عند العلامة المفردة. فـ escapeHtml تحوّل ' إلى &#39; ثم **يفكّها
+       محلّل HTML قبل أن يصل الدور إلى JS** ⇒ منطقة اسمها حي's تُنتج
+       selectDropdownArea('حي's', 0) ⇒ SyntaxError.
+
+       ⇒ escapeHtml للنصّ الظاهر · jss داخل onclick · sid للمُعرّفات.
+       ═══════════════════════════════════════════════════════════════════════ */
+    function sid(x){ return String(x??'').replace(/[^A-Za-z0-9_-]/g,'').slice(0,64); }
+    function jss(x){
+      return String(x??'')
+        .replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;')
+        .replace(/\r?\n/g,' ')
+        .replace(/&(?!quot;)/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
     function escapeHtml(v) {
         return String(v == null ? '' : v)
             .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -2426,7 +2448,7 @@
                                 <div class="fw-bold text-dark">
                                     <i data-lucide="bike" size="12" style="color: var(--success);"></i> الكابتن: <span class="fw-black">${dName}</span>
                                 </div>
-                                ${isValidPhone ? `<a href="tel:${dPhone}" class="text-decoration-none d-flex align-items-center gap-1" style="background: #f0fdf4; color: #16a34a; padding: 4px 10px; border-radius: 8px; font-weight: 800; font-size: 0.75rem;"><i data-lucide="phone" size="12"></i> ${dPhone}</a>` : ''}
+                                ${isValidPhone ? `<a href="tel:${jss(dPhone)}" class="text-decoration-none d-flex align-items-center gap-1" style="background: #f0fdf4; color: #16a34a; padding: 4px 10px; border-radius: 8px; font-weight: 800; font-size: 0.75rem;"><i data-lucide="phone" size="12"></i> ${dPhone}</a>` : ''}
                             </div>
                             <div class="mb-2 fw-bold text-dark"><i data-lucide="map-pin" size="12" style="color: var(--accent);"></i> المنطقة: <span class="fw-normal">${orderArea}</span></div>
                             <div class="fw-bold text-dark"><i data-lucide="info" size="12" style="color: var(--primary-blue);"></i> التفاصيل: <span class="fw-normal" style="user-select: text;">${orderDetails}</span></div>
@@ -2602,23 +2624,23 @@
             }
 
             const showReadyBtn = hasDriver && (status === 'accepted' || status === 'heading' || status === 'arrived_at_res');
-            const readyBtnHtml = showReadyBtn ? (readyForPickup ? `<span class="ready-pill"><i data-lucide="check-circle" size="10"></i> جاهز للاستلام</span>` : `<button class="btn-ready" onclick="markOrderReady('${orderId}', this)"><i data-lucide="package-check" size="14"></i> إبلاغ الكابتن بالجهوزية</button>`) : '';
+            const readyBtnHtml = showReadyBtn ? (readyForPickup ? `<span class="ready-pill"><i data-lucide="check-circle" size="10"></i> جاهز للاستلام</span>` : `<button class="btn-ready" onclick="markOrderReady('${sid(orderId)}', this)"><i data-lucide="package-check" size="14"></i> إبلاغ الكابتن بالجهوزية</button>`) : '';
 
             const photoUrl = o.photoUrl || o.image; 
-            const imgBtnHtml = photoUrl ? `<button class="btn-call-mini" style="background:#e0f2fe; color:var(--primary-blue);" onclick="document.getElementById('fullReceiptImage').src='${photoUrl}'; document.getElementById('imageViewerModal').style.display='flex';" title="عرض الوصل"><i data-lucide="image" size="14"></i></button>` : '';
+            const imgBtnHtml = photoUrl ? `<button class="btn-call-mini" style="background:#e0f2fe; color:var(--primary-blue);" onclick="document.getElementById('fullReceiptImage').src='${jss(photoUrl)}'; document.getElementById('imageViewerModal').style.display='flex';" title="عرض الوصل"><i data-lucide="image" size="14"></i></button>` : '';
 
             activeOrdersHtml += `
-            <div class="live-order-card" id="order-${orderId}">
+            <div class="live-order-card" id="order-${sid(orderId)}">
                 <div class="order-header-row">
                     <div>
-                        <span class="order-id-text">#${orderId}</span>
-                        <div class="order-time-text"><i data-lucide="clock" size="10"></i> ${orderTime}</div>
+                        <span class="order-id-text">#${escapeHtml(orderId)}</span>
+                        <div class="order-time-text"><i data-lucide="clock" size="10"></i> ${escapeHtml(orderTime)}</div>
                     </div>
                     <div class="d-flex align-items-center gap-2">
                         ${readyBtnHtml}
-                        ${isCancelable ? `<button class="btn-cancel-grace" onclick="cancelOrderGrace('${orderId}')">إلغاء</button>` : ''}
+                        ${isCancelable ? `<button class="btn-cancel-grace" onclick="cancelOrderGrace('${sid(orderId)}')">إلغاء</button>` : ''}
                         ${imgBtnHtml}
-                        ${hasDriver ? `<button class="btn-call-mini" onclick="window.open('tel:${driverPhone}')"><i data-lucide="phone" size="14"></i></button>` : ''}
+                        ${hasDriver ? `<button class="btn-call-mini" onclick="window.open('tel:${jss(driverPhone)}')"><i data-lucide="phone" size="14"></i></button>` : ''}
                     </div>
                 </div>
                 <div class="order-details-row mt-2">
@@ -2909,7 +2931,7 @@
         document.getElementById('customerArea').value = ""; document.getElementById('areaDisplayInput').value = ""; document.getElementById('customAreaSection').classList.add('hidden-section');
         
         window.removePhoto(); clearDraft();
-        setTimeout(() => document.getElementById('orderStatusBox').classList.add('hidden-section'), 4500);
+        setTimeout(() => document.getElementById('orderStatusBox').classList.add('hidden-section'), 6000);   /* [V41-ج] كان 4500 — تختفي رسالة النجاح وشريط التراجع ما زال يعدّ */
     }
 
     // نظام الرسائل الإنسانية الذكي
@@ -2958,6 +2980,10 @@
        🎙️ ميزة الرسالة الصوتية — تسجيل + تحليل ذكي + إرسال فوري
        تعمل بمنطق المسح الذكي للوصل تماماً (بلا مراجعة).
     ════════════════════════════════════════════════════════════ */
+    /* [V41-ج] نُقل إلى هنا: resetVoiceUI تكتبه وهي معرَّفة قبل سطر let
+       الأصلي — تعمل اليوم لأنها لا تُنادى إلا بعد تقييم الوحدة، لكن أي
+       استدعاء مبكر مستقبلاً كان سيرمي TDZ. */
+    let _voiceCancelArmed = false;
     let voiceMediaRecorder = null;
     let voiceChunks = [];
     let voiceStream = null;
@@ -3190,7 +3216,7 @@
        صفر ثانية إضافية على المسار السليم: من لم يسحب لا يشعر بشيء.
        ═══════════════════════════════════════════════════════════════════════ */
     const VOICE_CANCEL_PX = 60;
-    let _voiceStartY = 0, _voiceCancelArmed = false;
+    let _voiceStartY = 0;
 
     function armVoiceCancel(on) {
         if (_voiceCancelArmed === on) return;
