@@ -806,6 +806,7 @@
                                 <input type="hidden" id="customerArea" value="">
 
                                 <div id="priceHint" class="text-success small fw-bold mt-1 hidden-section px-2" style="font-size: 0.75rem;"></div>
+                                <div id="areaLiveCount" class="hidden-section mt-2 px-3 py-2" style="font-size:0.75rem; font-weight:700; color:#92400e; background:#fffbeb; border:1px solid #fde68a; border-radius:12px;"></div>
                                 
                                 <div id="customAreaSection" class="hidden-section mt-2 p-3 rounded-4" style="background: rgba(15, 23, 42, 0.03);">
                                     <div class="row g-2">
@@ -868,7 +869,16 @@
                                 <div class="voice-hint" id="voiceHint">
                                     اضغط الزر باستمرار وقل تفاصيل الطلب:<br>
                                     <b>المنطقة، السعر، رقم الزبون</b><br>
-                                    ثم ارفع إصبعك ليُرسَل ويُحلَّل تلقائياً ✨
+                                    ثم ارفع إصبعك ليُرسَل ويُحلَّل تلقائياً ✨<br>
+                                    <small style="color:#94a3b8;">أو اسحب إصبعك لأعلى أثناء التسجيل للإلغاء</small>
+                                </div>
+                                <div id="voiceUndoBar" style="display:none; align-items:center; justify-content:space-between; gap:10px; width:100%; max-width:300px; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25); border-radius:16px; padding:10px 14px;">
+                                    <span style="font-size:0.8rem; font-weight:800; color:#b91c1c;">
+                                        سيُرسَل خلال <span id="voiceUndoCount">6</span> ثوانٍ
+                                    </span>
+                                    <button type="button" onclick="undoVoiceOrder()" style="background:#ef4444; color:#fff; border:none; border-radius:12px; padding:8px 16px; font-weight:800; font-size:0.8rem; font-family:'Cairo'; cursor:pointer;">
+                                        ↩︎ تراجع
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -1027,16 +1037,61 @@
         }
     }
 
-    function queueAI(payload) {
+    function queueAI(payload, opts) {
         try {
             const q = JSON.parse(localStorage.getItem(AI_QUEUE_KEY) || "[]");
-            q.push({ payload, ts: Date.now(), tries: 0 });
+            const item = { payload, ts: Date.now(), tries: 0 };
+            /* [V41-ب] id للإلغاء · holdUntil لمهلة التراجع.
+               الحمولة تُحفظ في localStorage فوراً — فلو أُغلق التطبيق أو
+               انطفأت الشاشة أثناء الثواني الستّ، الطلب **لا يضيع**: يخرج
+               عند أول تفريغ بعد انقضاء المهلة. وهذا ما يجعل التراجع أأمن
+               من setTimeout بسيط يموت مع الصفحة ويأخذ الطلب معه. */
+            if (opts && opts.id) item.id = opts.id;
+            if (opts && opts.holdUntil) item.holdUntil = opts.holdUntil;
+            q.push(item);
             localStorage.setItem(AI_QUEUE_KEY, JSON.stringify(q.slice(-12)));
         } catch (e) {}
     }
 
+    /* يحذف حمولة محجوزة من الطابور. يعيد true إن أدركها قبل الإرسال. */
+    function cancelQueuedAI(id) {
+        try {
+            const q = JSON.parse(localStorage.getItem(AI_QUEUE_KEY) || "[]");
+            const keep = q.filter(it => it.id !== id);
+            const removed = keep.length !== q.length;
+            localStorage.setItem(AI_QUEUE_KEY, JSON.stringify(keep));
+            return removed;
+        } catch (e) { return false; }
+    }
+
     /* إعادة إرسال ما فشل — عند الإقلاع وكل دقيقة وعند عودة الشبكة */
     let aiQueueBusy = false;
+    /* ═══════════════════════════════════════════════════════════════════════
+       📢 [V41-ب] الطابور لم يعد يُسقط بصمت
+       ───────────────────────────────────────────────────────────────────────
+       مسارا الصورة والصوت يعرضان النجاح **قبل** الإرسال (وهذا صحيح — الكاشير
+       لا يراجع شيئاً فيهما، فانتظاره هدر). لكن ما يفشل يدخل الطابور، وما
+       يُسقطه الطابور كان يذهب إلى console.warn — أي إلى لا مكان على جوال
+       أندرويد. ⇒ انقطاع شبكة ٢٥ دقيقة = طلبات تتبخّر والكاشير مطمئنّ.
+       ═══════════════════════════════════════════════════════════════════════ */
+    function reportLostIntake(item, why) {
+        try {
+            const kind = (item && item.payload && item.payload.kind) || "";
+            const label = kind === "voice" ? "الطلب الصوتي" : (kind === "receipt" ? "طلب الوصل" : "الطلب");
+            const t = item && item.ts ? new Date(item.ts).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) : "";
+            resTrack('intake_lost', { reason: (why || '') + '|' + kind });
+            setTimeout(() => {
+                try {
+                    alert("🛑 لم يصل " + label + " المُرسَل الساعة " + t + ".\n\n" +
+                          (why === 'expired'
+                              ? "بقي في الانتظار أكثر من ٢٠ دقيقة بلا شبكة، فأُسقط كي لا يدخل الرادار متأخراً بعد أن سُلّم الطعام.\n\n"
+                              : "فشل الإرسال بعد ستّ محاولات.\n\n") +
+                          "⚠️ هذا الطلب غير موجود في النظام. أعد إدخاله.");
+                } catch (e) {}
+            }, 400);
+        } catch (e) {}
+    }
+
     async function flushAIQueue() {
         if (aiQueueBusy || !navigator.onLine) return;
         let q = [];
@@ -1047,6 +1102,12 @@
         localStorage.setItem(AI_QUEUE_KEY, JSON.stringify(q));
         const fail = [];
         for (const item of batch) {
+            /* ⏱️ [V41-ب] مهلة التراجع: الحمولة المحجوزة تعود للطابور بلا
+               إرسال ولا استهلاك محاولة — حتى تنقضي ثوانيها أو تُحذف بالإلغاء. */
+            if (item.holdUntil && Date.now() < item.holdUntil) {
+                fail.push(item);
+                continue;
+            }
             /* ⏳ [عمر زمني] كان الطابور **بلا أي حدّ زمني** — وهو أخطر ممّا يبدو:
                يعيش في localStorage فينجو من إغلاق التطبيق، وflushAIQueue تعمل
                عند كل إقلاع. فوصلٌ فشل ليلاً كان يُنشئ **طلباً جديداً صباح الغد**
@@ -1054,17 +1115,22 @@
             if (Date.now() - (item.ts || 0) > 20 * 60 * 1000) {
                 console.warn("⏳ أُسقطت حمولة قديمة من طابور الذكاء:",
                              new Date(item.ts || 0).toISOString());
+                reportLostIntake(item, 'expired');   // [V41-ب] لم يعد صامتاً
                 continue;
             }
             try { await sendToAI(item.payload, { queueOnFail: false }); }
             catch (e) {
                 item.tries = (item.tries || 0) + 1;
                 if (item.tries < 6) fail.push(item);
+                else reportLostIntake(item, 'max_tries');   // [V41-ب]
             }
         }
         try {
             const cur = JSON.parse(localStorage.getItem(AI_QUEUE_KEY) || "[]");
-            localStorage.setItem(AI_QUEUE_KEY, JSON.stringify([...fail, ...cur].slice(-12)));
+            /* 🔧 [V41-ب] كان [...fail, ...cur] — وslice(-12) يأخذ الأخيرة اثنتي
+               عشرة، فالمقدّمة هي التي تُطرد. أي أن المحاولات الفاشلة (وهي
+               بالضبط ما يجب إنقاذه) كانت تُضحّى بها لصالح الجديدة. عُكس. */
+            localStorage.setItem(AI_QUEUE_KEY, JSON.stringify([...cur, ...fail].slice(-12)));
         } catch (e) {}
         aiQueueBusy = false;
     }
@@ -1600,6 +1666,28 @@
         }
     };
 
+    /* ═══════════════════════════════════════════════════════════════════════
+       🖼️ [V41-ب] الصورة غادرت المسودّة النصّية
+       ───────────────────────────────────────────────────────────────────────
+       saveDraft تُنادى من أحد عشر موضعاً، منها oninput على أربعة حقول —
+       أي مع **كل حرف** يكتبه الكاشير. وكانت تُسلسِل base64Receipt كاملاً
+       معها: صورة ٩٥٠ بكسل بجودة ٠.٨٥ تعطي base64 بحدود ٣٠٠–٥٥٠ كيلوبايت.
+
+       ⇒ نصف ميغابايت يُكتب في sessionStorage مع كل ضغطة حرف بعد التقاط
+         صورة. على جوال رخيص هذا تهنيج محسوس في أكثر لحظة ازدحاماً.
+
+       الآن: الصورة في مفتاح مستقلّ يُكتب **مرّة واحدة** عند الالتقاط أو
+       الحذف، والمسودّة النصّية تبقى بضع مئات من البايتات.
+       ═══════════════════════════════════════════════════════════════════════ */
+    const DRAFT_IMG_KEY = 'hut_order_draft_img';
+
+    window.saveDraftImage = function() {
+        try {
+            if (base64Receipt) sessionStorage.setItem(DRAFT_IMG_KEY, base64Receipt);
+            else sessionStorage.removeItem(DRAFT_IMG_KEY);
+        } catch (e) { /* تجاوز الحصة: المسودّة النصّية أهمّ من الصورة */ }
+    };
+
     window.saveDraft = function() {
         const draft = {
             mode: currentOrderMode,
@@ -1609,7 +1697,7 @@
             phone  : document.getElementById('customerPhone').value,
             details: document.getElementById('customerDetails').value,
             price  : document.getElementById('orderPrice').value,
-            image  : base64Receipt
+            hasImage: !!base64Receipt
         };
         sessionStorage.setItem('hut_order_draft', JSON.stringify(draft));
     };
@@ -1633,8 +1721,10 @@
             if (draft.phone) document.getElementById('customerPhone').value = draft.phone;
             if (draft.details) document.getElementById('customerDetails').value = draft.details;
             if (draft.price) document.getElementById('orderPrice').value = draft.price;
-            if (draft.image) {
-                base64Receipt = draft.image;
+            if (draft.hasImage) {
+                base64Receipt = sessionStorage.getItem(DRAFT_IMG_KEY) || null;
+            }
+            if (base64Receipt) {
                 document.getElementById('photoPreview').src = base64Receipt;
                 document.getElementById('cameraBtn').classList.add('hidden-section');
                 document.getElementById('photoPreviewContainer').classList.remove('hidden-section');
@@ -1642,7 +1732,10 @@
         } catch(e) {}
     }
 
-    function clearDraft() { sessionStorage.removeItem('hut_order_draft'); }
+    function clearDraft() {
+        sessionStorage.removeItem('hut_order_draft');
+        try { sessionStorage.removeItem(DRAFT_IMG_KEY); } catch (e) {}
+    }
 
     window.buildCustomAreaDropdown = function() {
         const listContainer = document.getElementById('smartDropdownList');
@@ -1656,8 +1749,8 @@
         let html = '';
         Object.keys(myCustomPriceList).sort().forEach(area => {
             const price = myCustomPriceList[area];
-            html += `<div class="dropdown-item-area" onclick="selectDropdownArea('${area}', ${price})">
-                        <span>${area}</span>
+            html += `<div class="dropdown-item-area" onclick="selectDropdownArea('${escapeHtml(area).replace(/'/g,"&#39;")}', ${Number(price)||0})">
+                        <span>${escapeHtml(area)}</span>
                         <span class="area-price-tag">${price} د.ع</span>
                      </div>`;
         });
@@ -1690,11 +1783,35 @@
         });
     };
 
+    /* ═══════════════════════════════════════════════════════════════════════
+       🔢 [V41-ب] عدّاد المنطقة — بديل حارس التكرار في الوضع السريع
+       ───────────────────────────────────────────────────────────────────────
+       أُزيل الحارس بالمحتوى من السريع لأنه بلا معنى بنيوياً هناك (تفاصيل
+       ثابتة وسعر مشتقّ من المنطقة ⇒ كل الطلبات بصمة واحدة). وبديله ليس
+       اعتراضاً بل **معلومة**: كم طلباً نشطاً لديك الآن إلى هذه المنطقة.
+
+       فالكاشير يقرّر بنفسه — والمعلومة صحيحة دائماً، بعكس بصمة تخمّن.
+       ═══════════════════════════════════════════════════════════════════════ */
+    window.updAreaLiveCount = function() {
+        const el = document.getElementById('areaLiveCount');
+        if (!el) return;
+        const sel = String(document.getElementById('customerArea').value || '').trim();
+        if (!sel || sel === 'أخرى') { el.classList.add('hidden-section'); return; }
+        const base = sel.split('(')[0].trim();
+        const n = (liveActiveOrders || []).filter(o =>
+            String(o.area || '').split('(')[0].trim() === base).length;
+        if (n <= 0) { el.classList.add('hidden-section'); return; }
+        el.classList.remove('hidden-section');
+        el.innerHTML = '🛵 لديك <b>' + n + '</b> ' + (n === 1 ? 'طلب نشط' : 'طلبات نشطة') +
+                       ' إلى ' + escapeHtml(base) + ' — راجعها قبل الإرسال.';
+    };
+
     window.selectDropdownArea = function(areaName, price = null) {
         document.getElementById('customerArea').value = areaName;
         document.getElementById('areaDisplayInput').value = areaName;
         document.getElementById('smartDropdownList').classList.remove('show');
         window.showSelectedPrice();
+        window.updAreaLiveCount();
         window.saveDraft();
     };
 
@@ -1922,7 +2039,8 @@
                     document.getElementById('photoPreview').src = base64Receipt;
                     document.getElementById('cameraBtn').classList.add('hidden-section');
                     document.getElementById('photoPreviewContainer').classList.remove('hidden-section');
-                    
+
+                    window.saveDraftImage();   // [V41-ب] مرّة واحدة، لا مع كل حرف
                     window.saveDraft();
                     window.showLoading(false);
                 };
@@ -1937,6 +2055,7 @@
         document.getElementById('receiptPhoto').value = "";
         document.getElementById('cameraBtn').classList.remove('hidden-section');
         document.getElementById('photoPreviewContainer').classList.add('hidden-section');
+        window.saveDraftImage();
         window.saveDraft();
     };
 
@@ -2265,18 +2384,37 @@
           active_orders **وحدها**، لأن الطلب المنقول تزيده الأرشفة في
           الدفتر ذرّياً. جمعُ المرآة إليهما كان سيحتسبه مرّتين.
        ═══════════════════════════════════════════════════════════════════════ */
+    /* ═══════════════════════════════════════════════════════════════════════
+       🛡️ [V41-ب] escapeHtml — الطبقة التي لم تُغلق مع مُعرّف الطلب
+       ───────────────────────────────────────────────────────────────────────
+       أغلقت V40 حقن JS عبر المُعرّف (صار السيرفر يولّده). لكن الملف كان
+       **بلا أي تهريب**، وأربعة حقول تُلصَق خاماً في innerHTML.
+
+       وأخطرها dName: الكابتن يكتب اسمه في تسجيله (DRIVER_REG)، وGAS يختمه
+       عند دخوله في drivers_locations/{phone}/name — ومنه يُعرض في أرشيف
+       **كل مطعم يعمل معه**. الإدارة توافق وهي ترى نصاً عادياً في الشيت.
+       نمطٌ مطابق لعطب المُعرّف، بمصدرٍ آخر.
+
+       ⚠️ يُستعمل في نصّ HTML وفي قيمة سمة معاً، لذا نُهرّب " و ' أيضاً.
+       ═══════════════════════════════════════════════════════════════════════ */
+    function escapeHtml(v) {
+        return String(v == null ? '' : v)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
     function archiveRowHtml(o) {
         const orderTime = o.ts ? new Date(o.ts).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) : '';
         const dPhone = o.drv || "";
-        const dName  = driverDisplayName(dPhone);
+        const dName  = escapeHtml(driverDisplayName(dPhone));
         const isValidPhone = dPhone && !["system_routing", "pending_driver", "manual_pending"].includes(dPhone);
-        const orderArea = o.area || "غير محددة";
-        const orderDetails = o.details || "لا توجد تفاصيل إضافية";
+        const orderArea = escapeHtml(o.area || "غير محددة");
+        const orderDetails = escapeHtml(o.details || "لا توجد تفاصيل إضافية");
         return `
-                    <div class="archive-item searchable-archive-item" data-search="${o.id} ${orderArea} ${orderDetails} ${dName} ${dPhone}">
+                    <div class="archive-item searchable-archive-item" data-search="${escapeHtml(o.id)} ${orderArea} ${orderDetails} ${dName} ${dPhone}">
                         <div class="d-flex justify-content-between align-items-start w-100">
                             <div>
-                                <span class="fw-black text-dark" style="font-size: 0.95rem;">#${o.id}</span>
+                                <span class="fw-black text-dark" style="font-size: 0.95rem;">#${escapeHtml(o.id)}</span>
                             </div>
                             <div class="text-end">
                                 <span class="fw-black text-success" style="font-size: 1.05rem;">${o.price} <small>د.ع</small></span>
@@ -2359,6 +2497,7 @@
 
         newLiveOrders.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
         liveActiveOrders = newLiveOrders; renderActiveOrdersUI();
+        try { window.updAreaLiveCount(); } catch (e) {}   // [V41-ب]
 
         const routingIcon = document.getElementById('headerRoutingIcon');
         const centerContainer = document.getElementById('headerCenterContainer');
@@ -2456,7 +2595,7 @@
 
             let driverName = 'يبحث عن كابتن...'; let step = 1, fillWidth = "0%";
             if (hasDriver) {
-                driverName = driverDisplayName(driverPhone);
+                driverName = escapeHtml(driverDisplayName(driverPhone));
                 if (status === 'picked_up' || status === 'في الطريق') { step = 4; fillWidth = "100%"; }
                 else if (status === 'arrived_at_res') { step = 3; fillWidth = "66%"; }
                 else { step = 2; fillWidth = "33%"; }
@@ -2483,7 +2622,7 @@
                     </div>
                 </div>
                 <div class="order-details-row mt-2">
-                    <div class="detail-item"><i data-lucide="map-pin" size="14" style="color: var(--accent);"></i> ${orderArea || 'غير محددة'}</div>
+                    <div class="detail-item"><i data-lucide="map-pin" size="14" style="color: var(--accent);"></i> ${escapeHtml(orderArea || 'غير محددة')}</div>
                     <div class="detail-item"><i data-lucide="bike" size="14" style="color: var(--success);"></i> الكابتن: ${driverName}</div>
                 </div>
                 <div class="progress-tracker mt-3">
@@ -2969,6 +3108,53 @@
        صار: سجّل ← **نجاح فوري** ← ينتقل للزبون التالي، والتحليل وبناء
        الطلب يجريان في السيرفر. وأي فشل إرسال يُحفظ في طابور يُعاد تلقائياً.
        ══════════════════════════════════════════════════════════════════════ */
+    /* ═══════════════════════════════════════════════════════════════════════
+       ↩︎ [V41-ب] مهلة التراجع — الطلب الصوتي لم يعد بلا رجعة
+       ───────────────────────────────────────────────────────────────────────
+       كان: رفع الإصبع ⇒ إرسال فوري. والمخرج الوحيد شرطٌ أعمى (أقلّ من ٠.٦
+       ثانية) — أي أن الإلغاء ممكن فقط لمن لم يتكلّم أصلاً. ومن أخطأ في
+       نطق العنوان بعد ثماني ثوانٍ كان عليه إرسال الطلب ثم حذفه.
+
+       الآن: النجاح يبقى فورياً (فلسفة السرعة صحيحة)، والحمولة تُحفظ في
+       الطابور بمهلة VOICE_UNDO_MS. فإن ضغط «تراجع» حُذفت قبل أن تُرسَل،
+       وإن لم يفعل خرجت وحدها. ولو أُغلق التطبيق في الأثناء فهي في
+       localStorage — تخرج عند أول تفريغ، فلا يضيع طلب.
+       ═══════════════════════════════════════════════════════════════════════ */
+    const VOICE_UNDO_MS = 6000;
+    let _undoTimer = null;
+
+    function showUndoBar(id) {
+        const box = document.getElementById('voiceUndoBar');
+        const cnt = document.getElementById('voiceUndoCount');
+        if (!box) return;
+        box.style.display = 'flex';
+        box.dataset.qid = id;
+        let left = Math.round(VOICE_UNDO_MS / 1000);
+        if (cnt) cnt.textContent = left;
+        if (_undoTimer) clearInterval(_undoTimer);
+        _undoTimer = setInterval(() => {
+            left--;
+            if (cnt) cnt.textContent = left > 0 ? left : '';
+            if (left <= 0) { clearInterval(_undoTimer); _undoTimer = null; box.style.display = 'none'; flushAIQueue(); }
+        }, 1000);
+    }
+
+    window.undoVoiceOrder = function() {
+        const box = document.getElementById('voiceUndoBar');
+        if (!box) return;
+        const id = box.dataset.qid;
+        if (_undoTimer) { clearInterval(_undoTimer); _undoTimer = null; }
+        box.style.display = 'none';
+        const removed = cancelQueuedAI(id);
+        resTrack('voice_undo', { reason: removed ? 'ok' : 'too_late' });
+        if (navigator.vibrate) navigator.vibrate(60);
+        document.getElementById('orderStatusBox').classList.add('hidden-section');
+        const hint = document.getElementById('voiceHint');
+        if (hint) hint.innerHTML = removed
+            ? '↩︎ أُلغي الطلب الصوتي — لم يُرسَل. سجّل من جديد.'
+            : '⚠️ فات الأوان، الطلب أُرسل بالفعل — ألغِه من قائمة طلباتك.';
+    };
+
     async function processVoiceOrder(base64Content, mimeType, resName) {
         // ① النجاح أولاً — هذا هو الفرق الذي يشعر به الكاشير
         showSuccessMessage(`<div style="background: var(--success); width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px;"><i data-lucide="mic" style="color:#fff;width:26px;height:26px;"></i></div>
@@ -2976,20 +3162,11 @@
             <div style="font-size:.85rem;opacity:.8;margin-top:4px;">يجري تحليله وإدخاله للرادار الآن</div>`);
         resetVoiceUI();
 
-        // ② الإرسال بعدها — لا ينتظره أحد
-        try {
-            const r = await sendToAI({ kind: "voice", data: base64Content, mime: mimeType, resName: resName });
-            /* الطلب أُنشئ لكن التحليل فشل: نُعلم الكاشير بهدوء — فقد يصحّحه
-               من شاشة الطلبات بدل أن يكتشفه الليدر متأخّراً. */
-            if (r && r.parsed === false) {
-                console.warn("voice parsed=false:", r.err);
-                setTimeout(() => {
-                    try { alert("⚠️ أُرسل الطلب الصوتي لكن تعذّر تحليله — راجعه من قائمة طلباتك."); } catch (e) {}
-                }, 600);
-            }
-        } catch (e) {
-            console.error("voice intake failed (queued):", e && e.message);
-        }
+        // ② الطابور بمهلة تراجع — لا إرسال مباشر
+        const qid = 'v' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+        queueAI({ kind: "voice", data: base64Content, mime: mimeType, resName: resName },
+                { id: qid, holdUntil: Date.now() + VOICE_UNDO_MS });
+        showUndoBar(qid);
     }
 
     function resetVoiceUI() {
@@ -3000,26 +3177,89 @@
         const timerEl = document.getElementById('voiceTimer');
         if (!btn) return;
         btn.classList.remove('recording', 'processing');
+        btn.style.background = '';           // [V41-ب] أثر «أفلت للإلغاء»
+        _voiceCancelArmed = false;
         icon.textContent = '🎙️';
         label.textContent = 'اضغط مطولاً وتكلّم';
         hint.innerHTML = 'اضغط الزر باستمرار وقل تفاصيل الطلب:<br><b>المنطقة، السعر، رقم الزبون</b><br>ثم ارفع إصبعك ليُرسَل ويُحلَّل تلقائياً ✨';
         timerEl.textContent = '';
     }
 
-    // ربط أحداث الضغط المطوّل (لمس + ماوس)
+    /* ═══════════════════════════════════════════════════════════════════════
+       ⬆️ [V41-ب] اسحب لأعلى للإلغاء — نمط مألوف لكل كاشير من الواتساب
+       صفر ثانية إضافية على المسار السليم: من لم يسحب لا يشعر بشيء.
+       ═══════════════════════════════════════════════════════════════════════ */
+    const VOICE_CANCEL_PX = 60;
+    let _voiceStartY = 0, _voiceCancelArmed = false;
+
+    function armVoiceCancel(on) {
+        if (_voiceCancelArmed === on) return;
+        _voiceCancelArmed = on;
+        const btn = document.getElementById('voiceBtn');
+        const label = document.getElementById('voiceLabel');
+        const hint = document.getElementById('voiceHint');
+        if (!btn) return;
+        if (on) {
+            btn.style.background = '#64748b';
+            if (label) label.textContent = 'أفلت للإلغاء ✕';
+            if (hint) hint.innerHTML = '<b style="color:#ef4444;">✕ سيُلغى التسجيل عند رفع إصبعك</b>';
+            if (navigator.vibrate) navigator.vibrate(30);
+        } else {
+            btn.style.background = '';
+            if (label) label.textContent = 'يسجّل... ارفع إصبعك للإرسال';
+            if (hint) hint.innerHTML = 'تكلّم الآن بوضوح 🎙️';
+        }
+    }
+
+    function discardVoiceRecording() {
+        if (!voiceIsRecording) return;
+        voiceIsRecording = false;
+        if (voiceTimerInterval) { clearInterval(voiceTimerInterval); voiceTimerInterval = null; }
+        if (voiceMediaRecorder && voiceMediaRecorder.state !== 'inactive') {
+            voiceMediaRecorder.onstop = null;          // لا تُعالَج الحمولة الملغاة
+            try { voiceMediaRecorder.stop(); } catch (e) {}
+        }
+        if (voiceStream) { voiceStream.getTracks().forEach(t => t.stop()); voiceStream = null; }
+        voiceChunks = [];
+        armVoiceCancel(false);
+        resetVoiceUI();
+        const hint = document.getElementById('voiceHint');
+        if (hint) hint.innerHTML = '✕ أُلغي التسجيل — لم يُرسَل شيء.';
+        resTrack('voice_slide_cancel', {});
+        if (navigator.vibrate) navigator.vibrate([20, 40, 20]);
+    }
+
     function bindVoiceButton() {
         const btn = document.getElementById('voiceBtn');
         if (!btn) return;
 
         // اللمس (الجوال)
-        btn.addEventListener('touchstart', (e) => { e.preventDefault(); startVoiceRecording(); }, { passive: false });
-        btn.addEventListener('touchend', (e) => { e.preventDefault(); stopVoiceRecording(); }, { passive: false });
-        btn.addEventListener('touchcancel', (e) => { e.preventDefault(); stopVoiceRecording(); }, { passive: false });
+        btn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            _voiceStartY = (e.touches && e.touches[0]) ? e.touches[0].clientY : 0;
+            armVoiceCancel(false);
+            startVoiceRecording();
+        }, { passive: false });
+
+        btn.addEventListener('touchmove', (e) => {
+            if (!voiceIsRecording) return;
+            const y = (e.touches && e.touches[0]) ? e.touches[0].clientY : 0;
+            armVoiceCancel((_voiceStartY - y) > VOICE_CANCEL_PX);
+        }, { passive: true });
+
+        btn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            if (_voiceCancelArmed) { discardVoiceRecording(); return; }
+            stopVoiceRecording();
+        }, { passive: false });
+
+        btn.addEventListener('touchcancel', (e) => { e.preventDefault(); discardVoiceRecording(); }, { passive: false });
 
         // الماوس (سطح المكتب — للاختبار)
-        btn.addEventListener('mousedown', (e) => { e.preventDefault(); startVoiceRecording(); });
-        btn.addEventListener('mouseup', (e) => { e.preventDefault(); stopVoiceRecording(); });
-        btn.addEventListener('mouseleave', () => { if (voiceIsRecording) stopVoiceRecording(); });
+        btn.addEventListener('mousedown', (e) => { e.preventDefault(); _voiceStartY = e.clientY; armVoiceCancel(false); startVoiceRecording(); });
+        btn.addEventListener('mousemove', (e) => { if (voiceIsRecording) armVoiceCancel((_voiceStartY - e.clientY) > VOICE_CANCEL_PX); });
+        btn.addEventListener('mouseup', (e) => { e.preventDefault(); if (_voiceCancelArmed) { discardVoiceRecording(); return; } stopVoiceRecording(); });
+        btn.addEventListener('mouseleave', () => { if (voiceIsRecording) { if (_voiceCancelArmed) discardVoiceRecording(); else stopVoiceRecording(); } });
     }
 
     // نربط الزر بعد تحميل الصفحة
