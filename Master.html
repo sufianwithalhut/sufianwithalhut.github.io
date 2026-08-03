@@ -1284,6 +1284,37 @@ function setupFB(){
     if(cs)cs.textContent=fbConn?"🟢 متصل":"🔴 منقطع";
     updTicker();
   });
+  /* ═══════════════════════════════════════════════════════════════════════
+     📊 [A-9.1] عدّادا اليوم — من المصدرين معاً لا من active_orders وحدها
+     ───────────────────────────────────────────────────────────────────────
+     كان vDone = arch.length و wdT = active.length+arch.length، وكلاهما
+     مشتقّ من active_orders حصراً. وكان ذلك صحيحاً ما دامت العقدة تحمل
+     اليوم كلّه حتى الثالثة فجراً.
+
+     ومع terminalOrderSweeper صار الطلب المنتهي يغادرها خلال ٤٥ دقيقة
+     ⇒ العدّادان ينهاران بعد الظهر بينما الأرشيف نفسه سليم.
+     (جدول الأرشيف كان يدمج archOrd+compArch أصلاً — السطران وحدهما لم
+      يفعلا. لهذا اختفت الأرقام ولم تختفِ الصفوف.)
+
+     الآن: المنتهي المتبقّي في active_orders + المنتهي المنقول إلى
+     completed_orders/{اليوم}، بإزالة التكرار بالمُعرّف — فالطلب المحسوب
+     مرّة واحدة سواء أُدرِك قبل الكنس أو بعده.
+     ═══════════════════════════════════════════════════════════════════════ */
+  function updDayCounts(){
+    const today=new Date().toISOString().split("T")[0];
+    const seen=new Set();let done=0,total=0;
+    const take=o=>{
+      const k=String(o[O.ID]||"");
+      if(k){if(seen.has(k))return;seen.add(k);}
+      total++;
+      if(o[O.STATUS]!=="deleted")done++;
+    };
+    archOrd.forEach(take);                 // منتهٍ لم يُكنس بعد
+    (compByDay[today]||[]).forEach(take);  // منتهٍ كُنس إلى الأرشيف
+    const vd=document.getElementById("vDone");if(vd)vd.textContent=done;
+    const wd=document.getElementById("wdT");if(wd)wd.textContent=liveOrd.length+total;
+  }
+
   const oCb=snap=>{
     const obj=snap.val();let active=[],arch=[];const now=Date.now();
     if(obj){Object.values(obj).forEach(o=>{
@@ -1321,9 +1352,7 @@ function setupFB(){
     pendCnt=np;
     document.querySelectorAll(".v-ord").forEach(e=>e.textContent=active.length);
     document.querySelectorAll(".v-res").forEach(e=>e.textContent=[...new Set(active.map(o=>o[O.RES]))].length);
-    const done=arch.filter(o=>o[O.STATUS]!=="deleted").length;
-    const vd=document.getElementById("vDone");if(vd)vd.textContent=done;
-    const wd=document.getElementById("wdT");if(wd)wd.textContent=active.length+arch.length;
+    updDayCounts();   /* [A-9.1] كان يعدّ من active_orders وحدها */
     const nb=document.getElementById("nbO");if(nb){nb.textContent=np;nb.style.display=np>0?"":"none";}
     const bd=document.getElementById("bnDot");if(bd)bd.classList.toggle("on",np>0);
     updRadarCnts();updTicker();scheduleDerived();
@@ -1380,6 +1409,7 @@ function setupFB(){
       compByDay[day]=arr;
       compArch=[].concat.apply([],Object.values(compByDay));
       renderArch();
+      updDayCounts();   /* [A-9.1] وصول أرشيف اليوم يغيّر العدّ أيضاً */
     };
     listen(()=>db.ref("completed_orders/"+day),cCb);
   });
