@@ -3,8 +3,8 @@
 // تحديث: حماية Firebase اللحظي + تمرير رفع الصور (POST) + تسريع الأوفلاين 🚀
 // =========================================================
 
-const CACHE_NAME = 'AlHut-Core-V13.0'; 
-const CDN_CACHE_NAME = 'AlHut-CDNs-V13.0';
+const CACHE_NAME = 'AlHut-Core-V14.0'; 
+const CDN_CACHE_NAME = 'AlHut-CDNs-V14.0';
 
 // قائمة الملفات الأساسية للنظام
 // 🩹 [كاش الأوفلاين] تصحيح حالة الأحرف: GitHub Pages حسّاس لها، وكانت القائمة
@@ -13,15 +13,28 @@ const CDN_CACHE_NAME = 'AlHut-CDNs-V13.0';
 //   والمطعم بلا قشرة أوفلاين إطلاقاً، وهما الأشدّ حاجة إليها (الكابتن على
 //   الطريق بشبكة متقطّعة). أُزيل كذلك manifest_driver.json و driver-logo.png
 //   لأنهما غير موجودَين في المستودع — أعِدهما هنا فور رفعهما.
+/* 🔴 [أ٢] قائمة الأصول كانت تحمل **أسماء ملفات النظام الشقيق** لا سفيان.
+   ─────────────────────────────────────────────────────────────────────────
+   كُتبت: Master.html · master-logo.png · rest-logo.png — ولا وجود لأيٍّ منها
+   في مجلّد سفيان (ملفاته: admin.html · restaurant.html · driver.html ·
+   leader.html · monitor.html · بلا شعارات).
+
+   والأثر لم يكن انهياراً بل **صمتاً**: cache.add لكل ملف محاطة بـcatch
+   تطبع تحذيراً في الكونسول — وهو مكانٌ لا وجود له على جوال أندرويد. فبقي
+   التخزين المسبق يفشل جزئياً منذ اليوم الأول ولا أحد يعلم:
+     · لوحة الإدارة لم تُخزَّن قط (اسمها admin لا Master)
+     · وثلاث محاولات جلب فاشلة عند كل تثبيت لعامل الخدمة
+
+   ⚠️ ولا تُضِف ملفاً هنا قبل أن تتأكّد من وجوده بالاسم حرفاً بحرف. */
 const ASSETS_TO_CACHE = [
   './',
-  './Master.html',
+  './admin.html',
   './restaurant.html',
   './driver.html',
+  './leader.html',
+  './monitor.html',
   './manifest_master.json',
-  './manifest_restaurant.json',
-  './master-logo.png',
-  './rest-logo.png'
+  './manifest_restaurant.json'
 ];
 
 // 1. التثبيت (Install)
@@ -93,11 +106,30 @@ self.addEventListener('fetch', event => {
     
     event.respondWith(
       caches.match(event.request).then(cachedResponse => {
-        if (cachedResponse) return cachedResponse; 
-        
+        /* ═══════════════════════════════════════════════════════════════════
+           🔴 [الجذر] كان يُخزَّن الردّ الـopaque ويُقدَّم إلى الأبد.
+           ───────────────────────────────────────────────────────────────────
+           الردّ الـopaque ردُّ طلبٍ بلا CORS: حالته 0 وجسمه غير مقروء، ويقع
+           عند تعثّر الشبكة. وباستراتيجية Cache-First هنا يُقدَّم بلا إعادة
+           تحقّق أبداً — ووحدة ES لا تستطيع تنفيذه ⇒ التطبيق يموت عند أول
+           import ولا يُعرَّف أي شيء.
+
+           وقع هذا في النظام الشقيق فعلاً وعطّل دخول المطاعم يوماً كاملاً،
+           ولم ينفع فيه تراجعٌ ولا مسحُ ملفات — لأن السمّ في كاش الـCDN.
+
+           ① لا يُخزَّن إلا الصالح  ② ولا يُقدَّم المخزَّن إلا إن كان صالحاً،
+           وإلا يُحذف ويُعاد جلبه ⇒ **الكاش يشفي نفسه**.
+           ═══════════════════════════════════════════════════════════════════ */
+        if (cachedResponse && cachedResponse.status === 200 && cachedResponse.type !== 'opaque') {
+          return cachedResponse;
+        }
+        if (cachedResponse) {
+          console.warn('🧹 [AlHut SW] مدخل كاش تالف — يُطرح ويُعاد جلبه:', url.pathname);
+          caches.open(CDN_CACHE_NAME).then(c => c.delete(event.request)).catch(() => {});
+        }
+
         return fetch(event.request).then(networkResponse => {
-          // 🚨 السماح للردود التي ليس بها CORS (Opaque) بالدخول للكاش
-          if (networkResponse && (networkResponse.status === 200 || networkResponse.type === 'opaque')) {
+          if (networkResponse && networkResponse.status === 200 && networkResponse.type !== 'opaque') {
             const responseClone = networkResponse.clone();
             caches.open(CDN_CACHE_NAME).then(cache => cache.put(event.request, responseClone));
           }
@@ -141,8 +173,24 @@ self.addEventListener('notificationclick', event => {
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
       // البحث عن أي نافذة مفتوحة للنظام وتفعيلها
+      /* 🔴 [أ٣] المطابقة كانت **حسّاسة لحالة الأحرف** — وبأسماء النظام الشقيق.
+         ─────────────────────────────────────────────────────────────────────
+         كُتبت: 'Driver.html' · 'Restaurant.html' · 'Master.html'
+         وملفات سفيان: driver.html · restaurant.html · admin.html — بحرفٍ صغير.
+
+         و includes() لا تتسامح مع حالة الأحرف إطلاقاً. ⇒ الحلقة **لا تطابق
+         نافذةً مفتوحة أبداً**، فتسقط إلى openWindow في كل مرّة:
+           · الكابتن يضغط الإشعار وتطبيقه مفتوح ⇒ **نافذة ثانية** فوق الأولى
+           · وجلسته في الأولى، فقد يجد نفسه أمام شاشة دخول
+           · وكلتا النافذتين تنبضان وتكتبان الموقع ⇒ كاتبان لعقدةٍ واحدة
+
+         وهو يفسّر جزءاً من «الكاتب الثالث» الموصوف في antiHijackGuard.
+
+         الآن: مقارنة بحروفٍ صغيرة على الجانبين، والأسماء أسماء سفيان. */
       for (let client of windowClients) {
-        if (client.url.includes('Driver.html') || client.url.includes('Restaurant.html') || client.url.includes('Master.html')) {
+        const u = String(client.url || '').toLowerCase();
+        if (u.includes('driver.html') || u.includes('restaurant.html') ||
+            u.includes('admin.html')  || u.includes('leader.html')) {
           if ('focus' in client) {
             return client.focus();
           }
