@@ -1397,10 +1397,58 @@ function cDisp(cs){
 /* 🩹[خ٣٣] البحث عن المطعم بالهاتف أولاً — المفتاح الحقيقي.
    البحث بالاسم كان يخلط مطعمين متشابهي الاسم (أو فرعين)، فتظهر
    إحداثيات وعمولة المطعم الخطأ. الاسم يبقى احتياطاً للطلبات القديمة. */
+/* ⚡ [أداء] فهرس الهاتف ← المطعم، يُبنى **مرّة عند تحميل البيانات**.
+   ═══════════════════════════════════════════════════════════════════════════
+   كانت findRes تمسح gD.restaurants خطياً وتنادي nP() على **كل صفّ** حتى تجد
+   المطابق. و nP() ليست رخيصة: عشرون split/join للأرقام العربية والفارسية،
+   ثم regex، ثم فحص المفتاح الدولي.
+
+   والحساب عند حجمك الحالي: 300 مطعم × 38 طلباً = **11,400 نداء nP في كل
+   رسمة خريطة**، وأضعافها في رسم كروت الرادار. وهذه هي البطء الذي تراه —
+   لا الخريطة ولا فايربيس.
+
+   الآن: قاموسٌ واحد. البحث O(1) بدل O(n)، والتطبيع يقع مرّة لكل مطعم لا
+   مرّة لكل مقارنة.
+   ⚠️ ويُعاد بناؤه في applyGD وحدها — أي كلّما تغيّرت قائمة المطاعم. */
+/* ⚡ [أداء] مُجمِّع نبضات: يبتلع الرشقة ويُنفّذ **مرّة واحدة** بآخر لقطة.
+   ═══════════════════════════════════════════════════════════════════════════
+   مستمعا active_orders و drivers_locations يعملان على العقدة **كاملة**، فأي
+   تغيّر في أي حقل يُسلّم اللقطة كلها. وعند ٣٨ طلباً و٤٩ كابتناً:
+     · كل نبضة موقع (كل ١٠–٢٠ ثانية لكل كابتن) ⇒ ~٣–٥ أحداث/ثانية
+     · وكل كتابة على طلب (status · last_update · is_double · accepted_at) ⇒ حدث
+   وكلٌّ منها كان يُشغّل الخطّ كاملاً: إعادة بناء المصفوفات · فرزان · عدّادات ·
+   إعادة رسم. أي عشرات الدورات في الثانية لعملٍ نتيجته واحدة.
+
+   الآن: تُجمَّع الرشقة وتُنفَّذ مرّة بآخر قيمة. والتأخير غير محسوس (ربع ثانية)
+   بينما العمل ينخفض إلى عُشره.
+   ⚠️ ونستعمل requestAnimationFrame كي تقع كتابات DOM في إطار الرسم لا وسطه —
+      فيختفي التقطيع البصري حتى مع نفس كمّية العمل. */
+function _coalesce(fn, ms){
+  let t=null, last=null;
+  return function(v){
+    last=v;
+    if(t)return;
+    t=setTimeout(()=>{ t=null;
+      const v2=last; last=null;
+      if(window.requestAnimationFrame) requestAnimationFrame(()=>fn(v2)); else fn(v2);
+    }, ms);
+  };
+}
+
+let _resIdx=null;
+function _buildResIdx(){
+  _resIdx={};
+  const rows=(gD&&gD.restaurants)||[];
+  for(let i=1;i<rows.length;i++){
+    const ph=nP(rows[i][R.PHONE]);
+    if(ph && !_resIdx[ph]) _resIdx[ph]=rows[i];
+  }
+}
 function findRes(o){
   if(!gD?.restaurants) return null;
+  if(!_resIdx) _buildResIdx();
   const ph=nP(o?.[O.RESPH]);
-  if(ph){ const byPh=gD.restaurants.find(r=>nP(r[R.PHONE])===ph); if(byPh) return byPh; }
+  if(ph && _resIdx[ph]) return _resIdx[ph];
   return gD.restaurants.find(r=>r[R.NAME]===o?.[O.RES]) || null;
 }
 function findResByName(nm){
@@ -1536,6 +1584,7 @@ function applyGD(data){
   data.drivers.forEach(d=>{const ov=ovr.d[d[D.PHONE]];if(ov&&now-ov.ts<120000)d[D.STATUS]=ov.status;else if(ov)delete ovr.d[d[D.PHONE]];});
   data.restaurants.forEach(r=>{const ov=ovr.r[r[R.PHONE]];if(ov&&now-ov.ts<120000)r[R.STATUS]=ov.status;else if(ov)delete ovr.r[r[R.PHONE]];});
   gD=data;
+  _resIdx=null;   /* ⚡ [أداء] الفهرس يُبطَل مع كل تحميل — يُعاد بناؤه كسولاً عند أول بحث. */
   if(document.getElementById("arcRS").options.length===1){
     data.restaurants.slice(1).forEach(r=>document.getElementById("arcRS").innerHTML+=`<option value="${esc(r[R.NAME])}">${esc(r[R.NAME])}</option>`);
     data.drivers.slice(1).forEach(d=>document.getElementById("arcDS").innerHTML+=`<option value="${esc(String(d[D.PHONE]))}">${esc(d[D.NAME])}</option>`);
@@ -1586,7 +1635,7 @@ function setupFB(){
     const wd=document.getElementById("wdT");if(wd)wd.textContent=liveOrd.length+total;
   }
 
-  const oCb=snap=>{
+  const _oCbRun=snap=>{
     const obj=snap.val();let active=[],arch=[];const now=Date.now();
     if(obj){Object.values(obj).forEach(o=>{
       if(!o.restaurant?.trim())return;
@@ -1631,8 +1680,10 @@ function setupFB(){
     const bd=document.getElementById("bnDot");if(bd)bd.classList.toggle("on",np>0);
     updRadarCnts();updTicker();scheduleDerived();
   };
+  /* ⚡ 220 مللي: تبتلع رشقة الكتابات ولا تُؤخّر إنذاراً محسوساً. */
+  const oCb=_coalesce(_oCbRun,220);
   listen(()=>db.ref("active_orders"),oCb);
-  const lCb=snap=>{
+  const _lCbRun=snap=>{
     const locs=snap.val();if(!locs)return;
     /* 🗺️ [SMAP-1] تغذية الخريطة الحيّة — من هذا المستمع لا من مستمعٍ جديد.
        صفر قراءة إضافية: البيانات وصلت أصلاً لحساب الكباتن النشطين، والخريطة
@@ -1660,6 +1711,8 @@ function setupFB(){
     // ⚡ تأجيل رسم قائمة الأسطول: كان يُعاد بناؤها كاملةً مع كل نبضة موقع لكل كابتن
     if(gD&&document.getElementById("pg-drivers").classList.contains("on"))_drvListDebounced();
   };
+  /* ⚡ 400 مللي: النبضات لا تحتاج دقّة أعلى — الموقع نفسه يُحدَّث كل ١٠ ثوانٍ. */
+  const lCb=_coalesce(_lCbRun,400);
   listen(()=>db.ref("drivers_locations"),lCb);
   const ledCb=()=>{
     if(gD){updBadges("RES",gD.restaurants);updBadges("DRV",gD.drivers);}
@@ -2082,7 +2135,7 @@ async function initMapLazy(){
       await _loadCss('https://unpkg.com/leaflet@1.9.4/dist/leaflet.css');
       await _loadScript('https://unpkg.com/leaflet@1.9.4/dist/leaflet.js');
     }
-    _map=L.map('adminMap',{zoomControl:false,attributionControl:true}).setView([35.468,44.392],13);
+    _map=L.map('adminMap',{zoomControl:false,attributionControl:true,preferCanvas:true}).setView([35.468,44.392],13);
     L.control.zoom({position:'bottomleft'}).addTo(_map);
     L.tileLayer(SUF_TILES,{maxZoom:19,
       attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
@@ -2118,7 +2171,10 @@ function paintMap(){
         .bindPopup('<b>'+esc(d.name||ph)+'</b>').addTo(_map);
       /* 🎯 عند التتبّع: الكابتن المعنيّ كامل الوضوح وما عداه يخفت — فالعين
          تذهب إلى المسار بلا أن نُخفي السياق حوله. */
-      try{ _drvMk[ph].setOpacity(_focusOrd ? (_focusPair.d===ph ? 1 : .28) : 1); }catch(_){}
+      /* ⚡ [أداء] لا نكتب الشفافية إلا إن تغيّرت — setOpacity تلمس style
+         فتُبطل التخطيط، وتكرارها على ٥٠ علامة في كل رسمة يُقطّع الحركة. */
+      const _o=_focusOrd ? (_focusPair.d===ph ? 1 : .28) : 1;
+      if(_drvMk[ph]._op!==_o){ try{ _drvMk[ph].setOpacity(_o); _drvMk[ph]._op=_o; }catch(_){} }
     });
     Object.keys(_drvMk).forEach(ph=>{if(!seen.has(ph)){_map.removeLayer(_drvMk[ph]);delete _drvMk[ph];}});
 
@@ -2157,7 +2213,8 @@ function paintMap(){
       else _resMk[key]=L.marker(pos,{icon:L.divIcon({className:'',
         html:'<div class="res-mk">🍽</div>',iconSize:[24,24],iconAnchor:[12,12]})})
         .bindPopup('<b>'+esc(e.name)+'</b>').addTo(_map);
-      try{ _resMk[key].setOpacity(_focusOrd ? (_focusPair.r===key ? 1 : .25) : 1); }catch(_){}
+      const _o2=_focusOrd ? (_focusPair.r===key ? 1 : .25) : 1;
+      if(_resMk[key]._op!==_o2){ try{ _resMk[key].setOpacity(_o2); _resMk[key]._op=_o2; }catch(_){} }
     });
     Object.keys(_resMk).forEach(n=>{if(!rseen.has(n)){_map.removeLayer(_resMk[n]);delete _resMk[n];}});
 
