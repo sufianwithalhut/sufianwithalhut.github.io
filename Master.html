@@ -1730,7 +1730,7 @@ function setupFB(){
         arr.push([o.id||"",o.restaurant||"مطعم",o.area||"غير محدد",o.details||"طلب توصيل",
           o.price||0,o.status||"completed",o.driverPhone||"",
           o.last_update||o.completed_at||day+"T00:00:00Z",o.photoUrl||"",o.is_sovereign||false,
-          o.last_update||"",o.last_offered_to||"",false,o.comm??null,o.payType||"",false,o.resPhone||""]);
+          o.last_update||"",o.last_offered_to||"",false,o.comm??null,o.payType||"",o.is_double||false,o.resPhone||""]);
       });
       compByDay[day]=arr;
       compArch=[].concat.apply([],Object.values(compByDay));
@@ -2417,10 +2417,27 @@ function renderRadar(){
       const jOId=ej(oId),jDP=ej(dp),jRN=ej(rN),jPU=ej(pU||"");
       const cardId=`oc-${esc(oId)}-${cId.slice(0,3)}`;newIds.add(cardId);
       const hash=`${st}|${dp}|${dMins}|${isSov}|${isReady}|${Boolean(pU)}|${isDbl}`;
+      /* 🔴 [إصلاح] الشارتان كانتا تُعرَّفان **بعد** كتلة إعادة الاستعمال أدناه،
+         فلا تُرسمان إلا عند **إنشاء** الكارت أول مرّة.
+         ─────────────────────────────────────────────────────────────────────
+         ولا يُنشأ أي كارت وهو مزدوجٌ أصلاً: الطلب يظهر أولاً معلّقاً بلا كابتن،
+         ثم يضمّه المحرك لكابتن مشغول فيصير is_double=true. وعندها يتغيّر الـhash
+         (فـisDbl جزءٌ منه) وتُنفَّذ كتلة التحديث — لكنها تُحدّث خمسة عناصر
+         (.oc-sb · .oc-dn · .oc-dc · .oc-acts-row · .dl-pill) وليس فيها .oc-id
+         حيث تسكن الشارة. ⇒ **الشارة لا تظهر أبداً لدمجٍ من المحرك.**
+
+         ولهذا كانت تظهر في التعيين السيادي وحده: هناك تتغيّر `status` إلى
+         manual_pending فينتقل الطلب بين القوائم، فيُهدَم الكارت ويُعاد إنشاؤه
+         فتُرسم الشارة. أمّا دمج المحرك فيُبقي status = pending_driver ولا يغيّر
+         إلا driverPhone — فيبقى الكارت في مكانه ويُعاد استعماله. */
+      const dblB=isDbl?`<span class="stb" style="background:var(--violet);color:#fff;font-size:.6rem">مزدوج</span>`:"";
+      const sovB=isSov?`<span class="stb stb-v" style="font-size:.6rem">👑</span>`:"";
       const ex=document.getElementById(cardId);
       if(ex){
         if((ex._h||"")!==hash){
           ex.className=`oc ${clsCls} flash`;ex._h=hash;
+          /* [إصلاح] سطر المعرّف يحمل الشارتين — يجب تحديثه كبقيّة العناصر. */
+          const idEl=ex.querySelector(".oc-id");if(idEl)idEl.innerHTML=`#${esc(oId)} ${dblB}${sovB}`;
           const sb=ex.querySelector(".oc-sb");if(sb){sb.className=`stb oc-sb ${sbCls}`;sb.textContent=sbTxt;}
           const dnEl=ex.querySelector(".oc-dn span");if(dnEl)dnEl.textContent=dn;
           const dp2=ex.querySelector(".oc-dc");if(dp2){dp2.innerHTML=bDC(hD,jOId,jDP,isSov,st);}
@@ -2431,8 +2448,6 @@ function renderRadar(){
       const delH=dMins>3&&!hD?`<div class="dl-pill">⚠️ ${dMins} دق</div>`:"";
       const rejH=(!hD&&lastOff)?`<div class="rj-tag">✖ رفضه: ${esc(dN(lastOff))}</div>`:"";
       const rdH=isReady?`<span class="rdy-badge">✔ جاهز</span>`:"";
-      const dblB=isDbl?`<span class="stb" style="background:var(--violet);color:#fff;font-size:.6rem">مزدوج</span>`:"";
-      const sovB=isSov?`<span class="stb stb-v" style="font-size:.6rem">👑</span>`:"";
       const html=`<div id="${cardId}" class="oc ${clsCls} flash">${delH}
         <div class="oc-head" style="${delH?"margin-top:24px":""}">
           <div><div class="oc-id">#${esc(oId)} ${dblB}${sovB}</div><div class="oc-tm">⏰ ${tF}</div></div>
