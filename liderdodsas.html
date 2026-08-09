@@ -24,7 +24,27 @@
      📌 form-action 'self' لا 'none': لو فشلت كتلة السكربت (وهو ما تحمي
         منه هذه السياسة) لعادت النماذج إلى الإرسال الافتراضي، و'self'
         يجعله إعادة تحميل غير ضارّة بدل حجبٍ صامت. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
+<!-- 🔴 [إصلاح · حرج] أُضيف https://*.firebasedatabase.app إلى script-src.
+     ═══════════════════════════════════════════════════════════════════════
+     السبب — رصدته لوحتك بنفسها (١٥٩ خطأً في الكونسول):
+       Loading the script 'https://sufyan-delivery-default-rtdb...firebasedatabase.app/...'
+       violates: script-src 'self' 'unsafe-inline' gstatic unpkg → **blocked**
+
+     مكتبة firebase-database-compat تسقط إلى **long-polling** حين يتعذّر
+     WebSocket (وكيل · جدار حماية · تقلّب شبكة)، وتحقن حينها وسم <script>
+     من نطاق قاعدة البيانات نفسها.
+
+     وكان النطاق مسموحاً في connect-src وحده — فالاتصال مسموح والسكربت محجوب.
+     ⇒ تُحجب كل محاولة · يُعيد فايربيس · يتراكم العدد · ولا بيانات إطلاقاً.
+
+     وهذا يفسّر ما حيّرنا يوماً كاملاً: يظهر فجأة، ويزول وحده حين يعود
+     WebSocket، ويصيب اللوحتين معاً، وتعمل النافذة المتخفّية.
+
+     ⚠️ ولا يوسّع سطح الهجوم: النطاق نطاقُ **قاعدة بياناتك أنت**، وهو
+        مسموحٌ أصلاً في connect-src — أي أن المهاجم الذي يبلغه لا يكسب
+        شيئاً جديداً بهذا السطر.
+     ═══════════════════════════════════════════════════════════════════════ -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://*.firebasedatabase.app https://*.firebaseio.com https://www.gstatic.com https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
 
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
@@ -1617,13 +1637,47 @@ function setupFB(){
 }
 
 /* ② مستمع ذاتي الشفاء: عند الرفض يعالج المصادقة ويعيد الربط */
+/* ═══════════════════════════════════════════════════════════════════════════
+   🔴 [إصلاح] كان الشفاء يُعيد المحاولة **كل ١٥ ثانية بلا حدّ وبلا أثر مرئي**.
+   ───────────────────────────────────────────────────────────────────────────
+   وأنتج ذلك ضررين معاً:
+     ① كل محاولة فاشلة تُطعم حاجز القوة الغاشمة في GAS، وكان يُجدّد نافذته
+        الكاملة مع كل فشل ⇒ الحجب لا ينتهي ما دامت الصفحة مفتوحة.
+     ② الشاشة تعرض **أصفاراً** طوال ذلك — لا شريط ولا رسالة. فيبدو أن
+        البيانات ضاعت، بينما هي سليمة والقراءة وحدها مرفوضة.
+        (وقع فعلاً صباح ٢٠٢٦/٠٨/٠٩: أوقف العمل ساعتين على رقمٍ كاذب.)
+
+   الآن: تراجعٌ أُسّي (٢ ← ٤ ← ٨ … بسقف ١٢٠ ثانية) فلا نُطعم الحاجز، وشريطٌ
+   أحمر يقول ما يجري. والصفر لم يعد يُعرض كأنه حقيقة.
+   ═══════════════════════════════════════════════════════════════════════════ */
+let _healTries = 0;
+function authBanner(show, msg){
+  let b = document.getElementById("authBanner");
+  if (!show) { if (b) b.remove(); return; }
+  if (!b) {
+    b = document.createElement("div");
+    b.id = "authBanner";
+    b.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:99999;background:#b91c1c;color:#fff;"
+      + "padding:10px 14px;text-align:center;font-weight:700;font-size:.85rem;box-shadow:0 2px 10px rgba(0,0,0,.3)";
+    document.body.appendChild(b);
+  }
+  b.innerHTML = msg + ' &nbsp; <span style="text-decoration:underline;cursor:pointer" onclick="location.reload()">أعد التحميل</span>';
+}
+
 function listen(path,cb){
   const ref=db.ref(path);
   const cancel=async(err)=>{
     console.warn("🔒 رُفضت قراءة "+path+":",err&&err.message);
+    _healTries++;
+    authBanner(true, "⚠️ تعذّر تحميل البيانات — الأرقام المعروضة غير صحيحة. جارٍ إعادة الاتصال…");
     const ok=await healAuth();
-    if(ok){setTimeout(()=>listen(path,cb),1200);}
-    else{setTimeout(()=>listen(path,cb),15000);} /* محاولة دورية حتى تعود الجلسة */
+    if(ok){ _healTries=0; authBanner(false); setTimeout(()=>listen(path,cb),1200); }
+    else{
+      /* تراجع أُسّي: ٢ ← ٤ ← ٨ … بسقف دقيقتين. */
+      const wait = Math.min(120000, 2000 * Math.pow(2, Math.min(_healTries,6)));
+      if(_healTries>=4) authBanner(true, "🔒 انتهت جلستك — سجّل الدخول من جديد.");
+      setTimeout(()=>listen(path,cb), wait);
+    }
   };
   ref.on("value",cb,cancel);
   fbL.push({ref,cb});
