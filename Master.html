@@ -2030,9 +2030,42 @@ window.rstDebt=function(type,id,el){
    🎨 والهوية هوية سفيان: بلاطات voyager (لا light_all)، وكابتنٌ بـ--sky
       ومطعمٌ بـ--fire.
    ═══════════════════════════════════════════════════════════════════════════ */
-/* _rtLn: خطوط المسار (كابتن ← مطعم) مفهرسة برقم الطلب — لا بهاتف الكابتن،
-   لأن المزدوج يحمل طلبين فيلزمه خطّان. */
-let _map=null,_drvMk={},_resMk={},_rtLn={},_mapLoading=false,_mapFull=false,_lastLocs={};
+/* _rtLn: خطوط المسار — يُرسم **خطٌّ واحد فقط**، للطلب المُتتبَّع.
+   _focusOrd: رقم الطلب المُتتبَّع حالياً · null = لا مسار على الخريطة.
+   ═══════════════════════════════════════════════════════════════════════════
+   🔴 [إصلاح] كانت الخطوط تُرسم **لكل طلب قبل الاستلام دفعةً واحدة**. وعند
+   ٣٨ طلباً و٤٩ كابتناً صارت الخريطة شبكةً متقاطعة لا تُقرأ — والمعلومة التي
+   تُعرض كلها دفعةً واحدة تساوي صفر معلومة.
+   الآن: الخريطة نظيفة افتراضياً، والمسار يظهر عند الضغط على 📍 في كارت الطلب،
+   وما عداه يُخفت — فترى المسار الواحد بوضوح تامّ.
+   ═══════════════════════════════════════════════════════════════════════════ */
+let _map=null,_drvMk={},_resMk={},_rtLn={},_focusOrd=null,_focusPair={d:null,r:null},_mapLoading=false,_mapFull=false,_lastLocs={};
+
+/* شارة عائمة تقول ما يُتتبَّع الآن، وزرّها يُنهي التتبّع. */
+function focusChip(orderId){
+  let c=document.getElementById("mapFocusChip");
+  if(!orderId){ if(c)c.remove(); return; }
+  const wrap=document.getElementById("mapWrap")||document.getElementById("adminMap");
+  if(!wrap) return;
+  if(getComputedStyle(wrap).position==="static") wrap.style.position="relative";
+  if(!c){
+    c=document.createElement("div"); c.id="mapFocusChip";
+    c.style.cssText="position:absolute;top:10px;left:10px;z-index:800;background:#0f172a;color:#fff;"
+      +"padding:7px 12px;border-radius:999px;font-size:.72rem;font-weight:800;display:flex;"
+      +"align-items:center;gap:8px;box-shadow:0 4px 14px rgba(0,0,0,.28);pointer-events:auto";
+    wrap.appendChild(c);
+  }
+  c.innerHTML='<span>🎯 تتبّع #'+esc(String(orderId))+'</span>'
+    +'<span style="cursor:pointer;background:#334155;border-radius:999px;width:18px;height:18px;'
+    +'display:inline-flex;align-items:center;justify-content:center;line-height:1" '
+    +'onclick="clearFocus()">✕</span>';
+}
+
+window.clearFocus=function(){
+  _focusOrd=null; _focusPair={d:null,r:null};
+  focusChip(null);
+  if(_map) paintMap();
+};
 
 function _loadScript(src){return new Promise((ok,no)=>{const t=document.createElement('script');
   t.src=src;t.onload=ok;t.onerror=()=>no(new Error('فشل تحميل '+src));document.head.appendChild(t);});}
@@ -2083,23 +2116,48 @@ function paintMap(){
       else _drvMk[ph]=L.marker(pos,{icon:L.divIcon({className:'',
         html:'<div class="drv-mk">🛵</div>',iconSize:[30,30],iconAnchor:[15,15]})})
         .bindPopup('<b>'+esc(d.name||ph)+'</b>').addTo(_map);
+      /* 🎯 عند التتبّع: الكابتن المعنيّ كامل الوضوح وما عداه يخفت — فالعين
+         تذهب إلى المسار بلا أن نُخفي السياق حوله. */
+      try{ _drvMk[ph].setOpacity(_focusOrd ? (_focusPair.d===ph ? 1 : .28) : 1); }catch(_){}
     });
     Object.keys(_drvMk).forEach(ph=>{if(!seen.has(ph)){_map.removeLayer(_drvMk[ph]);delete _drvMk[ph];}});
 
     /* ② المطاعم — التي لها طلبٌ حيّ فقط. عرض الأربعين كلها يملأ الشاشة
        بنقاطٍ لا تعني شيئاً، والمدير يريد أين يقع الشغل الآن. */
     const live=(typeof liveOrd!=='undefined'&&liveOrd)?liveOrd:[];
-    const names=new Set(live.map(o=>o&&o[O.RES]).filter(Boolean));
-    const rseen=new Set();
-    names.forEach(n=>{
-      const r=((gD&&gD.restaurants)||[]).find(x=>x[R.NAME]===n);
-      if(!r||!r[R.LAT]||!r[R.LNG])return;
-      rseen.add(n);
+    /* ═══════════════════════════════════════════════════════════════════════
+       🔴 [إصلاح] كانت المطابقة بالاسم: gD.restaurants.find(x => x[R.NAME] === n)
+       ───────────────────────────────────────────────────────────────────────
+       وهي هشّة بطبعها: مقارنة نصّية صارمة بلا trim ولا تطبيع. فمسافةٌ زائدة
+       في الشيت، أو رمزٌ زخرفي، أو اسمٌ دهسه orderSanitizer من المرآة بصيغة
+       مختلفة قليلاً — كلٌّ منها يُسقط العلامة **صامتاً** ولا يظهر خطأ.
+
+       والملف نفسه يحمل الجواب منذ 🩹[خ٣٣]: `findRes(o)` تطابق بالهاتف أولاً
+       (RESPH = المفتاح الحقيقي) وتسقط إلى الاسم احتياطاً. وهي مستعملة في
+       بقيّة اللوحة — والخريطة وحدها بقيت على المطابقة الهشّة.
+
+       ⇒ الآن نُفهرس **بالطلبات** لا بالأسماء، ونمرّ عبر findRes نفسها.
+         فيتوحّد سلوك الخريطة مع اللوحة، ويصير الهاتف مفتاحاً واحداً في كليهما.
+       ═══════════════════════════════════════════════════════════════════════ */
+    const rseen=new Set(), rByKey={};
+    live.forEach(o=>{
+      if(!o) return;
+      const r=(typeof findRes==='function')?findRes(o)
+             :((gD&&gD.restaurants)||[]).find(x=>x[R.NAME]===o[O.RES]);
+      if(!r||!r[R.LAT]||!r[R.LNG]) return;
+      const key=(typeof nP==='function'?nP(r[R.PHONE]):String(r[R.PHONE]||""))||String(r[R.NAME]||"");
+      if(!key) return;
+      rByKey[key]={r:r,name:r[R.NAME]||o[O.RES]||"مطعم"};
+    });
+    Object.keys(rByKey).forEach(key=>{
+      const e=rByKey[key], r=e.r;
+      rseen.add(key);
       const pos=[parseFloat(r[R.LAT]),parseFloat(r[R.LNG])];
-      if(_resMk[n])_resMk[n].setLatLng(pos);
-      else _resMk[n]=L.marker(pos,{icon:L.divIcon({className:'',
+      if(_resMk[key])_resMk[key].setLatLng(pos);
+      else _resMk[key]=L.marker(pos,{icon:L.divIcon({className:'',
         html:'<div class="res-mk">🍽</div>',iconSize:[24,24],iconAnchor:[12,12]})})
-        .bindPopup('<b>'+esc(n)+'</b>').addTo(_map);
+        .bindPopup('<b>'+esc(e.name)+'</b>').addTo(_map);
+      try{ _resMk[key].setOpacity(_focusOrd ? (_focusPair.r===key ? 1 : .25) : 1); }catch(_){}
     });
     Object.keys(_resMk).forEach(n=>{if(!rseen.has(n)){_map.removeLayer(_resMk[n]);delete _resMk[n];}});
 
@@ -2122,34 +2180,49 @@ function paintMap(){
        ═══════════════════════════════════════════════════════════════════════ */
     const PRE_PICKUP = new Set(["pending_driver","manual_pending","accepted","arrived_at_res"]);
     const lseen = new Set();
-    live.forEach(o=>{
-      if(!o) return;
-      const st = String(o[O.STATUS]||"").toLowerCase().trim();
-      if(!PRE_PICKUP.has(st)) return;
-      const dp = o[O.DRV];
-      if(!dp || !seen.has(dp)) return;                 // كابتن غير معروض ⇒ لا خطّ
-      const d = _lastLocs[dp]; if(!d) return;
-      const r = ((gD&&gD.restaurants)||[]).find(x=>x[R.NAME]===o[O.RES]);
-      if(!r||!r[R.LAT]||!r[R.LNG]) return;
+    _focusPair = { d:null, r:null };
 
-      const pts=[[parseFloat(d.lat),parseFloat(d.lng)],[parseFloat(r[R.LAT]),parseFloat(r[R.LNG])]];
-      /* 🎨 اللون يحكي الحالة: برتقالي = يرنّ ولم يُقبل · أزرق = في الطريق
-         · بنفسجي = وصل المطعم وينتظر الطعام. */
-      const col = (st==="pending_driver"||st==="manual_pending") ? "#f59e0b"
-                : (st==="arrived_at_res") ? "#7c3aed" : "#2563eb";
-      const dash = (st==="pending_driver"||st==="manual_pending") ? "6,6" : null;
-      const key  = o[O.ID];
-      lseen.add(key);
-      if(_rtLn[key]){
-        _rtLn[key].setLatLngs(pts);
-        if(_rtLn[key]._col!==col){ _rtLn[key].setStyle({color:col,dashArray:dash}); _rtLn[key]._col=col; }
-      } else {
-        _rtLn[key]=L.polyline(pts,{color:col,weight:3,opacity:.75,dashArray:dash})
-          .bindPopup('<b>#'+esc(key)+'</b><br>'+esc(d.name||dp)+' ← '+esc(o[O.RES]))
-          .addTo(_map);
-        _rtLn[key]._col=col;
+    /* 🎯 خطٌّ واحد فقط: الطلب المُتتبَّع. ولا شيء إن لم يُضغط 📍. */
+    const fo = _focusOrd ? live.find(o=>o && String(o[O.ID])===String(_focusOrd)) : null;
+    if(fo){
+      const st = String(fo[O.STATUS]||"").toLowerCase().trim();
+      const dp = fo[O.DRV];
+      const d  = (dp && _lastLocs[dp]) ? _lastLocs[dp] : null;
+      const r  = (typeof findRes==='function') ? findRes(fo)
+               : ((gD&&gD.restaurants)||[]).find(x=>x[R.NAME]===fo[O.RES]);
+      const rKey = r ? ((typeof nP==='function'?nP(r[R.PHONE]):String(r[R.PHONE]||""))||String(r[R.NAME]||"")) : null;
+      _focusPair = { d: (d&&seen.has(dp))?dp:null, r: rKey };
+
+      /* بعد picked_up غادر الكابتن المطعم، فخطٌّ إليه يكذب — نُبقي التركيز
+         على العلامتين ولا نرسم خطاً. */
+      if(d && seen.has(dp) && r && r[R.LAT] && r[R.LNG] && PRE_PICKUP.has(st)){
+        const pts=[[parseFloat(d.lat),parseFloat(d.lng)],[parseFloat(r[R.LAT]),parseFloat(r[R.LNG])]];
+        const col = (st==="pending_driver"||st==="manual_pending") ? "#f59e0b"
+                  : (st==="arrived_at_res") ? "#7c3aed" : "#2563eb";
+        const dash = (st==="pending_driver"||st==="manual_pending") ? "10,8" : null;
+
+        /* غلافٌ أبيض تحت الخطّ الملوّن — يفصله عن ألوان الخريطة فيُقرأ في
+           لمحة. أسلوبٌ قياسي في خرائط الملاحة، وثمنه طبقة واحدة. */
+        const kC = "__case", kL = String(_focusOrd);
+        if(_rtLn[kC]) _rtLn[kC].setLatLngs(pts);
+        else _rtLn[kC]=L.polyline(pts,{color:"#ffffff",weight:9,opacity:.95,lineCap:"round"}).addTo(_map);
+        lseen.add(kC);
+
+        if(_rtLn[kL]){
+          _rtLn[kL].setLatLngs(pts);
+          if(_rtLn[kL]._col!==col){ _rtLn[kL].setStyle({color:col,dashArray:dash}); _rtLn[kL]._col=col; }
+        } else {
+          _rtLn[kL]=L.polyline(pts,{color:col,weight:4.5,opacity:1,dashArray:dash,lineCap:"round"})
+            .bindPopup('<b>#'+esc(kL)+'</b><br>'+esc(d.name||dp)+' ← '+esc(fo[O.RES]))
+            .addTo(_map);
+          _rtLn[kL]._col=col;
+        }
+        try{ _rtLn[kL].bringToFront(); }catch(_){}
+        lseen.add(kL);
       }
-    });
+    }
+    /* الطلب أُنجز أو اختفى ⇒ يُنهى التتبّع من نفسه بلا تدخّل. */
+    if(_focusOrd && !fo){ _focusOrd=null; focusChip(null); }
     Object.keys(_rtLn).forEach(k=>{if(!lseen.has(k)){_map.removeLayer(_rtLn[k]);delete _rtLn[k];}});
   }catch(e){console.warn('[سفيان] paintMap:',e&&e.message);}
 }
@@ -2580,51 +2653,55 @@ function bBtns(hD,jOId,jDP,jRN,jPU,isReady,sbCls,sbTxt){
       والزرّ نفسه لا يظهر أصلاً إلا لطلبٍ له كابتن (انظر bBtns).
    ⚠️ ولا خطّ إلى الزبون: النظام لا يحفظ إحداثياته — الوجهة نصٌّ في area.
    ═══════════════════════════════════════════════════════════════════════════ */
-let _trkTimer=null;
 async function trackOrder(oId,dp,rn,btn){
+  /* 🔁 ضغطةٌ ثانية على الطلب نفسه = إنهاء التتبّع. الزرّ مفتاحٌ لا أمرٌ
+     أحادي الاتجاه — فلا يحتاج المستخدم أن يبحث عن طريقة الإلغاء. */
+  if(_focusOrd && String(_focusOrd)===String(oId)){ clearFocus(); return; }
+
   const old = btn ? btn.textContent : null;
   if(btn){ btn.disabled=true; btn.textContent="⏳"; }
   try{
     if(!_map){ await initMapLazy(); }
-    /* initMapLazy تُرجع فوراً إن كانت جارية — ننتظر جاهزيتها بحدٍّ أقصى ٦ ثوانٍ. */
     for(let i=0;i<60 && !_map;i++) await new Promise(r=>setTimeout(r,100));
     if(!_map){ alert("تعذّر تحميل الخريطة — أعد المحاولة."); return; }
 
     const d=_lastLocs&&_lastLocs[dp];
     const dOk=d&&d.lat&&d.lng&&(!d.last_update||(Date.now()-new Date(d.last_update).getTime())<=420000);
-    const r=((gD&&gD.restaurants)||[]).find(x=>x[R.NAME]===rn);
+    const r=(typeof findResByName==='function')?findResByName(rn)
+           :((gD&&gD.restaurants)||[]).find(x=>x[R.NAME]===rn);
     const rOk=r&&r[R.LAT]&&r[R.LNG];
 
-    if(!dOk&&!rOk){ alert("لا موقع للكابتن ولا للمطعم — لا مسار لعرضه."); return; }
-    if(!dOk){ alert("موقع الكابتن غير متاح (نبضته أقدم من ٧ دقائق). عُرض المطعم وحده."); }
-    if(!rOk){ alert("لا إحداثيات لهذا المطعم — راجع «إدارة المطاعم». عُرض الكابتن وحده."); }
+    /* رسالةٌ واحدة هادئة بدل ثلاث نوافذ — والخريطة تُفتح على ما هو متاح. */
+    if(!dOk&&!rOk){ toast("لا موقع للكابتن ولا للمطعم — لا مسار لعرضه.","e"); return; }
+    if(!dOk) toast("موقع الكابتن غير متاح (نبضته أقدم من ٧ دقائق) — عُرض المطعم وحده.","w");
+    else if(!rOk) toast("لا إحداثيات لهذا المطعم — اضبطها من «إدارة المطاعم».","w");
 
-    const wrap=document.getElementById('adminMap');
+    _focusOrd = oId;
+    focusChip(oId);
+    paintMap();                                   /* يرسم الخطّ ويُخفت ما عداه */
+
+    const wrap=document.getElementById('mapWrap')||document.getElementById('adminMap');
     if(wrap&&wrap.scrollIntoView) wrap.scrollIntoView({behavior:"smooth",block:"center"});
-    setTimeout(()=>{try{_map.invalidateSize();}catch(_){}} ,250);
 
     const pts=[];
     if(dOk) pts.push([parseFloat(d.lat),parseFloat(d.lng)]);
     if(rOk) pts.push([parseFloat(r[R.LAT]),parseFloat(r[R.LNG])]);
     setTimeout(()=>{
       try{
-        if(pts.length>1) _map.fitBounds(L.latLngBounds(pts),{padding:[60,60],maxZoom:16});
-        else _map.setView(pts[0],16);
+        _map.invalidateSize();
+        /* حركةٌ ناعمة لا قفزة — flyTo/flyToBounds تُبقي العين متّصلة بالمكان. */
+        if(pts.length>1){
+          const b=L.latLngBounds(pts);
+          if(_map.flyToBounds) _map.flyToBounds(b,{padding:[70,70],maxZoom:16,duration:.8});
+          else _map.fitBounds(b,{padding:[70,70],maxZoom:16});
+        } else if(pts.length){
+          if(_map.flyTo) _map.flyTo(pts[0],16,{duration:.8}); else _map.setView(pts[0],16);
+        }
       }catch(_){}
-      /* إبراز مؤقّت: الخطّ موجود أصلاً بلونه الدالّ على الحالة — نضخّمه
-         عشر ثوانٍ ثم نعيده، فلا نُفقد اللون معناه. */
-      const ln=_rtLn&&_rtLn[oId];
-      if(ln){
-        try{
-          ln.setStyle({weight:7,opacity:1}); ln.openPopup(); ln.bringToFront();
-          if(_trkTimer)clearTimeout(_trkTimer);
-          _trkTimer=setTimeout(()=>{try{ln.setStyle({weight:3,opacity:.75});}catch(_){}} ,10000);
-        }catch(_){}
-      }
-    },400);
+    },260);
   }catch(e){
     console.warn('[سفيان] trackOrder:',e&&e.message);
-    alert("تعذّر فتح المسار.");
+    toast("تعذّر فتح المسار.","e");
   }finally{
     if(btn){ btn.disabled=false; btn.textContent=old||"📍"; }
   }
