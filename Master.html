@@ -372,6 +372,9 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
 .b-ok{background:var(--jade-l);color:var(--jade);}
 .b-del{background:var(--rose-l);color:var(--rose);}
 .b-img{background:var(--sky-l);color:var(--sky-d);}
+/* 📍 زر المسار — بنفسجي كخطوط الخريطة، فالعين تربط الزرّ بما يفتحه. */
+.b-map{background:var(--violet-l,#f5f3ff);color:var(--violet,#7c3aed);}
+.b-map:disabled{opacity:.55;cursor:progress}
 .b-tr{background:var(--sky-l);color:var(--sky-d);padding:0 10px;
   width:auto;border-radius:9px;font-size:.72rem;font-weight:800;
   display:inline-flex;align-items:center;gap:4px;height:30px;
@@ -1284,13 +1287,41 @@ function healAdminAuth(){
 
 /* 🩹 مستمع ذاتي الشفاء: mkRef دالة تُعيد ref/query (لدعم limitToLast عند
    إعادة الربط). فايربيس يفصل المستمع المرفوض نهائياً — هنا نشفي
-   المصادقة ونعيد الربط بأنفسنا. */
+   المصادقة ونعيد الربط بأنفسنا.
+   ═══════════════════════════════════════════════════════════════════════════
+   🔴 [إصلاح] كان يُعيد المحاولة **كل ١٥ ثانية بلا حدّ وبلا أثر مرئي**، فأنتج:
+     ① إطعاماً مستمرّاً لحاجز القوة الغاشمة في GAS — وكان يُجدّد نافذته مع كل
+        فشل ⇒ الحجب لا ينتهي ما دامت الصفحة مفتوحة.
+     ② شاشةً تعرض **أصفاراً** طوال ذلك بلا أي تنبيه — فيبدو أن البيانات ضاعت
+        بينما هي سليمة والقراءة وحدها مرفوضة.
+   الآن: تراجعٌ أُسّي وشريطٌ أحمر يقول ما يجري.
+   ═══════════════════════════════════════════════════════════════════════════ */
+let _healTries=0;
+function authBanner(show,msg){
+  let b=document.getElementById("authBanner");
+  if(!show){ if(b)b.remove(); return; }
+  if(!b){
+    b=document.createElement("div"); b.id="authBanner";
+    b.style.cssText="position:fixed;top:0;left:0;right:0;z-index:99999;background:#b91c1c;color:#fff;"
+      +"padding:10px 14px;text-align:center;font-weight:700;font-size:.85rem;box-shadow:0 2px 10px rgba(0,0,0,.3)";
+    document.body.appendChild(b);
+  }
+  b.innerHTML=msg+' &nbsp; <span style="text-decoration:underline;cursor:pointer" onclick="location.reload()">أعد التحميل</span>';
+}
+
 function listen(mkRef,cb){
   const ref=mkRef();
   const cancel=async(err)=>{
     console.warn("🔒 رُفضت القراءة:",err&&err.message);
+    _healTries++;
+    authBanner(true,"⚠️ تعذّر تحميل البيانات — الأرقام المعروضة غير صحيحة. جارٍ إعادة الاتصال…");
     const ok=await healAdminAuth();
-    setTimeout(()=>listen(mkRef,cb),ok?1200:15000);
+    if(ok){ _healTries=0; authBanner(false); setTimeout(()=>listen(mkRef,cb),1200); }
+    else{
+      const wait=Math.min(120000,2000*Math.pow(2,Math.min(_healTries,6)));
+      if(_healTries>=4) authBanner(true,"🔒 انتهت جلستك — سجّل الدخول من جديد.");
+      setTimeout(()=>listen(mkRef,cb),wait);
+    }
   };
   ref.on("value",cb,cancel);
   fbL.push({ref,cb});
@@ -1999,7 +2030,9 @@ window.rstDebt=function(type,id,el){
    🎨 والهوية هوية سفيان: بلاطات voyager (لا light_all)، وكابتنٌ بـ--sky
       ومطعمٌ بـ--fire.
    ═══════════════════════════════════════════════════════════════════════════ */
-let _map=null,_drvMk={},_resMk={},_mapLoading=false,_mapFull=false,_lastLocs={};
+/* _rtLn: خطوط المسار (كابتن ← مطعم) مفهرسة برقم الطلب — لا بهاتف الكابتن،
+   لأن المزدوج يحمل طلبين فيلزمه خطّان. */
+let _map=null,_drvMk={},_resMk={},_rtLn={},_mapLoading=false,_mapFull=false,_lastLocs={};
 
 function _loadScript(src){return new Promise((ok,no)=>{const t=document.createElement('script');
   t.src=src;t.onload=ok;t.onerror=()=>no(new Error('فشل تحميل '+src));document.head.appendChild(t);});}
@@ -2069,6 +2102,55 @@ function paintMap(){
         .bindPopup('<b>'+esc(n)+'</b>').addTo(_map);
     });
     Object.keys(_resMk).forEach(n=>{if(!rseen.has(n)){_map.removeLayer(_resMk[n]);delete _resMk[n];}});
+
+    /* ═══════════════════════════════════════════════════════════════════════
+       ③ خطوط المسار — كابتن ← المطعم الذي يقصده.
+       ───────────────────────────────────────────────────────────────────────
+       تُرسم للطلبات **قبل الاستلام فقط**. فبعد picked_up يكون الكابتن قد غادر
+       المطعم متجهاً للزبون، وخطٌّ يشير إلى المطعم حينها **يكذب** — والخريطة
+       التي تكذب أسوأ من خريطة ناقصة (المبدأ نفسه المطبَّق أعلاه على النبضة
+       الأقدم من سبع دقائق).
+
+       ⚠️ ولا خطّ إلى الزبون: النظام لا يحفظ إحداثياته إطلاقاً — الوجهة نصٌّ
+          في حقل area لا إحداثيات. فالخطّ ينتهي عند المطعم لأن هذا حدّ ما نعرفه.
+
+       ⚠️ والخطّ لا يُرسم إلا إذا كانت علامة الكابتن معروضة (seen)، وإلا تدلّى
+          من موقعٍ قديم لكابتن مقطوع.
+
+       ⚠️ ومفتاح الخطّ هو **رقم الطلب** لا هاتف الكابتن: الكابتن المزدوج يحمل
+          طلبين، فيُرسم له خطّان — وهو أوضح ما يُظهر الدمج على الخريطة.
+       ═══════════════════════════════════════════════════════════════════════ */
+    const PRE_PICKUP = new Set(["pending_driver","manual_pending","accepted","arrived_at_res"]);
+    const lseen = new Set();
+    live.forEach(o=>{
+      if(!o) return;
+      const st = String(o[O.STATUS]||"").toLowerCase().trim();
+      if(!PRE_PICKUP.has(st)) return;
+      const dp = o[O.DRV];
+      if(!dp || !seen.has(dp)) return;                 // كابتن غير معروض ⇒ لا خطّ
+      const d = _lastLocs[dp]; if(!d) return;
+      const r = ((gD&&gD.restaurants)||[]).find(x=>x[R.NAME]===o[O.RES]);
+      if(!r||!r[R.LAT]||!r[R.LNG]) return;
+
+      const pts=[[parseFloat(d.lat),parseFloat(d.lng)],[parseFloat(r[R.LAT]),parseFloat(r[R.LNG])]];
+      /* 🎨 اللون يحكي الحالة: برتقالي = يرنّ ولم يُقبل · أزرق = في الطريق
+         · بنفسجي = وصل المطعم وينتظر الطعام. */
+      const col = (st==="pending_driver"||st==="manual_pending") ? "#f59e0b"
+                : (st==="arrived_at_res") ? "#7c3aed" : "#2563eb";
+      const dash = (st==="pending_driver"||st==="manual_pending") ? "6,6" : null;
+      const key  = o[O.ID];
+      lseen.add(key);
+      if(_rtLn[key]){
+        _rtLn[key].setLatLngs(pts);
+        if(_rtLn[key]._col!==col){ _rtLn[key].setStyle({color:col,dashArray:dash}); _rtLn[key]._col=col; }
+      } else {
+        _rtLn[key]=L.polyline(pts,{color:col,weight:3,opacity:.75,dashArray:dash})
+          .bindPopup('<b>#'+esc(key)+'</b><br>'+esc(d.name||dp)+' ← '+esc(o[O.RES]))
+          .addTo(_map);
+        _rtLn[key]._col=col;
+      }
+    });
+    Object.keys(_rtLn).forEach(k=>{if(!lseen.has(k)){_map.removeLayer(_rtLn[k]);delete _rtLn[k];}});
   }catch(e){console.warn('[سفيان] paintMap:',e&&e.message);}
 }
 
@@ -2477,13 +2559,77 @@ function bBtns(hD,jOId,jDP,jRN,jPU,isReady,sbCls,sbTxt){
   if(isReady)h+=`<span class="rdy-badge" style="font-size:.58rem;flex-shrink:0">✔ جاهز</span>`;
   h+=`</div>`;
   h+=`<div style="display:flex;align-items:center;gap:4px;margin-top:5px">`;
-  /* 🗑️ زر «📍 مسار» أُزيل مع الخريطة الحيّة — لم يعد له ما يفتحه. */
+  /* 📍 زر المسار — أُزيل يوم أُزيلت الخريطة الحيّة («لم يعد له ما يفتحه»)،
+     وعاد الآن مع عودتها. يظهر **فقط حين للطلب كابتن حقيقي**: بلا كابتن لا
+     مسار أصلاً، وزرٌّ يفتح خريطةً بنقطة واحدة يَعِد بما لا يعطيه. */
+  if(hD)h+=`<button class="ob b-map" onclick="trackOrder('${jOId}','${jDP}','${jRN}',this)" title="تتبّع المسار">📍</button>`;
   if(jPU)h+=`<button class="ob b-img" onclick="opImg('${jPU}')" title="صورة">🖼</button>`;
   h+=`<button class="ob b-ok" onclick="forceComplete('${jOId}',this)" title="إكمال">✓</button>`;
   h+=`<button class="ob b-del" onclick="delOrder('${jOId}',this)" title="إلغاء">✕</button>`;
   h+=`</div>`;
   return h;
 }
+/* ═══════════════════════════════════════════════════════════════════════════
+   📍 trackOrder — يفتح الخريطة على مسار طلبٍ بعينه.
+   ───────────────────────────────────────────────────────────────────────────
+   يفعل أربعة أشياء بالترتيب: يحمّل الخريطة إن لم تُحمّل، يمرّر الشاشة إليها،
+   يضبط الإطار على الكابتن ومطعمه معاً، ثم يُبرز خطّ ذلك الطلب دون غيره.
+
+   ⚠️ ويرفض بوضوح بدل أن يفتح خريطةً ناقصة: كابتنٌ بلا نبضة حديثة، أو مطعمٌ
+      بلا إحداثيات، كلاهما يُنتج «مساراً» من نقطة واحدة — وهو وعدٌ كاذب.
+      والزرّ نفسه لا يظهر أصلاً إلا لطلبٍ له كابتن (انظر bBtns).
+   ⚠️ ولا خطّ إلى الزبون: النظام لا يحفظ إحداثياته — الوجهة نصٌّ في area.
+   ═══════════════════════════════════════════════════════════════════════════ */
+let _trkTimer=null;
+async function trackOrder(oId,dp,rn,btn){
+  const old = btn ? btn.textContent : null;
+  if(btn){ btn.disabled=true; btn.textContent="⏳"; }
+  try{
+    if(!_map){ await initMapLazy(); }
+    /* initMapLazy تُرجع فوراً إن كانت جارية — ننتظر جاهزيتها بحدٍّ أقصى ٦ ثوانٍ. */
+    for(let i=0;i<60 && !_map;i++) await new Promise(r=>setTimeout(r,100));
+    if(!_map){ alert("تعذّر تحميل الخريطة — أعد المحاولة."); return; }
+
+    const d=_lastLocs&&_lastLocs[dp];
+    const dOk=d&&d.lat&&d.lng&&(!d.last_update||(Date.now()-new Date(d.last_update).getTime())<=420000);
+    const r=((gD&&gD.restaurants)||[]).find(x=>x[R.NAME]===rn);
+    const rOk=r&&r[R.LAT]&&r[R.LNG];
+
+    if(!dOk&&!rOk){ alert("لا موقع للكابتن ولا للمطعم — لا مسار لعرضه."); return; }
+    if(!dOk){ alert("موقع الكابتن غير متاح (نبضته أقدم من ٧ دقائق). عُرض المطعم وحده."); }
+    if(!rOk){ alert("لا إحداثيات لهذا المطعم — راجع «إدارة المطاعم». عُرض الكابتن وحده."); }
+
+    const wrap=document.getElementById('adminMap');
+    if(wrap&&wrap.scrollIntoView) wrap.scrollIntoView({behavior:"smooth",block:"center"});
+    setTimeout(()=>{try{_map.invalidateSize();}catch(_){}} ,250);
+
+    const pts=[];
+    if(dOk) pts.push([parseFloat(d.lat),parseFloat(d.lng)]);
+    if(rOk) pts.push([parseFloat(r[R.LAT]),parseFloat(r[R.LNG])]);
+    setTimeout(()=>{
+      try{
+        if(pts.length>1) _map.fitBounds(L.latLngBounds(pts),{padding:[60,60],maxZoom:16});
+        else _map.setView(pts[0],16);
+      }catch(_){}
+      /* إبراز مؤقّت: الخطّ موجود أصلاً بلونه الدالّ على الحالة — نضخّمه
+         عشر ثوانٍ ثم نعيده، فلا نُفقد اللون معناه. */
+      const ln=_rtLn&&_rtLn[oId];
+      if(ln){
+        try{
+          ln.setStyle({weight:7,opacity:1}); ln.openPopup(); ln.bringToFront();
+          if(_trkTimer)clearTimeout(_trkTimer);
+          _trkTimer=setTimeout(()=>{try{ln.setStyle({weight:3,opacity:.75});}catch(_){}} ,10000);
+        }catch(_){}
+      }
+    },400);
+  }catch(e){
+    console.warn('[سفيان] trackOrder:',e&&e.message);
+    alert("تعذّر فتح المسار.");
+  }finally{
+    if(btn){ btn.disabled=false; btn.textContent=old||"📍"; }
+  }
+}
+
 function bDC(hD,jOId,jDP,isSov,st){
   let h="";
   if(hD)h+=`<button class="cb-sm" onclick="window.open('tel:${jDP}')">📞</button>`;
