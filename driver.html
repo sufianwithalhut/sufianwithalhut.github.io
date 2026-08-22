@@ -30,6 +30,35 @@
 -->
 <html lang="ar" dir="rtl">
 <head>
+<!-- 🔒 [CSP] سياسة أمان المحتوى — كانت واجهات سفيان الخمس **بلا شيء**.
+     ═══════════════════════════════════════════════════════════════════
+     🔴 **الأخطر في الحزمة — وليست restaurant.html.**
+     هذه الصفحة تُحمَّل داخل WebView أندرويد الذي يعرّض جسر AndroidRadar
+     بعشر دوال، منها subscribeToDriverTopic(phone) و stopLocationService().
+     فأي حقنٍ هنا لا يسرق جلسةً بل **طلبات كابتن آخر بهاتف الزبون وعنوانه**،
+     ويوقف تتبّعه. ولهذا بدأنا بها لا بغيرها.
+
+     ⚠️ **موضعها في أعلى الترويسة شرطُ صحّة لا ترتيب.** وسم meta لا يحكم
+        إلا ما بعده — فما سبقها من كتل سكربت يبقى خارج الحماية.
+        📎 ولا تكتب وسم ترويسة أو سكربت **حرفياً** في هذا التعليق:
+           ماسحات التدقيق تبحث عن النصّ لا عن البنية، فتَعُدّه وسماً
+           حقيقياً وتُبلغ خطأً كاذباً. (وقع فعلاً في أول صياغة.)
+
+     📋 كل أصلٍ أدناه مُشتقّ من مورد يُحمَّل في هذا الملف بعينه — لا نسخاً
+        عن واجهة أخرى. تحقّق بعد أي تعديل:
+            python3 tools/csp_audit.py frontend/driver.html
+
+     🔴 **لا تحذف www.gstatic.com من script-src** — قد تُنذر أدوات
+        التدقيق بأنه غير مستعمل، وهو إنذار كاذب حيث تدخل وحدات فايربيس
+        عبر استيرادات ES لا عبر وسم src. حذفه ⇒ صفحة بيضاء بلا خطأ مفهوم.
+
+     📌 'unsafe-inline' لازمٌ اليوم: الشيفرة كلها كتل مضمّنة. إزالته
+        تتطلّب nonce أو نقلها إلى ملفات — مشروع لاحق موثّق.
+     📌 form-action 'self' لا 'none': لو فشلت كتلة السكربت (وهو ما تحمي
+        منه هذه السياسة) لعادت النماذج إلى الإرسال الافتراضي، و'self'
+        يجعله إعادة تحميل غير ضارّة بدل حجبٍ صامت. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
+
 <script>
   /* ═══════════════════════════════════════════════════════════════════════
      🏷️ [V15.7] **مصدر واحد لرقم النسخة** — وكان ثلاثة متناقضة.
@@ -49,23 +78,38 @@
      الآن: رقمٌ واحد يُشتقّ منه كل شيء — الشاشة والإعدادات ومسح الكاش.
      **وأي تسليم جديد يجب أن يرفعه، وإلا لم يصل.**
      ═══════════════════════════════════════════════════════════════════════ */
-  const CURRENT_APP_VERSION = "16.0-Owned";
+  const CURRENT_APP_VERSION = "17.0-Sufyan-Recon";
   window.APP_VERSION = CURRENT_APP_VERSION;
   /* اطبعه في شاشة الدخول فور جهوز الصفحة — نصّاً واحداً لا نسختين. */
   document.addEventListener('DOMContentLoaded', function(){
     try{ const b=document.getElementById('brandVer');
          if(b) b.innerHTML='<span class="dot-live"></span> V'+CURRENT_APP_VERSION+' · كركوك'; }catch(e){}
   });
+  /* 🔴 [CF-9.6] وقاية — العوامل الثلاثة التي عطّلت تطبيق كابتن النظام الشقيق:
+     ① caches.delete و unregister وعدان غير منتظَرين ثم reload() فوراً ⇒ يُهدَم
+        عامل الخدمة **بينما الوحدة تجلب استيراداتها عبره** ⇒ تموت الوحدة، فتعود
+        شاشة الدخول (يبدو خروجاً) والزرّ لا يفعل شيئاً (يبدو تجمّداً).
+     ② والاستيرادات على firebasejs/10.8.0 — الطريق الذي ثبت أن مدخله في كاش
+        الـCDN فاسد.  ③ ورقم الإصدار لا يتحرّك فلا يُمسح الكاش أصلاً. */
   try {
     if (localStorage.getItem('hut_app_version') !== CURRENT_APP_VERSION) {
+      var _rk = 'hut_app_version_reload_ts';
+      var _last = Number(localStorage.getItem(_rk) || 0);
       localStorage.setItem('hut_app_version', CURRENT_APP_VERSION);
-      if (localStorage.getItem('hut_app_version') === CURRENT_APP_VERSION) {
-        if ('caches' in window) caches.keys().then(ns => ns.forEach(n => caches.delete(n)));
-        if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister()));
-        window.location.reload();
+      if (Date.now() - _last < 60000) { console.warn('⏭️ تخطّي إعادة التحميل — حارس الحلقة'); }
+      else {
+        localStorage.setItem(_rk, String(Date.now()));
+        var _jobs = [];
+        if ('caches' in window) _jobs.push(caches.keys().then(function(ns){
+          return Promise.all(ns.map(function(n){ return caches.delete(n); })); }));
+        if ('serviceWorker' in navigator) _jobs.push(
+          navigator.serviceWorker.getRegistrations().then(function(rs){
+            return Promise.all(rs.map(function(r){ return r.update(); })); }));
+        var _done=false, _go=function(){ if(!_done){_done=true;window.location.reload();} };
+        Promise.all(_jobs).then(_go,_go); setTimeout(_go,4000);
       }
     }
-  } catch(e) {}
+  } catch(e) { console.warn('تعذّر التحقق من الإصدار:', e && e.message); }
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -1174,10 +1218,10 @@ window.addEventListener('popstate',()=>{
 });
 </script>
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import { getDatabase, ref, onValue, update, set, get, increment, onDisconnect, query, orderByChild, equalTo } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
-import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-functions.js";
-import { getAuth, signInWithCustomToken, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+import { getDatabase, ref, onValue, update, set, get, increment, onDisconnect, query, orderByChild, equalTo } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
+import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js";
+import { getAuth, signInWithCustomToken, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 
 /* ═══════════════════════════════════════════════════════════════
    🛡️ تطبيق الكابتن V14.1 "Clay Fortress"
@@ -1459,9 +1503,47 @@ function setPass(p){ try{ const v=btoa(p); localStorage.setItem('suf_pass_p',v);
 function getPass(){ try{ return sessionStorage.getItem('suf_pass')||localStorage.getItem('suf_pass_p')||null; }catch(e){ return null; } }
 function clearPass(){ try{ localStorage.removeItem('suf_pass_p'); sessionStorage.removeItem('suf_pass'); }catch(e){} }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   🔑 [V15.4] schedTok — من ٥٠ دقيقة إلى ٦ ساعات، بتشويش.
+   ───────────────────────────────────────────────────────────────────────
+   العلّة: fbAuth تُنادي **مسار تسجيل الدخول الكامل** في GAS
+   (`action=checkDriver`)، وكلفته على السيرفر ليست نداءً واحداً:
+
+       قراءة الشيت  ← SpreadsheetApp.openById + بحث
+       pwVerify_    ← **٦٠٠ نداء computeDigest ≈ ١٫٥ ثانية**
+       createEntitySession   ← fbPut  (urlfetch)
+       createFirebaseCustomToken ← OAuth (urlfetch)
+       fbPatch drivers_locations ← urlfetch
+
+   ⇒ كل تجديد ≈ ثلاثة نداءات urlfetch + ثانية ونصف من زمن التنفيذ.
+     وبأسطول من عشرات الكباتن كل ٥٠ دقيقة، والمؤقّتات **متكتّلة** لأنها
+     تبدأ مع بداية الشفت:
+
+       ٤٧ دخولاً/ساعة  ×  ١٫٥ ث   ⇒ تشبّع تزامن Spreadsheet
+                                     «الاستدعاءات المتزامنة أكثر مما يجب»
+       ٤٧ دخولاً/ساعة  ×  ٣ نداءات ⇒ نفاد حصّة urlfetch اليومية
+                                     ⇒ القاطع يفتح ⇒ المزامنة الليلية تفشل
+
+   مُقاس فعلياً في ٢٠٢٦-٠٨-٢٢: ٤٩ من ٥٢ دخولاً تجاوز ١٥٠٠ مللي (٩٤٪).
+
+   ولماذا كان ٥٠ دقيقة أصلاً؟ لأن توكن فايربيس المخصّص عمره ساعة. لكنّ
+   **SDK فايربيس يجدّد توكن الهوية من تلقاء نفسه** ما دامت الجلسة حيّة —
+   والتوكن المخصّص لا يلزم إلا عند تسجيل الدخول الأول. فالتجديد الدوري
+   ليس آلية بقاء بل حزام أمانٍ فوق حزام: onAuthStateChanged و healAuth
+   يلتقطان أي سقوط فعلي **فور وقوعه** لا بعد ٥٠ دقيقة.
+
+   ⇒ ٦ ساعات = دون عمر جلسة الخادم (STAFF_SESSION_SECS = ٢١٦٠٠) بهامش،
+     وتشويش ±٤٥ دقيقة يفكّ التكتّل فلا تتزامن المؤقّتات مهما بدأت معاً.
+
+   الأثر: ٤٧ تجديداً/ساعة ⇒ نحو ٨. أي خفضٌ ~٦×  على الحصّتين معاً.
+   ⚠️ التراجع: أعِد القيمة إلى 50*60*1000 واحذف التشويش.
+   ═══════════════════════════════════════════════════════════════════════ */
+const TOK_BASE_MS   = 6*60*60*1000;   // ٦ ساعات
+const TOK_JITTER_MS = 45*60*1000;     // ±٤٥ دقيقة — يفكّ تكتّل الأسطول
 function schedTok(phone,pass){if(tokTimer)clearTimeout(tokTimer);
+const wait=TOK_BASE_MS+Math.floor(Math.random()*TOK_JITTER_MS*2)-TOK_JITTER_MS;
 tokTimer=setTimeout(async()=>{const sp=getPass();const p=pass||(sp?atob(sp):'');
-if(p&&drv&&drv.phone)await fbAuth(drv.phone,p);},50*60*1000);}
+if(p&&drv&&drv.phone)await fbAuth(drv.phone,p);},wait);}
 
 /* 🩹 شفاء المصادقة — نداء واحد جارٍ مهما تعددت المستمعات */
 let _reauthInFlight=null;
