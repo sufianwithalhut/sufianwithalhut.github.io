@@ -78,7 +78,7 @@
      الآن: رقمٌ واحد يُشتقّ منه كل شيء — الشاشة والإعدادات ومسح الكاش.
      **وأي تسليم جديد يجب أن يرفعه، وإلا لم يصل.**
      ═══════════════════════════════════════════════════════════════════════ */
-  const CURRENT_APP_VERSION = "17.1-Auth-Fast-Heal";
+  const CURRENT_APP_VERSION = "17.0-Sufyan-Recon";
   window.APP_VERSION = CURRENT_APP_VERSION;
   /* اطبعه في شاشة الدخول فور جهوز الصفحة — نصّاً واحداً لا نسختين. */
   document.addEventListener('DOMContentLoaded', function(){
@@ -1507,76 +1507,16 @@ function schedTok(phone,pass){if(tokTimer)clearTimeout(tokTimer);
 tokTimer=setTimeout(async()=>{const sp=getPass();const p=pass||(sp?atob(sp):'');
 if(p&&drv&&drv.phone)await fbAuth(drv.phone,p);},50*60*1000);}
 
-/* ═══════════════════════════════════════════════════════════════════════
-   🩹 [V17.1] شفاء المصادقة — **الطريق القصير أولاً**
-   ───────────────────────────────────────────────────────────────────────
-   العطب — مُقاس ميدانياً في ٢٠٢٦-٠٨-٢٣ لا مستنتَجاً:
-
-     localId          = 7713225471   ← الهوية مطابقة حرفياً ✅
-     Rules Playground = read allowed ← القاعدة تقبله ✅
-     signInWithCustomToken = 200     ← السكّ نجح ✅
-     والنتيجة الفعلية = permission_denied ❌
-
-   فالتوكن صحيح والقاعدة تقبله — **لكنه لم يكن حاضراً لحظة القراءة**.
-   والدليل الحاسم من ردّ accounts:lookup:
-
-       أول رفض     16:01:26
-       lastLoginAt 16:11:36
-       ───────────────────
-       الفجوة      ١٠٫٢ دقيقة عمياء
-
-   والسبب أن هذه الدالة كانت تسلك **أطول طريق ممكن** لأبسط حاجة:
-
-       healAuth → fbAuth → gasFetch(checkDriver) → Apps Script
-                                                    ├ فتح الشيت
-                                                    ├ pwHash_ ٦٠٠ تكراراً
-                                                    └ ≈ ٣٫٨٩ ثانية (مقيسة)
-
-   وفايربيس يملك مساراً خاصاً بهذا بالضبط: getIdToken(true) على
-   securetoken.googleapis.com — **لا شيت، ولا تعمية، ولا حصّة urlfetch،
-   ولا Apps Script إطلاقاً** — ويعود في نحو ٢٠٠ مللي.
-
-   ⚠️ والأخطر أن _reauthInFlight يجعلها نداءً واحداً جارياً: فكل فشل في
-      الأسطول يصطفّ خلف نداءٍ بطيء واحد، فتتضاعف الدقائق.
-
-   ⇒ نجرّب القصير أولاً، ونُبقي الطويل احتياطياً كما هو — فلا نخسر شيئاً
-     إن كانت الجلسة ميتة فعلاً (لا مستخدم · رمز تحديث مرفوض · حساب معطَّل).
-
-   💡 ولماذا كانت الخدمة الأصلية في أندرويد تكتب بنجاح والـWebView يفشل؟
-      لأن SufyanAuth.kt يجدّد توكنه بنفسه ولا يمرّ بـApps Script. وهو
-      الدليل الذي دلّنا على الجذر: العطب في **طريق التجديد** لا في الهوية.
-
-   ⚠️ التراجع: احذف كتلة ① وحدها، فتعود الدالة إلى سلوكها الأصلي تماماً.
-   ═══════════════════════════════════════════════════════════════════════ */
+/* 🩹 شفاء المصادقة — نداء واحد جارٍ مهما تعددت المستمعات */
 let _reauthInFlight=null;
 function healAuth(){
   if(_reauthInFlight) return _reauthInFlight;
   _reauthInFlight=(async()=>{
     let ok=false;
-
-    /* ───── ① الطريق القصير: تجديد التوكن من فايربيس مباشرةً ───── */
     try{
-      if(auth.currentUser){
-        /* بمهلة: getIdToken نداءٌ شبكي، وبلا مهلة يعلّق على مقبس نصف
-           مفتوح — وهي المصيدة نفسها التي عالجناها في guaranteedWrite. */
-        await withTimeout(auth.currentUser.getIdToken(true), 5000, 'idtoken_refresh');
-        ok = true;
-        try{ track('heal_fast'); }catch(e){}
-      }
-    }catch(e){
-      /* فشل التجديد = الجلسة ميتة فعلاً ⇒ نمضي إلى الطريق الطويل. */
-      try{ track('heal_fast_fail',{reason:String((e&&(e.code||e.message))||'').slice(0,50)}); }catch(_){}
-    }
-
-    /* ───── ② الطريق الطويل (الأصلي) — احتياطياً لا غير ───── */
-    if(!ok){
-      try{
-        const sp=getPass();
-        if(sp&&drv&&drv.phone){ const r=await fbAuth(drv.phone,atob(sp)); ok=!!(r&&r.ok); }
-      }catch(e){}
-      try{ track(ok?'heal_slow':'heal_failed'); }catch(e){}
-    }
-
+      const sp=getPass();
+      if(sp&&drv&&drv.phone){ const r=await fbAuth(drv.phone,atob(sp)); ok=!!(r&&r.ok); }
+    }catch(e){}
     _reauthInFlight=null; return ok;
   })();
   return _reauthInFlight;
@@ -2486,36 +2426,6 @@ function refreshDash(){
 
 /* ══════════════ المستمعات (كلها ذاتية الشفاء) ══════════════ */
 let _ready=false,_waiting=false;
-/* ═══════════════════════════════════════════════════════════════════════
-   🔑 [V17.1] لا تُربَط المستمعات على توكنٍ لم يُتحقّق منه
-   ───────────────────────────────────────────────────────────────────────
-   الحارس القديم كان يفحص **وجود** المستخدم لا **صلاحيته**:
-
-       if(!auth.currentUser){ … انتظر … }
-       _ready = true;          ← يُثبَّت للأبد
-
-   وفايربيس يستعيد الجلسة المحفوظة من IndexedDB **فور تحميل الصفحة**،
-   فيصير auth.currentUser موجوداً وقد يحمل توكن هوية منتهياً. فتُربَط
-   المستمعات فوراً وتُرفض قراءاتها — وهو ما رأيناه بالضبط:
-
-       🔒 permission_denied at /daily_ledgers/7713225471/2026-08-23
-
-   وشرط الخروج `if(_ready) return;` يجعلها **محاولة واحدة لا تتكرّر**،
-   والمستمعات المرفوضة تعتمد بعدها على listen()/onErr وحده — وهو يمرّ
-   بـhealAuth البطيئة.
-
-   💡 وهذا يفسّر ملاحظة الميدان: «حذف التطبيق يُصلحها ثم تعود». الحذف يمحو
-      الجلسة المحفوظة ⇒ لا توكن قديم يُستعاد ⇒ انتظارٌ صحيح لدخولٍ نظيف.
-      ثم تُحفظ جلسة جديدة، فتشيخ، فتُفتح النافذة من جديد.
-
-   ⇒ نتحقّق من صلاحية التوكن قبل التثبيت. وgetIdToken(false) يعود من
-     الذاكرة إن كان صالحاً (بلا شبكة)، ويُجدّد تلقائياً إن قارب الانتهاء.
-
-   ⚠️ وحارس _authProbe يمنع التزاحم: startListeners تُنادى من مواضع عدّة،
-      وبلاه تتوالد محاولات تحقّق متوازية.
-   ⚠️ التراجع: أعد الكتلة إلى شرطها القديم (وجود المستخدم وحده).
-   ═══════════════════════════════════════════════════════════════════════ */
-let _authProbe=false;
 function startListeners(){
   if(_ready)return;
   if(!auth.currentUser){
@@ -2523,31 +2433,7 @@ function startListeners(){
     const un=onAuthStateChanged(auth,u=>{if(u){un();_waiting=false;startListeners();}});
     return;
   }
-  /* المستخدم موجود — لكن هل توكنه صالح؟ */
-  if(_authProbe)return;
-  _authProbe=true;
-  (async()=>{
-    let good=false;
-    try{
-      await withTimeout(auth.currentUser.getIdToken(false), 6000, 'idtoken_probe');
-      good=true;
-    }catch(e){
-      try{ track('listen_stale_token'); }catch(_){}
-      good=await healAuth();          // يسلك الطريق القصير أولاً (①)
-    }
-    _authProbe=false;
-    if(good){ _attachListeners(); }
-    else{
-      /* لا نُثبّت _ready على جلسة ميتة — نعيد المحاولة بلا إغراق. */
-      showAuthBanner(true);
-      setTimeout(startListeners, 8000);
-    }
-  })();
-}
-function _attachListeners(){
-  if(_ready)return;
   _ready=true;
-  showAuthBanner(false);
   /* 🔴 [V15] كان const يُحسب مرّة واحدة، والمستمعات تُربط به ولا تُعاد.
      فالكابتن الليلي الذي لا يغلق التطبيق يعبر منتصف الليل فتبقى لوحته
      معلّقة على عقدة **الأمس** إلى الأبد: العدّاد لا يتحرّك والدفتر لا ينمو،
