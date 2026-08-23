@@ -1503,47 +1503,9 @@ function setPass(p){ try{ const v=btoa(p); localStorage.setItem('suf_pass_p',v);
 function getPass(){ try{ return sessionStorage.getItem('suf_pass')||localStorage.getItem('suf_pass_p')||null; }catch(e){ return null; } }
 function clearPass(){ try{ localStorage.removeItem('suf_pass_p'); sessionStorage.removeItem('suf_pass'); }catch(e){} }
 
-/* ═══════════════════════════════════════════════════════════════════════
-   🔑 [V15.4] schedTok — من ٥٠ دقيقة إلى ٦ ساعات، بتشويش.
-   ───────────────────────────────────────────────────────────────────────
-   العلّة: fbAuth تُنادي **مسار تسجيل الدخول الكامل** في GAS
-   (`action=checkDriver`)، وكلفته على السيرفر ليست نداءً واحداً:
-
-       قراءة الشيت  ← SpreadsheetApp.openById + بحث
-       pwVerify_    ← **٦٠٠ نداء computeDigest ≈ ١٫٥ ثانية**
-       createEntitySession   ← fbPut  (urlfetch)
-       createFirebaseCustomToken ← OAuth (urlfetch)
-       fbPatch drivers_locations ← urlfetch
-
-   ⇒ كل تجديد ≈ ثلاثة نداءات urlfetch + ثانية ونصف من زمن التنفيذ.
-     وبأسطول من عشرات الكباتن كل ٥٠ دقيقة، والمؤقّتات **متكتّلة** لأنها
-     تبدأ مع بداية الشفت:
-
-       ٤٧ دخولاً/ساعة  ×  ١٫٥ ث   ⇒ تشبّع تزامن Spreadsheet
-                                     «الاستدعاءات المتزامنة أكثر مما يجب»
-       ٤٧ دخولاً/ساعة  ×  ٣ نداءات ⇒ نفاد حصّة urlfetch اليومية
-                                     ⇒ القاطع يفتح ⇒ المزامنة الليلية تفشل
-
-   مُقاس فعلياً في ٢٠٢٦-٠٨-٢٢: ٤٩ من ٥٢ دخولاً تجاوز ١٥٠٠ مللي (٩٤٪).
-
-   ولماذا كان ٥٠ دقيقة أصلاً؟ لأن توكن فايربيس المخصّص عمره ساعة. لكنّ
-   **SDK فايربيس يجدّد توكن الهوية من تلقاء نفسه** ما دامت الجلسة حيّة —
-   والتوكن المخصّص لا يلزم إلا عند تسجيل الدخول الأول. فالتجديد الدوري
-   ليس آلية بقاء بل حزام أمانٍ فوق حزام: onAuthStateChanged و healAuth
-   يلتقطان أي سقوط فعلي **فور وقوعه** لا بعد ٥٠ دقيقة.
-
-   ⇒ ٦ ساعات = دون عمر جلسة الخادم (STAFF_SESSION_SECS = ٢١٦٠٠) بهامش،
-     وتشويش ±٤٥ دقيقة يفكّ التكتّل فلا تتزامن المؤقّتات مهما بدأت معاً.
-
-   الأثر: ٤٧ تجديداً/ساعة ⇒ نحو ٨. أي خفضٌ ~٦×  على الحصّتين معاً.
-   ⚠️ التراجع: أعِد القيمة إلى 50*60*1000 واحذف التشويش.
-   ═══════════════════════════════════════════════════════════════════════ */
-const TOK_BASE_MS   = 6*60*60*1000;   // ٦ ساعات
-const TOK_JITTER_MS = 45*60*1000;     // ±٤٥ دقيقة — يفكّ تكتّل الأسطول
 function schedTok(phone,pass){if(tokTimer)clearTimeout(tokTimer);
-const wait=TOK_BASE_MS+Math.floor(Math.random()*TOK_JITTER_MS*2)-TOK_JITTER_MS;
 tokTimer=setTimeout(async()=>{const sp=getPass();const p=pass||(sp?atob(sp):'');
-if(p&&drv&&drv.phone)await fbAuth(drv.phone,p);},wait);}
+if(p&&drv&&drv.phone)await fbAuth(drv.phone,p);},50*60*1000);}
 
 /* 🩹 شفاء المصادقة — نداء واحد جارٍ مهما تعددت المستمعات */
 let _reauthInFlight=null;
