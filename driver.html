@@ -78,7 +78,7 @@
      الآن: رقمٌ واحد يُشتقّ منه كل شيء — الشاشة والإعدادات ومسح الكاش.
      **وأي تسليم جديد يجب أن يرفعه، وإلا لم يصل.**
      ═══════════════════════════════════════════════════════════════════════ */
-  const CURRENT_APP_VERSION = "17.0-Sufyan-Recon";
+  const CURRENT_APP_VERSION = "17.3-Reason-Probe";
   window.APP_VERSION = CURRENT_APP_VERSION;
   /* اطبعه في شاشة الدخول فور جهوز الصفحة — نصّاً واحداً لا نسختين. */
   document.addEventListener('DOMContentLoaded', function(){
@@ -2177,8 +2177,15 @@ window.toggleOnline=async function(){
         document.getElementById('radarT').innerText='⚠️ لم يتأكّد التفعيل';
         document.getElementById('radarD').innerHTML='<b style="color:#DC2626">لم يصل تفعيلك للخادم — لن تصلك طلبات.</b><br>تحقّق من الشبكة وGPS ثم أعد المحاولة.';
         rad.classList.remove('on'); rad.classList.add('off');
+        /* 🔬 [V17.3] **هذا هو موضع شكوى الكباتن — ولم تكن فيه علامة إطلاقاً.**
+           «لم يتأكّد التفعيل» تُعرَض هنا، ولا يُسجَّل عنها حرف. فكل قياساتنا
+           كانت على break_fail (الاتجاه المعاكس) واستنتاجاً لا قياساً.
+           الآن يُقاس الاتجاهان معاً بنفس المفردات، فتُقارن بلا وسيط. */
+        try{ track('activate_fail', { reason: (window._statusErr || 'unknown') +
+                                              (window._statusOnline === 0 ? '|offline' : '') +
+                                              (window._healOk === 0 ? '|healfail' : '') }); }catch(_){}
         toast('⚠️ تعذّر تفعيل الرادار — أعد المحاولة','bad');
-      } else { updateLinkPill(); }
+      } else { try{ track('activate_ok'); }catch(_){} updateLinkPill(); }
     })();
     await awake();
     if(hbTimer)clearInterval(hbTimer); hbTimer=setInterval(heartbeat,active.length?10000:20000);
@@ -2199,7 +2206,10 @@ window.toggleOnline=async function(){
       _mirrorOn = false;                       // [V15.6] انتهت العملية
       if(window._mirTmr){ clearTimeout(window._mirTmr); window._mirTmr=null; }
       if(off){ unawake(); track('break_ok'); _mirrorOn=false; paintToggle(false); return; }
-      track('break_fail');
+      /* 🔬 [V17.3] السبب معه — لا رقمٌ أعمى. */
+      track('break_fail', { reason: (window._statusErr || 'unknown') +
+                                    (window._statusOnline === 0 ? '|offline' : '') +
+                                    (window._healOk === 0 ? '|healfail' : '') });
       /* 🪞 [V15.5] **المفتاح يعود مضاءً — لأنه ما زال متاحاً فعلاً.**
          كانت الرسالة تقول «ما زلت متاحاً» بينما المفتاح مُطفأ واللافتة تقول
          «في استراحة». فالنصّ يقول الحقيقة والمفتاح يكذب — **والكابتن يقرأ
@@ -2321,12 +2331,44 @@ async function _fbStatusRaw(st){
   u[`drivers_locations/${p}/last_update`]=new Date().toISOString();
   try{
     await withTimeout(update(ref(db),u));
-    lastAckTs=Date.now(); updateLinkPill(); return true;
+    lastAckTs=Date.now(); window._statusErr=''; updateLinkPill(); return true;
   }catch(e){
+    /* ═══════════════════════════════════════════════════════════════════
+       🔬 [V17.3] **تسجيل السبب — تشخيص محض، بلا تغيير سلوك.**
+       ───────────────────────────────────────────────────────────────────
+       العلامة كانت عمياء:  track('break_fail');   ← بلا سبب
+       فثلاثة أعطال لا رابط بينها تُنتج الرقم نفسه:
+           انتهت مهلة الستّ ثوانٍ  ·  رفضت القواعد  ·  انقطعت الشبكة
+       ولكلٍّ علاجٌ مختلف تماماً.
+
+       والقياس الميداني (٢٠٢٦-٠٨-٢٤) يقول إن العطب **عابرٌ يصيب الجميع**
+       باحتمال ~٥٪ لا عطبَ أجهزةٍ بعينها: ٧١٪ من المتضرّرين أخفقوا مرّةً
+       واحدة فقط، والتوزيع متّصل لا منقسم. وهذه بصمة **مهلة** لا رفض.
+       لكنها فرضية — وهذا السطر يحسمها بلا تخمين رابع.
+
+       ⚠️ ولا نغيّر شيئاً غيره: نفس المنطق · نفس المهلة · نفس healAuth.
+          القياس أولاً، ثم العلاج على أساسه.
+       ═══════════════════════════════════════════════════════════════════ */
+    try{
+      const raw = String((e && (e.code || e.message)) || e || '').toLowerCase();
+      window._statusErr =
+        raw.indexOf('permission') > -1 || raw.indexOf('denied') > -1 ? 'permission_denied'
+      : raw.indexOf('timeout')    > -1                               ? 'write_timeout'
+      : raw.indexOf('network')    > -1 || raw.indexOf('offline') > -1 ||
+        raw.indexOf('unavailable')> -1                               ? 'network'
+      : (raw ? raw.slice(0,32) : 'unknown');
+      /* وهل كان المتصفّح يرى نفسه متصلاً لحظة الفشل؟ يفصل انقطاع الشبكة
+         عن بطء الخادم — فالأول لا يُعالَج بكود. */
+      window._statusOnline = (navigator.onLine !== false) ? 1 : 0;
+    }catch(_){ window._statusErr='unknown'; }
     try{
       const ok=await healAuth();
-      if(ok){ await withTimeout(update(ref(db),u)); lastAckTs=Date.now(); updateLinkPill(); return true; }
-    }catch(e2){}
+      if(ok){ await withTimeout(update(ref(db),u)); lastAckTs=Date.now(); window._statusErr=''; updateLinkPill(); return true; }
+      window._healOk = 0;                      /* فشل الشفاء أيضاً */
+    }catch(e2){
+      window._healOk = 0;
+      try{ window._statusErr2 = String((e2 && (e2.code||e2.message))||'').slice(0,32); }catch(_){}
+    }
     updateLinkPill(); return false;
   }
 }
