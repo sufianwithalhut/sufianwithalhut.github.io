@@ -78,7 +78,7 @@
      الآن: رقمٌ واحد يُشتقّ منه كل شيء — الشاشة والإعدادات ومسح الكاش.
      **وأي تسليم جديد يجب أن يرفعه، وإلا لم يصل.**
      ═══════════════════════════════════════════════════════════════════════ */
-  const CURRENT_APP_VERSION = "17.3-Reason-Probe";
+  const CURRENT_APP_VERSION = "17.4-Geo-Wait";
   window.APP_VERSION = CURRENT_APP_VERSION;
   /* اطبعه في شاشة الدخول فور جهوز الصفحة — نصّاً واحداً لا نسختين. */
   document.addEventListener('DOMContentLoaded', function(){
@@ -1272,6 +1272,9 @@ let drv=null, curOrder=null, active=[], isOnline=false, isReg=false;
 let cdTimer, hbTimer=null, shTimer=null, tokTimer=null, waitTimer=null;
 let lastFixTs = 0;                     // [هـ] لحظة آخر إحداثي حقيقي
 const FIX_STALE_MS = 90000;            // بعدها لا يُوثَق به
+/* 📍 [V17.4] مهلة انتظار الموقع عند التفعيل. ثمانٍ = مهلة getCurrentPosition
+   نفسها التي كانت مكتوبة أصلاً — لم نرفعها، بل صرنا **ننتظرها**. */
+const GEO_WAIT_MS  = 8000;
 let lastAckTs = 0;                     // [ج] آخر كتابة أكّدها الخادم
 /* ═══════════════════════════════════════════════════════════════════════
    📍 [هـ] lastLat/lastLng لا يُصفَّران أبداً إن توقّف التتبّع (أُطفئ GPS ·
@@ -2163,7 +2166,7 @@ window.toggleOnline=async function(){
           pp=>{markFix(pp.coords.latitude,pp.coords.longitude,pp.coords.accuracy);res();},
           ()=>res(),{enableHighAccuracy:true,timeout:5000}));
       }
-      const okNet = await fbStatus('active', ep0);   /* [V16.0] حقبة هذا القرار */
+      const okNet = await fbStatus('active', ep0, true);   /* [V16.0] حقبة · [V17.4] وانتظر الموقع — ضغطةُ كابتن */
       _mirrorOn = false;                     // [V15.6] انتهت العملية
       if(window._mirTmr){ clearTimeout(window._mirTmr); window._mirTmr=null; }
       if(okNet) armDisconnect(true);   /* [V15] السيرفر يُنصرِف عنك إن انقطعت */
@@ -2275,7 +2278,7 @@ function heartbeat(){
    ═══════════════════════════════════════════════════════════════════════════ */
 let availEpoch = 0;
 
-async function fbStatus(st, epoch){
+async function fbStatus(st, epoch, waitGeo){
   /* 🛡️ [V16.0] كتابةٌ من حقبةٍ ماضية تُلغى بلا ضجيج. */
   if (epoch !== undefined && epoch !== availEpoch) {
     try{ track('stale_status_drop',{want:st,epoch:epoch,now:availEpoch}); }catch(e){}
@@ -2286,10 +2289,10 @@ async function fbStatus(st, epoch){
     try{ track('stale_status_drop',{want:'active',reason:'offline'}); }catch(e){}
     return false;
   }
-  return await _fbStatusRaw(st);
+  return await _fbStatusRaw(st, waitGeo);
 }
 
-async function _fbStatusRaw(st){
+async function _fbStatusRaw(st, waitGeo){
   /* [ب] كانت لا تُعيد شيئاً: المفتاح يخضرّ ويُكتب «الرادار يعمل 📡» قبل
      الكتابة، وإن فشلت ابتلعها catch فارغ. فيجلس الكابتن ساعات مقتنعاً أنه
      متاح، و status عندك inactive فلا يراه استعلام المحرك إطلاقاً.
@@ -2312,13 +2315,82 @@ async function _fbStatusRaw(st){
   if(!drv) return false;
   const goingOff = (st === 'inactive');
   if(!goingOff){
-    if(!lastLat||!lastLng){ showLocBanner(true,'لا يوجد موقع — فعّل GPS وامنح الإذن'); return false; }
-    if(!locFresh()){
-      showLocBanner(true,'موقعك غير محدّث منذ '+Math.round((Date.now()-lastFixTs)/60000)+' دقيقة');
-      try{ navigator.geolocation?.getCurrentPosition(
-        pos=>{ markFix(pos.coords.latitude,pos.coords.longitude,pos.coords.accuracy); showLocBanner(false); },
-        ()=>{}, {enableHighAccuracy:true,timeout:8000,maximumAge:0}); }catch(e){}
-      return false;
+    /* ═══════════════════════════════════════════════════════════════════
+       📍 [V17.4] **٨٢٪ من «لم يتأكّد التفعيل» كانت هنا — لا في الشبكة.**
+       ───────────────────────────────────────────────────────────────────
+       القياس الميداني (٢٠٢٦-٠٨-٢٥ · AUDIT_FailReasons):
+
+           activate_fail : ٧٨ فشلاً · ٦٤ منها «unknown» **بلا |healfail**
+           break_fail    : ٩٩ فشلاً · **صفرٌ** منها «unknown» عارية
+
+       و«unknown بلا healfail» بصمةٌ دقيقة لا غموض: الوسم |healfail لا
+       يُضاف إلا إذا دخلت الدالةُ كتلةَ الالتقاط. فغيابه يعني أن الدالة
+       **عادت false قبل أن تحاول الكتابة إطلاقاً** — أي من هذين الحارسين.
+
+       والتناظر يُغلق القضية: الاستراحة تتخطّى الحارسين (goingOff) فصفرها
+       مطلق. والفرق البنيوي الوحيد بين المسارين هو هذه الكتلة.
+
+       🔴 والعطب في السطر الأخير: كان يطلب موقعاً طازجاً **ثم يعود false
+          فوراً بلا انتظاره**. فيصل الموقع بعد ثانيتين… والزرّ قد خسر.
+          والكابتن يُعيد الضغط — وكل ضغطة START_SHIFT بثلاثة نداءات،
+          وهو ما جعل handleStartShift ٣٣٪ من حصّة urlfetch.
+
+       ⇒ الآن: **ننتظر ما طلبناه.** ثماني ثوانٍ تنتهي بنجاح خيرٌ من فشلٍ
+         في جزء من الثانية يعقبه ضغطٌ ثانٍ وثالث.
+
+       ⚠️ ولم نرفع FIX_STALE_MS. الحارس صحيح ومبرَّر أعلاه: «لا تكتب
+          بإحداثي ميت — ختم طازج فوق موقع قديم يخدع المحرك». العلاج جلبُ
+          موقعٍ حيّ لا قبولُ الميت.
+
+       🔬 والأسباب تُسمّى الآن بدقّة (no_gps · stale_gps · gps_slow) بدل
+          «unknown» — فلا نعود إلى التخمين إن بقي فشلٌ.
+
+       ⚠️ التراجع: أعِد الكتلة إلى شرطيها القديمين بـreturn false فوريّين.
+       ═══════════════════════════════════════════════════════════════════ */
+    if(!lastLat || !lastLng || !locFresh()){
+      const hadFix = !!(lastLat && lastLng);
+      /* ⚠️ [V17.4] **الانتظار لضغطة الكابتن وحدها.**
+         heartbeat ينادي fbStatus كل عشرين ثانية. فانتظارٌ من ثماني ثوانٍ
+         في كل نبضة يُراكم النداءات ويُبطئ بلا فائدة — والنبضة لا يراها
+         أحد فلا معنى لإنجاحها بأي ثمن.
+         والتتبّع المستمرّ (watchPosition) يُحدّث lastFixTs بلا انقطاع ما
+         دام التطبيق في المقدّمة؛ فالتقادم لا يقع إلا بعد الخلفية — أي في
+         اللحظة التي يضغط فيها الكابتن الزرّ بالضبط. */
+      if(!waitGeo){
+        window._statusErr = hadFix ? 'stale_gps' : 'no_gps';
+        showLocBanner(true, hadFix ? 'موقعك غير محدّث' : 'لا يوجد موقع — فعّل GPS');
+        updateLinkPill(); return false;
+      }
+      showLocBanner(true, hadFix
+        ? ('نحدّث موقعك… (آخر قياس قبل '+Math.round((Date.now()-lastFixTs)/60000)+' دقيقة)')
+        : 'نبحث عن موقعك… فعّل GPS وامنح الإذن');
+
+      const fresh = await new Promise(res=>{
+        let done=false;
+        const fin=v=>{ if(!done){ done=true; res(v); } };
+        /* حارس مستقلّ: بعض الأجهزة لا تستدعي أياً من ردَّي getCurrentPosition. */
+        const guard=setTimeout(()=>fin(false), GEO_WAIT_MS+500);
+        try{
+          if(!navigator.geolocation){ clearTimeout(guard); return fin(false); }
+          navigator.geolocation.getCurrentPosition(
+            pos=>{ clearTimeout(guard);
+                   markFix(pos.coords.latitude,pos.coords.longitude,pos.coords.accuracy);
+                   fin(true); },
+            ()=>{ clearTimeout(guard); fin(false); },
+            {enableHighAccuracy:true, timeout:GEO_WAIT_MS, maximumAge:0});
+        }catch(e){ clearTimeout(guard); fin(false); }
+      });
+
+      if(!fresh || !lastLat || !lastLng || !locFresh()){
+        window._statusErr = hadFix ? 'stale_gps' : 'no_gps';
+        showLocBanner(true, hadFix
+          ? 'تعذّر تحديث موقعك — تأكّد من GPS ثم أعد المحاولة'
+          : 'لا يوجد موقع — فعّل GPS وامنح الإذن');
+        updateLinkPill(); return false;
+      }
+      /* وصل بعد انتظار — نجاحٌ متأخّر كان فشلاً قبل هذه الرقعة. */
+      window._statusErr = 'gps_slow';
+      try{ track('gps_slow'); }catch(e){}
     }
     showLocBanner(false);
   }
