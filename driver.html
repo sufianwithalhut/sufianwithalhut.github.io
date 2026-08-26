@@ -78,7 +78,7 @@
      الآن: رقمٌ واحد يُشتقّ منه كل شيء — الشاشة والإعدادات ومسح الكاش.
      **وأي تسليم جديد يجب أن يرفعه، وإلا لم يصل.**
      ═══════════════════════════════════════════════════════════════════════ */
-  const CURRENT_APP_VERSION = "17.7-Tap-Timeout";
+  const CURRENT_APP_VERSION = "17.8-No-HealOnTimeout";
   window.APP_VERSION = CURRENT_APP_VERSION;
   /* اطبعه في شاشة الدخول فور جهوز الصفحة — نصّاً واحداً لا نسختين. */
   document.addEventListener('DOMContentLoaded', function(){
@@ -2597,10 +2597,51 @@ async function _fbStatusRaw(st, waitGeo){
          عن بطء الخادم — فالأول لا يُعالَج بكود. */
       window._statusOnline = (navigator.onLine !== false) ? 1 : 0;
     }catch(_){ window._statusErr='unknown'; }
+    /* ═══════════════════════════════════════════════════════════════════
+       🔴 [V17.8] **healAuth كانت تُنادى على المهلة — وهي ليست عطب مصادقة.**
+       ───────────────────────────────────────────────────────────────────
+       بلاغات DIAG (٢٦-٠٨ · ٢٣:٣٢–٢٣:٤١) قالت الشيء نفسه في كل سطر:
+
+           write_timeout|healfail   ×٦ لكابتن واحد في خمس دقائق
+           write_timeout|healfail   ×… ولغيره
+           ولا بلاغ واحد بلا  |healfail
+
+       وقراءة الكود تفسّرها: **أي** فشل كتابة — مهلةً كان أو رفضاً — يُنادي
+       healAuth. وhealAuth تُجري دورةَ دخولٍ كاملة:
+           gasFetch(checkDriver) → ٣٫٨٩ ثانية + نداء urlfetch
+           ثم signInWithCustomToken → نداء شبكي ثانٍ
+
+       ⇒ ثلاثة أضرار في فعلٍ واحد:
+         ① **علاجٌ لمرضٍ غير موجود**: المهلة تعني بطء المقبس لا فساد التوكن.
+         ② **يُبطئ التعافي**: يُضاف ١٢ ثانية أخرى قبل أي محاولة ثانية.
+         ③ 🔴 **ويستهلك الحصّة في اللحظة التي نفدت فيها** — والبلاغات كلها
+            بين ٢٣:٣١ و٢٣:٤١، أي داخل نافذة النفاد بالضبط.
+
+       ⇒ **دوّامة**: الحصّة تنفد ⇒ الكتابة تتعثّر ⇒ healAuth تُنادى ⇒ تستهلك
+         من المنفَد ⇒ تفشل (healfail) ⇒ يُعيد الكابتن الضغط ⇒ من جديد.
+
+       وهو **العطب عينه** الذي أصلحناه في السيرفر بـV19.17: أداةُ التعافي
+       تتجاوز الحارس وتُعمّق ما جاءت لتُصلحه. والنمط يتكرّر لأن «عالج كل
+       فشل بإعادة المصادقة» تبدو حكمةً — وهي في الحقيقة خلطُ سببين.
+
+       الآن: healAuth لأخطاء **المصادقة وحدها**. والمهلة تُعاد محاولتها
+       مباشرةً — بلا Apps Script وبلا حصّة وبلا انتظار.
+       ⚠️ التراجع: أعِد النداء بلا شرط isAuthErr.
+       ═══════════════════════════════════════════════════════════════════ */
+    const _rawL = String(window._statusRaw || '').toLowerCase();
+    const _isAuthErr = _rawL.indexOf('permission') > -1 || _rawL.indexOf('denied') > -1 ||
+                       _rawL.indexOf('unauth')     > -1 || _rawL.indexOf('token')  > -1;
     try{
-      const ok=await healAuth();
-      if(ok){ await withTimeout(update(ref(db),u), _tmo, 'write_timeout'); lastAckTs=Date.now(); window._statusErr=''; updateLinkPill(); return true; }
-      window._healOk = 0;                      /* فشل الشفاء أيضاً */
+      if(_isAuthErr){
+        const ok=await healAuth();
+        if(ok){ await withTimeout(update(ref(db),u), _tmo, 'write_timeout'); lastAckTs=Date.now(); window._statusErr=''; updateLinkPill(); return true; }
+        window._healOk = 0;                      /* فشل الشفاء أيضاً */
+      } else {
+        /* مهلة أو شبكة: أعِد الكتابة مباشرةً — المقبس قد يكون أنهى وصله. */
+        try{ window._statusErr2 = 'retry_direct'; }catch(_){}
+        await withTimeout(update(ref(db),u), _tmo, 'write_timeout');
+        lastAckTs=Date.now(); window._statusErr=''; updateLinkPill(); return true;
+      }
     }catch(e2){
       window._healOk = 0;
       try{ window._statusErr2 = String((e2 && (e2.code||e2.message))||'').slice(0,32); }catch(_){}
