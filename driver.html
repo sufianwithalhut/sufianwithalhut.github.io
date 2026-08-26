@@ -78,7 +78,7 @@
      الآن: رقمٌ واحد يُشتقّ منه كل شيء — الشاشة والإعدادات ومسح الكاش.
      **وأي تسليم جديد يجب أن يرفعه، وإلا لم يصل.**
      ═══════════════════════════════════════════════════════════════════════ */
-  const CURRENT_APP_VERSION = "17.5-Hard-Reauth";
+  const CURRENT_APP_VERSION = "17.6-Diag-Onscreen";
   window.APP_VERSION = CURRENT_APP_VERSION;
   /* اطبعه في شاشة الدخول فور جهوز الصفحة — نصّاً واحداً لا نسختين. */
   document.addEventListener('DOMContentLoaded', function(){
@@ -2251,9 +2251,68 @@ window.toggleOnline=async function(){
            «لم يتأكّد التفعيل» تُعرَض هنا، ولا يُسجَّل عنها حرف. فكل قياساتنا
            كانت على break_fail (الاتجاه المعاكس) واستنتاجاً لا قياساً.
            الآن يُقاس الاتجاهان معاً بنفس المفردات، فتُقارن بلا وسيط. */
-        try{ track('activate_fail', { reason: (window._statusErr || 'unknown') +
-                                              (window._statusOnline === 0 ? '|offline' : '') +
-                                              (window._healOk === 0 ? '|healfail' : '') }); }catch(_){}
+        const _rsn = (window._statusErr || 'unknown') +
+                     (window._statusOnline === 0 ? '|offline' : '') +
+                     (window._healOk === 0 ? '|healfail' : '');
+        try{ track('activate_fail', { reason: _rsn }); }catch(_){}
+
+        /* ═══════════════════════════════════════════════════════════════
+           🔬 [V17.6] **السبب على الشاشة — لأن قناة الرصد عمياء عن هذا العطب.**
+           ───────────────────────────────────────────────────────────────
+           قاعدة client_events تشترط:
+               auth != null && auth.uid == $phone
+           ⇒ الجهاز الذي **يعجز عن الكتابة** يعجز عن **الإبلاغ عن عجزه**.
+             فكل رصدنا يأتي من الأجهزة السليمة وحدها، والمتضرّرة صامتة.
+
+           وهذا يفسّر «unknown ٨٢٪» في AUDIT_FailReasons: ليس غموضاً، بل
+           أن المتضرّرين لا يسجّلون أصلاً. وأربعة أيام من التخمين سببها أن
+           أداة القياس تشترك مع العطب في نقطة الفشل نفسها.
+
+           ⇒ فنعرض السطر على الشاشة: الكابتن يقرؤه ويرسله في واتساب.
+             لا قناة، ولا انتظار، ولا اعتماد على المصادقة المعطوبة.
+
+           💡 وثلاث كلمات تحسم:
+                permission_denied + uid ≠ phone  ⇒ جلسة محفوظة فاسدة
+                permission_denied + uid = phone  ⇒ القواعد أو المشروع
+                write_timeout                    ⇒ مهلة — علاجٌ آخر
+                no_gps / stale_gps               ⇒ الموقع
+           ═══════════════════════════════════════════════════════════════ */
+        try{
+          const _u = (auth && auth.currentUser) ? String(auth.currentUser.uid) : 'null';
+          const _p = String((drv && drv.phone) || '?');
+          const _m = (_u === _p) ? '✅ مطابق' : '🔴 مختلف';
+          document.getElementById('radarD').innerHTML +=
+            '<div style="margin-top:10px;padding:9px;border-radius:10px;background:#fef2f2;'+
+            'border:1px solid #fecaca;font-size:.72rem;line-height:1.9;color:#7f1d1d;'+
+            'direction:ltr;text-align:left;word-break:break-all">'+
+            '<b>DIAG — أرسل هذا للإدارة</b><br>'+
+            'why: '+_rsn+'<br>'+
+            'raw: '+(window._statusRaw || '-')+'<br>'+
+            'uid: '+_u+'<br>'+
+            'phone: '+_p+'  '+_m+'<br>'+
+            'ver: '+CURRENT_APP_VERSION+
+            '</div>';
+        }catch(_){}
+
+        /* ═══════════════════════════════════════════════════════════════
+           📡 [V17.6] وإبلاغٌ عبر **Apps Script** لا فايربيس.
+           gasFetch يحمل API_TOKEN وحده — لا يحتاج جلسة فايربيس إطلاقاً.
+           ⇒ الجهاز المعطوب **يستطيع** الإبلاغ، فيُقاس المتضرّرون لا
+             السليمون وحدهم. وهذا يُنهي العمى البنيوي لا هذه الحالة فقط.
+           ⚠️ ولا ينتظر النتيجة (بلا await) فلا يُبطئ الكابتن، ونداءٌ واحد
+              لكل إخفاق ظاهر — لا لكل نبضة.
+           ═══════════════════════════════════════════════════════════════ */
+        try{
+          const _u2 = (auth && auth.currentUser) ? String(auth.currentUser.uid) : 'null';
+          gasFetch(`${API_URL}?action=DIAG&token=${API_TOKEN}`
+            + `&phone=${encodeURIComponent((drv&&drv.phone)||'')}`
+            + `&ev=activate_fail`
+            + `&why=${encodeURIComponent(_rsn)}`
+            + `&raw=${encodeURIComponent(window._statusRaw||'')}`
+            + `&uid=${encodeURIComponent(_u2)}`
+            + `&ver=${encodeURIComponent(CURRENT_APP_VERSION)}`, null, 6000).catch(()=>{});
+        }catch(_){}
+
         toast('⚠️ تعذّر تفعيل الرادار — أعد المحاولة','bad');
       } else { try{ track('activate_ok'); }catch(_){} updateLinkPill(); }
     })();
@@ -2490,6 +2549,8 @@ async function _fbStatusRaw(st, waitGeo){
        ═══════════════════════════════════════════════════════════════════ */
     try{
       const raw = String((e && (e.code || e.message)) || e || '').toLowerCase();
+      /* 🔬 [V17.6] الخطأ **الخام** — لا المصنَّف. فالتصنيف قد يخطئ، والخام لا. */
+      try{ window._statusRaw = String((e && (e.code || e.message)) || e || '').slice(0,80); }catch(_){}
       window._statusErr =
         raw.indexOf('permission') > -1 || raw.indexOf('denied') > -1 ? 'permission_denied'
       : raw.indexOf('timeout')    > -1                               ? 'write_timeout'
