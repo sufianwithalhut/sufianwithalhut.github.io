@@ -78,7 +78,7 @@
      الآن: رقمٌ واحد يُشتقّ منه كل شيء — الشاشة والإعدادات ومسح الكاش.
      **وأي تسليم جديد يجب أن يرفعه، وإلا لم يصل.**
      ═══════════════════════════════════════════════════════════════════════ */
-  const CURRENT_APP_VERSION = "17.4-Geo-Wait";
+  const CURRENT_APP_VERSION = "17.5-Hard-Reauth";
   window.APP_VERSION = CURRENT_APP_VERSION;
   /* اطبعه في شاشة الدخول فور جهوز الصفحة — نصّاً واحداً لا نسختين. */
   document.addEventListener('DOMContentLoaded', function(){
@@ -1544,13 +1544,76 @@ function showAuthBanner(on){
     '<br><span style="font-weight:600;font-size:.8rem;opacity:.95;">سجّل خروجاً ثم دخولاً، ولا تعتمد على ما تراه الآن.</span>';
   document.body.appendChild(el);
 }
+/* ═══════════════════════════════════════════════════════════════════════
+   🔑 [V17.5] **إعادة دخولٍ كاملة حين يعجز الشفاء العادي.**
+   ───────────────────────────────────────────────────────────────────────
+   الدليل الميداني (٢٦-٠٨، شهادة الليدر):
+       «الطلب يأتي للكابتن لكنه لا يراه — التطبيق يقول إن الخادم لم يستجب»
+       «الحذف وإعادة التثبيت يُصلحها مؤقتاً ثم تعود»
+       «ليست عند جميع الكباتن»
+
+   والقاعدة تُفسّرها حرفياً. استعلام الكابتن:
+       query(ref(db,'active_orders'), orderByChild('driverPhone'), equalTo(drv.phone))
+   وشرط قراءتها:
+       query.orderByChild == 'driverPhone' && query.equalTo == auth.uid
+
+   ⇒ إن كانت جلسة فايربيس المحفوظة في IndexedDB **بائتة أو لهويةٍ أخرى**،
+     لا يُرفض سطرٌ واحد — **يُرفض الاستعلام كلّه**. فيصل الطلب إلى الخادم
+     ولا يراه الكابتن. ونفس التوكن يُفشل كتابة الحالة ⇒ «لم يتأكّد التفعيل».
+
+   وحذف التطبيق يمسح IndexedDB ⇒ جلسةٌ نظيفة ⇒ تعمل. ثم تُحفظ جلسة جديدة،
+   فتشيخ، فتعود المشكلة. وهذا يفسّر «مؤقتاً ثم تعود» و«ليست عند الجميع».
+
+   🔴 ولماذا لا يكفي healAuth: هي تُعيد الدخول عبر Apps Script، لكنّ
+      signInWithCustomToken قد ينجح **ويبقى اتصال RTDB على التوكن القديم**.
+      وقد رأينا ذلك في الكونسول: توكنٌ طازج مؤكَّد و permission_denied مستمرّ.
+
+   ⇒ العلاج: signOut يُسقط الجلسة المحفوظة ويُعلم SDK بأن لا مصادقة، ثم
+     دخولٌ نظيف يُعيد مصادقة الاتصال من الصفر — أي أثر «مسح البيانات» بلا
+     فقد أي شيء (كلمة المرور في localStorage منذ رقعة «نجاة الجلسة»).
+
+   ⚠️ ولا يُطلَق إلا بعد **ثلاثة** إخفاقات متتالية عجز عنها الشفاء العادي —
+      فلا يعمل في الحالة السليمة ولا عند انقطاعٍ عابر.
+
+   🔬 ويُسجّل auth.uid **الفعلي** قبل الإصلاح. فإن كان مطابقاً للهاتف فالسبب
+      أعمق ممّا نظنّ — ونعرف ذلك من أول يوم بدل أسبوع. لم نُثبت التطابق
+      لحظة الفشل، وهذا السطر يُثبته أو ينفيه.
+   ⚠️ التراجع: احذف hardReauth وسطر ندائها.
+   ═══════════════════════════════════════════════════════════════════════ */
+let _hardAt=0;
+window._hardBusy=false;   /* على window — يقرؤه onAuthStateChanged */
+async function hardReauth(){
+  if(window._hardBusy) return false;
+  /* لا نُعيد الدخول أكثر من مرّة كل ثلاث دقائق — منعاً لدوّامة. */
+  if(Date.now()-_hardAt < 180000) return false;
+  window._hardBusy=true; _hardAt=Date.now();
+  try{
+    try{
+      const u=auth.currentUser;
+      track('hard_reauth',{ uid: u ? String(u.uid) : 'null',
+                            phone: String((drv&&drv.phone)||''),
+                            match: (u && drv && String(u.uid)===String(drv.phone)) ? 1 : 0 });
+    }catch(e){}
+    const sp=getPass();
+    if(!sp || !drv || !drv.phone){ try{ track('hard_reauth_nopass'); }catch(e){} return false; }
+    try{ await withTimeout(signOut(auth), 5000, 'signout'); }catch(e){}
+    const r=await fbAuth(drv.phone, atob(sp));
+    const ok=!!(r&&r.ok);
+    try{ track(ok?'hard_reauth_ok':'hard_reauth_fail'); }catch(e){}
+    return ok;
+  }catch(e){ return false; }
+  finally{ window._hardBusy=false; }
+}
+
 function listen(mkRef,cb){
   const r=mkRef();
   const onErr=async(err)=>{
     console.warn("🔒 رُفضت القراءة:", err&&err.message);
     _denyStreak++;
     if(_denyStreak>=3) showAuthBanner(true);
-    const ok=await healAuth();
+    let ok=await healAuth();
+    /* [V17.5] عجز الشفاء العادي ثلاث مرات ⇒ جلسةٌ محفوظة فاسدة لا توكنٌ بائت. */
+    if(!ok && _denyStreak>=3) ok=await hardReauth();
     if(ok){ _denyStreak=0; showAuthBanner(false); }
     setTimeout(()=>listen(mkRef,cb), ok?1200:15000);
   };
@@ -1558,6 +1621,10 @@ function listen(mkRef,cb){
 }
 
 onAuthStateChanged(auth,u=>{
+  /* 🛡️ [V17.5] لا تتدخّل أثناء إعادة الدخول الكاملة: hardReauth تنادي
+     signOut عمداً، فيُطلق هذا المستمع ⇒ fbAuth مرّتين متزامنتين تتسابقان
+     على signInWithCustomToken. العلَم يُخرسه حتى تنتهي العملية. */
+  if(window._hardBusy) return;
   if(!u&&drv&&drv.phone){const sp=getPass();if(sp)fbAuth(drv.phone,atob(sp));}
   else if(u&&drv&&drv.phone){try{if(window.AndroidRadar&&AndroidRadar.subscribeToDriverTopic)AndroidRadar.subscribeToDriverTopic(drv.phone);}catch(e){}}
 });
