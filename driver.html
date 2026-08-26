@@ -78,7 +78,7 @@
      الآن: رقمٌ واحد يُشتقّ منه كل شيء — الشاشة والإعدادات ومسح الكاش.
      **وأي تسليم جديد يجب أن يرفعه، وإلا لم يصل.**
      ═══════════════════════════════════════════════════════════════════════ */
-  const CURRENT_APP_VERSION = "17.6-Diag-Onscreen";
+  const CURRENT_APP_VERSION = "17.7-Tap-Timeout";
   window.APP_VERSION = CURRENT_APP_VERSION;
   /* اطبعه في شاشة الدخول فور جهوز الصفحة — نصّاً واحداً لا نسختين. */
   document.addEventListener('DOMContentLoaded', function(){
@@ -1638,6 +1638,33 @@ onAuthStateChanged(auth,u=>{
    التحقّق تعلّق بالطريقة نفسها، فيبقى باب التجمّد مفتوحاً لو غُلّف أحدهما. */
 const NET_TIMEOUT_MS=6000;
 /* ═══════════════════════════════════════════════════════════════════════
+   ⏱️ [V17.7] **مهلة أطول لضغطة الكابتن — القياس فرضها.**
+   ───────────────────────────────────────────────────────────────────────
+   بلاغات DIAG (٢٦-٠٨ · من الأجهزة المعطوبة نفسها):
+       write_timeout : ١٣ من ٢٢  =  ٥٩٪   ← الغالب
+       uid == phone  : ٢٢ من ٢٢  = ١٠٠٪   ← الهوية سليمة دائماً
+
+   والرقم الثاني أسقط فرضية «الجلسة المحفوظة فاسدة» (V17.5): الهوية صحيحة
+   في كل بلاغ بلا استثناء. فالعطب ليس فيمن يكتب — بل في **كم ننتظر**.
+
+   وستّ ثوانٍ مهلةٌ معقولة لكتابةٍ على مقبسٍ **قائم**. لكنّ الكابتن يضغط
+   «متاح» بعد فتح التطبيق مباشرةً، والمقبس حينها مغلق: أندرويد يقطع
+   WebSocket في الخلفية. فالكتابة تنتظر إعادة الوصل كاملة — DNS ثم TLS ثم
+   مصافحة المصادقة — وذلك يتجاوز ستّ ثوانٍ على شبكة الجوّال بانتظام.
+
+   ⇒ فتنتهي المهلة **بينما إعادة الوصل جارية**، وتُحسب فشلاً، ويرى الكابتن
+     «لم يتأكّد التفعيل» — ثم تنجح إعادة الوصل بعد ثانية ولا أحد يستفيد.
+
+   وهو **العطب عينه** الذي عالجناه في V17.4 مع الموقع: نطلب شيئاً ثم لا
+   ننتظره. والنمط يتكرّر لأن المهلة كُتبت لأسوأ حالةٍ متوقَّعة على الورق
+   لا لأسوأ حالةٍ مقيسة في الميدان.
+
+   ⚠️ والنبضة تبقى على ستّ ثوانٍ: تتكرّر كل عشرين ثانية فلا معنى لإطالتها،
+      وإطالتها تُراكم النداءات. الإطالة لضغطة الكابتن وحدها — كما في V17.4.
+   ⚠️ التراجع: احذف الثابت ومرّره الافتراضي.
+   ═══════════════════════════════════════════════════════════════════════ */
+const TAP_TIMEOUT_MS=18000;
+/* ═══════════════════════════════════════════════════════════════════════
    🌐 [أ١] gasFetch — كل نداء إلى Apps Script يمرّ من هنا.
    ───────────────────────────────────────────────────────────────────────
    fetch بلا AbortController **تنتظر بلا حدّ**. وكانت سبعة نداءات في هذا
@@ -2233,6 +2260,9 @@ window.toggleOnline=async function(){
           pp=>{markFix(pp.coords.latitude,pp.coords.longitude,pp.coords.accuracy);res();},
           ()=>res(),{enableHighAccuracy:true,timeout:5000}));
       }
+      /* [V17.7] صفّر الخام والوسم قبل كل ضغطة — وإلا نُسب خطأُ محاولةٍ
+         سابقة إلى هذه، وهو ما أنتج «unknown مع raw=PERMISSION_DENIED». */
+      try{ window._statusErr=''; window._statusRaw=''; }catch(_){}
       const okNet = await fbStatus('active', ep0, true);   /* [V16.0] حقبة · [V17.4] وانتظر الموقع — ضغطةُ كابتن */
       _mirrorOn = false;                     // [V15.6] انتهت العملية
       if(window._mirTmr){ clearTimeout(window._mirTmr); window._mirTmr=null; }
@@ -2407,6 +2437,10 @@ let availEpoch = 0;
 async function fbStatus(st, epoch, waitGeo){
   /* 🛡️ [V16.0] كتابةٌ من حقبةٍ ماضية تُلغى بلا ضجيج. */
   if (epoch !== undefined && epoch !== availEpoch) {
+    /* 🔬 [V17.7] كان يعود بلا وسم، فيقرأ التقريرُ `_statusErr` القديم أو
+       يجده فارغاً ⇒ «unknown». وهو ٩ من ٢٢ بلاغاً — أي أن ٤١٪ من بياناتنا
+       كانت تقول «لا أعرف» ونحن نعرف تماماً: القرار تغيّر قبل وصول الكتابة. */
+    try{ window._statusErr = 'epoch_drop'; }catch(_){}
     try{ track('stale_status_drop',{want:st,epoch:epoch,now:availEpoch}); }catch(e){}
     return false;
   }
@@ -2419,6 +2453,8 @@ async function fbStatus(st, epoch, waitGeo){
 }
 
 async function _fbStatusRaw(st, waitGeo){
+  /* [V17.7] ضغطة الكابتن تنتظر إعادة وصل المقبس؛ والنبضة لا. */
+  const _tmo = waitGeo ? TAP_TIMEOUT_MS : NET_TIMEOUT_MS;
   /* [ب] كانت لا تُعيد شيئاً: المفتاح يخضرّ ويُكتب «الرادار يعمل 📡» قبل
      الكتابة، وإن فشلت ابتلعها catch فارغ. فيجلس الكابتن ساعات مقتنعاً أنه
      متاح، و status عندك inactive فلا يراه استعلام المحرك إطلاقاً.
@@ -2528,7 +2564,7 @@ async function _fbStatusRaw(st, waitGeo){
   u[`drivers_locations/${p}/status`]=st;
   u[`drivers_locations/${p}/last_update`]=new Date().toISOString();
   try{
-    await withTimeout(update(ref(db),u));
+    await withTimeout(update(ref(db),u), _tmo, 'write_timeout');
     lastAckTs=Date.now(); window._statusErr=''; updateLinkPill(); return true;
   }catch(e){
     /* ═══════════════════════════════════════════════════════════════════
@@ -2563,7 +2599,7 @@ async function _fbStatusRaw(st, waitGeo){
     }catch(_){ window._statusErr='unknown'; }
     try{
       const ok=await healAuth();
-      if(ok){ await withTimeout(update(ref(db),u)); lastAckTs=Date.now(); window._statusErr=''; updateLinkPill(); return true; }
+      if(ok){ await withTimeout(update(ref(db),u), _tmo, 'write_timeout'); lastAckTs=Date.now(); window._statusErr=''; updateLinkPill(); return true; }
       window._healOk = 0;                      /* فشل الشفاء أيضاً */
     }catch(e2){
       window._healOk = 0;
