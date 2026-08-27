@@ -78,7 +78,7 @@
      الآن: رقمٌ واحد يُشتقّ منه كل شيء — الشاشة والإعدادات ومسح الكاش.
      **وأي تسليم جديد يجب أن يرفعه، وإلا لم يصل.**
      ═══════════════════════════════════════════════════════════════════════ */
-  const CURRENT_APP_VERSION = "17.8-No-HealOnTimeout";
+  const CURRENT_APP_VERSION = "17.9-Clean-Signal";
   window.APP_VERSION = CURRENT_APP_VERSION;
   /* اطبعه في شاشة الدخول فور جهوز الصفحة — نصّاً واحداً لا نسختين. */
   document.addEventListener('DOMContentLoaded', function(){
@@ -2262,7 +2262,14 @@ window.toggleOnline=async function(){
       }
       /* [V17.7] صفّر الخام والوسم قبل كل ضغطة — وإلا نُسب خطأُ محاولةٍ
          سابقة إلى هذه، وهو ما أنتج «unknown مع raw=PERMISSION_DENIED». */
-      try{ window._statusErr=''; window._statusRaw=''; }catch(_){}
+      /* 🔴 [V17.9] **وصفّر _healOk أيضاً — كان عالقاً للأبد.**
+         يُضبط صفراً عند أول إخفاق شفاء ولا يُعاد أبداً، فيحمل **كل** بلاغ
+         بعده وسم |healfail ولو لم تُنادَ healAuth إطلاقاً.
+         ⇒ ولذلك بدا أمس أن «كل بلاغ يحمل healfail» — وبنيتُ على ذلك
+           استنتاجاً كاملاً عن دوّامة الشفاء. الوسم كان أثراً قديماً لا
+           شهادةَ لحظة. وهو **العطب عينه** الذي أصلحته في _statusRaw
+           قبل ساعات — ولم أفحص جاره. */
+      try{ window._statusErr=''; window._statusRaw=''; window._healOk=1; }catch(_){}
       const okNet = await fbStatus('active', ep0, true);   /* [V16.0] حقبة · [V17.4] وانتظر الموقع — ضغطةُ كابتن */
       _mirrorOn = false;                     // [V15.6] انتهت العملية
       if(window._mirTmr){ clearTimeout(window._mirTmr); window._mirTmr=null; }
@@ -2446,6 +2453,19 @@ async function fbStatus(st, epoch, waitGeo){
   }
   /* وحتى بلا حقبة صريحة: لا نكتب active ونحن في استراحة. */
   if (st === 'active' && !isOnline) {
+    /* 🔬 [V17.9] **هذا هو مصدر «unknown» — ٧٧ من ١٥٣ بلاغاً (٥٠٪).**
+       يعود false بلا وسم، فيقرأ التقريرُ سلسلةً فارغة ⇒ «unknown».
+
+       ومتى يقع؟ toggleOnline يضبط isOnline=true ثم ينتظر:
+           START_SHIFT عبر Apps Script  (ثوانٍ)
+         + انتظار الموقع               (حتى ٨ ثوانٍ)
+       ثم ينادي fbStatus. وخلال تلك النافذة قد يُطفئ الكابتن المفتاح —
+       أو تقلبه مرآةُ الحالة listenMyStatus. فيصل النداء والقرار قد تغيّر.
+
+       ⇒ وهو **ليس عطباً**: الحارس يعمل كما صُمّم ويمنع كتابةً عفا عليها
+         قرارٌ أحدث. لكنّه كان يُعدّ فشلاً مجهولاً فيُشوّش نصف بياناتنا.
+       الآن يُسمّي نفسه، فيخرج من خانة «لا نعرف» إلى خانة «نعرف ولا يضرّ». */
+    try{ window._statusErr = 'toggled_off'; }catch(_){}
     try{ track('stale_status_drop',{want:'active',reason:'offline'}); }catch(e){}
     return false;
   }
@@ -2474,7 +2494,7 @@ async function _fbStatusRaw(st, waitGeo){
      الآن: الحارسان لـ'active' وحدها، والإحداثيات تُكتب فقط إن كانت
      طازجة — فلا يُختم موقع ميت، ولا يُحجب انصراف.
      ═══════════════════════════════════════════════════════════════════ */
-  if(!drv) return false;
+  if(!drv){ try{ window._statusErr='no_session'; }catch(_){} return false; }
   const goingOff = (st === 'inactive');
   if(!goingOff){
     /* ═══════════════════════════════════════════════════════════════════
@@ -2634,7 +2654,7 @@ async function _fbStatusRaw(st, waitGeo){
     try{
       if(_isAuthErr){
         const ok=await healAuth();
-        if(ok){ await withTimeout(update(ref(db),u), _tmo, 'write_timeout'); lastAckTs=Date.now(); window._statusErr=''; updateLinkPill(); return true; }
+        if(ok){ window._healOk=1; await withTimeout(update(ref(db),u), _tmo, 'write_timeout'); lastAckTs=Date.now(); window._statusErr=''; updateLinkPill(); return true; }
         window._healOk = 0;                      /* فشل الشفاء أيضاً */
       } else {
         /* مهلة أو شبكة: أعِد الكتابة مباشرةً — المقبس قد يكون أنهى وصله. */
