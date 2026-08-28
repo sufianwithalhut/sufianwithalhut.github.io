@@ -78,7 +78,7 @@
      الآن: رقمٌ واحد يُشتقّ منه كل شيء — الشاشة والإعدادات ومسح الكاش.
      **وأي تسليم جديد يجب أن يرفعه، وإلا لم يصل.**
      ═══════════════════════════════════════════════════════════════════════ */
-  const CURRENT_APP_VERSION = "18.0-Consent";
+  const CURRENT_APP_VERSION = "18.1-Consent";
   window.APP_VERSION = CURRENT_APP_VERSION;
   /* اطبعه في شاشة الدخول فور جهوز الصفحة — نصّاً واحداً لا نسختين. */
   document.addEventListener('DOMContentLoaded', function(){
@@ -1162,6 +1162,8 @@ const LEGAL_DOCS={
 window.__onPermissionsReady=function(fine,bg){
   try{
     if(!fine){ if(typeof toast==='function')toast('لن تصلك طلبات بدون إذن الموقع','warn'); return; }
+    /* [ج٢١] الآن صار للموقع إذن — شغّل المراقبة التي امتنعت عنها عند الدخول. */
+    if(typeof window.startGeoWatch==='function')window.startGeoWatch();
     const t=document.getElementById('onlineTog');
     if(t&&t.checked&&window.AndroidRadar&&AndroidRadar.startLocationService)
       AndroidRadar.startLocationService();
@@ -2759,18 +2761,45 @@ window.__nativeEvent=function(ev){
 window.__nativeLocation=function(lat,lng,acc){markFix(lat,lng,acc);showLocBanner(false);
 if(isOnline)fbStatus('active', availEpoch);document.getElementById('permOv').classList.add('dn');};
 
+/* ══════════════════════════════════════════════════════════════════════════
+   🔴 [ج٢١] «الرادار مغلق!» كان يحجب التطبيق حجباً تامّاً — وهو عطبٌ صنعتُه.
+   ──────────────────────────────────────────────────────────────────────────
+   startSystem تُنادى فور تسجيل الدخول وتطلب الموقع فوراً. وقبل ج١٢ كان
+   الإذن ممنوحاً منذ الإقلاع فتنجح. أمّا الآن — والإذن مؤجَّل إلى الشفت
+   عمداً — فتفشل، فترفع permOv: طبقةٌ ملء الشاشة زرّها الوحيد
+   location.reload().
+
+   والتحديث يُعيد الدورة: دخولٌ محفوظ ← startSystem ← فشل ← حجب. طريقٌ
+   مسدود تام: لا سبيل إلى مفتاح «متاح للطلبات» الذي يعرض الإفصاح الذي
+   يمنح الإذن الذي يرفع الحجب.
+
+   أجّلتُ الإذن ولم أفحص من كان يعتمد على وجوده. والإصلاح مبدأان:
+     · لا نلمس الموقع قبل الموافقة إطلاقاً.
+     · permOv تعني «أنت في شفت ولا يصلنا موقعك» — فلا تظهر خارج الشفت.
+       الكابتن خارج الشفت لا ينتظر طلباً، فحجبه كذبٌ عليه.
+   ══════════════════════════════════════════════════════════════════════════ */
+window._geoWatchOn=false;
+window.startGeoWatch=function(){
+  if(window._geoWatchOn)return;
+  if(!window.locConsentGiven())return;
+  if(!navigator.geolocation)return;
+  window._geoWatchOn=true;
+  const ok=p=>{
+    try{document.getElementById('permOv').classList.add('dn');}catch(e){}
+    lastLat=p.coords.latitude;lastLng=p.coords.longitude;
+    if(drv){drv.currentLat=p.coords.latitude;drv.currentLng=p.coords.longitude;drv.gpsAccuracy=p.coords.accuracy;}
+    fbStatus(isOnline?'active':'inactive');
+  };
+  /* الفشل يحجب في الشفت وحده [ج٢١] */
+  const bad=()=>{ if(isOnline){ try{document.getElementById('permOv').classList.remove('dn');}catch(e){} } };
+  navigator.geolocation.getCurrentPosition(ok,bad,{enableHighAccuracy:true,timeout:10000});
+  navigator.geolocation.watchPosition(ok,bad,{enableHighAccuracy:true,maximumAge:5000});
+};
+
 function startSystem(){
   if(isOnline){awake();adjustHB();}
   startListeners();
-  if(navigator.geolocation){
-    navigator.geolocation.getCurrentPosition(p=>{lastLat=p.coords.latitude;lastLng=p.coords.longitude;
-      if(drv){drv.currentLat=p.coords.latitude;drv.currentLng=p.coords.longitude;drv.gpsAccuracy=p.coords.accuracy;}fbStatus(isOnline?'active':'inactive');},
-      ()=>document.getElementById('permOv').classList.remove('dn'),{enableHighAccuracy:true,timeout:10000});
-    navigator.geolocation.watchPosition(p=>{document.getElementById('permOv').classList.add('dn');
-      lastLat=p.coords.latitude;lastLng=p.coords.longitude;
-      if(drv){drv.currentLat=p.coords.latitude;drv.currentLng=p.coords.longitude;drv.gpsAccuracy=p.coords.accuracy;}fbStatus(isOnline?'active':'inactive');},
-      ()=>document.getElementById('permOv').classList.remove('dn'),{enableHighAccuracy:true,maximumAge:5000});
-  }
+  window.startGeoWatch();          /* [ج٢١] لا شيء قبل الموافقة */
 }
 
 /* ══════════════ الإعدادات ══════════════ */
