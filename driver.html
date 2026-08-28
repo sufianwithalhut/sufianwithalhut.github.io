@@ -78,7 +78,7 @@
      الآن: رقمٌ واحد يُشتقّ منه كل شيء — الشاشة والإعدادات ومسح الكاش.
      **وأي تسليم جديد يجب أن يرفعه، وإلا لم يصل.**
      ═══════════════════════════════════════════════════════════════════════ */
-  const CURRENT_APP_VERSION = "17.9-Clean-Signal";
+  const CURRENT_APP_VERSION = "18.0-Consent";
   window.APP_VERSION = CURRENT_APP_VERSION;
   /* اطبعه في شاشة الدخول فور جهوز الصفحة — نصّاً واحداً لا نسختين. */
   document.addEventListener('DOMContentLoaded', function(){
@@ -1158,21 +1158,54 @@ const LEGAL_DOCS={
 /* ══════════ منطق الإفصاح البارز ══════════
    الموافقة تُحفظ محلياً فيُعرض مرة واحدة. «ليس الآن» لا يطلب الإذن
    إطلاقاً — وهو ما تشترطه السياسة: لا طلب بلا موافقة صريحة. */
+/* [ج٢٠] تُنادى من الطبقة الأصلية عند اكتمال سلسلة الأذونات. */
+window.__onPermissionsReady=function(fine,bg){
+  try{
+    if(!fine){ if(typeof toast==='function')toast('لن تصلك طلبات بدون إذن الموقع','warn'); return; }
+    const t=document.getElementById('onlineTog');
+    if(t&&t.checked&&window.AndroidRadar&&AndroidRadar.startLocationService)
+      AndroidRadar.startLocationService();
+  }catch(e){}
+};
+
 window.discAccept=function(){
   try{localStorage.setItem('suf_loc_disclosed','1');}catch(e){}
   const o=document.getElementById('discOv');if(o)o.classList.add('dn');
+
+  /* [ج٩] داخل التطبيق: الطبقة الأصلية وحدها تطلب الإذن، بالترتيب
+     الأمامي ← الخلفي ← الإشعارات. ولا نُنادي getCurrentPosition هنا:
+     كانت تُطلق حوار WebView في اللحظة نفسها، فيتراكب حواران على الشاشة
+     ويستحيل على المراجع أن يرى أيّهما تلا الإفصاح.
+     وفي المتصفّح (PWA بلا جسر) نطلبه نحن. */
+  let nativeHandled=false;
   try{
-    if(navigator.geolocation)
-      navigator.geolocation.getCurrentPosition(()=>{},()=>{},{enableHighAccuracy:true,maximumAge:0});
+    if(window.AndroidRadar&&typeof AndroidRadar.onLocationConsent==='function'){
+      AndroidRadar.onLocationConsent(); nativeHandled=true;
+    }
   }catch(e){}
-  /* الطبقة الأصلية تطلب إذن الخلفية بعد الموافقة فقط */
-  try{ if(window.AndroidRadar&&AndroidRadar.onLocationConsent) AndroidRadar.onLocationConsent(); }catch(e){}
+  if(!nativeHandled){
+    try{
+      if(navigator.geolocation)
+        navigator.geolocation.getCurrentPosition(()=>{},()=>{},{enableHighAccuracy:true,maximumAge:0});
+    }catch(e){}
+  }
+
+  const r=window._discResume; window._discResume=null;
+  if(typeof r==='function'){ try{ r(); }catch(e){} }
 };
 window.discLater=function(){
   const o=document.getElementById('discOv');if(o)o.classList.add('dn');
+  window._discResume=null;
+  /* [ج١٠] «ليس الآن» تُرجع المفتاح إلى الاستراحة فعلياً.
+     كان المفتاح يبقى أخضر بلا إذن ولا خدمة — فيجلس الكابتن ساعةً يظنّ
+     نفسه في الشفت. ورفضٌ يُحترم أوضح من رفضٍ يُتجاهل. */
+  try{
+    const t=document.getElementById('onlineTog');
+    if(t&&t.checked){ t.checked=false; if(typeof toggleOnline==='function')toggleOnline(); }
+  }catch(e){}
   try{
     if(typeof toast==='function')
-      toast('لن تصلك طلبات بدون تفعيل الموقع. يمكنك الموافقة لاحقاً من الإعدادات.','warn');
+      toast('لن تصلك طلبات بدون تفعيل الموقع. يمكنك الموافقة متى شئت من مفتاح «متاح للطلبات».','warn');
   }catch(e){}
 };
 window.discReadMore=function(){
@@ -1184,20 +1217,41 @@ window.showLocationDisclosure=function(){
   const o=document.getElementById('discOv');if(o)o.classList.remove('dn');
 };
 
-/* 🚦 عرض الإفصاح عند أول تشغيل — من سكربت مستقل لا من وحدة فايربيس.
-   لو ربطناه بالوحدة لاختفى الإفصاح كلّما تعذّر تحميل الـSDK، وقد يفتح
-   مراجع المتجر التطبيق بشبكة ضعيفة فيرى تطبيقاً يطلب الموقع بلا إفصاح. */
-(function(){
-  const run=()=>{
-    try{
-      if(localStorage.getItem('suf_loc_disclosed')==='1')return;
-      const o=document.getElementById('discOv');
-      if(o)setTimeout(()=>o.classList.remove('dn'),600);
-    }catch(e){}
-  };
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',run);
-  else run();
-})();
+/* ══════════════════════════════════════════════════════════════════════════
+   🔴 [ج٨] حُذف العرض التلقائي عند تحميل الصفحة.
+   ──────────────────────────────────────────────────────────────────────────
+   كان الإفصاح يظهر بعد ٦٠٠ ملّي ثانية من فتح التطبيق — أي قبل شاشة الدخول،
+   لمستخدمٍ لا يملك حساباً ولا يعرف بعدُ ما هو «الشفت». والسياسة لا تكتفي
+   بأن يسبق الإفصاحُ الإذنَ، بل تشترط أن يُطلب الموقع **في سياق الميزة**.
+   والسياق هنا واحد لا ثاني له: لحظة تحويل المفتاح إلى «متاح للطلبات».
+
+   والفائدة ليست امتثالاً فقط: الإفصاح الذي يقرؤه الكابتن وهو يبدأ شفته
+   يُقرأ فعلاً — أمّا الذي يقفز في وجهه قبل الدخول فيُغلَق بلا نظر.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** هل وافق؟ الطبقة الأصلية هي المرجع حين تكون موجودة — localStorage قد يُمسح
+    مع كاش الويب بينما الموافقة محفوظة في SharedPreferences، والعكس. */
+window.locConsentGiven=function(){
+  try{
+    if(window.AndroidRadar&&typeof AndroidRadar.hasLocationConsent==='function')
+      return AndroidRadar.hasLocationConsent();
+  }catch(e){}
+  try{ return localStorage.getItem('suf_loc_disclosed')==='1'; }catch(e){ return false; }
+};
+
+/**
+ * 🚦 البوّابة: تُنادى من toggleOnline قبل أي شيء آخر.
+ * ترجع true إن كان الطريق سالكاً، وfalse إن عُرض الإفصاح وعلينا التوقّف.
+ * onOk يُنفَّذ بعد الموافقة كي يُستأنف تشغيل الشفت من حيث توقّف.
+ */
+window._discResume=null;
+window.ensureLocationConsent=function(onOk){
+  if(window.locConsentGiven()) return true;
+  window._discResume = onOk || null;
+  const o=document.getElementById('discOv');
+  if(o)o.classList.remove('dn');
+  return false;
+};
 
 window.openLegal=function(k){
   const d=LEGAL_DOCS[k];if(!d)return;
@@ -1818,11 +1872,11 @@ mins_since_pickup:m,attempts:1,   /* [V15.8] لا increment: القاعدة تس
 /* ══════════════ الدخول ══════════════ */
 window.initAuth=function(){unlock();
 if('Notification' in window&&Notification.permission!=='granted')Notification.requestPermission();
-/* 🚦 لا يُطلب إذن الموقع إلا بعد الموافقة على الإفصاح — شرط Google Play.
-   عرضُ الإفصاح نفسه يتولّاه سكربت مستقل كي يظهر مهما فشل تحميل هذه الوحدة. */
-if(localStorage.getItem('suf_loc_disclosed')==='1'&&navigator.geolocation){
-  navigator.geolocation.getCurrentPosition(()=>{},()=>{},{enableHighAccuracy:true,maximumAge:0});
-}
+/* 🚦 [ج١٢] حُذف طلب الموقع عند الدخول.
+   شاشة الدخول ليست سياق الميزة: الكابتن يسجّل دخوله ليرى أرباح يومه أو
+   سجلّ رحلاته، لا ليبدأ شفتاً بالضرورة. فطلب الموقع هنا طلبٌ بلا حاجة
+   قائمة — وهو المعنى الحرفيّ لِما ترفضه السياسة.
+   الطلب صار حصراً عند «متاح للطلبات» [ج١١]. */
 doAuth();};
 
 function doAuth(){
@@ -2199,6 +2253,25 @@ function startDayRollover(initial){
 }
 
 window.toggleOnline=async function(){
+  /* ════════════════════════════════════════════════════════════════════════
+     🚦 [ج١١] البوّابة — هنا يبدأ كل شيء الآن.
+     ────────────────────────────────────────────────────────────────────────
+     هذه اللحظة هي «سياق الميزة» الذي تشترطه سياسة الموقع في الخلفية:
+     الكابتن يعلن أنه يبدأ شفته، فيُعرض الإفصاح، فيوافق، فيُطلب الإذن.
+     ولا سبيل آخر إلى الطلب في التطبيق كلّه.
+
+     ونُرجع المفتاح إلى موضعه فوراً ريثما يقرأ، فلا يبقى أخضر بلا شفت.
+     ════════════════════════════════════════════════════════════════════════ */
+  const _tog=document.getElementById('onlineTog');
+  if(_tog&&_tog.checked&&!window.locConsentGiven()){
+    _tog.checked=false;
+    window.ensureLocationConsent(function(){
+      const t=document.getElementById('onlineTog');
+      if(t){ t.checked=true; window.toggleOnline(); }
+    });
+    return;
+  }
+
   isOnline=document.getElementById('onlineTog').checked;
   availEpoch++;            /* [V16.0] أبطل كل كتابةٍ معلّقة من قبل هذا القرار */
   /* 🔴 [V15.6] كان الحجب بمؤقّت أعمى (٤ ث) — وعملية التفعيل قد تطول أكثر
