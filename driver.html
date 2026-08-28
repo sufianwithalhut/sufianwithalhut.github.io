@@ -78,7 +78,7 @@
      الآن: رقمٌ واحد يُشتقّ منه كل شيء — الشاشة والإعدادات ومسح الكاش.
      **وأي تسليم جديد يجب أن يرفعه، وإلا لم يصل.**
      ═══════════════════════════════════════════════════════════════════════ */
-  const CURRENT_APP_VERSION = "18.1-Consent";
+  const CURRENT_APP_VERSION = "18.2-Consent";
   window.APP_VERSION = CURRENT_APP_VERSION;
   /* اطبعه في شاشة الدخول فور جهوز الصفحة — نصّاً واحداً لا نسختين. */
   document.addEventListener('DOMContentLoaded', function(){
@@ -1161,9 +1161,21 @@ const LEGAL_DOCS={
 /* [ج٢٠] تُنادى من الطبقة الأصلية عند اكتمال سلسلة الأذونات. */
 window.__onPermissionsReady=function(fine,bg){
   try{
-    if(!fine){ if(typeof toast==='function')toast('لن تصلك طلبات بدون إذن الموقع','warn'); return; }
+    if(!fine){
+      window._discResume=null;
+      try{ const t0=document.getElementById('onlineTog'); if(t0)t0.checked=false; }catch(e){}
+      if(typeof toast==='function')toast('لن تصلك طلبات بدون إذن الموقع','warn');
+      return;
+    }
     /* [ج٢١] الآن صار للموقع إذن — شغّل المراقبة التي امتنعت عنها عند الدخول. */
     if(typeof window.startGeoWatch==='function')window.startGeoWatch();
+
+    /* [ج٢٣] الآن — لا قبل — يُستأنف تشغيل الشفت.
+       ومهلة قصيرة كي يلتقط GPS أول إحداثية بعد منح الإذن مباشرةً؛
+       بدونها يبدأ toggleOnline انتظاره من صفر ويوشك أن يفشل ثانيةً. */
+    const r=window._discResume; window._discResume=null;
+    if(typeof r==='function'){ setTimeout(function(){ try{ r(); }catch(e){} }, 1200); return; }
+
     const t=document.getElementById('onlineTog');
     if(t&&t.checked&&window.AndroidRadar&&AndroidRadar.startLocationService)
       AndroidRadar.startLocationService();
@@ -1190,6 +1202,27 @@ window.discAccept=function(){
       if(navigator.geolocation)
         navigator.geolocation.getCurrentPosition(()=>{},()=>{},{enableHighAccuracy:true,maximumAge:0});
     }catch(e){}
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════
+     🔴 [ج٢٣] لا يُستأنف الشفت هنا — سباقٌ زمنيّ أنا سبّبته.
+     ──────────────────────────────────────────────────────────────────────
+     كان _discResume يُنفَّذ فور الضغط على «أوافق ومتابعة»، فيُعيد تشغيل
+     toggleOnline بينما حوارات أندرويد ما زالت معروضة على الشاشة.
+
+     وtoggleOnline ينتظر أول إحداثية ليؤكّد التفعيل — والإذن لم يُمنح بعد،
+     فتفشل القراءة، فيظهر «⚠️ لم يتأكّد التفعيل — لن تصلك طلبات» ومعه كتلة
+     تشخيص. ثم يصل الموقع بعد ثوانٍ وتصير الحالة active عند الخادم فعلاً،
+     لكن بطاقة الرادار عالقة على «متوقف» لأن مسار النجاح أُجهض.
+
+     أي أن الكابتن يقرأ رسالة فشلٍ عن عمليةٍ نجحت — وهو أسوأ من فشلٍ صريح.
+
+     الآن: نكتفي بإطلاق السلسلة، والاستئناف يتولّاه __onPermissionsReady
+     بعد أن تُمنح الأذونات فعلاً [ج٢٣].
+     ══════════════════════════════════════════════════════════════════════ */
+  if(nativeHandled){
+    try{ if(typeof toast==='function')toast('جارٍ تفعيل أذونات الموقع...','info'); }catch(e){}
+    return;
   }
 
   const r=window._discResume; window._discResume=null;
