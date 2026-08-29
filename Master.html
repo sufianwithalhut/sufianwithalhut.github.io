@@ -1,6 +1,11 @@
 <!DOCTYPE html>
 <!--
-  🛠️ لوحة الإدارة — V17.0 "Owned"
+  🛠️ لوحة الإدارة — V17.1 "Owned + Clearing"
+  ═══════════════════════════════════════════════════════════════════════
+  ✅ [V17.1] تبويب «طلبات التصفير» — يبتّ طلبات الليدر المرفوعة من
+     clearing.html. القبول يُعلّم فقط، والتصفير زرٌّ منفصل يُنادي rstDebt
+     القائمة. ضغطتان لا واحدة: التصفير لا رجعة فيه.
+  ⚠️ يتطلّب قبله: database.rules.json V3.9 (عقدة clearing_requests)
   ═══════════════════════════════════════════════════════════════════════
   ✅ وضع الظلّ على الأفعال السيادية الأربعة (forceComplete · delOrder ·
      asgnDrv · wdOrder): يُنادى السيرفر بالتوازي فيُقيّم ويُسجّل حكمه
@@ -1009,6 +1014,7 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
     <span class="sidebar-sec">النظام</span>
     <button class="nb" id="nb-aiops" onclick="goTab('aiops',this)"><div class="ni">⚡</div> مركز القيادة</button>
     <button class="nb" id="nb-audit" onclick="goTab('audit',this)"><div class="ni">📋</div> سجل التدقيق</button>
+    <button class="nb" id="nb-clearing" onclick="goTab('clearing',this)"><div class="ni">🧾</div> طلبات التصفير<span id="nbClrDot" style="display:none;width:7px;height:7px;border-radius:50%;background:var(--rose);margin-right:auto;flex-shrink:0"></span></button>
     <div class="sidebar-foot"><button class="sidebar-out" onclick="doLogout()">🚪 تسجيل الخروج</button></div>
   </aside>
   <main class="main">
@@ -1193,6 +1199,17 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
       <div class="srch-w" style="margin-bottom:16px"><span class="si">🔍</span><input type="text" id="auSch" class="srch" placeholder="ابحث في السجل..." oninput="renderAudit()"></div>
       <div id="auList"></div>
     </div>
+
+    <!-- 🧾 [V17.1] طلبات تصفير الديون — يرفعها الليدر من clearing.html -->
+    <div id="pg-clearing" class="pg tab-p">
+      <div class="pg-ttl">طلبات التصفير</div>
+      <div class="arch-alert" style="margin-bottom:12px">
+        🧾 الليدر يرفع الطلب بعد استلامه المبلغ. القبول <b>يُعلّم الطلب فقط</b> —
+        ثم صفّر الدفتر بزرّ «صفّر الدين» بجواره، وهو الوحيد الذي يمسّ المال.
+        والمبلغ المعروض <b>حيٌّ من الدفتر</b> لا الرقم الذي كتبه الليدر.
+      </div>
+      <div id="clrList"></div>
+    </div>
   </main>
   <nav class="bnav">
     <div class="bni on" id="bn-live" onclick="goTab('live',this)"><div class="bni-ic">🗺</div><span class="bni-lb">الميدان</span><div class="bni-dot" id="bnDot"></div></div>
@@ -1200,6 +1217,7 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
     <div class="bni" id="bn-restaurants" onclick="goTab('restaurants',this)"><div class="bni-ic">🍽</div><span class="bni-lb">المطاعم</span></div>
     <div class="bni" id="bn-staff" onclick="goTab('staff',this)"><div class="bni-ic">🧑‍💼</div><span class="bni-lb">الموظفين</span><div class="bni-dot" id="bnStaffDot"></div></div>
     <div class="bni" id="bn-aiops" onclick="goTab('aiops',this)"><div class="bni-ic">⚡</div><span class="bni-lb">القيادة</span></div>
+    <div class="bni" id="bn-clearing" onclick="goTab('clearing',this)"><div class="bni-ic">🧾</div><span class="bni-lb">التصفير</span><div class="bni-dot" id="bnClrDot"></div></div>
   </nav>
 </div>
 <script>
@@ -1236,7 +1254,7 @@ const TOK="HUT_APP_160C5EFB7BC52B3362ED46D98038AA53";
    مكتوباً هنا فيُستخرَج من "عرض المصدر" بلا كلمة مرور، ثم يُنادى getGlobalData
    فتتسرّب كل البيانات. الآن getGlobalData تُنادى عبر POST بكلمة المرور فقط
    (تُفحص في السيرفر)، ولا يوجد أي سرّ إداري في هذا الملف. */
-const TITLES={live:"الرصد الميداني",orders:"سجل اليوم",restaurants:"إدارة المطاعم",drivers:"إدارة الأسطول",staff:"إدارة الموظفين",aiops:"مركز القيادة",audit:"سجل التدقيق"};
+const TITLES={live:"الرصد الميداني",orders:"سجل اليوم",restaurants:"إدارة المطاعم",drivers:"إدارة الأسطول",staff:"إدارة الموظفين",aiops:"مركز القيادة",audit:"سجل التدقيق",clearing:"طلبات التصفير"};
 
 let MP="",gD=null;
 let liveOrd=[],archOrd=[],compArch=[],compByDay={};
@@ -3439,6 +3457,164 @@ function startStaffIdleTimer(){
   },30000);
 }
 function stopStaffIdleTimer(){if(_stIdleTimer){clearInterval(_stIdleTimer);_stIdleTimer=null;}}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   🧾 [V17.1] طلبات تصفير الديون — لوحة المدير
+   ───────────────────────────────────────────────────────────────────────────
+   الليدر يرفع الطلب من clearing.html، وهنا يُبتّ. وفصل الخطوتين مقصود:
+
+     «قبول»       ⇒ status='approved' فقط. إشارةٌ للّيدر أن طلبه مرّ.
+     «صفّر الدين» ⇒ rstDebt القائمة — تشترط كلمة مرور الإدارة (Settings!B2)
+                    وتُسجّل في سجلّ التدقيق كما كانت، بلا مسار جديد للمال.
+
+   ولماذا لا يُصفّر القبولُ تلقائياً؟ لأن التصفير عمليةٌ لا رجعة فيها: تمحو
+   الدين وتختم ledgers/reset_events وتمسح ختم الاسترجاع التاريخي. ودمجها
+   بزرٍّ يُضغط عشرين مرة في الجلسة يجعل خطأً واحداً غير قابل للاسترجاع.
+   الضغطتان هما الحارس.
+
+   🛡️ والمبلغ المعروض يُقرأ من liveLed.restaurants لا من الطلب: الليدر يكتب
+      لقطةً وقت الرفع، وقد يتغيّر الدين بينها وبين قرارك — والقرار على الحيّ.
+   ═══════════════════════════════════════════════════════════════════════════ */
+let clrReqs = {}, liveResets = {};
+
+/* الطلب يصير لاغياً بمجرّد تصفير الدفتر: resetDebtForEntity تختم
+   ledgers/reset_events/RESTAURANT/{الهاتف}، فنقارن الختمين. وهكذا لا يبقى
+   طلبٌ مبتوتٌ معلّقاً في القائمة ولا يحتاج أحدٌ إلى حذفه بيده — والمطعم
+   يعود إلى طابور الليدر وحده حين يتراكم عليه دينٌ جديد. */
+function clrActive(phone, r) {
+  if (!r) return false;
+  const reqAt = r.ts ? new Date(r.ts).getTime() : 0;
+  const rstAt = liveResets[phone] ? new Date(liveResets[phone]).getTime() : 0;
+  return reqAt > rstAt;
+}
+
+function updClrBadge() {
+  const n = Object.keys(clrReqs).filter(function (p) {
+    return clrActive(p, clrReqs[p]) && (clrReqs[p].status || "pending") === "pending";
+  }).length;
+  /* شارتان بآليتين مختلفتين — وهذا ليس تكراراً بل ضرورة:
+     السفلية تستعمل .bni-dot المعرَّفة **داخل استعلام الجوال** وتُظهرها
+     .bni-dot.on، فلو ضبطنا style.display ظهرت على سطح المكتب حيث لا قواعد
+     لها ولا موضع (‎.nb بلا position:relative) — نقطةٌ سابحة في الصفحة.
+     والعلوية عنصرٌ مستقلّ بأنماطه، فيكفيه display. */
+  const top = document.getElementById("nbClrDot");
+  if (top) top.style.display = n > 0 ? "block" : "none";
+  const bot = document.getElementById("bnClrDot");
+  if (bot) bot.classList.toggle("on", n > 0);
+}
+
+function renderClearing() {
+  const box = document.getElementById("clrList");
+  if (!box) return;
+
+  const led = (liveLed && liveLed.restaurants) ? liveLed.restaurants : {};
+  const rows = Object.keys(clrReqs)
+    .filter(function (p) { return clrActive(p, clrReqs[p]); })
+    .map(function (p) {
+      const r = clrReqs[p] || {};
+      return {
+        phone: p,
+        name: r.name || p,
+        by: r.byName || r.by || "—",
+        note: r.note || "",
+        ts: r.ts || "",
+        status: r.status || "pending",
+        debt: Number((led[p] || {}).debt) || 0,               /* حيٌّ من الدفتر */
+        orders: Number((led[p] || {}).completed_orders) || 0,
+        claimed: Number(r.debt_at_request) || 0               /* لقطة الليدر */
+      };
+    })
+    .sort(function (a, b) {
+      const rank = function (s) { return s === "pending" ? 0 : (s === "approved" ? 1 : 2); };
+      return rank(a.status) - rank(b.status) || b.debt - a.debt;
+    });
+
+  if (!rows.length) {
+    box.innerHTML = '<div style="text-align:center;padding:48px 20px;color:var(--ink3)">' +
+      '<div style="font-size:1rem;font-weight:800;color:var(--ink2);margin-bottom:8px">لا طلبات</div>' +
+      '<div style="font-size:.85rem;line-height:1.8">حين يرفع ليدرٌ طلب تصفير من لوحته، يظهر هنا.</div></div>';
+    return;
+  }
+
+  box.innerHTML = rows.map(function (r) {
+    const st = r.status;
+    const badge = st === "approved"
+      ? '<span style="background:var(--green-l);color:var(--green-d);padding:5px 11px;border-radius:8px;font-size:.72rem;font-weight:800">مقبول — بانتظار التصفير</span>'
+      : st === "rejected"
+      ? '<span style="background:var(--red-l);color:var(--red-d);padding:5px 11px;border-radius:8px;font-size:.72rem;font-weight:800">مرفوض</span>'
+      : '<span style="background:var(--amber-l);color:var(--amber-d);padding:5px 11px;border-radius:8px;font-size:.72rem;font-weight:800">جديد</span>';
+
+    /* تنبيهٌ صريح حين ينحرف الدين الحيّ عمّا رآه الليدر: قد يكون المطعم أرسل
+       طلبات بعد رفع الطلب، فتصفيرك يمحو أكثر ممّا استُلم. */
+    const drift = (r.claimed && r.debt !== r.claimed)
+      ? '<div style="margin-top:8px;font-size:.74rem;color:var(--amber-d);font-weight:700">' +
+        '⚠️ تغيّر الدين منذ الطلب: ' + r.claimed.toLocaleString("ar-EG") +
+        ' ← ' + r.debt.toLocaleString("ar-EG") + ' د.ع</div>'
+      : '';
+
+    return '<div class="card" style="margin-bottom:10px;padding:15px">' +
+      '<div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">' +
+        '<div style="flex:1;min-width:170px">' +
+          '<div style="font-size:.95rem;font-weight:900;margin-bottom:3px">' + esc(r.name) + '</div>' +
+          '<div style="font-size:.74rem;color:var(--ink3)">' + esc(r.phone) +
+            ' · ' + r.orders.toLocaleString("ar-EG") + ' طلب</div>' +
+          '<div style="font-size:.74rem;color:var(--ink3);margin-top:4px">رفعه: ' + esc(r.by) +
+            ' · ' + esc(String(r.ts).slice(0, 16).replace("T", " ")) + '</div>' +
+        '</div>' +
+        '<div style="text-align:left">' +
+          '<div style="font-size:1.15rem;font-weight:900;color:var(--red-d)">' +
+            r.debt.toLocaleString("ar-EG") + '</div>' +
+          '<div style="font-size:.68rem;color:var(--ink4)">د.ع · الدين الآن</div>' +
+        '</div>' +
+      '</div>' +
+      (r.note ? '<div style="margin-top:9px;padding:9px 11px;background:var(--surface3);border-radius:8px;font-size:.79rem;color:var(--ink2);line-height:1.7">' + esc(r.note) + '</div>' : '') +
+      drift +
+      '<div style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+        badge +
+        '<div style="flex:1"></div>' +
+        (st === "pending"
+          ? '<button onclick="clrDecide(\'' + ej(r.phone) + '\',\'approved\',this)" style="background:var(--green-d);color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:.78rem;font-weight:800;cursor:pointer">قبول</button>' +
+            '<button onclick="clrDecide(\'' + ej(r.phone) + '\',\'rejected\',this)" style="background:var(--surface3);color:var(--ink2);border:none;border-radius:8px;padding:9px 16px;font-size:.78rem;font-weight:800;cursor:pointer">رفض</button>'
+          : '') +
+        (st === "approved"
+          ? '<button onclick="rstDebt(\'RES\',\'' + ej(r.phone) + '\',this)" style="background:var(--black);color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:.78rem;font-weight:800;cursor:pointer">صفّر الدين</button>'
+          : '') +
+      '</div>' +
+    '</div>';
+  }).join("");
+}
+
+window.clrDecide = function (phone, status, el) {
+  if (el) el.disabled = true;
+  const r = clrReqs[phone] || {};
+  db.ref("clearing_requests/" + phone).update({
+    status: status,
+    decided_at: new Date().toISOString(),
+    decided_by: "admin"
+  }).then(function () {
+    toast(status === "approved" ? "قُبل الطلب ✅" : "رُفض الطلب");
+    logAudit("clearingDecision",
+      (status === "approved" ? "قبول" : "رفض") + " طلب تصفير: " +
+      (r.name || phone) + " — " + (Number(r.debt_at_request) || 0) + " د.ع" +
+      " · رفعه " + (r.byName || r.by || "?"));
+  }).catch(function () {
+    if (el) el.disabled = false;
+    toast("تعذّر الحفظ", "e");
+  });
+};
+
+/* المستمعان — عبر listen() فيرثان الشفاء الذاتي للمصادقة كبقية اللوحة.
+   والعقدتان صغيرتان: طلبات مفتوحة، وأختام تصفير. */
+listen(function () { return db.ref("clearing_requests"); }, function (s) {
+  clrReqs = s.val() || {};
+  renderClearing();
+  updClrBadge();
+});
+listen(function () { return db.ref("ledgers/reset_events/RESTAURANT"); }, function (s) {
+  liveResets = s.val() || {};
+  renderClearing();
+  updClrBadge();
+});
 </script>
 </body>
 </html>
