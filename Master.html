@@ -1,11 +1,16 @@
 <!DOCTYPE html>
 <!--
-  🛠️ لوحة الإدارة — V17.1 "Owned + Clearing"
+  🛠️ لوحة الإدارة — V17.2 "Owned + Clearing + Subs"
   ═══════════════════════════════════════════════════════════════════════
   ✅ [V17.1] تبويب «طلبات التصفير» — يبتّ طلبات الليدر المرفوعة من
      clearing.html. القبول يُعلّم فقط، والتصفير زرٌّ منفصل يُنادي rstDebt
      القائمة. ضغطتان لا واحدة: التصفير لا رجعة فيه.
-  ⚠️ يتطلّب قبله: database.rules.json V3.9 (عقدة clearing_requests)
+  ✅ [V17.2] وقسمٌ ثانٍ في التبويب نفسه: استلام الاشتراكات الشهرية.
+     الاشتراك **ليس ديناً في الدفتر** — عمولته صفر بالطلب ويُحاسَب في
+     تقريرك الشهري. فالتأكيد هنا يوثّق ما قبضه الليدر ولا يُصفّر شيئاً،
+     ولذلك لا زرّ «صفّر الدين» في بطاقاته.
+  ⚠️ يتطلّب قبله: database.rules.json V4.0
+     (clearing_requests · sub_collections)
   ═══════════════════════════════════════════════════════════════════════
   ✅ وضع الظلّ على الأفعال السيادية الأربعة (forceComplete · delOrder ·
      asgnDrv · wdOrder): يُنادى السيرفر بالتوازي فيُقيّم ويُسجّل حكمه
@@ -1209,6 +1214,14 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
         والمبلغ المعروض <b>حيٌّ من الدفتر</b> لا الرقم الذي كتبه الليدر.
       </div>
       <div id="clrList"></div>
+
+      <div class="pg-ttl" style="margin-top:26px">استلام الاشتراكات</div>
+      <div class="arch-alert" style="margin-bottom:12px">
+        📅 الاشتراك الشهري <b>ليس ديناً في الدفتر</b> — عمولته صفر بالطلب،
+        ويُحاسَب في تقريرك الشهري. فالتأكيد هنا <b>توثيقٌ لما قبضه الليدر</b>
+        لا تصفير. طابِق المبلغ بجدول الاشتراكات في بريد الإغلاق.
+      </div>
+      <div id="subList"></div>
     </div>
   </main>
   <nav class="bnav">
@@ -3489,9 +3502,16 @@ function clrActive(phone, r) {
 }
 
 function updClrBadge() {
-  const n = Object.keys(clrReqs).filter(function (p) {
+  let n = Object.keys(clrReqs).filter(function (p) {
     return clrActive(p, clrReqs[p]) && (clrReqs[p].status || "pending") === "pending";
   }).length;
+  /* والاشتراكات المعلّقة تُعدّ معها: شارةٌ واحدة لتبويب واحد. */
+  Object.keys(subCol || {}).forEach(function (mo) {
+    const g = subCol[mo] || {};
+    Object.keys(g).forEach(function (p) {
+      if (((g[p] || {}).status || "pending") === "pending") n++;
+    });
+  });
   /* شارتان بآليتين مختلفتين — وهذا ليس تكراراً بل ضرورة:
      السفلية تستعمل .bni-dot المعرَّفة **داخل استعلام الجوال** وتُظهرها
      .bni-dot.on، فلو ضبطنا style.display ظهرت على سطح المكتب حيث لا قواعد
@@ -3613,6 +3633,139 @@ listen(function () { return db.ref("clearing_requests"); }, function (s) {
 listen(function () { return db.ref("ledgers/reset_events/RESTAURANT"); }, function (s) {
   liveResets = s.val() || {};
   renderClearing();
+  updClrBadge();
+});
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   📅 [V17.2] استلام الاشتراكات الشهرية
+   ───────────────────────────────────────────────────────────────────────────
+   ولماذا قسمٌ منفصل لا صفٌّ في القائمة نفسها؟ لأن الفعلين مختلفان جذرياً:
+
+     الدين      ← رقمٌ حقيقي في ledgers. القبول ثم rstDebt تمحوه.
+     الاشتراك   ← **ليس في ledgers إطلاقاً**. parseCommissionRule تُرجع res=0
+                  للشهري، فالأرشيف لا يزيد الدفتر بدينار. وmonthlyArchiver
+                  يحسب المبلغ ويطبعه في بريدك ولا يكتبه في الدفاتر — صفر
+                  إشارة إلى ledgers في ١٦٬٤١٩ حرفاً من الدالة.
+
+   ⇒ فلا شيء هنا يُصفَّر، ولا زرّ «صفّر الدين» في هذه البطاقات. التأكيد
+     يوثّق ما قبضه الليدر، وأنت تطابقه بجدول الاشتراكات في بريد الإغلاق.
+
+   ⚠️ والمبلغ المعروض هو **ما قُبض** لا **ما استُحقّ**: الاستحقاق يعتمد على
+      نشاط نصفَي الشهر (HALF_MONTH_RATIO في monthlyArchiver) وهو محسوبٌ من
+      Daily_Reports في الشيت، ولا تصله هذه اللوحة. واختلاف الرقمين هو بالضبط
+      ما يجب أن تراه — لا ما يجب أن نُخفيه بتقريبٍ اجتهادي.
+   ═══════════════════════════════════════════════════════════════════════════ */
+let subCol = {};
+
+const AR_MON = ["يناير","فبراير","مارس","أبريل","مايو","يونيو",
+                "يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"];
+function subMonLabel(k) {
+  const p = String(k).split("-");
+  return (AR_MON[Number(p[1]) - 1] || k) + " " + p[0];
+}
+
+function renderSubs() {
+  const box = document.getElementById("subList");
+  if (!box) return;
+
+  const rows = [];
+  Object.keys(subCol).forEach(function (mo) {
+    const g = subCol[mo] || {};
+    Object.keys(g).forEach(function (p) {
+      const r = g[p] || {};
+      rows.push({
+        month: mo, phone: p,
+        name: r.name || p,
+        by: r.byName || r.by || "—",
+        amount: Number(r.amount) || 0,
+        declared: Number(r.declared) || 0,
+        note: r.note || "", ts: r.ts || "",
+        status: r.status || "pending"
+      });
+    });
+  });
+
+  rows.sort(function (a, b) {
+    const rank = function (s) { return s === "pending" ? 0 : (s === "approved" ? 1 : 2); };
+    return rank(a.status) - rank(b.status) || (a.month < b.month ? 1 : -1) || b.amount - a.amount;
+  });
+
+  if (!rows.length) {
+    box.innerHTML = '<div style="text-align:center;padding:40px 20px;color:var(--ink3)">' +
+      '<div style="font-size:.95rem;font-weight:800;color:var(--ink2);margin-bottom:8px">لا تسجيلات</div>' +
+      '<div style="font-size:.84rem;line-height:1.8">حين يسجّل الليدر استلام اشتراك، يظهر هنا.</div></div>';
+    return;
+  }
+
+  box.innerHTML = rows.map(function (r) {
+    const st = r.status;
+    const badge = st === "approved"
+      ? '<span style="background:var(--green-l);color:var(--green-d);padding:5px 11px;border-radius:8px;font-size:.72rem;font-weight:800">مؤكَّد</span>'
+      : st === "rejected"
+      ? '<span style="background:var(--red-l);color:var(--red-d);padding:5px 11px;border-radius:8px;font-size:.72rem;font-weight:800">مرفوض</span>'
+      : '<span style="background:var(--amber-l);color:var(--amber-d);padding:5px 11px;border-radius:8px;font-size:.72rem;font-weight:800">جديد</span>';
+
+    /* قبض الليدر أقلّ من الاشتراك المعلن ⇒ إمّا نصف شهر (وهو مشروع) وإمّا
+       نقصٌ يستحقّ سؤالاً. لا نحكم — نُظهر الفارق وأنت تحكم. */
+    const gap = (r.declared && r.amount !== r.declared)
+      ? '<div style="margin-top:8px;font-size:.74rem;color:var(--amber-d);font-weight:700">' +
+        '⚠️ أقلّ من المعلن: قُبض ' + r.amount.toLocaleString("ar-EG") +
+        ' من ' + r.declared.toLocaleString("ar-EG") + ' د.ع' +
+        ' — راجع نشاطه في جدول الاشتراكات ببريد الإغلاق</div>'
+      : '';
+
+    return '<div class="card" style="margin-bottom:10px;padding:15px">' +
+      '<div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">' +
+        '<div style="flex:1;min-width:170px">' +
+          '<div style="font-size:.95rem;font-weight:900;margin-bottom:3px">' + esc(r.name) + '</div>' +
+          '<div style="font-size:.74rem;color:var(--ink3)">' + esc(r.phone) +
+            ' · اشتراك ' + esc(subMonLabel(r.month)) + '</div>' +
+          '<div style="font-size:.74rem;color:var(--ink3);margin-top:4px">سجّله: ' + esc(r.by) +
+            ' · ' + esc(String(r.ts).slice(0, 16).replace("T", " ")) + '</div>' +
+        '</div>' +
+        '<div style="text-align:left">' +
+          '<div style="font-size:1.15rem;font-weight:900;color:#6d4bc4">' +
+            r.amount.toLocaleString("ar-EG") + '</div>' +
+          '<div style="font-size:.68rem;color:var(--ink4)">د.ع · قُبض</div>' +
+        '</div>' +
+      '</div>' +
+      (r.note ? '<div style="margin-top:9px;padding:9px 11px;background:var(--surface3);border-radius:8px;font-size:.79rem;color:var(--ink2);line-height:1.7">' + esc(r.note) + '</div>' : '') +
+      gap +
+      '<div style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+        badge + '<div style="flex:1"></div>' +
+        (st === "pending"
+          ? '<button onclick="subDecide(\'' + ej(r.month) + '\',\'' + ej(r.phone) + '\',\'approved\',this)" style="background:var(--green-d);color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:.78rem;font-weight:800;cursor:pointer">تأكيد الاستلام</button>' +
+            '<button onclick="subDecide(\'' + ej(r.month) + '\',\'' + ej(r.phone) + '\',\'rejected\',this)" style="background:var(--surface3);color:var(--ink2);border:none;border-radius:8px;padding:9px 16px;font-size:.78rem;font-weight:800;cursor:pointer">رفض</button>'
+          : '') +
+      '</div>' +
+    '</div>';
+  }).join("");
+}
+
+window.subDecide = function (month, phone, status, el) {
+  if (el) el.disabled = true;
+  const r = ((subCol[month] || {})[phone]) || {};
+  db.ref("sub_collections/" + month + "/" + phone).update({
+    status: status,
+    decided_at: new Date().toISOString(),
+    decided_by: "admin"
+  }).then(function () {
+    toast(status === "approved" ? "تأكّد الاستلام ✅" : "رُفض التسجيل");
+    logAudit("subCollection",
+      (status === "approved" ? "تأكيد" : "رفض") + " استلام اشتراك " + subMonLabel(month) +
+      ": " + (r.name || phone) + " — " + (Number(r.amount) || 0) + " د.ع" +
+      " · سجّله " + (r.byName || r.by || "?"));
+  }).catch(function () {
+    if (el) el.disabled = false;
+    toast("تعذّر الحفظ", "e");
+  });
+};
+
+/* العقدة صغيرة: اثنا عشر شهراً × عشرات المطاعم، وكل سجلّ بضعة حقول. */
+listen(function () { return db.ref("sub_collections"); }, function (s) {
+  subCol = s.val() || {};
+  renderSubs();
   updClrBadge();
 });
 </script>
