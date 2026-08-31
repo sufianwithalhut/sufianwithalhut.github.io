@@ -19,6 +19,45 @@
 -->
 <html lang="ar" dir="rtl">
 <head>
+<!-- 🔒 [CSP] سياسة أمان المحتوى — كانت واجهات سفيان الخمس **بلا شيء**.
+     ═══════════════════════════════════════════════════════════════════
+     🔴 الأوسع سطحَ هجوم: تستقبل نصّ واتساب واللصق والصور من
+     الزبائن — وهي المُدخل الوحيد الذي يكتبه طرفٌ خارج النظام.
+
+     ⚠️ **موضعها في أعلى الترويسة شرطُ صحّة لا ترتيب.** وسم meta لا يحكم
+        إلا ما بعده — فما سبقها من كتل سكربت يبقى خارج الحماية.
+        📎 ولا تكتب وسم ترويسة أو سكربت **حرفياً** في هذا التعليق:
+           ماسحات التدقيق تبحث عن النصّ لا عن البنية، فتَعُدّه وسماً
+           حقيقياً وتُبلغ خطأً كاذباً. (وقع فعلاً في أول صياغة.)
+
+     📋 كل أصلٍ أدناه مُشتقّ من مورد يُحمَّل في هذا الملف بعينه — لا نسخاً
+        عن واجهة أخرى. تحقّق بعد أي تعديل:
+            python3 tools/csp_audit.py frontend/restaurant.html
+
+     🔴 **لا تحذف www.gstatic.com من script-src** — قد تُنذر أدوات
+        التدقيق بأنه غير مستعمل، وهو إنذار كاذب حيث تدخل وحدات فايربيس
+        عبر استيرادات ES لا عبر وسم src. حذفه ⇒ صفحة بيضاء بلا خطأ مفهوم.
+
+     📌 'unsafe-inline' لازمٌ اليوم: الشيفرة كلها كتل مضمّنة. إزالته
+        تتطلّب nonce أو نقلها إلى ملفات — مشروع لاحق موثّق.
+     📌 form-action 'self' لا 'none': لو فشلت كتلة السكربت (وهو ما تحمي
+        منه هذه السياسة) لعادت النماذج إلى الإرسال الافتراضي، و'self'
+        يجعله إعادة تحميل غير ضارّة بدل حجبٍ صامت.
+
+     🔴 [V28] أُضيف https://*.firebasedatabase.app و https://*.firebaseio.com
+        إلى **script-src** (كانا في connect-src وحده).
+        السبب — وهو موثَّق في liderdodsas.html:27-46 بأنه "حيّرنا يوماً
+        كاملاً": مكتبة firebase-database تسقط إلى long-polling حين
+        يتعذّر WebSocket (وكيل · جدار حماية · شبكة خلوية متقلّبة)،
+        وتحقن حينها وسم سكربت من نطاق قاعدة البيانات نفسه.
+        وهذا الملف يستورد firebase-database.js (السطر 1057) وله نفس
+        السلوك تماماً — ولم يُضَف النطاق عنده.
+        ⇒ الاتصال يمرّ (connect-src يسمح) والسكربت يُحجَب ⇒ المستمع على
+        active_orders لا يعود بشيء أبداً ⇒ **المطعم يرسل الطلبات ولا
+        يرى واحداً منها، بلا رسالة خطأ مفهومة**.
+        ولا توسيع لسطح الهجوم: النطاق مأذونٌ أصلاً في connect-src. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://unpkg.com https://cdn.jsdelivr.net https://*.firebasedatabase.app https://*.firebaseio.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com https://cdn.jsdelivr.net; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app https://nominatim.openstreetmap.org; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
+
     <script>
         // --- إصدار 39.0 (Fortress 🛡️ — متناسق مع القواعد المحصّنة V2.0 + GAS V16.0 + CF-6.0) ---
         //  ما تغيّر عن 38.0:
@@ -31,23 +70,64 @@
         //          القاعدة الجديدة ترفض القراءة الكاملة لغير الإدارة.
         //  🔒 ضمان مصادقة فايربيس قبل أي كتابة (القواعد لم تعد تقبل مجهولاً).
         //  🛵 اسم الكابتن من drivers_locations/{phone}/name بدل شيت السائقين.
-        const CURRENT_APP_VERSION = "40.0.Sufyan-Swept";   /* 🔴 [V41-ج] بلا رفعه لا تُمسح الأصول ولا يصل التحديث كاشيراً واحداً */
+        /* 🔴 [V28] رُفع من "40.0.Sufyan-Swept" — وكان **الرقم نفسه** رغم
+           أن الملف يحمل تغييرات V41-ب و V41-ج بأكملها (طابور التراجع
+           الصوتي · escapeHtml/jss/sid · مرآة ledgers/today · updAreaLiveCount).
+           وآلية كسر الكاش أدناه (السطر 83) مقارنةٌ **نصّية** بهذا الثابت
+           مع ما في localStorage ⇒ الشرط كاذب ⇒ لا مسح كاش ولا r.update()
+           ولا reload — **إلى الأبد**. أي تحديث يُنشر لا يصل كاشيراً واحداً.
+           ⚠️ ارفعه مع كل تسليم. وهذه القاعدة مكتوبة في DEPLOY.md:162
+           وكانت منتهكة في التسليم الذي كتبها. */
+        const CURRENT_APP_VERSION = "42.0.Sufyan-Ledger";
         const RES_VERSION_KEY = 'hut_res_app_version';
+        /* ═══════════════════════════════════════════════════════════════════
+           🔴 [إصلاح عاجل] كان: caches.delete() و r.update() **وعدان غير
+           منتظَرين** ثم location.reload() فوراً في السطر التالي.
+           ───────────────────────────────────────────────────────────────────
+           وعامل الخدمة يعمل بـ Stale-While-Revalidate: يُرجع المخزَّن فوراً
+           ويحدّث في الخلفية. فيقع سباق:
+
+             ① الصفحة الجديدة تُحمَّل ⇒ الرقم تغيّر ⇒ يُحفظ الجديد
+             ② يبدأ المسح (لم يكتمل) ثم reload() فوراً
+             ③ عامل الخدمة يُرجع النسخة **القديمة** المخزَّنة بعد
+             ④ القديمة ترى رقمها ≠ المحفوظ ⇒ تحفظ القديم ⇒ تمسح ⇒ reload
+             ⑤ ... ⇒ **حلقة إعادة تحميل لا تنتهي**
+
+           والمستخدم يرى صفحة تُعيد تحميل نفسها، فيضغط الزر ولا يحدث شيء —
+           لأن الصفحة تُهدم تحته. «تعطّل زر تسجيل الدخول» بالضبط.
+
+           الآن: ننتظر اكتمال المسح **فعلاً** قبل إعادة التحميل، وحارس
+           زمني يمنع أكثر من إعادة تحميل واحدة كل ٦٠ ثانية مهما حدث،
+           وحزام يُعيد التحميل بعد ٤ ثوانٍ إن تعلّق وعد.
+           ═══════════════════════════════════════════════════════════════════ */
         try {
             if (localStorage.getItem(RES_VERSION_KEY) !== CURRENT_APP_VERSION) {
+                const RELOAD_TS_KEY = RES_VERSION_KEY + '_reload_ts';
+                const lastReload = Number(localStorage.getItem(RELOAD_TS_KEY) || 0);
                 localStorage.setItem(RES_VERSION_KEY, CURRENT_APP_VERSION);
-                if (localStorage.getItem(RES_VERSION_KEY) === CURRENT_APP_VERSION) {
+
+                if (Date.now() - lastReload < 60000) {
+                    /* 🛡️ حارس الحلقة: أُعيد التحميل قبل أقل من دقيقة.
+                       نكتفي بتحديث الرقم ونمضي — صفحة تعمل بأصول قديمة
+                       أفضل ألف مرّة من صفحة تُعيد تحميل نفسها أبداً. */
+                    console.warn('⏭️ تخطّي إعادة التحميل — حارس الحلقة');
+                } else {
+                    localStorage.setItem(RELOAD_TS_KEY, String(Date.now()));
+                    var jobs = [];
                     if ('caches' in window) {
-                        caches.keys().then(function(names) {
-                            for (let name of names) caches.delete(name);
-                        });
+                        jobs.push(caches.keys().then(function(names) {
+                            return Promise.all(names.map(function(n) { return caches.delete(n); }));
+                        }));
                     }
                     if ('serviceWorker' in navigator) {
-                        navigator.serviceWorker.getRegistrations().then(function(regs) {
-                            for (let r of regs) r.update();
-                        });
+                        jobs.push(navigator.serviceWorker.getRegistrations().then(function(regs) {
+                            return Promise.all(regs.map(function(r) { return r.update(); }));
+                        }));
                     }
-                    window.location.reload();
+                    var done = false;
+                    var go = function() { if (!done) { done = true; window.location.reload(); } };
+                    Promise.all(jobs).then(go, go);
+                    setTimeout(go, 4000);   /* حزام: لا نعلق إن تعلّق وعد */
                 }
             }
         } catch(e) {
@@ -73,7 +153,7 @@
 
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;700;800;900&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/lucide@latest" defer></script>
+    <script src="https://unpkg.com/lucide@0.279.0/dist/umd/lucide.min.js" defer></script>
     
     <style>
         /* =========================================
@@ -560,6 +640,43 @@
         @keyframes slideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   🔦 مُبلِّغ فشل التحميل — درسٌ من عطلٍ كلّف يوماً كاملاً في النظام الشقيق.
+   ───────────────────────────────────────────────────────────────────────────
+   حين تفشل وحدة ES لا يظهر شيء على الشاشة: أزرار لا تستجيب وصفحة تبدو
+   سليمة. فيبدو العطب في الزرّ بينما هو في التحميل، ويضيع وقتٌ في مطاردة
+   الوهم. هذه الكتلة تجعل السبب **مرئياً على الشاشة** بلا طرفية.
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function () {
+  var errs = [];
+  function note(m){ if (m && errs.indexOf(m) === -1) errs.push(String(m).slice(0, 300)); }
+  window.addEventListener('error', function (e) {
+    if (e && e.target && (e.target.src || e.target.href)) note('فشل تحميل: ' + (e.target.src || e.target.href));
+    else if (e && e.message) note(e.message + (e.filename ? ('  @' + e.filename.split('/').pop() + ':' + e.lineno) : ''));
+  }, true);
+  window.addEventListener('unhandledrejection', function (e) {
+    note('وعد مرفوض: ' + ((e.reason && (e.reason.message || e.reason)) || ''));
+  });
+  document.addEventListener('securitypolicyviolation', function (e) {
+    note('سياسة الأمان منعت: ' + e.violatedDirective + ' ← ' + (e.blockedURI || '').slice(0, 90));
+  });
+  setTimeout(function () {
+    if (typeof window.authAction === 'function') return;
+    var box = document.createElement('div');
+    box.setAttribute('dir', 'rtl');
+    box.style.cssText = 'position:fixed;inset:auto 0 0 0;z-index:99999;background:#7f1d1d;color:#fff;' +
+      'padding:14px;font:600 13px/1.7 system-ui,sans-serif;max-height:55vh;overflow:auto';
+    box.innerHTML = '<b style="font-size:15px">🔴 لم تكتمل وحدة التطبيق</b>' +
+      '<div style="opacity:.85;margin:6px 0">الأزرار لن تعمل حتى تُحلّ هذه. صوّر الرسالة:</div>' +
+      '<pre style="white-space:pre-wrap;word-break:break-all;background:#450a0a;padding:8px;border-radius:8px;font-size:11px">' +
+      (errs.length ? errs.join('\n───\n') : 'لم يُلتقط خطأ صريح — غالباً استيراد مُعلَّق (شبكة أو حجب).') +
+      '</pre><div style="opacity:.8;font-size:11px">متصل: ' + (navigator.onLine ? 'نعم' : 'لا') + '</div>';
+    document.body.appendChild(box);
+  }, 9000);
+})();
+</script>
 </head>
 <body>
 
@@ -736,6 +853,16 @@
         </div>
 
         <div class="header-left">
+            <!-- 🔒 [PLAY] رابط سياسة الخصوصية **داخل** التطبيق.
+                 وجوده في بطاقة المتجر وحدها لا يكفي: مراجع بلاي يفتّش عنه في
+                 الواجهة أيضاً حين يطلب التطبيق أذوناتٍ حسّاسة (ميكروفون ·
+                 كاميرا)، وغيابه سببُ رفضٍ متكرّر بصياغة «سياسة غير متاحة
+                 للمستخدم». وrel=noopener شرطُ أمانٍ مع target=_blank. -->
+            <a class="icon-btn-logout" href="privacy.html" target="_blank"
+               rel="noopener noreferrer" title="سياسة الخصوصية"
+               style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center">
+                <i data-lucide="shield-check" size="18"></i>
+            </a>
             <button class="icon-btn-logout" onclick="logout()" title="تسجيل الخروج">
                 <i data-lucide="log-out" size="18"></i>
             </button>
@@ -946,12 +1073,12 @@
 </div>
 
 <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
     // 🔧[خ٢٣] استيراد أدوات الاستعلام المفهرس — القراءة الكاملة صارت ممنوعة بالقواعد
-    import { getDatabase, ref, onValue, update, set, get, query, orderByChild, equalTo } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
-    import { getStorage, ref as storageRef, uploadString, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
-    import { getAuth, signInWithCustomToken, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-functions.js";
+    import { getDatabase, ref, onValue, update, set, get, query, orderByChild, equalTo } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
+    import { getStorage, ref as storageRef, uploadString, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-storage.js";
+    import { getAuth, signInWithCustomToken, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+    import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js";
 
     if (typeof lucide !== 'undefined') lucide.createIcons();
 
@@ -1933,6 +2060,15 @@
 
     window.logout = function() {
         if (confirm("هل تريد تسجيل الخروج؟ سيتم مسح الذاكرة المؤقتة.")) {
+            /* 📱 [NATIVE] فكّ ارتباط الجهاز **قبل** مسح التخزين — لا بعده.
+               localStorage.clear() يمحو __resPhone أيضاً، فالنداء بعده يفكّ
+               ارتباط «لا أحد» ويبقى الجهاز مشتركاً في موضوع المطعم السابق:
+               فيتلقّى صاحب الجهاز الجديد إشعارات مطعمٍ لا يملكه. */
+            try {
+              if (window.SufyanRes && typeof window.SufyanRes.unbindRestaurant === 'function') {
+                window.SufyanRes.unbindRestaurant(window.__resPhone || '');
+              }
+            } catch (e) {}
             signOut(auth).then(() => { 
                 localStorage.clear(); sessionStorage.clear(); location.reload();
             }).catch(() => {
@@ -2276,6 +2412,48 @@
             if (!p) { const s = localStorage.getItem('hut_res_session'); if (s) p = JSON.parse(s).phone; }
             const np = normalizeSystemPhone(p);
             if (np) window.__resPhone = np;
+
+        /* ═══════════════════════════════════════════════════════════════════
+           📱 [NATIVE] ربط الجهاز بمطعمه — يعمل داخل التطبيق الأصلي فقط.
+           ───────────────────────────────────────────────────────────────────
+           الحارس `window.SufyanRes` هو كل ما يفصل الحالتين: في المتصفّح غير
+           معرَّف فلا يقع شيء، وفي التطبيق يشترك الجهاز في موضوع FCM باسم
+           res_<الهاتف> — فتصل الإشعارات **والتطبيق مغلق** (الوضع الثاني).
+
+           ⚠️ والتطبيع يقع هنا **وهناك** بنفس القاعدة حرفياً (الجسر يُطبّع
+              ثانيةً في كوتلن). وهذا تكرارٌ مقصود لا سهو: لو انحرف أحدهما
+              لاشترك الجهاز في موضوعٍ لا يُرسَل إليه شيء — عطبٌ صامت تماماً:
+              لا خطأ، ولا إشعار، ولا سبب ظاهر يُتتبَّع.
+           ═══════════════════════════════════════════════════════════════════ */
+        try {
+          if (np && window.SufyanRes && typeof window.SufyanRes.bindRestaurant === 'function') {
+            window.SufyanRes.bindRestaurant(np);
+          }
+        } catch (e) {}
+
+        /* 🖥️ إبقاء الشاشة مضاءة — مفتاحٌ يتذكّره الجهاز، والافتراض **مطفأ**.
+           ولماذا مطفأ افتراضاً: على جوالٍ شخصي (الوضع الثاني) شاشةٌ لا تنطفئ
+           تستنزف البطارية في ساعات، فيغلق الكاشير التطبيق وتنقطع الطلبات —
+           أي أن «تحسيناً» للوحي يكسر الجوال. فالقرار للمطعم. */
+        try {
+          if (window.SufyanRes && typeof window.SufyanRes.setKeepAwake === 'function') {
+            const keep = localStorage.getItem('hut_res_keep_awake') === '1';
+            window.SufyanRes.setKeepAwake(keep);
+            window.sufyanSetKeepAwake = function (on) {
+              try {
+                localStorage.setItem('hut_res_keep_awake', on ? '1' : '0');
+                window.SufyanRes.setKeepAwake(!!on);
+              } catch (e) {}
+            };
+            /* شارة النسخة الأصلية بجوار نسخة الويب — فتعرف أيّهما بيد الكاشير
+               حين يشتكي. وكانت هذه بالضبط علّة «كل ما سلّمناه يصل أو لا يصل
+               بحسب حظّه مع الكاش». */
+            try {
+              const nv = window.SufyanRes.getNativeVersion();
+              if (nv) window.__nativeVersion = nv;
+            } catch (e) {}
+          }
+        } catch (e) {}
         } catch (e) {}
 
         document.getElementById('loginSection').classList.add('hidden-section');
@@ -2327,6 +2505,57 @@
     function driverDisplayName(phone) {
         const n = getDriverNameCached(phone);
         return (n && n.trim()) ? n : "كابتن التوصيل";
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════
+       🖼️ [V29 ← نحلة] صورة الكابتن — نفس نمط كاش الاسم أعلاه حرفاً بحرف.
+       ───────────────────────────────────────────────────────────────────────
+       المطعم يرى اسماً نصيّاً وحده اليوم، فحين يقف كابتنان على الباب لا
+       يعرف أيّهما صاحب طلبه إلا بالسؤال. والوجه يحسم ذلك في لمحة.
+
+       ⚙️ الكاش لازم لا تحسين: rebuildOrderLists تُنادى مع **كل** لقطة
+          active_orders (كل تغيّر حالة لكل طلب)، فبلا كاش صار كل رسم
+          قراءةً جديدة لكل كابتن ⇒ عشرات القراءات في الدقيقة على طلبٍ واحد.
+       ⚙️ و driverPhotoFetching يمنع الازدواج: البطاقة النشطة والأرشيفية
+          تُبنيان في نفس الدورة، فبلا المجموعة انطلقت قراءتان متزامنتان
+          لنفس الرقم قبل أن تُملأ خانة الكاش.
+       ⚠️ والقيمة المخزَّنة "" (لا null) عند الغياب/الفشل — لأن الشرط
+          `!== undefined` هو ما يوقف إعادة المحاولة؛ فمن لا صورة له
+          لا يُستنزف بقراءةٍ في كل رسم.
+       🔁 وحين تصل الصورة نُبطل بصمتَي القائمتين ثم نُعيد البناء — وإلا
+          قارنت rebuildOrderLists نصّاً مطابقاً ولم تلمس الـDOM، فلا تظهر
+          الصورة إلا عند أول تغيّر حالة بعدها.
+       🚫 والأرقام الصناعية (system_routing/pending_driver/manual_pending)
+          تُستبعد: ليست أرقاماً، والقراءة عليها ترتدّ رفضاً بلا فائدة.
+       ═══════════════════════════════════════════════════════════════════════ */
+    const driverPhotoCache = {};
+    const driverPhotoFetching = new Set();
+    function getDriverPhotoCached(phone) {
+        if (!phone || ["system_routing","pending_driver","manual_pending",""].includes(String(phone))) return null;
+        if (driverPhotoCache[phone] !== undefined) return driverPhotoCache[phone];
+        if (!driverPhotoFetching.has(phone)) {
+            driverPhotoFetching.add(phone);
+            get(ref(db, `drivers_locations/${phone}/photo`))
+                .then(s => {
+                    driverPhotoCache[phone] = s.val() || "";
+                    lastActiveHtml = ""; lastArchiveHtml = "";
+                    rebuildOrderLists();
+                })
+                .catch(() => { driverPhotoCache[phone] = ""; })
+                .finally(() => driverPhotoFetching.delete(phone));
+        }
+        return null;
+    }
+    /* 🔒 الرابط يمرّ بـ escapeHtml (تُهرّب " و ') لأنه يدخل قيمة سمة src،
+       وهو نصٌّ يكتبه الكابتن على عقدته. والقاعدة تشترط فوقه بدايةَ
+       https://firebasestorage.googleapis.com/ — فلا يصل إلى هنا
+       javascript: متنكّراً في هيئة صورة. حزامان لا واحد. */
+    function driverAvatarHtml(phone, px) {
+        const u = getDriverPhotoCached(phone);
+        if (!u) return '';
+        const size = px || 22;
+        return `<img src="${escapeHtml(u)}" alt="" loading="lazy"
+            style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;display:inline-block;vertical-align:middle;flex-shrink:0">`;
     }
 
     let lastOrdersSnapshot = {};
@@ -2419,7 +2648,92 @@
         .replace(/&(?!quot;)/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     }
 
-    function escapeHtml(v) {
+    /* ═══════════════════════════════════════════════════════════════════════════
+   💰 [V31 · م-٢/م-٦] كتلة المال المشتركة — منقولة **حرفياً** من
+   server/index.js (toLatinDigits:5202 · parseAmount:5281 · cleanNumber:5318 ·
+   parseCommissionRule:5328). لا تُعدَّل هنا وحدها أبداً: أي تغيير يُنقل إلى
+   الخمسة معاً (index.js · Code.gs · Master.html · restaurant.html · clearing.html).
+   ───────────────────────────────────────────────────────────────────────────
+   لماذا نُقلت؟ كان في النظام **خمسة مُحلّلات** لنفس القاعدة، اثنان منها
+   متطابقان على السيرفر وثلاثة مختلفة في اللوحات:
+
+     • restaurant.html كان يعالج "/" وحدها ⇒ قاعدة "1000-500" تُقرأ
+       parseFloat("1000-500") = 1000، فالمطعم يرى دَيناً **ضِعف** ما يحاسبه
+       السيرفر (500). وفارقٌ في الفاتورة لا يُكتشف إلا بمراجعةٍ يدوية.
+     • pComm في لوحة الإدارة: لا "-" ولا "\"، وparseFloat على المال ⇒
+       "1.000" تُقرأ 1، و"١٠٠٠/٥٠٠" تُقرأ صفراً.
+     • مبلغ الاشتراك كان يُستخرج بـ match(/\d+/) ⇒ "شهري 50.000" = **50**،
+       و"٥٠٠٠٠" = **0**. خطأٌ بألف ضعف في فاتورةٍ شهرية.
+
+   العملة العراقية بلا كسور عملياً: كل فاصل تتبعه ٣ خانات = آلاف،
+   و"15.5" غامضٌ ⇒ يُرفض صراحةً بدل أن يُخمَّن.
+   ═══════════════════════════════════════════════════════════════════════════ */
+function toLatinDigits(s){
+  return String(s===null||s===undefined?"":s)
+    .replace(/[٠-٩]/g,function(d){return String.fromCharCode(d.charCodeAt(0)-0x0660+48);})
+    .replace(/[۰-۹]/g,function(d){return String.fromCharCode(d.charCodeAt(0)-0x06F0+48);});
+}
+function parseAmount(raw,opts){
+  opts=opts||{};
+  const s0=toLatinDigits(raw).trim();
+  if(s0==="")return{ok:false,value:null,reason:"empty"};
+  let s=s0.replace(/[\s ٬]/g,"").replace(/د\.?ع|IQD|iqd|دينار/g,"");
+  let neg=false;
+  if(/^-/.test(s)){neg=true;s=s.slice(1);}
+  else if(/-$/.test(s)){neg=true;s=s.slice(0,-1);}
+  if(s==="")return{ok:false,value:null,reason:"no_digits"};
+  if(/[^0-9.,]/.test(s))return{ok:false,value:null,reason:"bad_chars",got:s0};
+  const seps=s.match(/[.,]/g)||[];
+  if(seps.length>0){
+    const parts=s.split(/[.,]/),tail=parts.slice(1);
+    if(tail.every(function(p){return p.length===3;})&&parts[0].length>=1)s=parts.join("");
+    else if(seps.length===1&&tail[0].length>0&&tail[0].length<3)
+      return{ok:false,value:null,reason:"ambiguous_decimal",got:s0};
+    else return{ok:false,value:null,reason:"bad_separators",got:s0};
+  }
+  if(!/^\d+$/.test(s))return{ok:false,value:null,reason:"not_integer",got:s0};
+  const n=Number(s);
+  if(!isFinite(n))return{ok:false,value:null,reason:"overflow",got:s0};
+  if(neg&&opts.allowNegative!==true)return{ok:false,value:null,reason:"negative_not_allowed",got:s0};
+  return{ok:true,value:neg?-n:n,reason:null};
+}
+/* لا noteReject هنا — لا سجلّ سيرفري في اللوحة. والسلوك الرقمي مطابق. */
+function cleanNumber(val){
+  const r=parseAmount(val,{allowNegative:true});
+  return r.ok?r.value:0;
+}
+function parseCommissionRule(commStr,payTypeStr){
+  const str=String(commStr).toLowerCase().trim();
+  const pType=String(payTypeStr||"").trim();
+  let baseDrv=0,baseRes=0,isMonthly=false;
+  if(str.indexOf("شهري")>-1||str==="monthly"){
+    isMonthly=true;
+  }else if(str.indexOf("/")>-1||str.indexOf("-")>-1||str.indexOf("\\")>-1){
+    const parts=str.split(/[\/\-\\]/).map(function(x){return String(x).trim();}).filter(function(x){return x!=="";});
+    if(parts.length!==2){
+      /* صيغةٌ معطوبة ("1000-" أو "-1000"): تُعامَل رقماً مفرداً بقيمةٍ مطلقة —
+         وإلا انقلب الدوران أو صار الدَين رصيداً صامتاً لصالح المطعم. */
+      const single=Math.abs(cleanNumber(parts[0]||"0"));
+      if(pType.indexOf("مناصفة")>-1)return{drv:single/2,res:single/2,isMonthly:false,malformed:true};
+      return{drv:0,res:single,isMonthly:false,malformed:true};
+    }
+    return{drv:cleanNumber(parts[0]),res:cleanNumber(parts[1]),isMonthly:false};
+  }else{
+    const val=cleanNumber(str);
+    if(pType.indexOf("مناصفة")>-1){baseDrv=val/2;baseRes=val/2;}
+    else{baseDrv=0;baseRes=val;}
+  }
+  return{drv:baseDrv,res:baseRes,isMonthly:isMonthly};
+}
+/* 💳 [V31 · م-٢] مبلغ الاشتراك الشهري — الكلمات تُسقَط ثم يُقرأ الباقي
+   بقارئ المبالغ نفسه. كان match(/\d+/): لاتينيٌّ فقط ولا يفهم فاصل الآلاف. */
+function monthlySubAmount(commRaw){
+  const s=String(commRaw==null?"":commRaw);
+  if(s.indexOf("شهري")===-1&&s.toLowerCase().indexOf("monthly")===-1)return null;
+  return cleanNumber(s.replace(/اشتراك|شهري|monthly/gi,""));
+}
+
+function escapeHtml(v) {
         return String(v == null ? '' : v)
             .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -2427,11 +2741,21 @@
 
     function archiveRowHtml(o) {
         const orderTime = o.ts ? new Date(o.ts).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) : '';
-        const dPhone = o.drv || "";
-        const dName  = escapeHtml(driverDisplayName(dPhone));
-        const isValidPhone = dPhone && !["system_routing", "pending_driver", "manual_pending"].includes(dPhone);
+        /* 🔧 [V31 · ل-٥] كان dPhone وحده بلا تهريب بين قيمٍ كلّها مُهرَّبة —
+           وهو داخل سمةٍ بعلامتَي تنصيص في data-search. مصدرُه اليوم سيرفري
+           بالكامل (driverPhone مثبَّت بالقواعد، وledgers غير قابلة لكتابة أي
+           عميل) فليست ثغرةً حيّة — لكنّ «آمنٌ لأن مصدره اليوم موثوق» هو
+           بالضبط ما ينكسر حين يتغيّر المصدر غداً. */
+        const dPhoneRaw = o.drv || "";
+        const dPhone = escapeHtml(dPhoneRaw);
+        const dName  = escapeHtml(driverDisplayName(dPhoneRaw));
+        const isValidPhone = dPhoneRaw && !["system_routing", "pending_driver", "manual_pending"].includes(dPhoneRaw);
         const orderArea = escapeHtml(o.area || "غير محددة");
         const orderDetails = escapeHtml(o.details || "لا توجد تفاصيل إضافية");
+        /* 🖼️ [V29 ← نحلة] وجه الكابتن في الأرشيف أيضاً — نفس الكاش، فلا قراءة
+           إضافية. وإن لم تصل صورته بعد (أو لا صورة له) بقيت أيقونة الدرّاجة
+           كما هي، فلا يظهر مربّع فارغ مكسور في مكانها. */
+        const avInner = (isValidPhone && driverAvatarHtml(dPhoneRaw, 20)) || `<i data-lucide="bike" size="12" style="color: var(--success);"></i>`;
         return `
                     <div class="archive-item searchable-archive-item" data-search="${escapeHtml(o.id)} ${orderArea} ${orderDetails} ${dName} ${dPhone}">
                         <div class="d-flex justify-content-between align-items-start w-100">
@@ -2445,10 +2769,10 @@
                         </div>
                         <div class="archive-details-box w-100 text-start" dir="rtl">
                             <div class="d-flex justify-content-between align-items-center mb-2 pb-2" style="border-bottom: 1px dashed rgba(15,23,42,0.1);">
-                                <div class="fw-bold text-dark">
-                                    <i data-lucide="bike" size="12" style="color: var(--success);"></i> الكابتن: <span class="fw-black">${dName}</span>
+                                <div class="fw-bold text-dark d-flex align-items-center gap-1">
+                                    ${avInner} الكابتن: <span class="fw-black">${dName}</span>
                                 </div>
-                                ${isValidPhone ? `<a href="tel:${jss(dPhone)}" class="text-decoration-none d-flex align-items-center gap-1" style="background: #f0fdf4; color: #16a34a; padding: 4px 10px; border-radius: 8px; font-weight: 800; font-size: 0.75rem;"><i data-lucide="phone" size="12"></i> ${dPhone}</a>` : ''}
+                                ${isValidPhone ? `<a href="tel:${jss(dPhoneRaw)}" class="text-decoration-none d-flex align-items-center gap-1" style="background: #f0fdf4; color: #16a34a; padding: 4px 10px; border-radius: 8px; font-weight: 800; font-size: 0.75rem;"><i data-lucide="phone" size="12"></i> ${dPhone}</a>` : ''}
                             </div>
                             <div class="mb-2 fw-bold text-dark"><i data-lucide="map-pin" size="12" style="color: var(--accent);"></i> المنطقة: <span class="fw-normal">${orderArea}</span></div>
                             <div class="fw-bold text-dark"><i data-lucide="info" size="12" style="color: var(--primary-blue);"></i> التفاصيل: <span class="fw-normal" style="user-select: text;">${orderDetails}</span></div>
@@ -2475,18 +2799,12 @@
                 const orderISO = new Date(fbOrder.timestamp).toISOString().split('T')[0];
                 if (orderISO === todayISO) {
                     globalLiveCount++;
-                    let commStr = String(fbOrder.comm || '0');
-                    let payType = String(fbOrder.payType || '');
-                    let resComm = 0;
-                    if (!commStr.includes('شهري')) {
-                        if (commStr.includes('/')) {
-                            resComm = parseFloat(commStr.split('/')[1]) || 0;
-                        } else {
-                            let val = parseFloat(commStr) || 0;
-                            resComm = payType.includes("مناصفة") ? (val / 2) : val;
-                        }
-                    }
-                    globalLiveDebt += resComm;
+                    /* 🔧 [V31 · م-٦] كان هذا مُحلّلاً رابعاً يعالج "/" وحدها:
+                       قاعدة "1000-500" تُقرأ parseFloat("1000-500") = 1000
+                       ⇒ المطعم يرى دَيناً **ضِعف** ما يحاسبه السيرفر (500).
+                       الآن المُحلّل المشترك — مطابقٌ لـindex.js حرفياً. */
+                    const _cr = parseCommissionRule(fbOrder.comm || '0', fbOrder.payType || '');
+                    globalLiveDebt += _cr.isMonthly ? 0 : _cr.res;
 
                     doneToday.set(String(fbOrder.id), {
                         id: fbOrder.id, area: fbOrder.area, details: fbOrder.details,
@@ -2645,7 +2963,7 @@
                 </div>
                 <div class="order-details-row mt-2">
                     <div class="detail-item"><i data-lucide="map-pin" size="14" style="color: var(--accent);"></i> ${escapeHtml(orderArea || 'غير محددة')}</div>
-                    <div class="detail-item"><i data-lucide="bike" size="14" style="color: var(--success);"></i> الكابتن: ${driverName}</div>
+                    <div class="detail-item">${/* 🖼️ [V29 ← نحلة] وجه الكابتن على البطاقة النشطة: حين يقف كابتنان عند الباب يُميّز المطعمُ صاحبَ طلبه بلا سؤال. */''}${(hasDriver && driverAvatarHtml(driverPhone, 24)) || `<i data-lucide="bike" size="14" style="color: var(--success);"></i>`} الكابتن: ${driverName}</div>
                 </div>
                 <div class="progress-tracker mt-3">
                     <div class="progress-line"></div>
