@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <!--
-  🦈 تطبيق الكابتن — V18.4 "Intent"   ← النسخة الحالية (CURRENT_APP_VERSION)
+  🦈 تطبيق الكابتن — V29.0 "Window"   ← النسخة الحالية (CURRENT_APP_VERSION)
+     [V29 ← نحلة] أُضيفت طبقتان: صورة الكابتن، ونافذة الشفت اليومية
+     (شاشة إعدادٍ واحدة تجمعهما). وshift_end/START_SHIFT/maybeEndShift
+     لم تُمَسّ — الطبقة الجديدة **إضافية ومستقلّة** لا بديلة.
   ═══════════════════════════════════════════════════════════════════════
   🔴 [V18.4] ثلاث رقع **مبنيّة على قياس لا على ترجيح**.
      القياس (RUN_QUOTA · AUDIT_LoginProbe · 2026-08-30):
@@ -76,8 +79,16 @@
         تتطلّب nonce أو نقلها إلى ملفات — مشروع لاحق موثّق.
      📌 form-action 'self' لا 'none': لو فشلت كتلة السكربت (وهو ما تحمي
         منه هذه السياسة) لعادت النماذج إلى الإرسال الافتراضي، و'self'
-        يجعله إعادة تحميل غير ضارّة بدل حجبٍ صامت. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
+        يجعله إعادة تحميل غير ضارّة بدل حجبٍ صامت.
+
+     🖼️ [V29 ← نحلة] أُضيف https://firebasestorage.googleapis.com و
+        https://*.firebasestorage.app إلى connect-src من أجل رفع صورة
+        الكابتن. والأول يقع أصلاً تحت *.googleapis.com، لكن كتابته صريحةً
+        تُبقي الأثر مقروءاً: من يضيّق *.googleapis.com يوماً لا يكسر الرفع
+        بلا أن يرى السطر. والثاني نطاق الدلو الجديد
+        (sufyan-delivery.firebasestorage.app) — وحجبُه يُفشل uploadString
+        بخطأ شبكة غامض يظنّه الكابتن ضعفَ إنترنت فيُعيد المحاولة أبداً. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
 
 <script>
   /* ═══════════════════════════════════════════════════════════════════════
@@ -98,7 +109,7 @@
      الآن: رقمٌ واحد يُشتقّ منه كل شيء — الشاشة والإعدادات ومسح الكاش.
      **وأي تسليم جديد يجب أن يرفعه، وإلا لم يصل.**
      ═══════════════════════════════════════════════════════════════════════ */
-  const CURRENT_APP_VERSION = "18.4-Intent";
+  const CURRENT_APP_VERSION = "31.5-FreeMode";
   window.APP_VERSION = CURRENT_APP_VERSION;
   /* اطبعه في شاشة الدخول فور جهوز الصفحة — نصّاً واحداً لا نسختين. */
   document.addEventListener('DOMContentLoaded', function(){
@@ -863,6 +874,24 @@ window.__SND={alert:"UklGRvaoAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YdKoAAA
       </div>
     </div>
 
+    <!-- 🖼️🕐 [V29 ← نحلة] مدخل الصورة وموعد الشفت — الشاشة نفسها بلا إجبار -->
+    <div class="set">
+      <div class="set-r">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="width:52px;height:52px;border-radius:50%;background:var(--bg2);overflow:hidden;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <span id="setPhotoPh" style="font-size:22px">👤</span>
+            <img id="setPhoto" style="width:100%;height:100%;object-fit:cover;display:none" alt="">
+          </div>
+          <div>
+            <div class="set-l">🖼️ صورتي وموعد شفتي</div>
+            <div class="set-h" id="setShiftWin">—</div>
+            <div class="set-h" id="setShiftNext" style="color:var(--warn-dp)"></div>
+          </div>
+        </div>
+        <button class="stp-b" style="width:auto;padding:0 14px" onclick="openOnboarding(false)">تعديل</button>
+      </div>
+    </div>
+
     <div class="set">
       <div class="set-l">🕐 معلومات الشفت والعمل</div>
       <div class="set-h">تُدار ساعات شفتك من الإدارة.</div>
@@ -904,6 +933,59 @@ window.__SND={alert:"UklGRvaoAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YdKoAAA
     </div>
 
     <button class="btn-clay bc-royal" onclick="closeSettings()" style="width:100%;">حفظ وإغلاق</button>
+  </div>
+</div>
+
+<!-- ══════════════ [V29 ← نحلة N-12.0] شاشة الإعداد: الصورة وموعد الشفت ══════════════
+     ⚠️ تُخاطب **زرّ الإتاحة** لا التطبيق كلّه، وكابتنٌ يحمل طلباً الآن يُكمل
+        تسليمه ثم يُطالَب — فلا يُحبس بين شاشةٍ وزبون ينتظر.
+     🚧 وهي اليوم **قابلة للتخطّي دائماً** (REQUIRE_PROFILE=false): منتقي
+        الملفات لا يفتح على APK الذي لا يحمل onShowFileChooser، وشاشةٌ بلا
+        مخرجٍ تُصبح جداراً بين الكابتن وقوت يومه. -->
+<div id="obOv" class="sheet-ov dn">
+  <div class="sheet" style="max-height:92vh;overflow-y:auto">
+    <div class="grab"></div>
+    <div class="sheet-t" id="obTitle">👋 أكمل ملفّك</div>
+    <div class="set-h" style="margin:-6px 0 14px">صورتك تظهر للمطعم فيعرف من يستلم الطلب، وموعدك يحفظ لك شفتك اليومي.</div>
+
+    <div class="set">
+      <div class="set-l">📷 صورتك</div>
+      <div class="set-h">صورة واضحة لوجهك. يراها المطعم والإدارة والليدر — لا الزبون.</div>
+      <div style="display:flex;align-items:center;gap:14px;margin-top:12px">
+        <div id="obImgBox" style="width:88px;height:88px;border-radius:50%;background:var(--bg2);border:2px dashed var(--line);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">
+          <span id="obImgPh" style="font-size:30px">👤</span>
+          <img id="obImg" style="width:100%;height:100%;object-fit:cover;display:none" alt="">
+        </div>
+        <div style="flex:1">
+          <button class="cta cta-1" style="padding:11px" onclick="document.getElementById('obFile').click()">اختر صورة</button>
+          <div id="obImgMsg" style="font-size:.76rem;color:var(--muted);margin-top:7px">لم تُختَر صورة بعد</div>
+        </div>
+      </div>
+      <!-- capture="user" يُرجّح الكاميرا الأمامية: المطلوب وجهُ الكابتن لا
+           صورةٌ من معرضه. وأندرويد يتجاهلها إن لم تُنفَّذ onShowFileChooser
+           في WebChromeClient — وحينها لا يفتح شيء إطلاقاً (N-12.10). -->
+      <input type="file" id="obFile" accept="image/*" capture="user" style="display:none" onchange="obPick(this)">
+    </div>
+
+    <div class="set">
+      <div class="set-l">🕐 موعد شفتك اليومي</div>
+      <div class="set-h">تنزل كل يوم في هذا الموعد. ولن تصلك طلبات قبله.</div>
+      <div style="display:flex;gap:10px;margin-top:12px">
+        <div style="flex:1">
+          <div style="font-size:.75rem;color:var(--muted);margin-bottom:5px">ساعة البدء</div>
+          <select id="obStart" class="inp-clay" style="margin-bottom:0;padding:12px 14px"></select>
+        </div>
+        <div style="flex:1">
+          <div style="font-size:.75rem;color:var(--muted);margin-bottom:5px">عدد الساعات</div>
+          <select id="obHours" class="inp-clay" style="margin-bottom:0;padding:12px 14px"></select>
+        </div>
+      </div>
+      <div id="obWin" style="margin-top:11px;padding:10px 12px;background:var(--royal-soft);border:1px solid var(--royal-lt);border-radius:11px;font-size:.83rem;font-weight:700;color:var(--royal-dk)"></div>
+    </div>
+
+    <div id="obErr" style="display:none;margin:10px 0;padding:10px 12px;background:rgba(229,72,77,.08);border:1px solid var(--bad);border-radius:11px;font-size:.82rem;font-weight:700;color:var(--bad-dp)"></div>
+    <button class="cta cta-3" id="obSave" onclick="obSave()">حفظ والمتابعة</button>
+    <button id="obLater" class="cta" style="background:var(--bg2);color:var(--muted);margin-top:8px;display:none" onclick="closeSheet('obOv')">لاحقاً</button>
   </div>
 </div>
 
@@ -1330,6 +1412,7 @@ window.addEventListener('popstate',()=>{
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 import { getDatabase, ref, onValue, update, set, get, increment, onDisconnect, query, orderByChild, equalTo } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js";
+import { getStorage, ref as sRef, uploadString, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-storage.js";
 import { getAuth, signInWithCustomToken, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 
 /* ═══════════════════════════════════════════════════════════════
@@ -1357,7 +1440,23 @@ const fbCfg = {
   projectId:"sufyan-delivery", storageBucket:"sufyan-delivery.firebasestorage.app",
   messagingSenderId:"941542380637", appId:"1:941542380637:web:9623fa6e627817ffeba9b4"
 };
-const app=initializeApp(fbCfg), db=getDatabase(app), auth=getAuth(app);
+const app=initializeApp(fbCfg), db=getDatabase(app), auth=getAuth(app), storage=getStorage(app);
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   🕰️ [V29 ← نحلة] srvNow — ساعة الخادم لا ساعة الهاتف
+   ───────────────────────────────────────────────────────────────────────────
+   نافذة الشفت تُقارَن بالساعة كل ٦٠ ثانية. ولو قُورنت بـ Date.now() وحدها
+   لصار انحرافُ ساعةِ هاتفٍ رخيص عشرين دقيقة قراراً تنفيذياً: shiftWindowPulse
+   ترى الكابتن خارج نافذته فتطفئ مفتاحه وهو في وسط شفته — بينما المحرك (وهو
+   على ساعة الخادم) يراه داخلها ويرسل له الطلبات. طرفان بساعتين = عين العطب
+   الذي وقع في نحلة (N-12.2) بافتراضين مختلفين، بصورة أخرى.
+
+   .info/serverTimeOffset عقدةٌ يوفّرها فايربيس بلا صلاحيات ولا كلفة. وحين
+   يفشل الاشتراك يبقى الانحراف صفراً — أي سلوك اليوم بالضبط، لا أسوأ.
+   ═══════════════════════════════════════════════════════════════════════════ */
+let SRV_OFFSET = 0;
+try { onValue(ref(db, ".info/serverTimeOffset"), s => { SRV_OFFSET = Number(s.val()) || 0; }); } catch(_) {}
+function srvNow(){ return Date.now() + SRV_OFFSET; }
 
 const MIN_DIST_M=500, FALLBACK_MINS=15, MIN_PICKUP_SECS=120, RETRIES=3;
 let DAILY_GOAL = Math.min(40,Math.max(5,parseInt(localStorage.getItem('suf_goal'))||15));
@@ -1494,6 +1593,14 @@ function toast(msg,type='ok'){
   c.appendChild(t);
   setTimeout(()=>{t.style.opacity='0';t.style.transform='translateY(-14px)';setTimeout(()=>t.remove(),320);},5200);
 }
+/* 🔴 [V28] toast مُعرَّفة داخل كتلة type="module" فلا تراها الكتلة
+   الكلاسيكية (994–1328) حيث تُنادى في 1187 و1244 و1262 خلف الحارس
+   if(typeof toast==='function'). و window.toast كان **صفر ورود** في
+   الملف كله ⇒ الشرط كاذبٌ دائماً ⇒ من يضغط "ليس الآن" على نافذة
+   إفصاح الموقع يرى المفتاح يعود رمادياً بلا كلمة تفسير واحدة.
+   وهذا بندُ امتثال في Google Play: إفصاحٌ ثم رفضٌ **مفهوم**. */
+window.toast = toast;
+
 function offOn(){const b=document.getElementById('offBar');b.innerHTML='<span style="width:9px;height:9px;border-radius:50%;background:#FFD8A8;flex-shrink:0;"></span><span style="flex:1;">أنت غير متصل — التطبيق يعمل بالبيانات المحفوظة</span>';b.classList.remove('dn');}
 function offOff(){document.getElementById('offBar').classList.add('dn');}
 window.addEventListener('online',()=>{offOff();procQueue();});
@@ -1542,7 +1649,7 @@ async function procQueue(){
           const dead=JSON.parse(localStorage.getItem('hut_dead_queue')||'[]');
           dead.push({...a,deadAt:Date.now(),reason:code.slice(0,60)});
           localStorage.setItem('hut_dead_queue',JSON.stringify(dead.slice(-40)));
-        }catch(_){}
+        }catch(_){ /* [V31.2] كان صامتاً. ولا لفافة حول track: جسمها كلّه داخل try/catch وset تحمل .catch — فهي لا ترمي في أي حال (مُثبَتٌ بالتنفيذ في tools/test_v31.js). واللفافة كانت ستُنتج كتلةً فارغةً جديدة — أي إعادةَ إنتاج العطب في الرقعة التي تعالجه. */ track('fail_deadq_write', { reason: String(_ && _.message || _).slice(0,60) }); }
         /* 🔔 أثر على السيرفر — كان الإسقاط صامتاً تماماً. العقدة مسموحة
            للكابتن على نفسه، فتراها لوحة الليدر. */
         try{
@@ -1555,13 +1662,28 @@ async function procQueue(){
               last_attempt:new Date().toISOString()
             }).catch(()=>{});
           }
-        }catch(_){}
+        }catch(_){ /* [V31.2] كان صامتاً. ولا لفافة حول track: جسمها كلّه داخل try/catch وset تحمل .catch — فهي لا ترمي في أي حال (مُثبَتٌ بالتنفيذ في tools/test_v31.js). واللفافة كانت ستُنتج كتلةً فارغةً جديدة — أي إعادةَ إنتاج العطب في الرقعة التي تعالجه. */ track('fail_wq_flag_write', { reason: String(_ && _.message || _).slice(0,60) }); }
         try{ modal('⚠️','لم يُسجَّل إجراء',
           'تعذّر تسجيل أحد إجراءاتك على الخادم بعد محاولات متكرّرة. راجع الليدر وتأكّد من حالة طلبك قبل المتابعة.','warn'); }catch(_){}
         continue;
       }
-      /* تراجع أُسّي: 5ث · 10 · 20 · 40 · 80 · 160 … بسقف 5 دقائق */
-      a.nextTry=Date.now()+Math.min(300000,5000*Math.pow(2,Math.min(a.tries,6)));
+      /* تراجع أُسّي: 5ث · 10 · 20 · 40 · 80 · 160 … بسقف 5 دقائق
+         ═══════════════════════════════════════════════════════════════════
+         🔴 [V30][ح٤] وتشتيت (jitter) — الناقص الذي يقلب التراجع إلى سلاح
+         ─────────────────────────────────────────────────────────────────
+         التراجع الأُسّي وحده **متزامن**: كل الأجهزة التي فشلت في اللحظة
+         نفسها تُعيد المحاولة في اللحظة نفسها. فانقطاعٌ عابر في GAS أو
+         فايربيس يجعل مئتَي كابتن يفشلون معاً، ثم يقصفون الخادم معاً بعد
+         خمس ثوانٍ بالضبط — فيسقط ثانيةً، فيتزامنون أكثر. وهو ما تسمّيه
+         الأدبيات «قطيع الرعد» (thundering herd)، ونتيجته أن **آلية
+         التعافي هي التي تمنع التعافي**.
+
+         والتشتيت يفكّ التزامن: كل جهاز ينتظر بين ٥٠٪ و١٥٠٪ من المهلة،
+         فيتوزّع الحمل على نافذةٍ بدل أن يتكدّس في نقطة.
+         ⚠️ ولا يُطيل الانتظار في المتوسط — متوسّط المعامل ١٫٠ تماماً.
+         ═══════════════════════════════════════════════════════════════════ */
+      const _base = Math.min(300000, 5000*Math.pow(2, Math.min(a.tries,6)));
+      a.nextTry = Date.now() + Math.round(_base * (0.5 + Math.random()));
       fail.push(a);
     }
   }
@@ -1727,11 +1849,11 @@ async function hardReauth(){
                             match: (u && drv && String(u.uid)===String(drv.phone)) ? 1 : 0 });
     }catch(e){}
     const sp=getPass();
-    if(!sp || !drv || !drv.phone){ try{ track('hard_reauth_nopass'); }catch(e){} return false; }
-    try{ await withTimeout(signOut(auth), 5000, 'signout'); }catch(e){}
+    if(!sp || !drv || !drv.phone){ track('hard_reauth_nopass'); return false; }
+    try{ await withTimeout(signOut(auth), 5000, 'signout'); }catch(e){ /* [V31.2] كان صامتاً. ولا لفافة حول track: جسمها كلّه داخل try/catch وset تحمل .catch — فهي لا ترمي في أي حال (مُثبَتٌ بالتنفيذ في tools/test_v31.js). واللفافة كانت ستُنتج كتلةً فارغةً جديدة — أي إعادةَ إنتاج العطب في الرقعة التي تعالجه. */ track('fail_reauth_signout', { reason: String(e && e.message || e).slice(0,60) }); }
     const r=await fbAuth(drv.phone, atob(sp));
     const ok=!!(r&&r.ok);
-    try{ track(ok?'hard_reauth_ok':'hard_reauth_fail'); }catch(e){}
+    track(ok?'hard_reauth_ok':'hard_reauth_fail');
     return ok;
   }catch(e){ return false; }
   finally{ window._hardBusy=false; }
@@ -1814,6 +1936,58 @@ const TAP_TIMEOUT_MS=18000;
    وتترك النداء يعيش في الخلفية.
    ═══════════════════════════════════════════════════════════════════════ */
 const GAS_TIMEOUT_MS = 15000;
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   🎛️ [V30][ح١] flag — قارئ مفاتيح الإيقاف
+   ───────────────────────────────────────────────────────────────────────────
+   الاستعمال:  if(!flag('new_thing', true)) return;   ← افتراضيّ: مُفعَّل
+   والجدول يُملأ من `system_settings/flags` حيّاً (انظر المستمع في
+   startListeners). والقيمة المنطقية وحدها تُحترَم — أي شيءٍ آخر يُعامَل
+   كغياب، فيُعاد الافتراضي.
+
+   ⚠️ الاتجاه الآمن هو الحُكم كلّه: بلا شبكة، أو قبل وصول أول لقطة، أو
+      برفض قراءة — تُرجع الافتراضي. **صمتُ الخادم لا يُطفئ ميزةً تعمل.**
+      والعكس (افتراضٌ بالإطفاء) كان سيجعل انقطاعاً عابراً في فايربيس
+      يوقف الأسطول — أي أن أداة الاحتواء تصير هي العطب.
+   ═══════════════════════════════════════════════════════════════════════════ */
+function flag(name, dflt){
+  try{
+    const v = window._flags && window._flags[name];
+    return (typeof v === 'boolean') ? v : (dflt !== undefined ? dflt : true);
+  }catch(e){ return dflt !== undefined ? dflt : true; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   🔴 [V30][ع٢] حارس المرآة — مشتقٌّ من الثوابت، لا رقمٌ مكتوب بخطّ اليد
+   ───────────────────────────────────────────────────────────────────────────
+   كان `setTimeout(..., 15000)` رقماً ثابتاً. وجمعُ مهلات أسوأ حالٍ في مسار
+   toggleOnline ⇒ fbStatus من ثوابت هذا الملف نفسه يعطي:
+
+       START_SHIFT عبر gasFetch      GAS_TIMEOUT_MS        15.0 ث
+       getCurrentPosition قبل الكتابة  timeout:5000           5.0 ث
+       انتظار الموقع في _fbStatusRaw   GEO_WAIT_MS + 500      8.5 ث
+       الكتابة الأولى                  TAP_TIMEOUT_MS        18.0 ث
+       إعادة الكتابة المباشرة          TAP_TIMEOUT_MS        18.0 ث
+       قراءة التحقّق [V18.3]           ثابت                  12.0 ث
+       ─────────────────────────────────────────────────────────
+                                                            76.5 ث
+
+   أي أن الحارس كان يستيقظ **والعملية جارية بستّين ثانية**. فتصل لقطة
+   'inactive' (من onDisconnect أو من كنّاس الأشباح) فتقلب المفتاح، ثم يصل
+   ردُّ الكتابة فيرفضه الحارس بوسم toggled_off — وهو مصدرُ معظم ذلك العدّاد.
+
+   ⚠️ والرقم يُشتقّ لا يُكتب: أي تعديلٍ لاحق لـ TAP_TIMEOUT_MS أو
+      GAS_TIMEOUT_MS كان سيترك الحارس متخلّفاً بصمت. وهذا نمطُ «ما لا يُشتقّ
+      يتباعد» الذي عالجناه في بصمات DEPLOY.md.
+   ⚠️ والحزام الحقيقي ليس هذا المؤقّت بل `_mirrorOn = false` الصريح عند
+      اكتمال العملية؛ هذا شبكة أمانٍ لحالة الاستثناء وحدها.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const MIR_GUARD_MS = GAS_TIMEOUT_MS      /* 15.0 */
+                   + 5000                /* getCurrentPosition */
+                   + (GEO_WAIT_MS + 500)  /*  8.5 */
+                   + TAP_TIMEOUT_MS * 2   /* 36.0 — كتابة + إعادة كتابة */
+                   + 12000                /* قراءة التحقّق */
+                   + 5000;                /* هامش */
 /* [أ] عنوان REST — يتجاوز كاش مكتبة RTDB بنيوياً.
    ⚠️ يُشتقّ من إعداد فايربيس نفسه لا يُكتب يدوياً: أي عنوان مكتوب بخطّ اليد
    ينحرف عن الإعداد يوماً بلا أن يلاحظ أحد، فيفشل كل تحقّق بصمت. */
@@ -1914,7 +2088,16 @@ async function guaranteeAccept(id){
   }
   if(!ok){
     try{
-      const rr=await gasFetch(`${API_URL}?action=ACCEPT_ORDER&orderId=${encodeURIComponent(id)}&driverPhone=${drv.phone}&token=${API_TOKEN}`);
+      /* 🔴 [V31.1 · اقتران البروتوكول] أُضيف stoken إلى ACCEPT_ORDER و
+         COMPLETE_ORDER — وكان DECLINE_ORDER وحده يمرّره (خ١٣).
+         ─────────────────────────────────────────────────────────────────
+         الحقل مُتجاهَلٌ اليوم لأن ENFORCE_ENTITY_STOKEN = false. لكن يوم
+         تُشغّله — وهو نصف علاج C-2، أعلى خطرٍ مفتوح في النظام — كانت
+         **البوّابتان الاحتياطيتان للقبول والتسليم تنكسران في اللحظة نفسها**،
+         بلا تحذيرٍ سابق وفي كل الأسطول معاً. أي أن الحارس الأمني كان يُعطّل
+         شبكتَي الأمان اللتين تحميان الكابتن من فقدان طلبه.
+         إرسالُه الآن مجّاني، ويجعل تشغيل الحارس لاحقاً قراراً بلا مفاجأة. */
+      const rr=await gasFetch(`${API_URL}?action=ACCEPT_ORDER&orderId=${encodeURIComponent(id)}&driverPhone=${drv.phone}&token=${API_TOKEN}&stoken=${encodeURIComponent(getStoken())}`);
       const dd=await rr.json().catch(()=>({}));
       if(dd&&dd.success) ok=true;
       else if(dd&&dd.msg) why.push('الخادم: '+String(dd.msg).slice(0,60));
@@ -1938,14 +2121,14 @@ async function guaranteeAccept(id){
         reasons:why.join(' | ').slice(0,200), attempts:1,   /* [V15.8] لا increment: القاعدة تسمح بالإنشاء فقط (!data.exists) فلا يتراكم */
         last_attempt:new Date().toISOString()
       }).catch(()=>{});
-    }catch(_){}
+    }catch(_){ /* [V31.2] كان صامتاً. ولا لفافة حول track: جسمها كلّه داخل try/catch وset تحمل .catch — فهي لا ترمي في أي حال (مُثبَتٌ بالتنفيذ في tools/test_v31.js). واللفافة كانت ستُنتج كتلةً فارغةً جديدة — أي إعادةَ إنتاج العطب في الرقعة التي تعالجه. */ track('fail_acc_flag_write', { reason: String(_ && _.message || _).slice(0,60) }); }
   }
   return ok;
 }
 /* 🕵️ سجل الإنجاز المبكّر — قواعد V2.1 تسمح للكابتن بالكتابة على نفسه فقط */
 function logEarly(id,d,m){try{if(!drv||!drv.phone)return;
 update(ref(db,`security_flags/${drv.phone}/${id}`),{driver:drv.phone,orderId:id,distance_m:d===null?-1:Math.round(d),
-mins_since_pickup:m,attempts:1,   /* [V15.8] لا increment: القاعدة تسمح بالإنشاء فقط (!data.exists) فلا يتراكم */last_attempt:new Date().toISOString()}).catch(()=>{});}catch(e){}}
+mins_since_pickup:m,attempts:1,   /* [V15.8] لا increment: القاعدة تسمح بالإنشاء فقط (!data.exists) فلا يتراكم */last_attempt:new Date().toISOString()}).catch(()=>{});}catch(e){ /* [V31.2] كان صامتاً. ولا لفافة حول track: جسمها كلّه داخل try/catch وset تحمل .catch — فهي لا ترمي في أي حال (مُثبَتٌ بالتنفيذ في tools/test_v31.js). واللفافة كانت ستُنتج كتلةً فارغةً جديدة — أي إعادةَ إنتاج العطب في الرقعة التي تعالجه. */ track('fail_early_flag_write', { reason: String(e && e.message || e).slice(0,60) }); }}
 
 /* ══════════════ الدخول ══════════════ */
 window.initAuth=function(){unlock();
@@ -1988,6 +2171,26 @@ function onLogin(d,phone,pass){
     if(d.firebase_token)signInWithCustomToken(auth,d.firebase_token).then(()=>{pushTokenToNative(d.firebase_token);schedTok(phone,pass);}).catch(()=>{});
     try{if(window.AndroidRadar&&AndroidRadar.subscribeToDriverTopic)AndroidRadar.subscribeToDriverTopic(phone);}catch(e){}
     showDash(); document.getElementById('onlineTog').checked=false; toggleOnline();
+    /* ═══════════════════════════════════════════════════════════════════
+       🔴 [V30][ع٣] المرآة تُربَط في مسار الدخول الجديد أيضاً.
+       ───────────────────────────────────────────────────────────────────
+       كانت listenMyStatus تُنادى من مسارٍ واحد فقط — استعادة الجلسة في
+       checkSession — ولا تُنادى هنا. فكابتنٌ سجّل الدخول للتوّ **لا مرآة
+       عنده إطلاقاً** حتى أول إعادة تحميل للصفحة:
+
+         · لا يرى تغيّر حالته من onDisconnect ولا من كنّاس الأشباح
+         · والمفتاح يكذب: أخضر والخادم يقول inactive
+         · وهو العطب عينه الذي بُنيت له V15.4، مطبَّقاً في نصف المسارات
+
+       ⚠️ والأثر الأخبث ليس على الكابتن بل على **قياساتك**: عدّادا
+          mirror_off و toggled_off كانا يأتيان من نصف الأسطول فقط (من
+          استُعيدت جلستهم)، فأي استنتاج بُني عليهما كان مبنيّاً على عيّنة
+          منحازة. وبعد [ع١] صار هذا مهمّاً أكثر — لأن إعادة التأكيد نفسها
+          لن تعمل لمن لا مرآة عنده.
+
+       وnدائها آمنٌ مرّتين: _myStatusBound يحرس الازدواج (انظر تعريفها).
+       ═══════════════════════════════════════════════════════════════════ */
+    try{ listenMyStatus(); }catch(e){}
   } else if(d.status==='banned'){alert('حساب محظور.');location.reload();}
   else if(d.status==='pending'||d.status==='waiting'){localStorage.setItem('suf_pending',phone);sessionStorage.setItem('suf_pend_pass',btoa(pass));showWait();}
   else if(d.success===false){
@@ -2003,8 +2206,53 @@ function onLogin(d,phone,pass){
   }
   else alert('تعذر التحقق — استجابة غير متوقعة من السيرفر.');
 }
+/* ═══════════════════════════════════════════════════════════════════════════
+   🔴 [V30][ع٥] استطلاع غرفة الانتظار — تراجعٌ أُسّي بدل ١٥ ثانية للأبد
+   ───────────────────────────────────────────────────────────────────────────
+   كان `setInterval(…, 15000)` بلا نهاية، ولا يُلغى إلا عند active/inactive
+   أو banned. فكابتنٌ لم تُقبل عضويته وترك التطبيق مفتوحاً على الطاولة:
+
+       ٢٤٠ نداء/ساعة  ×  ٢٤  =  ٥٬٧٦٠ نداء urlfetch يومياً — لجهازٍ واحد
+
+   وحصّة Apps Script اليومية ٢٠٬٠٠٠ وأنت عند ~٣٥٪ منها أصلاً. **فجهازان
+   أو ثلاثة معلّقة تنهي الحصّة، فتتوقف عمليات الأسطول كلّه** — لا غرفة
+   الانتظار وحدها. وهذا عطبٌ يبدأ من مستخدمٍ لا يعمل عندك أصلاً.
+
+   وكلٌّ من تلك النداءات يحمل كلمة المرور في الرابط (مسار GET القائم).
+
+   العلاج ثلاث طبقات:
+     ① تراجع أُسّي بسقف: 15 ← 30 ← 60 ← 120 ← 300 ثانية
+     ② توقّفٌ تامّ حين تكون الصفحة مخفيّة، واستئنافٌ فوري عند العودة —
+        فالجهاز في الجيب لا يستطلع، والكابتن الذي ينظر يحصل على ردٍّ سريع
+     ③ سقفٌ زمني مطلق (ساعة) ثم زرٌّ يدوي — فمن ينتظر يوماً لا يستطلع يوماً
+   ═══════════════════════════════════════════════════════════════════════════ */
+const WAIT_DELAYS_MS = [15000, 30000, 60000, 120000, 300000];
+const WAIT_MAX_MS    = 60 * 60 * 1000;   /* ساعة ثم يدوي */
+let _waitStep = 0, _waitStartedAt = 0;
+
+function _waitStop(){
+  if(waitTimer){ clearTimeout(waitTimer); waitTimer=null; }
+}
+function _waitSchedule(){
+  _waitStop();
+  if(document.hidden) return;                        /* ② مخفيّة ⇒ لا استطلاع */
+  if(_waitStartedAt && (Date.now()-_waitStartedAt) > WAIT_MAX_MS){
+    /* ③ بلغ السقف — أوقف الاستطلاع ووجّهه إلى زرّ «تحديث يدوي» القائم */
+    try{ const t=document.getElementById('waitTxt');
+         if(t) t.textContent='توقّف الاستعلام التلقائي — اضغط «تحديث يدوي» للفحص.'; }catch(e){}
+    return;
+  }
+  const d = WAIT_DELAYS_MS[Math.min(_waitStep, WAIT_DELAYS_MS.length-1)];
+  waitTimer = setTimeout(()=>{ _waitStep++; try{ checkWait(false); }catch(e){} _waitSchedule(); }, d);
+}
+document.addEventListener('visibilitychange', ()=>{
+  /* استئنافٌ فوري عند العودة: من ينظر إلى الشاشة يستحقّ ردّاً سريعاً */
+  if(!document.hidden && _waitStartedAt){ _waitStep=0; try{ checkWait(false); }catch(e){} _waitSchedule(); }
+  else if(document.hidden) _waitStop();
+});
+
 function showWait(){document.getElementById('authBox').classList.add('dn');document.getElementById('waitBox').classList.remove('dn');
-if(waitTimer)clearInterval(waitTimer);waitTimer=setInterval(()=>checkWait(false),15000);}
+_waitStep=0; _waitStartedAt=Date.now(); _waitSchedule();}
 window.checkWait=function(manual){
   let raw=document.getElementById('phone').value.trim()||localStorage.getItem('suf_pending'); if(!raw)return;
   const phone=nP(raw);
@@ -2015,12 +2263,12 @@ window.checkWait=function(manual){
     .then(r=>r.json()).then(d=>{
       document.getElementById('waitTxt').innerText='جاري الاستعلام التلقائي...';
       if(d.status==='active'||d.status==='inactive'){
-        clearInterval(waitTimer); localStorage.removeItem('suf_pending'); sessionStorage.removeItem('suf_pend_pass');
+        _waitStop(); _waitStartedAt=0; localStorage.removeItem('suf_pending'); sessionStorage.removeItem('suf_pend_pass');
         drv={phone,name:d.name,shiftHours:d.shift||10,ts:Date.now()};
         localStorage.setItem('suf_session',JSON.stringify(drv)); setPass(pass);
         if(d.firebase_token)signInWithCustomToken(auth,d.firebase_token).then(()=>{pushTokenToNative(d.firebase_token);schedTok(phone,pass);}).catch(()=>{});
         play('welcome'); document.getElementById('waitBox').classList.add('dn'); showDash();
-      } else if(d.status==='banned'){clearInterval(waitTimer);localStorage.removeItem('suf_pending');alert('حسابك محظور.');location.reload();}
+      } else if(d.status==='banned'){_waitStop();_waitStartedAt=0;localStorage.removeItem('suf_pending');alert('حسابك محظور.');location.reload();}
       else if(d.success===false&&manual){alert('🛑 السيرفر رفض الطلب: '+(d.msg||''));}
     }).catch(()=>{});
 };
@@ -2050,7 +2298,7 @@ function checkSession(){
       listenMyStatus();
     })();
     return true;
-  }catch(e){}}
+  }catch(e){ /* [V31.2] كان صامتاً. ولا لفافة حول track: جسمها كلّه داخل try/catch وset تحمل .catch — فهي لا ترمي في أي حال (مُثبَتٌ بالتنفيذ في tools/test_v31.js). واللفافة كانت ستُنتج كتلةً فارغةً جديدة — أي إعادةَ إنتاج العطب في الرقعة التي تعالجه. */ track('fail_net_write', { reason: String(e && e.message || e).slice(0,60) }); }}
   else if(p){document.getElementById('phone').value=p;const pp=sessionStorage.getItem('suf_pend_pass');
   if(pp)document.getElementById('pass').value=atob(pp);showWait();return true;}
   return false;
@@ -2085,8 +2333,8 @@ window.logout=function(){
   /* ننتظر الانصراف بمهلة قصوى ٣ ثوانٍ — فلا يعلق الخروج على شبكة ميتة،
      ولا تُهدم الصفحة قبل وصول الكتابة. */
   (async()=>{
-    try{ await withTimeout(fbStatus('inactive'), 3000, 'logout_off'); }catch(e){}
-    try{ signOut(auth); }catch(e){}
+    try{ await withTimeout(fbStatus('inactive'), 3000, 'logout_off'); }catch(e){ /* [V31.2] كان صامتاً. ولا لفافة حول track: جسمها كلّه داخل try/catch وset تحمل .catch — فهي لا ترمي في أي حال (مُثبَتٌ بالتنفيذ في tools/test_v31.js). واللفافة كانت ستُنتج كتلةً فارغةً جديدة — أي إعادةَ إنتاج العطب في الرقعة التي تعالجه. */ track('fail_logout_offline', { reason: String(e && e.message || e).slice(0,60) }); }
+    try{ signOut(auth); }catch(e){ /* [V31.2] كان صامتاً. ولا لفافة حول track: جسمها كلّه داخل try/catch وset تحمل .catch — فهي لا ترمي في أي حال (مُثبَتٌ بالتنفيذ في tools/test_v31.js). واللفافة كانت ستُنتج كتلةً فارغةً جديدة — أي إعادةَ إنتاج العطب في الرقعة التي تعالجه. */ track('fail_logout_signout', { reason: String(e && e.message || e).slice(0,60) }); }
     /* 🎯 [V18.4] والنيّة تُمحى مع الجلسة — وإلا ورثها الحساب التالي على
        الجهاز نفسه، فانفتح حارس كتلة العرض لمن لم يضغط شيئاً قطّ. */
     try{ setWantOnline(false); }catch(e){}
@@ -2227,7 +2475,7 @@ function shadowCommand(command, orderId){
                  if(v!=='allow') track('shadow_reject',{command:command,orderId:orderId,reason:v}); })
       .catch(e=>track('shadow_err',{command:command,orderId:orderId,
                                     reason:String((e&&(e.code||e.message))||'').slice(0,50)}));
-  }catch(e){}
+  }catch(e){ /* [V31.2] كان صامتاً. ولا لفافة حول track: جسمها كلّه داخل try/catch وset تحمل .catch — فهي لا ترمي في أي حال (مُثبَتٌ بالتنفيذ في tools/test_v31.js). واللفافة كانت ستُنتج كتلةً فارغةً جديدة — أي إعادةَ إنتاج العطب في الرقعة التي تعالجه. */ track('fail_net_write_2', { reason: String(e && e.message || e).slice(0,60) }); }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -2284,12 +2532,62 @@ function paintToggle(on){
   else  { if(hbTimer){ clearInterval(hbTimer); hbTimer=null; } unawake(); }
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   🔴 [V30] listenMyStatus — حارسٌ ضدّ إعادة الربط المتكرّرة
+   ───────────────────────────────────────────────────────────────────────────
+   كانت تُنادى من مسارٍ واحد (استعادة الجلسة)، وصارت تُنادى من مسارين بعد
+   إصلاح [ع٣] أدناه. ومستمعان على نفس العقدة يعنيان تنفيذ منطق المرآة مرّتين
+   لكل تغيير — وهو منطقٌ يقلب مفتاحاً، فالتنفيذ المزدوج يُنتج ذبذبة.
+   العلَم يجعلها آمنة النداء من أي عدد من المسارات.
+   ═══════════════════════════════════════════════════════════════════════════ */
+let _myStatusBound = false;
 function listenMyStatus(){
   if(!drv||!drv.phone) return;
+  if(_myStatusBound) return;
+  _myStatusBound = true;
   listen(()=>ref(db,`drivers_locations/${drv.phone}/status`), snap=>{
     const on = String(snap.val()||'') === 'active';
     if(_mirrorOn) return;                       // نحن من غيّرها للتوّ
     if(on === isOnline) return;                 // لا تغيير
+
+    /* ═══════════════════════════════════════════════════════════════════
+       🔴 [V30][ع١] إعادة التأكيد — جذر `mirror_off` الحقيقي.
+       ───────────────────────────────────────────────────────────────────
+       العطب: armDisconnect يُسلّح كتابةً سيرفرية بـ'inactive' عند سقوط
+       المقبس. **وأندرويد يقطع WebSocket عند تصغير التطبيق** — لا عند
+       انقطاع الشبكة. فكابتنٌ يفتح خرائط جوجل دقيقتين يعود فيجد:
+
+           الخادم كتب inactive  ⇒  المرآة تُطلق  ⇒  paintToggle(false)
+           ⇒  hbTimer يُلغى  ⇒  لا نبض  ⇒  لا إعادة تسليح  ⇒  عالقٌ للأبد
+
+       ولا مسار واحد يُعيده: wantOnline — نيّة الكابتن — كان مكتوباً
+       ومحفوظاً في localStorage و**يُستعمل في التتبّع وحده** (السطر ~2451).
+       و visibilitychange محروسٌ بـ if(isOnline) الذي صار كاذباً للتوّ.
+
+       الأثر الميداني: يجلس ساعةً يظنّ التوزيع بطيئاً، وهو خارج الرادار.
+
+       العلاج: المرآة لا تقلب قراراً بشرياً قائماً. إن قال الخادم "مطفأ"
+       والكابتن يقول "أريد العمل"، فالخادم هو من يُصحَّح لا الكابتن.
+       ⚠️ والاتجاه الآخر (الخادم يقول active والكابتن أطفأ) يُحترم كما هو:
+          الإطفاء نيّةٌ صريحة أيضاً، ولا يُلتفّ عليها.
+       ⚠️ والحظر مغطّى أصلاً ولا يحتاج شرطاً هنا: مستمع account_status
+          (السطر ~3609) ينادي setWantOnline(false) ثم يُعيد التحميل، فيصير
+          wantOnline كاذباً قبل أن تصل أي لقطة حالة. تحقّقتُ من ذلك بدل
+          إضافة علَمٍ ثانٍ يقول الشيء نفسه ويتباعد عنه لاحقاً.
+       ═══════════════════════════════════════════════════════════════════ */
+    if(!on && wantOnline && !window._shiftOver){
+      track('mirror_off_reassert');
+      /* رفعُ الحقبة يمنع ردّاً قديماً في الطريق من قلب ما نكتبه الآن */
+      availEpoch++;
+      /* ⚠️ fbStatus دالّةٌ async: لفُّها بـtry/catch **لا يلتقط** رفضها —
+         الاستثناء يخرج كوعدٍ مرفوض لا كرمية متزامنة، فيصير
+         unhandledrejection. الالتقاط الصحيح على الوعد نفسه. */
+      fbStatus('active', availEpoch, true).catch(e=>{
+        track('reassert_fail', { reason: String(e && e.message || e).slice(0,60) });
+      });
+      return;                                   // لا نُطفئ — أعدنا التأكيد
+    }
+
     paintToggle(on);
     /* ═══════════════════════════════════════════════════════════════════
        🔴 [V18.3] والمرآة تُصلح **النصّ** أيضاً — لا المفتاح وحده.
@@ -2345,7 +2643,7 @@ function listenMyStatus(){
         odAge  : _odArmedAt ? Math.round((Date.now()-_odArmedAt)/1000) : -1,
         ackAge : lastAckTs  ? Math.round((Date.now()-lastAckTs )/1000) : -1
       });
-    }catch(e){ try{ track(on?'mirror_on':'mirror_off'); }catch(_){} }
+    }catch(e){ track(on?'mirror_on':'mirror_off'); }
   });
 }
 
@@ -2353,6 +2651,11 @@ function listenMyStatus(){
 let offRetryTimer=null;
 function scheduleOffRetry(){
   if(offRetryTimer) clearInterval(offRetryTimer);
+  /* [V30][ح٤] تشتيتٌ على الفاصل نفسه: كل الأجهزة التي فشل انصرافها في
+     اللحظة نفسها كانت تُعيد المحاولة كل ١٥ ث **متزامنةً**. تعشيرُ الفاصل
+     بين ١٥ و٢٢٫٥ ث يفكّ التزامن بلا تغيير أي منطقٍ في الحلقة — وclearInterval
+     يبقى كما هو في المواضع الأربعة التي تُلغيه. */
+  const _iv = Math.round(15000 * (1 + Math.random()*0.5));
   offRetryTimer=setInterval(async()=>{
     if(isOnline){ clearInterval(offRetryTimer); offRetryTimer=null; return; }
     if(await fbStatus('inactive')){
@@ -2362,7 +2665,7 @@ function scheduleOffRetry(){
       document.getElementById('radarT').innerText='الرادار متوقف';
       document.getElementById('radarD').innerText='فعّل «متاح للطلبات» لبدء الشفت';
     }
-  },15000);
+  },_iv);
 }
 
 /* ───────── مراقب تغيّر اليوم — يُعيد بناء مستمعات العدّادات وحدها ───────── */
@@ -2371,6 +2674,13 @@ function startDayRollover(initial){
   _dayKey=initial;
   if(_dayTimer) clearInterval(_dayTimer);
   _dayTimer=setInterval(()=>{
+    /* 🕐 [V29 ← نحلة N-12.1] نبضة نافذة الشفت تركب هذا المؤقّت نفسه —
+       دقيقةٌ واحدة هي دقّة النافذة المطلوبة، وإنشاء مؤقّت ثانٍ بالدورية
+       نفسها كلفةُ بطاريةٍ بلا مقابل. وهي أول ما يُنفَّذ في الدورة كي لا
+       يبتلعها فرعُ تبدّل اليوم الذي ينتهي بـ location.reload().
+       ⚠️ وهي محروسة بـ try: استثناءٌ فيها كان سيوقف مراقب تبدّل اليوم كلّه
+          (setInterval يبتلع الاستثناء ولا يُعيد جدولة ما بعده في الدورة). */
+    try{ shiftWindowPulse(); }catch(_){}
     const d=new Date().toISOString().split('T')[0];
     if(d!==_dayKey){
       _dayKey=d;
@@ -2404,6 +2714,48 @@ window.toggleOnline=async function(){
     return;
   }
 
+  /* ════════════════════════════════════════════════════════════════════════
+     🚦 [V29 ← نحلة N-12.0] بوّابتا النزول — **رسالةٌ لا حراسة**
+     ────────────────────────────────────────────────────────────────────────
+     الحراسة الحقيقية في المحرك (inShiftWindow يستبعد من هو خارج نافذته من
+     دورة الإسناد). وهذه هنا كي **يعرف الكابتن لماذا** لا تصله طلبات: بلا
+     هذه الرسالة يبقى مفتاحه أخضر والرادار يدور ساعتين، ولا شيء يقول له إن
+     شفته يبدأ في الرابعة. صفر طلب وصفر تفسير = شكوى إلى الدعم.
+
+     ① ملفٌّ ناقص  ⇒ افتح شاشة الإعداد — وتحجب النزول **فقط** إن كان
+        REQUIRE_PROFILE مرفوعاً (وهو مطفأ اليوم؛ انظر تعليقه أعلاه).
+     ② خارج نافذته ⇒ قُل له كم يتبقّى بالضبط، لا «غير متاح» وحدها.
+        وتُطبَّق على **من ضبط نافذة فقط**: myShift تُرجع null لغيره ⇒ يمرّ.
+
+     ⚠️ ولا تُطبَّق أيٌّ منهما على **الانصراف** أبداً (الشرط .checked):
+        منعُ كابتنٍ من الانصراف يُبقيه في الأسطول وهو في بيته، فتُسنَد إليه
+        طلبات لا يراها — وهو أسوأ من كل ما تحرسه هذه البوّابة.
+     ════════════════════════════════════════════════════════════════════════ */
+  if(_tog && _tog.checked && drv){
+    if(REQUIRE_PROFILE && !profileComplete()){
+      _tog.checked=false;
+      toast('أكمل صورتك وموعد شفتك قبل النزول','warn');
+      track('profile_gate_blocked');
+      openOnboarding(true); return;
+    }
+    /* 🆓 [V31.5] وضع الطوارئ يفتح البوّابة هنا أيضاً.
+       كان الشرط على الثابت المدفون وحده، فيُمنع الكابتن من النزول خارج
+       نافذته **بينما الإدارة أوقفت الشفتات**. والمفتاح واحدٌ للطبقات كلها:
+       ما يتجاوزه المحرّك لا يجوز أن يحجبه التطبيق — وإلّا رأى الكابتن باباً
+       مغلقاً وخلفه محرّكٌ مستعدّ لتوزيع الطلبات عليه. */
+    const s=(ENFORCE_SHIFT_WINDOW && window._shiftsOff!==true) ? myShift() : null;
+    if(s){
+      const w=inWindowLocal(s.h, s.len, srvNow());
+      if(!w.inside){
+        _tog.checked=false;
+        const hh=Math.floor(w.opensInMins/60), mm=w.opensInMins%60;
+        toast('🕐 شفتك يبدأ '+hLabel(s.h)+' — يتبقّى '+(hh?hh+' س ':'')+mm+' د','warn');
+        track('shift_gate_blocked',{ms:w.opensInMins});
+        return;
+      }
+    }
+  }
+
   isOnline=document.getElementById('onlineTog').checked;
   /* 🎯 [V18.4] النيّة تُكتب هنا **وحدها** — هذه الدالة هي الموضع الوحيد
      الذي يمثّل قراراً بشرياً. وكل ما عداه صدىً لحالة الخادم. */
@@ -2412,11 +2764,11 @@ window.toggleOnline=async function(){
   /* 🔴 [V15.6] كان الحجب بمؤقّت أعمى (٤ ث) — وعملية التفعيل قد تطول أكثر
      (انتظار GPS حتى 5 ث + كتابة حتى 6 ث). فتنفكّ المرآة والعملية جارية،
      فتُبدّل المفتاح وتُظهر رسائل في منتصف الطريق.
-     الآن: يُرفع الحجب **عند اكتمال العملية**، وحزامٌ أقصاه 15 ث كي لا
-     يبقى الحجب أبداً إن رُميَ استثناء. */
+     الآن: يُرفع الحجب **عند اكتمال العملية**، وحزامٌ زمني كي لا يبقى
+     الحجب أبداً إن رُميَ استثناء. */
   _mirrorOn = true;
   if(window._mirTmr) clearTimeout(window._mirTmr);
-  window._mirTmr = setTimeout(()=>{ _mirrorOn = false; }, 15000);
+  window._mirTmr = setTimeout(()=>{ _mirrorOn = false; }, MIR_GUARD_MS);
   const lbl=document.getElementById('togLbl'), rad=document.getElementById('radar');
   if(isOnline){
     lbl.className='tog-lbl on'; lbl.innerText='متاح للطلبات';
@@ -2534,7 +2886,7 @@ window.toggleOnline=async function(){
         const _rsn = (window._statusErr || 'unknown') +
                      (window._statusOnline === 0 ? '|offline' : '') +
                      (window._healOk === 0 ? '|healfail' : '');
-        try{ track('activate_fail', { reason: _rsn }); }catch(_){}
+        track('activate_fail', { reason: _rsn });
 
         /* ═══════════════════════════════════════════════════════════════
            🔬 [V17.6] **السبب على الشاشة — لأن قناة الرصد عمياء عن هذا العطب.**
@@ -2591,10 +2943,10 @@ window.toggleOnline=async function(){
             + `&raw=${encodeURIComponent(window._statusRaw||'')}`
             + `&uid=${encodeURIComponent(_u2)}`
             + `&ver=${encodeURIComponent(CURRENT_APP_VERSION)}`, null, 6000).catch(()=>{});
-        }catch(_){}
+        }catch(_){ /* [V31.2] كان صامتاً. ولا لفافة حول track: جسمها كلّه داخل try/catch وset تحمل .catch — فهي لا ترمي في أي حال (مُثبَتٌ بالتنفيذ في tools/test_v31.js). واللفافة كانت ستُنتج كتلةً فارغةً جديدة — أي إعادةَ إنتاج العطب في الرقعة التي تعالجه. */ track('fail_net_write_3', { reason: String(_ && _.message || _).slice(0,60) }); }
 
         toast('⚠️ تعذّر تفعيل الرادار — أعد المحاولة','bad');
-      } else { try{ track('activate_ok'); }catch(_){} updateLinkPill(); }
+      } else { track('activate_ok'); updateLinkPill(); }
     })();
     await awake();
     if(hbTimer)clearInterval(hbTimer); hbTimer=setInterval(heartbeat,active.length?10000:20000);
@@ -2691,7 +3043,7 @@ async function fbStatus(st, epoch, waitGeo){
        يجده فارغاً ⇒ «unknown». وهو ٩ من ٢٢ بلاغاً — أي أن ٤١٪ من بياناتنا
        كانت تقول «لا أعرف» ونحن نعرف تماماً: القرار تغيّر قبل وصول الكتابة. */
     try{ window._statusErr = 'epoch_drop'; }catch(_){}
-    try{ track('stale_status_drop',{want:st,epoch:epoch,now:availEpoch}); }catch(e){}
+    track('stale_status_drop',{want:st,epoch:epoch,now:availEpoch});
     return false;
   }
   /* وحتى بلا حقبة صريحة: لا نكتب active ونحن في استراحة. */
@@ -2709,7 +3061,7 @@ async function fbStatus(st, epoch, waitGeo){
          قرارٌ أحدث. لكنّه كان يُعدّ فشلاً مجهولاً فيُشوّش نصف بياناتنا.
        الآن يُسمّي نفسه، فيخرج من خانة «لا نعرف» إلى خانة «نعرف ولا يضرّ». */
     try{ window._statusErr = 'toggled_off'; }catch(_){}
-    try{ track('stale_status_drop',{want:'active',reason:'offline'}); }catch(e){}
+    track('stale_status_drop',{want:'active',reason:'offline'});
     return false;
   }
   return await _fbStatusRaw(st, waitGeo);
@@ -2815,7 +3167,7 @@ async function _fbStatusRaw(st, waitGeo){
       }
       /* وصل بعد انتظار — نجاحٌ متأخّر كان فشلاً قبل هذه الرقعة. */
       window._statusErr = 'gps_slow';
-      try{ track('gps_slow'); }catch(e){}
+      track('gps_slow');
     }
     showLocBanner(false);
   }
@@ -2984,11 +3336,38 @@ window.startGeoWatch=function(){
   if(!window.locConsentGiven())return;
   if(!navigator.geolocation)return;
   window._geoWatchOn=true;
+  /* ═══════════════════════════════════════════════════════════════════
+     🔴 [V28] عطبان من سطرين — وكلاهما جذرٌ لأعراض ميدانية مزمنة.
+
+     ① كان: lastLat=…; lastLng=…;  **بلا lastFixTs**.
+        و locFresh():1423 تعتمد lastFixTs وحده، فتصير false بعد ٩٠
+        ثانية **رغم أن watchPosition يسلّم إحداثيات كل ثانية**.
+        ثم _fbStatusRaw:2823 يشترط locFresh() قبل الكتابة ⇒
+        **الإحداثيات لا تُكتب إلى drivers_locations أصلاً** بعد أول
+        دقيقة ونصف، والمحرك يرى كابتناً active بموقعٍ متجمّد.
+        وهو مصدر كل تقارير stale_gps و"لم يتأكّد التفعيل".
+        ⚠️ والتعليق عند 2781 كان يدّعي عكس هذا حرفياً.
+
+     ② كان: fbStatus() تُنادى داخل watchPosition بلا خنق.
+        مع enableHighAccuracy تُطلق ~مرة/ثانية أثناء الحركة ⇒
+        ٣٬٦٠٠ كتابة/كابتن/ساعة بدل ١٨٠ ⇒ عند ١٧٥ كابتناً ≈
+        ٦٣٠٬٠٠٠ كتابة/ساعة، كلٌّ منها توقظ مستمعَي Master.html و
+        liderdodsas.html على العقدة كاملة. وكانت تكتب في الاستراحة أيضاً.
+        الآن: markFix تُحدّث الطابع محلياً، و heartbeat المخنوق
+        (adjustHB:2639) هو الكاتب الوحيد إلى فايربيس.
+     ═══════════════════════════════════════════════════════════════════ */
   const ok=p=>{
     try{document.getElementById('permOv').classList.add('dn');}catch(e){}
-    lastLat=p.coords.latitude;lastLng=p.coords.longitude;
-    if(drv){drv.currentLat=p.coords.latitude;drv.currentLng=p.coords.longitude;drv.gpsAccuracy=p.coords.accuracy;}
-    fbStatus(isOnline?'active':'inactive');
+    /* markFix تضبط lastLat/lastLng/lastFixTs وحقول drv الثلاثة معاً (1419) */
+    markFix(p.coords.latitude,p.coords.longitude,p.coords.accuracy);
+    /* الكتابة مخنوقة بعشر ثوانٍ: تُبقي السلوك القديم (كتابة فور أول
+       تثبيت بعد منح الإذن) وتقطع التضخيم. و heartbeat يبقى الكاتب
+       المنتظم، فلا يعتمد شيء على هذا النداء وحده. */
+    const nowMs=Date.now();
+    if(nowMs-(window._lastGeoWrite||0) >= 10000){
+      window._lastGeoWrite=nowMs;
+      fbStatus(isOnline?'active':'inactive');
+    }
   };
   /* الفشل يحجب في الشفت وحده [ج٢١] */
   const bad=()=>{ if(isOnline){ try{document.getElementById('permOv').classList.remove('dn');}catch(e){} } };
@@ -3000,6 +3379,310 @@ function startSystem(){
   if(isOnline){awake();adjustHB();}
   startListeners();
   window.startGeoWatch();          /* [ج٢١] لا شيء قبل الموافقة */
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   🖼️🕐 [V29 ← نحلة N-12.0/12.1/12.2] الملفّ الشخصي + نافذة الشفت اليومية
+   ───────────────────────────────────────────────────────────────────────────
+   طبقتان جديدتان **مستقلّتان تماماً** عن شفت سفيان القائم:
+     • shift_end / START_SHIFT / maybeEndShift  ← عدّاد جلسةٍ واحدة، لم يُمَسّ.
+     • نافذة الشفت (shift_h/shift_len/shift_next) ← موعدٌ يوميّ متكرّر.
+   ومن لم يضبط نافذةً يعمل **كما كان حرفاً بحرف**: لا بوّابة، ولا إطفاء
+   تلقائي، ولا رسالة. الفشل مفتوح لا مغلق — لأن الاتجاه الآخر يعني أسطولاً
+   لا ينزل أحدٌ منه صباح النشر.
+
+   ⚠️ وأخطر ما في هذه الميزة ليس منطقها بل **توافقُ نسختيها**: نسخة العميل
+      هنا ونسخة المحرك في server/index.js. وقد انحرفتا في نحلة مرّتين
+      (N-12.1 و N-12.2) فأنتجتا انقطاعاً حقيقياً: المحرك يقرأ «ساعةٌ بلا طولٍ
+      صالح» على أنها **لا تفضيل** (فالكابتن متاح ويُسنَد إليه)، والتطبيق كان
+      يقرؤها ||10 (فالكابتن خارج نافذته) — فتطفئ نبضةُ التطبيق مفتاحَه كل
+      ٦٠ ثانية، ولا يفهم أحدٌ لماذا لا يستطيع البقاء متاحاً.
+      ⇒ inWindowLocal مرآةُ inShiftWindow حرفاً، و myShift مرآةُ
+        effectiveShift حرفاً (بلا الترقية: الكتابة سيرفريّة). أي تعديل في
+        أحدهما بلا الآخر عطبٌ لا تحسين.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* 🚧 [V29 — انحرافٌ مقصود عن نحلة] الإجبار مُطفأ في أول نشرة.
+   ───────────────────────────────────────────────────────────────────────────
+   نحلة تحجب زرّ الإتاحة حتى تكتمل الصورة والموعد. وN-12.10 في نحلة نفسها
+   توثّق ثمن ذلك: WebView أندرويد **لا يفتح منتقي الملفات** ما لم يُنفَّذ
+   onShowFileChooser في WebChromeClient. فبلا صورة لا نزول، وبلا منتقٍ لا
+   صورة ⇒ أسطولٌ كامل عاجز عن العمل بشاشةٍ لا زرّ فيها يعمل.
+
+   وتطبيق كابتن سفيان الأصلي **ليس فيه onShowFileChooser** (صفر ورود، مفحوص).
+   ويُضاف الآن — لكن وصول APK إلى أجهزة الكباتن يتأخّر أسابيع خلف نشر الويب،
+   والويب هو ما يتحدّث فوراً عبر مسح الكاش. فلو وُلد REQUIRE_PROFILE=true
+   لأصاب العطبُ **كل** كابتن على APK قديم، وهو الأسطول كلّه يوم النشر.
+
+   ⇒ اليوم: الشاشة تُعرض وتُقنِع ويمكن تخطّيها ("لاحقاً")، والبوّابة السيرفرية
+     تمرّ من بلا صورة كما تمرّ من بلا موعد — فلا شيء يُحرَس بالقفل أصلاً.
+   ⇒ تُقلَب إلى true **بعد** أن يصل APK الحامل لـ onShowFileChooser إلى
+     الأسطول (يُتحقّق من ذلك بنسبة APK في client_events / لوحة الإدارة)،
+     لا قبله. سطرٌ واحد، ولا شيء آخر يتغيّر.
+   ⚠️ ونافذة الشفت **ليست** خلف هذا العلم: من ضبط نافذته اختار بنفسه،
+     فبوّابته تعمل اليوم. الحجب هنا حجبُ **الإجبار على الإكمال** وحده. */
+const REQUIRE_PROFILE = false;
+
+/* 🎛️ [V29] توأم TUNE.ENFORCE_SHIFT_WINDOW في server/index.js — يُقلبان معاً.
+   ───────────────────────────────────────────────────────────────────────────
+   في المحرك مفتاح تراجعٍ يوقف استبعاد من هو خارج نافذته (وضع المراقبة). وهو
+   ثابتٌ في الشيفرة لا عقدةٌ في القاعدة، فلا يستطيع التطبيق قراءته. وترْكُه
+   بلا توأمٍ هنا يُعيد إنتاج N-12.2 بصورة أخرى وبالاتجاه **الأسوأ**:
+     • المحرك مطفأ والتطبيق يعمل ⇒ الطلبات تُسنَد إلى الكابتن فعلاً، ونبضةُ
+       تطبيقه تطفئ مفتاحه كل ٦٠ ثانية. يخسر عمله ولا يفهم لماذا.
+     • المحرك يعمل والتطبيق مطفأ ⇒ يبقى أخضر بلا طلبات وبلا تفسير (أخفّ).
+   ⇒ من يُطفئ المفتاح في المحرك يُطفئ هذا السطر في النشرة نفسها. */
+const ENFORCE_SHIFT_WINDOW = true;
+
+let _obPhoto = null;            /* base64 المختارة قبل الرفع */
+const SHIFT_LEN_CHOICES = [4,5,6,7,8,9,10,11,12,13,14,15,16];
+
+function hLabel(h){
+  const ap = h < 12 ? 'ص' : 'م';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return h12 + ':00 ' + ap;
+}
+function winLabel(h, len){
+  const end = (h + len) % 24;
+  const cross = (h + len) >= 24;
+  return 'شفتك: ' + hLabel(h) + ' ← ' + hLabel(end) + (cross ? ' (اليوم التالي)' : '') + ' · ' + len + ' ساعة';
+}
+
+/* 🔗 نسخةٌ طبق الأصل من inShiftWindow في server/index.js — ولا تُعدَّل هنا
+   وحدها أبداً (انظر التحذير في ترويسة القسم).
+   ⏰ وساعة بغداد تُحسب بإزاحة +3 على حقول UTC، لا بـ toLocaleString:
+      الأخيرة تُنتج نصّاً يختلف تحليله بين متصفّح وآخر، وتتبع منطقة تشغيل
+      الخادم في الطرف المقابل — فينحرف الطرفان بلا أن يُخطئ أحدهما.
+   🔄 والالتفاف حول منتصف الليل هو الحالة الغالبة لا النادرة: شفتٌ يبدأ
+      ٢٢:٠٠ ويمتدّ ١٢ ساعة. ومن يفحص (mins>=start && mins<end) وحدها يطرد
+      كل كابتن ليليّ بعد منتصف الليل. */
+function inWindowLocal(h, len, nowMs){
+  const s = Number(h), L = Number(len);
+  if(!isFinite(s) || !isFinite(L) || s<0 || s>23 || L<=0 || L>24) return { inside:true, opensInMins:0 };
+  const bag = new Date(nowMs + 3*3600000);          /* حقول UTC = ساعة بغداد */
+  const mins = bag.getUTCHours()*60 + bag.getUTCMinutes();
+  const start = s*60, end = start + L*60;
+  const inside = (end<=1440) ? (mins>=start && mins<end) : ((mins>=start) || (mins<end-1440));
+  if(inside) return { inside:true, opensInMins:0 };
+  let d = start - mins; if(d<0) d += 1440;
+  return { inside:false, opensInMins:d };
+}
+
+function myShift(){
+  /* 🔒 [N-12.1] قراءةٌ فقط — لا كتابة. الترقية (shift_next ⇒ shift_h) تجري
+     في المحرك، والقواعد لا تسمح للكابتن بكتابة shift_h أصلاً. ولو جرت هنا
+     لكان الحارسُ الذي يمنع الالتفاف قابلاً للالتفاف بسطرٍ في وحدة التحكّم:
+     من مُنع الساعةَ الواحدة يجعل موعده الواحدة فينزل فوراً.
+     وما هنا حسابُ **العرض** كي يرى موعده الصحيح فوراً، لا مصدرَ حكم. */
+  if(!drv) return null;
+  const nx = drv.shift_next;
+  const today = new Date(srvNow() + 3*3600000).toISOString().slice(0,10);
+  /* 🔗 [N-12.2] الافتراضي موحَّد مع effectiveShift حرفاً: ساعةٌ بلا طولٍ
+     صالح = **لا تفضيل** (null) لا «عشر ساعات». وكان ||10 هنا و«كما هو»
+     هناك في نحلة، فينحرف الطرفان ويُطفَأ مفتاح الكابتن كل ٦٠ ثانية.
+     والاتجاه الآمن مقصود: من ينقص ختمُه لا يُحبس. */
+  const ok=(v,lo,hi)=>{const n=Number(v);return isFinite(n)&&n>=lo&&n<=hi;};
+  let h, len;
+  if(nx && nx.from && ok(nx.h,0,23) && ok(nx.len,1,16) && today >= String(nx.from)){
+    h=Number(nx.h); len=Number(nx.len);
+  } else { h=drv.shift_h; len=drv.shift_len; }
+  if(!ok(h,0,23) || !ok(len,1,16)) return null;
+  return { h:Number(h), len:Number(len) };
+}
+
+function profileComplete(){ return !!(drv && drv.photo && myShift()); }
+
+window.obPick=function(inp){
+  const f = inp.files && inp.files[0]; if(!f) return;
+  /* 📏 الثمانية ميغا حدُّ **الملف الأصلي** قبل الضغط، لا حدَّ المرفوع: قراءة
+     أصلٍ أكبر بـ FileReader تخنق ذاكرة هاتفٍ رخيص فتموت الصفحة صامتةً.
+     والمرفوع فعلاً هو ناتج canvas (٤٠٠ بكسل · JPEG 0.82) وهو عشرات
+     الكيلوبايتات — أي تحت سقف الميغابايتين في storage.rules بفارقٍ هائل،
+     فلا تناقض بين الرقمين. */
+  if(f.size > 8*1024*1024){ obErr('الصورة كبيرة جداً — اختر واحدة أصغر'); return; }
+  const r = new FileReader();
+  r.onload = ()=>{
+    const img = new Image();
+    img.onload = ()=>{
+      /* ضغطٌ إلى ٤٠٠ بكسل: الصورة تُعرض في دائرة صغيرة لا تتجاوز ٩٠ بكسل،
+         ورفعُ أصلٍ بأربعة ميغا على شبكة كركوك يتجاوز مهلة الـ٢٥ ثانية
+         فيفشل — فيخسر الكابتن الميزة في أول تجربة له معها ولا يعود. */
+      const M = 400, sc = Math.min(1, M/Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width*sc); c.height = Math.round(img.height*sc);
+      c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+      _obPhoto = c.toDataURL('image/jpeg', 0.82);
+      const el=document.getElementById('obImg');
+      el.src=_obPhoto; el.style.display='block';
+      document.getElementById('obImgPh').style.display='none';
+      document.getElementById('obImgBox').style.borderStyle='solid';
+      document.getElementById('obImgMsg').textContent='جاهزة للحفظ ✓';
+      obErr('');
+    };
+    img.onerror = ()=>obErr('تعذّرت قراءة الصورة — جرّب صورة أخرى');
+    img.src = r.result;
+  };
+  r.onerror = ()=>obErr('تعذّرت قراءة الملف');
+  r.readAsDataURL(f);
+};
+
+function obErr(m){
+  const e=document.getElementById('obErr');
+  if(!e) return;
+  e.style.display = m ? 'block' : 'none'; e.textContent = m || '';
+}
+
+window.closeSheet=function(id){ const e=document.getElementById(id); if(e) e.classList.add('dn'); };
+
+window.openOnboarding=function(force){
+  const st=document.getElementById('obStart'), hr=document.getElementById('obHours');
+  if(!st.options.length){
+    for(let i=0;i<24;i++) st.add(new Option(hLabel(i), String(i)));
+    SHIFT_LEN_CHOICES.forEach(v=>hr.add(new Option(v+' ساعات', String(v))));
+  }
+  const cur = myShift();
+  st.value = String(cur ? cur.h : 14);
+  hr.value = String(cur ? cur.len : 10);
+  const paint=()=>{ document.getElementById('obWin').textContent =
+      winLabel(Number(st.value), Number(hr.value)); };
+  st.onchange=paint; hr.onchange=paint; paint();
+
+  if(drv && drv.photo){
+    const el=document.getElementById('obImg');
+    /* 🔒 [V29] الرابط يُسنَد عبر خاصيّة DOM (el.src) لا بحقنه في نصّ HTML،
+       فلا يوجد سياق سمة يُفلَت منه أصلاً. وحيثما لزم النصّ (لا موضع اليوم)
+       فعبر esc() التي صارت تُهرّب " و ' منذ V28. */
+    el.src=drv.photo; el.style.display='block';
+    document.getElementById('obImgPh').style.display='none';
+    document.getElementById('obImgBox').style.borderStyle='solid';
+    document.getElementById('obImgMsg').textContent='صورتك الحالية — اختر أخرى لتغييرها';
+  }
+  document.getElementById('obTitle').textContent = force ? '👋 أكمل ملفّك' : '⚙️ ملفّي وشفتي';
+
+  /* ⚠️ [N-12.10 + V29] زرّ «لاحقاً» **ظاهرٌ دائماً** ما دام REQUIRE_PROFILE
+     مطفأً — لا في حالة force وحدها كما في نحلة. لأن الحالة الوحيدة التي
+     تُغلق الشاشة بلا حفظ هي هذه، ومنتقي الملفات قد لا يفتح إطلاقاً على APK
+     القديم: شاشةٌ بلا مخرج تُصبح جداراً بين الكابتن وقوت يومه.
+     ومتى قُلب العلم إلى true عاد السلوك إلى سلوك نحلة تماماً: مخرجٌ لمن
+     يحمل طلباً الآن، وإصرارٌ على من لا يحمل. */
+  const later=document.getElementById('obLater');
+  later.style.display = (!REQUIRE_PROFILE || force) ? 'block' : 'none';
+  later.textContent = active.length ? 'لاحقاً — عندي طلب الآن' : 'لاحقاً';
+  obErr('');
+  document.getElementById('obOv').classList.remove('dn');
+};
+
+window.obSave=async function(){
+  const btn=document.getElementById('obSave');
+  const h=Number(document.getElementById('obStart').value);
+  const len=Number(document.getElementById('obHours').value);
+  if(!drv || !drv.phone){ obErr('لم تُسجّل دخولك بعد'); return; }
+  if(!_obPhoto && !(drv && drv.photo)){ obErr('الصورة مطلوبة — اختر صورة واضحة لوجهك'); return; }
+  if(!(h>=0&&h<=23) || !(len>=1&&len<=16)){ obErr('اختيار غير صالح'); return; }
+
+  btn.disabled=true; btn.innerHTML='<div class="spin" style="border-top-color:#fff"></div> جارٍ الحفظ…';
+  try{
+    let url = drv.photo || null;
+    if(_obPhoto){
+      /* ⏱️ مهلتان منفصلتان: الرفع بطيء بطبعه (٢٥ ث) وجلب الرابط سريع (١٥ ث).
+         وبلا مهلة يبقى الزرّ «جارٍ الحفظ…» إلى الأبد على شبكةٍ ميتة،
+         فيظنّ الكابتن التطبيق معلّقاً ويُغلقه — وقد رُفعت الصورة فعلاً. */
+      const path = `driver_photos/${drv.phone}.jpg`;
+      await withTimeout(uploadString(sRef(storage, path), _obPhoto, 'data_url'), 25000, 'photo_up');
+      url = await withTimeout(getDownloadURL(sRef(storage, path)), 15000, 'photo_url');
+    }
+
+    const cur = myShift();
+    const patch = { photo:url, photo_at:new Date().toISOString() };
+    /* 🔒 [N-12.1] الكابتن يكتب shift_next **وحدها** — لا shift_h ولا shift_len
+       (والقواعد تحصرهما بالإداري أصلاً، فأي محاولة تُرفض عند الحافة).
+         • الاختيار الأول: from = اليوم  ⇒ يرقّيه المحرك خلال دقيقة.
+         • التغيير اللاحق: from = الغد   ⇒ «يسري من الغد» قاعدةٌ سيرفريّة.
+       ⚠️ [N-12.2] وتُكتب الكتلة **كاملة** {h, len, from} أو لا تُكتب: القواعد
+          تطلب hasChildren على الأم، وكتابةٌ ناقصة تُنتج Number(undefined)=NaN
+          في دفعة المحرك الجامعة ⇒ RTDB ترفض الدفعة كلّها ⇒ تسقط إسنادات
+          **الأسطول بأكمله** كل دقيقة ما بقي الحقل معطوباً. */
+    if(!cur || cur.h!==h || cur.len!==len){
+      const t=new Date(srvNow()+3*3600000);
+      if(cur) t.setUTCDate(t.getUTCDate()+1);
+      patch.shift_next={ h:h, len:len, from:t.toISOString().slice(0,10) };
+      patch.shift_set_at=new Date().toISOString();
+    }
+    await withTimeout(update(ref(db,`drivers_locations/${drv.phone}`), patch), NET_TIMEOUT_MS, 'prof_save');
+
+    drv.photo=url;
+    if(patch.shift_next) drv.shift_next=patch.shift_next;
+    try{ localStorage.setItem('suf_session',JSON.stringify(drv)); }catch(_){}
+    _obPhoto=null;
+    document.getElementById('obOv').classList.add('dn');
+    const _today=new Date(srvNow()+3*3600000).toISOString().slice(0,10);
+    toast((patch.shift_next && patch.shift_next.from > _today)
+      ? '✅ حُفظ — وموعدك الجديد يسري من الغد'
+      : '✅ حُفظ ملفّك — '+winLabel(h,len),'ok');
+    track('profile_saved');
+    paintShiftInfo();
+  }catch(e){
+    obErr('تعذّر الحفظ: '+String(e&&e.message||e).slice(0,70));
+  }finally{
+    btn.disabled=false; btn.innerHTML='حفظ والمتابعة';
+  }
+};
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   🔴 [V29 ← نحلة N-12.1] نبضة نافذة الشفت — الوصلة التي كانت ناقصة
+   ───────────────────────────────────────────────────────────────────────────
+   في نحلة كانت inWindowLocal تُنادى في toggleOnline **وحدها**: أي لحظة الضغط
+   على «متاح»، ولا مرّة بعدها. فكابتنٌ نزل ٠١:٥٥ ونافذته تُغلق ٠٢:٠٠ يبقى
+   مفتاحه أخضر والرادار يدور والموقع يُرفع والبطارية تنفد — والمحرك يستبعده من
+   كل دورة. صفر طلب، وصفر رسالة تقول لماذا. حراسةُ الدالّة لا تُغني عن حراسة
+   **موضع ندائها**.
+
+   والسلوك منقولٌ من startShift في هذا الملف حرفاً: من يحمل طلباً لا يُقذف
+   إلى «استراحة» وهو عند باب الزبون — يتوقّف استقبالُ الجديد فقط (_shiftOver)
+   حتى يُسلّم آخر طلب.
+   ⚠️ ولا تُطفئ شيئاً لمن لم يضبط نافذة: myShift تُرجع null ⇒ خروجٌ فوري.
+   ═══════════════════════════════════════════════════════════════════════════ */
+function shiftWindowPulse(){
+  if(!ENFORCE_SHIFT_WINDOW) return;                 /* وضع المراقبة — كالمحرك */
+  /* 🆓 [V31.5] وفي وضع الطوارئ لا نُطفئ أحداً: هذه النبضة كانت تقلب الكابتن
+     إلى «استراحة» عند نهاية نافذته **والإدارة قد أوقفت الشفتات**. ونُصفّر
+     العلمين معاً كي لا يبقى «انتهى شفتك» عالقاً من قبل قلب المفتاح. */
+  if(window._shiftsOff===true){ window._winOver=false; window._winNotified=false; return; }
+  if(!isOnline || !drv) return;
+  const s=myShift(); if(!s) return;                 /* بلا نافذة ⇒ بلا تدخّل */
+  const w=inWindowLocal(s.h, s.len, srvNow());
+  if(w.inside){ window._winOver=false; window._winNotified=false; return; }
+
+  if(active.length>0){
+    if(!window._winNotified){
+      window._winNotified=true; window._shiftOver=true;
+      play('ready');
+      toast(`⏰ انتهت نافذة شفتك — أكمل طلباتك الحالية (${active.length}).<br>لن تصلك طلبات جديدة.`,'warn');
+    }
+    return;
+  }
+  if(window._winOver) return;                        /* لا تُكرّر الإطفاء */
+  window._winOver=true;
+  track('shift_window_ended');
+  document.getElementById('onlineTog').checked=false; toggleOnline();
+  toast('⏰ انتهت نافذة شفتك ('+hLabel(s.h)+' ← '+hLabel((s.h+s.len)%24)+'). شكراً لك 🌟','warn');
+}
+
+function paintShiftInfo(){
+  const s=myShift();
+  const el=document.getElementById('setShiftWin'); if(el)
+    /* 🆓 [V31.5] الموعد يبقى محفوظاً ويُعرض، لكن يُقال صراحةً إنه معطّل الآن —
+       فلا يظنّ الكابتن أن اختياره ضاع، ولا يظنّه سارياً وهو ليس كذلك. */
+    el.textContent = (window._shiftsOff===true)
+      ? (s ? winLabel(s.h, s.len)+' — موقوف مؤقتاً (دوام حر)' : 'دوام حر — بلا موعد')
+      : (s ? winLabel(s.h, s.len) : 'لم تختر موعداً بعد');
+  const im=document.getElementById('setPhoto');
+  if(im && drv && drv.photo){ im.src=drv.photo; im.style.display='block';
+    const ph=document.getElementById('setPhotoPh'); if(ph) ph.style.display='none'; }
+  const nx=document.getElementById('setShiftNext');
+  if(nx) nx.textContent = (drv && drv.shift_next && drv.shift_next.h!=null)
+    ? ('⏳ موعدك الجديد ('+hLabel(Number(drv.shift_next.h))+' · '+drv.shift_next.len+' ساعة) يسري من '+drv.shift_next.from)
+    : '';
 }
 
 /* ══════════════ الإعدادات ══════════════ */
@@ -3030,6 +3713,9 @@ window.openSettings=function(){
     const r=e.getTime()-Date.now();
     document.getElementById('siLeft').innerText=r>0?`${Math.floor(r/3600000)}س ${Math.floor((r%3600000)/60000)}د`:'انتهى';
   }else{document.getElementById('siEnd').innerText='--';document.getElementById('siLeft').innerText=isOnline?'∞':'خارج الشفت';}
+  /* 🖼️ [V29 ← نحلة] صفّ الصورة والموعد يُطلى عند كل فتحة — لا مرّة واحدة
+     عند الإقلاع: من حفظ موعده للتوّ يجب أن يراه هنا لا نصّ «لم تختر بعد». */
+  try{ paintShiftInfo(); }catch(e){}
   document.getElementById('setOv').classList.remove('dn');
 };
 window.closeSettings=function(){document.getElementById('setOv').classList.add('dn');toast(`🎯 هدفك اليومي: ${DAILY_GOAL} طلب`,'info');};
@@ -3090,6 +3776,33 @@ function startListeners(){
   listen(()=>ref(db,`drivers_locations/${drv.phone}/account_status`),s=>{
     if(s.val()==='banned'){alert('⚠️ تم حظر حسابك.');clearPass();try{setWantOnline(false);}catch(e){}localStorage.removeItem('suf_session');sessionStorage.clear();location.reload();}
   });
+  /* ═══════════════════════════════════════════════════════════════════════
+     🖼️🕐 [V29 ← نحلة N-12.0] مرآة عقدة الكابتن — الصورة والنافذة
+     ───────────────────────────────────────────────────────────────────────
+     تُقرأ من العقدة لا من جلسة الدخول: shift_h/shift_len يكتبهما **المحرك**
+     (ترقية shift_next) والإداري، فلو اعتمدنا نسخة الجلسة لبقي التطبيق يحكم
+     بموعدٍ رقّاه الخادم أمس — أي بالضبط انحراف الطرفين الذي أنتج N-12.2.
+     والنسخة تُحفظ في localStorage كي تكون النافذة معروفة قبل أول لقطة عند
+     الإقلاع التالي، فلا تُفتح شاشة الإعداد على كابتنٍ أكمل ملفّه فعلاً.
+     ═══════════════════════════════════════════════════════════════════════ */
+  listen(()=>ref(db,`drivers_locations/${drv.phone}`),s=>{
+    const v=s.val()||{};
+    drv.photo     = v.photo || null;
+    drv.shift_h   = (v.shift_h===undefined?null:v.shift_h);
+    drv.shift_len = v.shift_len || null;
+    drv.shift_next= v.shift_next || null;
+    try{ localStorage.setItem('suf_session',JSON.stringify(drv)); }catch(_){}
+    try{ paintShiftInfo(); }catch(e){}
+    /* 🚧 العرض مرّةً واحدة لكل فتحة تطبيق — لا مع كل لقطة، وإلا انفتحت
+       الشاشة في وجه الكابتن كلما تغيّر حقلٌ في عقدته وهو يقود.
+       وهي **دعوة لا حجز** ما دام REQUIRE_PROFILE مطفأً: زرّ «لاحقاً» ظاهر،
+       والنزول غير ممنوع. */
+    if(!profileComplete() && !window._obAsked){
+      window._obAsked=true;
+      setTimeout(()=>{ if(!profileComplete()) openOnboarding(true); }, 1200);
+    }
+  });
+
   listen(()=>ref(db,`ledgers/drivers/${drv.phone}`),s=>{
     const l=s.val()||{}; lifetime=Number(l.completed_orders||0); debtNow=Number(l.debt||0); refreshDash();
   });
@@ -3099,7 +3812,9 @@ function startListeners(){
   listen(()=>ref(db,`daily_ledgers/${drv.phone}/${today}`),s=>{
     const d=s.val()||{}; let total=0,html='';
     Object.values(d).sort((a,b)=>b.timestamp-a.timestamp).forEach(r=>{
-      total+=(parseFloat(r.price)||0);
+      /* 🔧 [V31 · م-٤] كان parseFloat: سعرٌ مخزَّن "15.000" يُجمع 15.
+         والقارئ الصحيح موجود في هذا الملف (cleanNumber) — ولم يُنادَ هنا. */
+      total+=cleanNumber(r.price);
       const t=new Date(r.timestamp).toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'});
       html+=`<div class="ldg-i"><div><div class="li-id">#${esc(r.orderId)} — ${esc(r.resName)}</div>
         <div class="li-in">📍 ${esc(r.area)}</div></div>
@@ -3112,6 +3827,86 @@ function startListeners(){
   });
 
   listen(()=>ref(db,'system_settings/shifts_enabled'),s=>{window._shiftsOff=(s.val()===false);});
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     🎛️ [V30][ح١] مفاتيح الإيقاف — تعميمُ نمطٍ يعمل عندك أصلاً
+     ─────────────────────────────────────────────────────────────────────
+     السطر أعلاه يقرأ علَماً واحداً من الخادم حيّاً منذ إصدارات. وهذا يعمّمه
+     إلى جدول: أي ميزةٍ خطرة تُغلَّف بـ`flag('اسمها')`، فتُطفأ من فايربيس
+     **بثوانٍ** بلا نشر ولا انتظار متجر.
+
+     لماذا هذا حتميّ لا رفاهية: وثيقة Google تنصّ أن إيقاف الطرح يمنع
+     مستخدمين **جدداً** فقط — من نزّل النسخة المعطوبة يبقى عليها. فالإيقاف
+     ليس تراجعاً، ومفتاحُ الخادم هو أداة الاحتواء الوحيدة لأسطولٍ حمل APK.
+
+     ⚠️ والاتجاه الآمن مقصود: `flag()` تُرجع **القيمة الافتراضية** إن لم
+        يصل شيء (شبكة مقطوعة، عقدة غائبة، قراءة مرفوضة). فانقطاعُ فايربيس
+        لا يُطفئ ميزةً تعمل — الصمت يعني «كما أنت»، لا «توقّف».
+     ═══════════════════════════════════════════════════════════════════════ */
+  window._flags = {};
+  listen(()=>ref(db,'system_settings/flags'), s=>{
+    const v = s.val();
+    window._flags = (v && typeof v === 'object') ? v : {};
+  });
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     📱 [V30][ح٢] أدنى نسخةٍ مقبولة — قصّ ذيل النسخ القديمة
+     ─────────────────────────────────────────────────────────────────────
+     العطب الذي يمنعه: «العميل القديم الذي لا يموت». كابتنٌ على نسخةٍ عمرها
+     أشهر يفسّر حالة طلبٍ بمنطقٍ ألغيناه، أو يكتب حقلاً بصيغةٍ تغيّرت.
+     وهذا أخطر عندك بالذات: آلية مسح الكاش تُعيد التحميل ولا **تحجب**،
+     وعلى APK لا تعمل إطلاقاً.
+
+     ⚠️ ثلاثة حرّاس ضدّ إقفال الأسطول بالخطأ — وهي أهمّ من الميزة نفسها:
+        ① صفرٌ أو غياب = بلا فرض. الافتراضي لا يحجب أحداً.
+        ② لا نحجب إلا إذا كانت النسخة المطلوبة **أعلى فعلاً** ورقمُنا
+           مقروءٌ بنجاح — نسخةٌ لا تُقرأ لا تُحجب.
+        ③ الحجب على الويب يُعالَج بإعادة تحميلٍ واحدة (الكاش يجلب الجديد)،
+           ولا نُعيدها في حلقة: علَمٌ في sessionStorage يمنع الدوران.
+     ═══════════════════════════════════════════════════════════════════════ */
+  listen(()=>ref(db,'system_settings'), s=>{
+    try{
+      const cfg = s.val() || {};
+      const needWeb = Number(cfg.min_web_version) || 0;
+      const mineWeb = parseInt(String(CURRENT_APP_VERSION).match(/^\d+/)||['0'],10) || 0;
+
+      let needNat = Number(cfg.min_native_version) || 0, mineNat = 0;
+      try{ if(window.AndroidRadar && AndroidRadar.getNativeVersion)
+             mineNat = parseInt(String(AndroidRadar.getNativeVersion()).match(/\d+/)||['0'],10) || 0; }catch(e){}
+      /* بلا جسرٍ أصلي (متصفّح) لا يُفرض شرط الـAPK */
+      if(!mineNat) needNat = 0;
+
+      const webStale = needWeb > 0 && mineWeb > 0 && mineWeb < needWeb;
+      const natStale = needNat > 0 && mineNat > 0 && mineNat < needNat;
+      if(!webStale && !natStale) return;
+
+      /* track محروسةٌ داخلياً بـtry/catch كاملة — فلا نلفّها ثانيةً */
+      track('version_blocked', { reason: (webStale?'web':'') + (natStale?'native':'') });
+
+      if(webStale && !natStale){
+        /* الويب وحده متأخّر: إعادة تحميلٍ **واحدة** تجلب الجديد */
+        if(!sessionStorage.getItem('suf_v_reload')){
+          sessionStorage.setItem('suf_v_reload','1');
+          try{ if('caches' in window) caches.keys().then(k=>Promise.all(k.filter(n=>n.startsWith('suf-')).map(n=>caches.delete(n)))).then(()=>location.reload(true)); else location.reload(true); }catch(e){ location.reload(true); }
+          return;
+        }
+      }
+      /* وصلنا هنا: إمّا APK متأخّر، أو أُعيد التحميل ولم يتغيّر شيء */
+      const msg = (typeof cfg.upgrade_msg==='string' && cfg.upgrade_msg) ? cfg.upgrade_msg
+                : 'صدر تحديثٌ إلزامي للتطبيق. حدّثه من المتجر ثم أعد الفتح.';
+      const ov = document.createElement('div');
+      ov.id='verBlock';
+      ov.style.cssText='position:fixed;inset:0;z-index:2147483647;background:var(--bg,#0A1120);color:#fff;'+
+        'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:28px;text-align:center;';
+      const h=document.createElement('div'); h.style.cssText='font-size:2.6rem'; h.textContent='⬆️';
+      const p=document.createElement('div'); p.style.cssText='font-weight:800;font-size:1.05rem;line-height:1.8;max-width:520px';
+      p.textContent=msg;                                   /* textContent لا innerHTML — النصّ من الخادم */
+      const sm=document.createElement('div'); sm.style.cssText='opacity:.7;font-size:.8rem';
+      sm.textContent='نسختك: '+CURRENT_APP_VERSION+(mineNat?(' · APK '+mineNat):'');
+      ov.appendChild(h); ov.appendChild(p); ov.appendChild(sm);
+      if(!document.getElementById('verBlock')) document.body.appendChild(ov);
+    }catch(e){}
+  });
 
   /* 📢 [م] كانت نافذة **عشر ثوانٍ فقط** بين كتابة الرسالة وظهورها. فمن كان
      تطبيقه في الخلفية أو شبكته أبطأ **لا تصله** — فتنبيه «لا تستلموا من مطعم
@@ -3196,7 +3991,7 @@ async function fetchResLoc(phone){
        وwithTimeout موجودة في هذا الملف نفسه وتُستخدم في fbStatus. */
     const s=await withTimeout(get(ref(db,`restaurants_locations/${n}`)), NET_TIMEOUT_MS, 'resloc');
     const L=s.val(); if(L){ resByPhone[n]={lat:L.lat,lng:L.lng,area:L.area,name:L.name}; return resByPhone[n]; }
-  }catch(e){}
+  }catch(e){ /* [V31.2] كان صامتاً. ولا لفافة حول track: جسمها كلّه داخل try/catch وset تحمل .catch — فهي لا ترمي في أي حال (مُثبَتٌ بالتنفيذ في tools/test_v31.js). واللفافة كانت ستُنتج كتلةً فارغةً جديدة — أي إعادةَ إنتاج العطب في الرقعة التي تعالجه. */ track('fail_net_write_4', { reason: String(e && e.message || e).slice(0,60) }); }
   return null;
 }
 
@@ -3369,7 +4164,22 @@ function listenOrders(){
         document.getElementById('alSov').innerText=curOrder.is_sovereign?'⚠️ تعيين إداري مباشر — لا يمكن تجاهله':'';
         document.getElementById('alRes').innerText=f.restaurant;
         document.getElementById('alArea').innerText=f.area||'غير محدد';
-        document.getElementById('alPrice').innerHTML=`${f.price||0} <small style="font-size:.8rem;color:var(--muted);">د.ع</small>`;
+        /* 🔴 [V28] كان innerHTML بقيمة f.price الخام — وجاراه alRes و alArea
+           و alSov كلها innerText، فسقط هذا وحده. والقاعدة القديمة تحرس
+           **ثبات** price بعد الإنشاء ولا تحرس **نوعه** عند الإنشاء، و
+           orderSanitizer لا يمسّه ⇒ مطعمٌ ينشئ طلباً بـ
+           price="<img src=x onerror=…>" فيُنفَّذ في WebView كل كابتن
+           تُعرض عليه الرنّة، ومعه جسر AndroidRadar بثلاث عشرة دالة.
+           الآن: عددٌ مُصفّى + عقدتان منفصلتان بلا أي تحليل HTML.
+           (والحزام الأول في القواعد: price صار isNumber إلزامياً.) */
+        (function(){
+          const _pEl=document.getElementById('alPrice');
+          _pEl.textContent=(Number(f.price)||0).toLocaleString('ar-EG')+' ';
+          const _u=document.createElement('small');
+          _u.style.cssText='font-size:.8rem;color:var(--muted);';
+          _u.textContent='د.ع';
+          _pEl.appendChild(_u);
+        })();
         document.getElementById('alertOv').classList.remove('dn');
         if(window.AndroidRadar)window.AndroidRadar.triggerOrderAlarm();
         else startAlarm(active.length?'double':'alert');
@@ -3482,10 +4292,28 @@ function finalizeAccept(){
    ═══════════════════════════════════════════════════════════════════════ */
 function maybeEndShift(){
   if(!window._shiftOver || active.length>0) return;
+  /* ═══════════════════════════════════════════════════════════════════════
+     🔴 [V30][ع٤] العلَم يُصفَّر **قبل** المؤقّت لا داخله.
+     ─────────────────────────────────────────────────────────────────────
+     كان التصفير داخل setTimeout، والحارس أعلاه يقرأ العلَم متزامناً —
+     فنداءان متتاليان خلال ٩٠٠ ملّي ثانية يجتازانه كلاهما. وهما يقعان
+     فعلاً في المسار العادي لا النادر:
+
+         مسار finish يُنهي آخر طلب  ⇒  يجدول الإنهاء
+         ثم تصل لقطة المستمع        ⇒  removeOrdersBatch ⇒ maybeEndShift ثانيةً
+
+     فيرى الكابتن **إنذارين متتاليين**، وتُنفَّذ toggleOnline مرّتين —
+     والثانية تعمل على حالةٍ مطفأة أصلاً فتُطلق مسار الاستراحة من جديد
+     وتدفع scheduleOffRetry بلا داعٍ.
+
+     ⚠️ والتصفير قبل الجدولة آمن: ما بعده لا يقرأ العلَم، وإن رُميَ
+        استثناء داخل المؤقّت فالعلَم مصفَّرٌ على أي حال — وهو الاتجاه
+        الآمن (لا يعلق الكابتن في «شفت منتهٍ» أبداً).
+     ═══════════════════════════════════════════════════════════════════════ */
+  window._shiftOver=false; window._shiftEndNotified=false;
   setTimeout(()=>{
     try{
       document.getElementById('onlineTog').checked=false; toggleOnline();
-      window._shiftOver=false; window._shiftEndNotified=false;
       alert('⏰ انتهى شفتك ولا طلبات لديك. شكراً لك 🌟');
     }catch(e){}
   },900);
@@ -3522,7 +4350,99 @@ function removeOrder(msg,id){
     document.getElementById('alertOv').classList.add('dn');stopAlarm();curOrder=null;}
 }
 window.closeCancel=function(){document.getElementById('cancelOv').classList.add('dn');stopAlarm();};
-function esc(x){const d=document.createElement('div');d.textContent=String(x??'');return d.innerHTML;}
+/* 🔒 [V28] كانت esc تعتمد textContent→innerHTML، وهذا التسلسل يُهرّب
+   & و < و > **فقط** — ولا يُهرّب " ولا ' في عقدةٍ نصّية. فنتيجتها آمنة
+   كنصّ داخل عنصر، وغيرُ آمنة داخل **قيمة سمة**، وهو الاستعمال المطلوب
+   في data-receipt أدناه. الآن تُهرّب الخمسة، فتصلح للسياقين معاً.
+   (تهريبٌ زائد في السياق النصّي لا يكسر شيئاً: المتصفّح يفكّه عند العرض.) */
+/* ═══════════════════════════════════════════════════════════════════════════
+   💰 [V31 · م-٢/م-٦] كتلة المال المشتركة — منقولة **حرفياً** من
+   server/index.js (toLatinDigits:5202 · parseAmount:5281 · cleanNumber:5318 ·
+   parseCommissionRule:5328). لا تُعدَّل هنا وحدها أبداً: أي تغيير يُنقل إلى
+   الخمسة معاً (index.js · Code.gs · Master.html · restaurant.html · clearing.html).
+   ───────────────────────────────────────────────────────────────────────────
+   لماذا نُقلت؟ كان في النظام **خمسة مُحلّلات** لنفس القاعدة، اثنان منها
+   متطابقان على السيرفر وثلاثة مختلفة في اللوحات:
+
+     • restaurant.html كان يعالج "/" وحدها ⇒ قاعدة "1000-500" تُقرأ
+       parseFloat("1000-500") = 1000، فالمطعم يرى دَيناً **ضِعف** ما يحاسبه
+       السيرفر (500). وفارقٌ في الفاتورة لا يُكتشف إلا بمراجعةٍ يدوية.
+     • pComm في لوحة الإدارة: لا "-" ولا "\"، وparseFloat على المال ⇒
+       "1.000" تُقرأ 1، و"١٠٠٠/٥٠٠" تُقرأ صفراً.
+     • مبلغ الاشتراك كان يُستخرج بـ match(/\d+/) ⇒ "شهري 50.000" = **50**،
+       و"٥٠٠٠٠" = **0**. خطأٌ بألف ضعف في فاتورةٍ شهرية.
+
+   العملة العراقية بلا كسور عملياً: كل فاصل تتبعه ٣ خانات = آلاف،
+   و"15.5" غامضٌ ⇒ يُرفض صراحةً بدل أن يُخمَّن.
+   ═══════════════════════════════════════════════════════════════════════════ */
+function toLatinDigits(s){
+  return String(s===null||s===undefined?"":s)
+    .replace(/[٠-٩]/g,function(d){return String.fromCharCode(d.charCodeAt(0)-0x0660+48);})
+    .replace(/[۰-۹]/g,function(d){return String.fromCharCode(d.charCodeAt(0)-0x06F0+48);});
+}
+function parseAmount(raw,opts){
+  opts=opts||{};
+  const s0=toLatinDigits(raw).trim();
+  if(s0==="")return{ok:false,value:null,reason:"empty"};
+  let s=s0.replace(/[\s ٬]/g,"").replace(/د\.?ع|IQD|iqd|دينار/g,"");
+  let neg=false;
+  if(/^-/.test(s)){neg=true;s=s.slice(1);}
+  else if(/-$/.test(s)){neg=true;s=s.slice(0,-1);}
+  if(s==="")return{ok:false,value:null,reason:"no_digits"};
+  if(/[^0-9.,]/.test(s))return{ok:false,value:null,reason:"bad_chars",got:s0};
+  const seps=s.match(/[.,]/g)||[];
+  if(seps.length>0){
+    const parts=s.split(/[.,]/),tail=parts.slice(1);
+    if(tail.every(function(p){return p.length===3;})&&parts[0].length>=1)s=parts.join("");
+    else if(seps.length===1&&tail[0].length>0&&tail[0].length<3)
+      return{ok:false,value:null,reason:"ambiguous_decimal",got:s0};
+    else return{ok:false,value:null,reason:"bad_separators",got:s0};
+  }
+  if(!/^\d+$/.test(s))return{ok:false,value:null,reason:"not_integer",got:s0};
+  const n=Number(s);
+  if(!isFinite(n))return{ok:false,value:null,reason:"overflow",got:s0};
+  if(neg&&opts.allowNegative!==true)return{ok:false,value:null,reason:"negative_not_allowed",got:s0};
+  return{ok:true,value:neg?-n:n,reason:null};
+}
+/* لا noteReject هنا — لا سجلّ سيرفري في اللوحة. والسلوك الرقمي مطابق. */
+function cleanNumber(val){
+  const r=parseAmount(val,{allowNegative:true});
+  return r.ok?r.value:0;
+}
+function parseCommissionRule(commStr,payTypeStr){
+  const str=String(commStr).toLowerCase().trim();
+  const pType=String(payTypeStr||"").trim();
+  let baseDrv=0,baseRes=0,isMonthly=false;
+  if(str.indexOf("شهري")>-1||str==="monthly"){
+    isMonthly=true;
+  }else if(str.indexOf("/")>-1||str.indexOf("-")>-1||str.indexOf("\\")>-1){
+    const parts=str.split(/[\/\-\\]/).map(function(x){return String(x).trim();}).filter(function(x){return x!=="";});
+    if(parts.length!==2){
+      /* صيغةٌ معطوبة ("1000-" أو "-1000"): تُعامَل رقماً مفرداً بقيمةٍ مطلقة —
+         وإلا انقلب الدوران أو صار الدَين رصيداً صامتاً لصالح المطعم. */
+      const single=Math.abs(cleanNumber(parts[0]||"0"));
+      if(pType.indexOf("مناصفة")>-1)return{drv:single/2,res:single/2,isMonthly:false,malformed:true};
+      return{drv:0,res:single,isMonthly:false,malformed:true};
+    }
+    return{drv:cleanNumber(parts[0]),res:cleanNumber(parts[1]),isMonthly:false};
+  }else{
+    const val=cleanNumber(str);
+    if(pType.indexOf("مناصفة")>-1){baseDrv=val/2;baseRes=val/2;}
+    else{baseDrv=0;baseRes=val;}
+  }
+  return{drv:baseDrv,res:baseRes,isMonthly:isMonthly};
+}
+/* 💳 [V31 · م-٢] مبلغ الاشتراك الشهري — الكلمات تُسقَط ثم يُقرأ الباقي
+   بقارئ المبالغ نفسه. كان match(/\d+/): لاتينيٌّ فقط ولا يفهم فاصل الآلاف. */
+function monthlySubAmount(commRaw){
+  const s=String(commRaw==null?"":commRaw);
+  if(s.indexOf("شهري")===-1&&s.toLowerCase().indexOf("monthly")===-1)return null;
+  return cleanNumber(s.replace(/اشتراك|شهري|monthly/gi,""));
+}
+
+function esc(x){ if(x==null) return '';
+  return String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                  .replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    🔴 [V15.2] sid — تعقيم مُعرّف الطلب قبل حقنه في HTML
@@ -3629,7 +4549,15 @@ function renderOrders(){
     const mp=o.resLat?`https://www.google.com/maps/dir/?api=1&destination=${o.resLat},${o.resLng}`:'';
     const tags=dbl?`<span class="pill p-warn">🔥 مزدوج (${idx+1}/${active.length})</span>`:'';
     const ready=o.readyForPickup?`<div class="ready">${ICO.bell}<span class="ready-t">🍽️ الطلبية جاهزة — توجّه للاستلام!</span></div>`:'';
-    const photo=(o.photoUrl&&String(o.photoUrl).startsWith('http'))?`<button class="act a-img" onclick="openReceipt('${o.photoUrl}')">${ICO.img} الوصل</button>`:'';
+    /* 🔴 [V28] كان الحارس startsWith('http') والقيمة تُلصق خاماً داخل
+       سلسلة onclick. و"http'-alert(1)-'" يبدأ بـhttp — فالحارس لا يمنع
+       شيئاً. و photoUrl غير مذكور في .validate إطلاقاً (لا نوعاً ولا
+       صيغة)، و orderSanitizer صفر إشارة إليه، و createOrder:1565 يقبله
+       بـString(...).slice(1000) بلا فحص مخطَّط. سلسلةٌ غير مقطوعة في
+       أي طبقة، وأخطر من ثغرة price لأنها لا تحتاج تجاوز فحص نوع.
+       الآن: https حصراً + data-* بدل الحقن في السلسلة. */
+    const photo=(o.photoUrl&&/^https:\/\//.test(String(o.photoUrl)))
+      ?`<button class="act a-img" data-receipt="${esc(o.photoUrl)}" onclick="openReceipt(this.dataset.receipt)">${ICO.img} الوصل</button>`:'';
     if(!o.resArea) enrichOrder(o);
     const pick = o.resArea ? ` (${esc(o.resArea)})` : '';
     html+=`<div class="ord" id="o-${sid(o.id)}">
@@ -3713,7 +4641,7 @@ window.orderAction=function(id,act,btn){
       }else{
         btn.innerHTML=orig; btn.disabled=false;
         try{ queue.push({type:'multi',updates:{[`active_orders/${id}/status`]:'arrived_at_res'},ts:Date.now()});
-          localStorage.setItem('hut_offline_queue',JSON.stringify(queue)); }catch(e){}
+          localStorage.setItem('hut_offline_queue',JSON.stringify(queue)); }catch(e){ /* [V31.2] كان صامتاً. ولا لفافة حول track: جسمها كلّه داخل try/catch وset تحمل .catch — فهي لا ترمي في أي حال (مُثبَتٌ بالتنفيذ في tools/test_v31.js). واللفافة كانت ستُنتج كتلةً فارغةً جديدة — أي إعادةَ إنتاج العطب في الرقعة التي تعالجه. */ track('fail_offline_queue_push', { reason: String(e && e.message || e).slice(0,60) }); }
         toast('⚠️ لم يُسجَّل وصولك — سيُعاد الإرسال. لا تتابع حتى يُسجَّل.','bad');
       }
     })();
@@ -3729,7 +4657,7 @@ window.orderAction=function(id,act,btn){
       }else{
         btn.innerHTML=orig; btn.disabled=false;
         try{ queue.push({type:'multi',updates:{[`active_orders/${id}/status`]:'picked_up'},ts:Date.now()});
-          localStorage.setItem('hut_offline_queue',JSON.stringify(queue)); }catch(e){}
+          localStorage.setItem('hut_offline_queue',JSON.stringify(queue)); }catch(e){ /* [V31.2] كان صامتاً. ولا لفافة حول track: جسمها كلّه داخل try/catch وset تحمل .catch — فهي لا ترمي في أي حال (مُثبَتٌ بالتنفيذ في tools/test_v31.js). واللفافة كانت ستُنتج كتلةً فارغةً جديدة — أي إعادةَ إنتاج العطب في الرقعة التي تعالجه. */ track('fail_offline_queue_push_2', { reason: String(e && e.message || e).slice(0,60) }); }
         toast('⚠️ لم يُسجَّل استلامك — سيُعاد الإرسال. لا تتابع حتى يُسجَّل.','bad');
       }
     })();
@@ -3803,8 +4731,20 @@ window.orderAction=function(id,act,btn){
          الواحد، ولم يعد له معنى. والكلفة: العدّاد يتأخّر ثانية بدل
          الفورية، ويظهر عبر مستمع daily_metrics نفسه.
          ═══════════════════════════════════════════════════════════════════ */
-      /* (لا زيادة هنا — السيرفر يتولّاها) */
-      uB[`daily_ledgers/${drv.phone}/${ts}/${id}`]={orderId:id,resName:o.resName,area:o.area,price:o.price,comm:o.comm||0,timestamp:Date.now()};
+      /* (لا زيادة هنا — السيرفر يتولّاها)
+         ═══════════════════════════════════════════════════════════════════
+         🔴 [V31 · م-٤] وأُزيلت كتابة daily_ledgers من هنا للسبب نفسه.
+         ───────────────────────────────────────────────────────────────────
+         كان هذا السطر **الكاتب الوحيد للدفتر في الشجرة كلها**. وV15.3 نقلت
+         العدّاد إلى trackDriverCompletion ليعمل من مسارات الإنهاء الأربعة
+         (زرّ التطبيق · COMPLETE_ORDER الاحتياطي · إكمال الليدر · إكمال
+         الإدارة) — ونسيت الدفتر. فمن أنهى طلبه بغير هذا الزرّ كان عدّاده
+         يرتفع و**أرباحه لا**.
+
+         الآن يكتبه السيرفر داخل ختم counted_orders الذرّي (index.js) —
+         كاتبٌ واحد لأربعة مسارات، وسجلٌّ لا يتكرّر مهما أُعيد المشغّل.
+         والحقول والمفاتيح كما هي حرفياً، فقراءة السطر 3790 لم تتغيّر.
+         ═══════════════════════════════════════════════════════════════════ */
 
       let ok=await guaranteedWrite(uA,`active_orders/${id}/status`,'completed');
       /* 🚚 [المسار الثالث] القبول يملك احتياطياً سيرفرياً (ACCEPT_ORDER) يتجاوز
@@ -3817,17 +4757,17 @@ window.orderAction=function(id,act,btn){
       if(!ok){
         try{
           const rr=await withTimeout(
-            fetch(`${API_URL}?action=COMPLETE_ORDER&orderId=${encodeURIComponent(id)}&driverPhone=${drv.phone}&token=${API_TOKEN}`),
+            fetch(`${API_URL}?action=COMPLETE_ORDER&orderId=${encodeURIComponent(id)}&driverPhone=${drv.phone}&token=${API_TOKEN}&stoken=${encodeURIComponent(getStoken())}`),
             12000,'gas_timeout');
           const dd=await rr.json();
           if(dd&&dd.success){ ok=true; toast('✅ سُجّل التسليم عبر الخادم البديل.','ok'); }
           else if(dd&&dd.msg){ toast('⚠️ '+dd.msg,'bad'); }
-        }catch(e){}
+        }catch(e){ /* [V31.2] كان صامتاً. ولا لفافة حول track: جسمها كلّه داخل try/catch وset تحمل .catch — فهي لا ترمي في أي حال (مُثبَتٌ بالتنفيذ في tools/test_v31.js). واللفافة كانت ستُنتج كتلةً فارغةً جديدة — أي إعادةَ إنتاج العطب في الرقعة التي تعالجه. */ track('fail_net_write_5', { reason: String(e && e.message || e).slice(0,60) }); }
       }
       if(!ok){
         btn.innerHTML=orig; btn.disabled=false;
         try{queue.push({type:'multi',updates:uA,ts:Date.now()});queue.push({type:'multi',updates:uB,ts:Date.now()});
-          localStorage.setItem('hut_offline_queue',JSON.stringify(queue));}catch(e){}
+          localStorage.setItem('hut_offline_queue',JSON.stringify(queue));}catch(e){ /* [V31.2] كان صامتاً. ولا لفافة حول track: جسمها كلّه داخل try/catch وset تحمل .catch — فهي لا ترمي في أي حال (مُثبَتٌ بالتنفيذ في tools/test_v31.js). واللفافة كانت ستُنتج كتلةً فارغةً جديدة — أي إعادةَ إنتاج العطب في الرقعة التي تعالجه. */ track('fail_offline_queue_push_3', { reason: String(e && e.message || e).slice(0,60) }); }
         toast(window._lastWriteError==='permission'
           ? '⚠️ تعذّر تسجيل التسليم — رُفضت العملية من الخادم.<br>راجع الليدر فوراً ولا تُعد المحاولة.'
           : '⚠️ تعذّر تسجيل التسليم — ضعف الاتصال.<br>سيُرسل تلقائياً عند عودة الشبكة. لا تُغلق التطبيق.','bad');
@@ -3840,7 +4780,7 @@ window.orderAction=function(id,act,btn){
         try{
           queue.push({type:'multi',updates:uB,ts:Date.now()});
           localStorage.setItem('hut_offline_queue',JSON.stringify(queue));
-        }catch(e){}
+        }catch(e){ /* [V31.2] كان صامتاً. ولا لفافة حول track: جسمها كلّه داخل try/catch وset تحمل .catch — فهي لا ترمي في أي حال (مُثبَتٌ بالتنفيذ في tools/test_v31.js). واللفافة كانت ستُنتج كتلةً فارغةً جديدة — أي إعادةَ إنتاج العطب في الرقعة التي تعالجه. */ track('fail_offline_queue_push_4', { reason: String(e && e.message || e).slice(0,60) }); }
         toast('ℹ️ سُجّل التسليم — تحديث عدّادك سيكتمل عند تحسّن الشبكة.','info');
       });
 
