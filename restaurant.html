@@ -78,7 +78,7 @@
            ولا reload — **إلى الأبد**. أي تحديث يُنشر لا يصل كاشيراً واحداً.
            ⚠️ ارفعه مع كل تسليم. وهذه القاعدة مكتوبة في DEPLOY.md:162
            وكانت منتهكة في التسليم الذي كتبها. */
-        const CURRENT_APP_VERSION = "42.0.Sufyan-Ledger";
+        const CURRENT_APP_VERSION = "42.1.Sufyan-Face";
         const RES_VERSION_KEY = 'hut_res_app_version';
         /* ═══════════════════════════════════════════════════════════════════
            🔴 [إصلاح عاجل] كان: caches.delete() و r.update() **وعدان غير
@@ -574,6 +574,19 @@
 
         .order-details-row { display: flex; flex-direction: column; gap: 4px; }
         .detail-item { font-weight: 700; font-size: 0.8rem; color: #475569; display: flex; align-items: center; gap: 6px;}
+        /* 🖼️ [V31.6] إطار وجه الكابتن — كان الوجه يُرسم صورةً سائبة بعرض
+           ٢٠ بكسل ملصوقةً قبل النصّ، فلا تكاد تُرى. والمرجع الذي نُقلت عنه
+           يُلبسه إطاراً دائرياً يملؤه الوجه (‎width:100%‎) — وهو ما يجعله
+           ملحوظاً عند الباب حين يقف كابتنان.
+           الإطار هنا **ثابت المقاس** فلا تقفز السطور حين تصل الصورة بعد
+           الرسم الأول — وهي تصل متأخّرةً دائماً (قراءةٌ غير متزامنة). */
+        .drv-av { display:inline-flex; align-items:center; justify-content:center;
+                  border-radius:50%; overflow:hidden; flex-shrink:0;
+                  background:#f1f5f9; box-shadow:0 0 0 2px rgba(16,185,129,.35);
+                  vertical-align:middle; }
+        .drv-av > img { width:100%; height:100%; object-fit:cover; display:block; }
+        .drv-av-sm { width:34px; height:34px; }
+        .drv-av-lg { width:42px; height:42px; box-shadow:0 0 0 2px rgba(16,185,129,.55); }
 
         .progress-tracker { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; position: relative; padding: 0; }
         .progress-line { position: absolute; top: 8px; left: 10%; right: 10%; height: 2px; background: #e2e8f0; z-index: 1; }
@@ -2550,12 +2563,16 @@
        وهو نصٌّ يكتبه الكابتن على عقدته. والقاعدة تشترط فوقه بدايةَ
        https://firebasestorage.googleapis.com/ — فلا يصل إلى هنا
        javascript: متنكّراً في هيئة صورة. حزامان لا واحد. */
+    /* 🖼️ [V31.6] بلا px ⇒ **تملأ حاويتها** — وهو سلوك المرجع حرفياً
+       (لوحة المطعم عنده، دالّة الوجه نفسها). والنقل السابق ثبّت المقاس ٢٠-٢٤ بكسل
+       فخرجت الصورة نقطةً بجانب النصّ لا وجهاً يُميَّز. ووسيط px يبقى مقبولاً
+       لمن يريد مقاساً صريحاً، فلا ينكسر أي مُنادٍ قديم. */
     function driverAvatarHtml(phone, px) {
         const u = getDriverPhotoCached(phone);
         if (!u) return '';
-        const size = px || 22;
+        const fixed = px ? `width:${px}px;height:${px}px;border-radius:50%;` : 'width:100%;height:100%;';
         return `<img src="${escapeHtml(u)}" alt="" loading="lazy"
-            style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;display:inline-block;vertical-align:middle;flex-shrink:0">`;
+            style="${fixed}object-fit:cover;display:block;flex-shrink:0">`;
     }
 
     let lastOrdersSnapshot = {};
@@ -2755,7 +2772,7 @@ function escapeHtml(v) {
         /* 🖼️ [V29 ← نحلة] وجه الكابتن في الأرشيف أيضاً — نفس الكاش، فلا قراءة
            إضافية. وإن لم تصل صورته بعد (أو لا صورة له) بقيت أيقونة الدرّاجة
            كما هي، فلا يظهر مربّع فارغ مكسور في مكانها. */
-        const avInner = (isValidPhone && driverAvatarHtml(dPhoneRaw, 20)) || `<i data-lucide="bike" size="12" style="color: var(--success);"></i>`;
+        const avInner = (isValidPhone && driverAvatarHtml(dPhoneRaw)) || `<i data-lucide="bike" size="16" style="color: var(--success);"></i>`;
         return `
                     <div class="archive-item searchable-archive-item" data-search="${escapeHtml(o.id)} ${orderArea} ${orderDetails} ${dName} ${dPhone}">
                         <div class="d-flex justify-content-between align-items-start w-100">
@@ -2770,7 +2787,7 @@ function escapeHtml(v) {
                         <div class="archive-details-box w-100 text-start" dir="rtl">
                             <div class="d-flex justify-content-between align-items-center mb-2 pb-2" style="border-bottom: 1px dashed rgba(15,23,42,0.1);">
                                 <div class="fw-bold text-dark d-flex align-items-center gap-1">
-                                    ${avInner} الكابتن: <span class="fw-black">${dName}</span>
+                                    <span class="drv-av drv-av-sm">${avInner}</span> الكابتن: <span class="fw-black">${dName}</span>
                                 </div>
                                 ${isValidPhone ? `<a href="tel:${jss(dPhoneRaw)}" class="text-decoration-none d-flex align-items-center gap-1" style="background: #f0fdf4; color: #16a34a; padding: 4px 10px; border-radius: 8px; font-weight: 800; font-size: 0.75rem;"><i data-lucide="phone" size="12"></i> ${dPhone}</a>` : ''}
                             </div>
@@ -2963,7 +2980,7 @@ function escapeHtml(v) {
                 </div>
                 <div class="order-details-row mt-2">
                     <div class="detail-item"><i data-lucide="map-pin" size="14" style="color: var(--accent);"></i> ${escapeHtml(orderArea || 'غير محددة')}</div>
-                    <div class="detail-item">${/* 🖼️ [V29 ← نحلة] وجه الكابتن على البطاقة النشطة: حين يقف كابتنان عند الباب يُميّز المطعمُ صاحبَ طلبه بلا سؤال. */''}${(hasDriver && driverAvatarHtml(driverPhone, 24)) || `<i data-lucide="bike" size="14" style="color: var(--success);"></i>`} الكابتن: ${driverName}</div>
+                    <div class="detail-item">${/* 🖼️ [V29 ← نحلة] وجه الكابتن على البطاقة النشطة: حين يقف كابتنان عند الباب يُميّز المطعمُ صاحبَ طلبه بلا سؤال. */''}<span class="drv-av drv-av-lg">${(hasDriver && driverAvatarHtml(driverPhone)) || `<i data-lucide="bike" size="20" style="color: var(--success);"></i>`}</span> الكابتن: ${driverName}</div>
                 </div>
                 <div class="progress-tracker mt-3">
                     <div class="progress-line"></div>
