@@ -775,6 +775,12 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
 .arch-alert{background:#e0f2fe;color:#0369a1;padding:10px 14px;
   border-radius:var(--r4);font-size:.76rem;font-weight:800;
   border:1px solid #bae6fd;display:flex;align-items:center;gap:8px;margin-bottom:12px;}
+/* 🗓️ [V31.16] شريط مدى الأرشيف */
+.arc-range{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px}
+.arc-range-l{font-size:.76rem;font-weight:700;color:var(--ink3)}
+.arc-range-l b{color:var(--ink);font-size:.86rem}
+.arc-range-s{font-size:.72rem;color:var(--ink4);min-height:1em}
+.arc-range .abt[disabled]{opacity:.45;cursor:default}
 .loading{color:transparent!important;pointer-events:none;position:relative;}
 .loading::after{content:'';position:absolute;left:50%;top:50%;width:14px;
   height:14px;margin:-7px;border:2.5px solid rgba(255,255,255,.3);
@@ -1120,6 +1126,14 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
     <div id="pg-orders" class="pg tab-p">
       <div class="pg-ttl">سجل اليوم</div>
       <div class="arch-alert">📌 يعرض طلبات اليوم النشطة + الأيام السابقة من الأرشيف. المحاسبة النهائية تُحتسب في التقرير الليلي.</div>
+      <!-- 🗓️ [V31.16] مدى الأرشيف — تحميلٌ بطلبك لا عند الدخول (الشرح عند arcLoadDays) -->
+      <div class="arc-range">
+        <span class="arc-range-l">المدى المعروض: <b id="arcDaysN">٣ أيام</b></span>
+        <button class="abt" id="arcMore7"  onclick="arcLoadDays(10)">+ ٧ أيام</button>
+        <button class="abt" id="arcMore15" onclick="arcLoadDays(21)">+ ١٥ يوماً</button>
+        <button class="abt" id="arcMoreAll" onclick="arcLoadDays(35)">كل المحفوظ (٣٥)</button>
+        <span class="arc-range-s" id="arcRangeSt"></span>
+      </div>
       <div class="arch-kpi">
         <div class="ak akb"><div class="ak-ic b">✅</div><div class="ak-n" id="akC">0</div><div class="ak-l">طلبات منجزة</div></div>
         <div class="ak aka"><div class="ak-ic a">❌</div><div class="ak-n" id="akX">0</div><div class="ak-l">طلبات ملغية</div></div>
@@ -2902,7 +2916,7 @@ window.goTab=function(name){
       if(name==="live"){renderRadar();}
       if(name==="audit")renderAudit();
       if(name==="aiops")renderAlerts();
-      if(name==="orders"){renderArch();}
+      if(name==="orders"){renderArch();arcStat("");}   /* [V31.16] يضبط نصّ المدى وحالة الأزرار */
       if(name==="restaurants"&&gD)filtEnt("RES");
       if(name==="drivers"&&gD)filtEnt("DRV");
       if(name==="staff"){loadStaffRoster();renderStaffOnline();renderStaffList();renderStaffLog();updStaffKPIs();startStaffIdleTimer();}
@@ -3392,6 +3406,112 @@ window.arcGo=function(p){
 /* أي تغيير في البحث أو المرشّحات يعيدنا إلى الصفحة الأولى — وإلا بقي
    المستخدم على صفحة 7 من نتيجةٍ فيها صفحتان. */
 window.arcReset=function(){ arcPage=1; archSig=""; renderArch(); };
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   🗓️ [V31.16] توسيع مدى الأرشيف — بلا إعادة البطء الذي عولج للتوّ
+   ───────────────────────────────────────────────────────────────────────────
+   ما كان: ثلاثة أيام (لا أسبوع) — `for(let i=0;i<3;i++)` — وكلٌّ منها
+   **مستمعٌ حيّ** `db.ref("completed_orders/"+day).on("value")`.
+
+   ولماذا لا يكفي تغيير الرقم إلى ٣٥؟ لأن الثمن يقع كلّه **لحظة الدخول**:
+     · خمسة وثلاثون مستمعاً دائماً بدل ثلاثة
+     · وعقدة اليوم الواحد تحمل طلبات **كل** المطاعم لا مطعمك المقصود —
+       فالتوسيع يضرب في اثني عشر
+     · وفايربيس يستعمل **سوكيتاً واحداً**: هذه الحمولة تصطفّ أمام
+       active_orders، فيتأخّر الرادار — وهو بالضبط العطب الذي شكوتَ منه
+       («خانة الرادار والطلبات اختفت») وثبت أنه أثرُ حمولةِ الأرشيف.
+   ⇒ تغيير الرقم وحده يشتري ثلاثة أيام إضافية بثمنِ عودة البطء.
+
+   والتصميم هنا يفصل الأمرين:
+     ① الأيام الثلاثة الأولى تبقى **مستمعات حيّة** كما هي — لا يتغيّر
+        حرفٌ في مسار الدخول ولا في زمنه. من لا يفتح السجلّ لا يدفع شيئاً.
+     ② وما قبلها يُقرأ بـ`once()` **عند ضغطك الزرّ** — قراءةٌ واحدة بلا
+        اشتراك. ويومٌ مضى لا يتغيّر بعد ساعةٍ من انتهائه (الكنّاس يكتب في
+        اليوم الجاري وحده)، فالاستماع الحيّ إليه إنفاقٌ بلا مقابل.
+     ③ ويوماً بيوم لا دفعةً واحدة: تُحدَّث النتائج مع كل يومٍ يصل، فترى
+        السجلّ ينمو بدل شاشةٍ متجمّدة. وأيّ يومٍ حُمّل لا يُعاد جلبه.
+
+   🛡️ ولا كتابةَ ولا حذف: `once` قراءةٌ محضة على عقدةٍ قواعدُها
+      `".write": false` للجميع.
+   ═══════════════════════════════════════════════════════════════════════════ */
+let arcLoaded = 3;          /* كم يوماً في الذاكرة الآن (٣ = الحيّة) */
+let arcLoading = false;     /* حارسٌ ضدّ ضغطتين متتاليتين */
+
+function arcDayKey(i){
+  const d = new Date(); d.setDate(d.getDate() - i);
+  return d.toISOString().split("T")[0];
+}
+/* الأزرار: يُعطَّل ما بلغناه، ويبقى ما لم نبلغه. وزرٌّ يظلّ مضيئاً بعد أن
+   أدّى عمله يدعو إلى ضغطةٍ لا تفعل شيئاً. */
+const ARC_STEPS = { arcMore7: 10, arcMore15: 21, arcMoreAll: 35 };
+function arcBtns(busy){
+  Object.keys(ARC_STEPS).forEach(id=>{
+    const b = document.getElementById(id); if(!b) return;
+    b.disabled = busy || (arcLoaded >= ARC_STEPS[id]);
+  });
+}
+/* 🔤 مطابقة العدد للمعدود: ٣–١٠ جمعٌ («أيام») وما فوقها مفردٌ منصوب
+   («يوماً»). و«٣٥ أيام» خطأٌ يقرؤه صاحب النظام كل مرّة. */
+function arcDaysWord(n){ return (n >= 3 && n <= 10) ? "أيام" : "يوماً"; }
+function arcStat(txt){
+  const el = document.getElementById("arcRangeSt"); if(el) el.textContent = txt || "";
+  const n  = document.getElementById("arcDaysN");
+  if(n) n.textContent = arcLoaded.toLocaleString("ar-EG") + " " + arcDaysWord(arcLoaded);
+  arcBtns(arcLoading);
+}
+
+window.arcLoadDays = async function(target){
+  if(arcLoading) return;
+  target = Math.max(3, Math.min(Number(target)||3, 35));
+  if(target <= arcLoaded){ arcStat("محمّلٌ أصلاً"); return; }
+  arcLoading = true; arcBtns(true);
+
+  let got = 0, failed = 0, stopped = null;
+  for(let i = arcLoaded; i < target; i++){
+    const day = arcDayKey(i);
+    if(compByDay[day]){ arcLoaded = i + 1; continue; }   /* لا نُعيد جلب يومٍ عندنا */
+    arcStat("جارٍ تحميل " + day + " … (" + (i - 2) + " من " + (target - 3) + ")");
+    try{
+      const snap = await db.ref("completed_orders/" + day).once("value");
+      const obj = snap.val(); const arr = [];
+      if(obj) Object.values(obj).forEach(o=>{
+        if(!o.id && !o.restaurant) return;
+        /* ⚠️ نفس ترتيب الحقول حرفاً بحرف كما في المستمع الحيّ أعلاه.
+           أيّ اختلافٍ هنا يعني صفوفاً بأعمدةٍ منزاحة — سعرٌ في خانة الحالة. */
+        arr.push([o.id||"",o.restaurant||"مطعم",o.area||"غير محدد",o.details||"طلب توصيل",
+          o.price||0,o.status||"completed",o.driverPhone||"",
+          o.last_update||o.completed_at||day+"T00:00:00Z",o.photoUrl||"",o.is_sovereign||false,
+          o.last_update||"",o.last_offered_to||"",false,o.comm??null,o.payType||"",o.is_double||false,o.resPhone||""]);
+      });
+      compByDay[day] = arr;
+      got += arr.length;
+      arcLoaded = i + 1;
+      /* نُجمّع ونرسم بعد كل يوم — النموّ مرئيّ لا مُنتظَر. */
+      compArch = [].concat.apply([], Object.values(compByDay));
+      archSig = ""; renderArch();
+      arcStat("");
+    }catch(e){
+      failed++;
+      console.warn("تعذّر تحميل " + day + ":", e && e.message);
+      /* 🔒 رفضُ القراءة يعني جلسةً منتهية لا يوماً مفقوداً — نشفي المصادقة
+         مرّةً ونكمل. وبلا هذا يبدو الأمر «أياماً فارغة» وهو انتهاء جلسة. */
+      if(failed === 1){ try{ await healAdminAuth(); }catch(_){} }
+      if(failed >= 3){ stopped = day; break; }
+    }
+  }
+
+  arcLoading = false; arcBtns(false);
+  /* ⚠️ الرسالة الأخيرة كانت تدهس رسالة التوقّف، فيقرأ صاحب النظام «اكتمل
+     جزئياً» بينما التحميل **توقّف** ولا يعرف عند أي يومٍ ولا ماذا يفعل.
+     الآن: رسالة التوقّف تغلب، وتبقى ظاهرةً حتى يتصرّف (لا تختفي بعد ثوانٍ). */
+  if(stopped){
+    arcStat("توقّف عند " + stopped + " — انتهت الجلسة غالباً. حدّث الصفحة ثم أعد المحاولة.");
+    return;
+  }
+  arcStat(failed ? ("اكتمل بنقصٍ: " + failed + " يوماً لم يُقرأ · +" + got.toLocaleString("ar-EG") + " طلباً")
+                 : (got ? ("+" + got.toLocaleString("ar-EG") + " طلباً") : "لا طلبات في هذه الأيام"));
+  setTimeout(()=>{ if(!arcLoading && !stopped) arcStat(""); }, 6000);
+};
 
 window.opInv=function(payload){
   const d=JSON.parse(decodeURIComponent(payload));
