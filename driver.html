@@ -109,7 +109,7 @@
      الآن: رقمٌ واحد يُشتقّ منه كل شيء — الشاشة والإعدادات ومسح الكاش.
      **وأي تسليم جديد يجب أن يرفعه، وإلا لم يصل.**
      ═══════════════════════════════════════════════════════════════════════ */
-  const CURRENT_APP_VERSION = "31.5-FreeMode";
+  const CURRENT_APP_VERSION = "31.19-LateOffer";
   window.APP_VERSION = CURRENT_APP_VERSION;
   /* اطبعه في شاشة الدخول فور جهوز الصفحة — نصّاً واحداً لا نسختين. */
   document.addEventListener('DOMContentLoaded', function(){
@@ -1459,6 +1459,9 @@ try { onValue(ref(db, ".info/serverTimeOffset"), s => { SRV_OFFSET = Number(s.va
 function srvNow(){ return Date.now() + SRV_OFFSET; }
 
 const MIN_DIST_M=500, FALLBACK_MINS=15, MIN_PICKUP_SECS=120, RETRIES=3;
+/* ⏱️ [V31.19] أقصرُ نافذةِ رنينٍ تستحقّ أن تُعرض. أقلّ منها بطاقةٌ تختفي
+   قبل أن تُقرأ — الشرح الكامل عند حسابها في مستمع العروض. */
+const MIN_RING_SECS=15;
 let DAILY_GOAL = Math.min(40,Math.max(5,parseInt(localStorage.getItem('suf_goal'))||15));
 
 /* 🔧[خ٧] التطبيع الموحّد حرفياً مع GAS V16.1 و CF-6.0 واللوحات */
@@ -1628,6 +1631,14 @@ async function procQueue(){
   const fail=[];
   for(const a of batch){
     if(a.nextTry&&Date.now()<a.nextTry){ fail.push(a); continue; }
+    /* ⏳ [V31.19] بندٌ له صلاحية: بعض الإجراءات تفسد بالتأخّر ولا تنفع.
+       الرفض مثلاً — لو وصل بعد ساعة وقد عُرض الطلب على الكابتن نفسه من
+       جديد، لبَصَم رفضاً على **عرضٍ آخر** لم يره. فالإعادة إلى الأبد ليست
+       دائماً أأمن من الإسقاط: تعتمد على أن الفعل لا يزال يعني ما كان يعنيه. */
+    if(a.expiresAt && Date.now() > a.expiresAt){
+      try{ track('queue_expired',{kind:a.kind||'?',ageMs:Date.now()-(a.ts||0)}); }catch(_){}
+      continue;
+    }
     try{
       if(a.type==='multi'&&a.updates){ await withTimeout(update(ref(db),a.updates)); }
       else if(a.url){ await withTimeout(fetch(a.url,{method:'GET',mode:'no-cors',cache:'no-store'})); }
@@ -4158,8 +4169,37 @@ function listenOrders(){
         curOrder={id:f.id,resName:f.restaurant,area:f.area||'غير محدد',price:f.price||0,details:f.details||'',
           photoUrl:f.photoUrl||'',resLat:f.resLat,resLng:f.resLng,resPhone:f.resPhone,resArea:f.resArea||null,
           comm:f.comm||0,payType:f.payType||'المطعم يدفع',is_sovereign:f.is_sovereign||false};
+        /* ═══════════════════════════════════════════════════════════════
+           ⏱️ [V31.19] كان: Math.max(10000, 60000-age) — أرضيةُ عشر ثوانٍ.
+           ───────────────────────────────────────────────────────────────
+           وأثرها المحسوب: كل طلبٍ عمره ≥ ٥٠ ثانية يُعرض بنافذة **عشر
+           ثوانٍ** مهما بلغ عمره الحقيقي (٩٠ · ١٤٠ · أيّاً كان).
+           والكابتن الذي يفتح الإشعار يمرّ عليه: تنبيهٌ في الشريط · فتح
+           التطبيق · مصادقة فايربيس (٣–٨ ث) · تحميل. فيصل والطلب عمره فوق
+           الخمسين غالباً ⇒ بطاقةٌ بزرّ قبولٍ تختفي قبل أن تُقرأ، ثم
+           declineOrder التلقائي يُخفيها ويصفّر curOrder.
+           ⇒ «فتحتُ الإشعار فوجدت الرادار فارغاً».
+
+           والبطاقة التي تموت قبل أن تُقرأ أسوأ من غيابها: يمدّ يده إليها
+           فتختفي، فيظنّ التطبيق معطوباً. وليست عشر ثوانٍ فرصةً — هي وعدٌ
+           لا يمكن الوفاء به.
+
+           الآن: إن كان الباقي أقلّ من MIN_RING_SECS **لا تُعرض البطاقة
+           إطلاقاً** — يُحرَّر الطلب فوراً (رفضٌ مضمون بالطابور) ويُشرح
+           للكابتن سببُ الفراغ. فيربح المطعم دقيقتين ونصفاً من الانتظار،
+           ويربح الكابتن جواباً بدل حَيرة.
+           ═══════════════════════════════════════════════════════════════ */
         const age=f.last_update?(Date.now()-new Date(f.last_update).getTime()):0;
-        curOrder.expire=Date.now()+Math.max(10000,60000-age);
+        const remainMs=60000-age;
+        if(remainMs < MIN_RING_SECS*1000){
+          const _id=f.id;
+          curOrder=null;
+          try{ track('offer_too_late',{orderId:_id,ageSec:Math.round(age/1000)}); }catch(_){}
+          queueDecline(_id);
+          try{ toast('انتهت مهلة طلبٍ وصلك متأخّراً — يُعرض الآن على كابتن آخر','warn'); }catch(_){}
+          return;
+        }
+        curOrder.expire=Date.now()+remainMs;
         document.getElementById('alTitle').innerText=active.length?'طلب إضافي! 🔥':'طلب جديد!';
         document.getElementById('alSov').innerText=curOrder.is_sovereign?'⚠️ تعيين إداري مباشر — لا يمكن تجاهله':'';
         document.getElementById('alRes').innerText=f.restaurant;
@@ -4211,9 +4251,53 @@ window.declineOrder=function(){
   const id=curOrder.id;
   rejToday++; /* تفاؤلي — المستمع يزامن الرقم الحقيقي */
   track('decline',{orderId:id}); shadowCommand('EXPIRE',id);
-  gasFetch(`${API_URL}?action=DECLINE_ORDER&orderId=${encodeURIComponent(id)}&driverPhone=${drv.phone}&token=${API_TOKEN}&stoken=${encodeURIComponent(getStoken())}`)
-    .catch(()=>{ /* ضعف الشبكة: حارس CF يعيد الطلب للرادار تلقائياً */ });
+  queueDecline(id);
   curOrder=null;
+};
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   📮 [V31.19] الرفض يُضمَن كما يُضمَن القبول — وكان «أرسِل وانسَ»
+   ───────────────────────────────────────────────────────────────────────────
+   شكوى ميدانية مؤكَّدة من الليدرز: «الكابتن يفتح الإشعار فيجد الرادار
+   فارغاً، ونحن نرى الطلب ما زال يرنّ باسمه».
+   ونصفها الثاني كان هنا حرفياً:
+
+       gasFetch(`…DECLINE_ORDER…`).catch(()=>{ «حارس CF يعيده تلقائياً» });
+       (والتعليق الداخلي مكتوبٌ بقوسين لا بـ/* : إغلاقه كان يُنهي هذه الكتلة
+        ويكسر الملف كلّه — أمسكه فحص النحو قبل التسليم.)
+
+   نداءةٌ واحدة، بلا إعادة محاولة ولا طابور — بينما القبول يمرّ بـ
+   guaranteedWrite بثلاث محاولات ومهلة وتحقّق. فإن تعثّرت (وهي على شبكة
+   الكابتن نفسها التي تأخّر بها الإشعار) **لم يعلم السيرفر شيئاً**:
+     · التطبيق أخفى البطاقة وصفّر curOrder ⇒ الكابتن يرى رادارًا فارغاً
+     · والسيرفر ما زال يقول driverPhone = هو ⇒ الليدر يرى اسمه
+   والاثنان صادقان ولا يتحدّثان عن الشيء نفسه.
+
+   و«حارس CF يعيده تلقائياً» صحيحٌ لكنه يُعيده بعد **٢٫٥ دقيقة** لا فوراً —
+   والطلب حبيسٌ طوال ذلك، والمطعم والزبون ينتظران.
+
+   ولا يُعاد الطلب بالكتابة المباشرة: القواعد تُثبّت driverPhone على الكابتن
+   فلا يستطيع إرجاعه إلى system_routing بنفسه (وهو حارسٌ مقصود ضد الاختطاف).
+   فالبوّابة السيرفرية هي الطريق الوحيد — لكنّها الآن **مضمونة**: طابورٌ
+   محفوظٌ في التخزين المحلّي، بتراجع أُسّي وتشتيت، ينجو من إغلاق التطبيق.
+
+   ⏳ وبصلاحية ثلاث دقائق: بعدها تكون مهلة الخادم (٢٫٥ د) قد انقضت وأُعيد
+      عرض الطلب على غيره، فالرفض المتأخّر لا يعني شيئاً — وقد يضرّ لو صادف
+      عرضاً جديداً على الكابتن نفسه. الشرح عند expiresAt في procQueue.
+   ═══════════════════════════════════════════════════════════════════════════ */
+window.queueDecline=function(id){
+  try{
+    queue.push({
+      kind:'decline', ts:Date.now(), expiresAt:Date.now()+180000,
+      url:`${API_URL}?action=DECLINE_ORDER&orderId=${encodeURIComponent(id)}&driverPhone=${drv.phone}&token=${API_TOKEN}&stoken=${encodeURIComponent(getStoken())}`
+    });
+    try{localStorage.setItem('hut_offline_queue',JSON.stringify(queue));}catch(_){}
+    procQueue();          /* لا ننتظر الدورة: الطلب محبوسٌ حتى تصل هذه */
+  }catch(e){
+    /* الطابور نفسه تعثّر — لا نُسقط الفعل بصمت. */
+    try{ track('decline_queue_fail',{orderId:id,msg:String(e&&e.message).slice(0,60)}); }catch(_){}
+    try{ gasFetch(`${API_URL}?action=DECLINE_ORDER&orderId=${encodeURIComponent(id)}&driverPhone=${drv.phone}&token=${API_TOKEN}&stoken=${encodeURIComponent(getStoken())}`).catch(()=>{}); }catch(_){}
+  }
 };
 
 /* 🔧[خ١] القبول بلا getGlobalData */
