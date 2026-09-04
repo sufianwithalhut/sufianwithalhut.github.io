@@ -1224,7 +1224,28 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
 ═══════════════════════════════════════════════════════════════ */
 
 /* ════ CONSTANTS ════ */
-const O={ID:0,RES:1,AREA:2,DETAILS:3,PRICE:4,STATUS:5,DRV:6,TIME:7,PHOTO:8,SOV:9,LU:10,LO:11,READY:12,COMM:13,PAY:14,DOUBLE:15};
+/* ═══════════════════════════════════════════════════════════════════════════
+   🕐 [V31.20] زمنان في كل طلب — ولا يصلح أحدهما مكان الآخر
+   ───────────────────────────────────────────────────────────────────────────
+   TIME    = last_update ← وهو يتجدّد مع **كل** رنينٍ ورفضٍ وتغيير حالة.
+   CREATED = timestamp   ← يُختم مرّةً عند الإنشاء ولا يتغيّر بعدها أبداً
+             (القواعد تُثبّته حرفياً في database.rules.json: عند التعديل
+              newData.child('timestamp') يجب أن يساوي data.child('timestamp')،
+              و orderSanitizer يختمه إن غاب — فهو موجودٌ عملياً دائماً).
+
+   وكان الكارت يعرض TIME. فطلبٌ أُنشئ ٧:٠٥ وعُرض على أربعة كباتن رفضوه
+   يظهر بوقت آخر رفض — ٧:٤٠ مثلاً. فإذا اتّصل المطعم يسأل عن التأخير رأى
+   الليدر ٧:٤٠ وظنّ الطلب ابن خمس دقائق، وهو ابن خمسٍ وثلاثين.
+   ⇒ الرقم الذي يُبنى عليه القرار كان يكذب، ويكذب في الاتجاه الأسوأ:
+     يُخفي التأخير كلّما ازداد (لأن كل محاولةٍ فاشلة تُصفّر العدّاد).
+
+   ولا يُلغى TIME: الفلاتر «متأخّر في المطعم» و«متأخّر في الطريق» تقيس
+   ركود **الحالة** لا عمر الطلب، وهي تحتاج last_update بالضبط. ومسار
+   الطلب الزمني (openTimeline) يفرّق بينهما منذ البداية: «دقيقة منذ
+   الإنشاء» من timestamp، و«دقيقة منذ آخر تحديث» من last_update.
+   فالكارت الآن يوافق المسار الزمني بدل أن يناقضه.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const O={ID:0,RES:1,AREA:2,DETAILS:3,PRICE:4,STATUS:5,DRV:6,TIME:7,PHOTO:8,SOV:9,LU:10,LO:11,READY:12,COMM:13,PAY:14,DOUBLE:15,CREATED:16};
 const D={ID:0,NAME:1,PHONE:2,AREA:3,STATUS:4,LAT:5,LNG:6,PASS:12,SHIFT:13};
 /* ⚠️ بعد إعادة نشر سكربت GAS V16.0 قد يتغيّر رابط النشر — حدّثه هنا. */
 const API="https://script.google.com/macros/s/AKfycbzKDBjgPxmt_iDCphkjB6EY-cnag_aqwxrdNDrY9uqBRbTZYsqGWl4TJn4pANS8OVYm/exec";
@@ -1886,10 +1907,18 @@ function attachDataListeners(){
       raw[o.id||""]=o;  /* خام للمسار الزمني */
       active.push([o.id||"",o.restaurant||"",o.area||"غير محدد",o.details||"طلب توصيل",
         o.price||0,o.status||"pending",o.driverPhone||"",o.last_update||o.timestamp||"",
-        o.photoUrl||"",o.is_sovereign||false,o.last_update||"",o.last_offered_to||"",o.ready_for_pickup||false,o.comm??null,o.payType||"", o.is_double||false]);
+        o.photoUrl||"",o.is_sovereign||false,o.last_update||"",o.last_offered_to||"",o.ready_for_pickup||false,o.comm??null,o.payType||"", o.is_double||false,
+        /* 🕐 [V31.20] وقت الإنشاء. والارتداد إلى last_update ليس تجميلاً:
+           طلبات ما قبل orderSanitizer قد تخلو من timestamp، وبلا ارتداد
+           يظهر «---» في خانة الوقت — وهو أسوأ من تقديرٍ قريب. */
+        o.timestamp||o.last_update||""]);
     });
     rawOrders=raw;_ordIdx=null;_onlineCache=null;
-    active.sort((a,b)=>new Date(b[O.TIME])-new Date(a[O.TIME]));
+    /* 🕐 [V31.20] الترتيب تبع المعروض. كان بـTIME، فلو بقي كذلك بعد تغيير
+       العرض لظهرت الأوقات نازلةً ثم صاعدة بلا نظام (طلبٌ قديم رُفض قبل
+       ثانية يقفز فوق طلبٍ جديد)، فيبدو الجدول معطوباً. الآن: الأحدث
+       إنشاءً أوّلاً — والقائمة تُقرأ كما تُكتب. */
+    active.sort((a,b)=>new Date(b[O.CREATED])-new Date(a[O.CREATED]));
     liveOrd=active;
     const np=active.filter(o=>!o[O.DRV]||["pending_driver","system_routing","manual_pending"].includes(o[O.DRV])).length;
     pendCnt=np;
@@ -2420,6 +2449,11 @@ function renderRadar(){
   if(rfilt==="pending")list=list.filter(o=>!o[O.DRV]||["pending_driver","system_routing","manual_pending"].includes(o[O.DRV]));
   if(rfilt==="active")list=list.filter(o=>o[O.DRV]&&!["pending_driver","system_routing","manual_pending"].includes(o[O.DRV]));
   if(rfilt==="sov")list=list.filter(o=>o[O.SOV]===true);   /* 👑 فلتر السيادي */
+  /* ⚠️ [V31.20] هذان الفلتران يبقيان على O.TIME (last_update) عمداً، ولا
+     يُحوَّلان إلى CREATED مهما بدا ذلك اتّساقاً: سؤالهما «كم بقي الطلب في
+     هذه الحالة راكداً؟» لا «كم عمره؟». فطلبٌ عمره ساعتان وصل المطعم قبل
+     دقيقة ليس متأخّراً في المطعم، وبـCREATED سيُعدّ متأخّراً — فيمتلئ
+     الفلتر بالسليم ويضيع فيه المريض. الشرح الكامل عند تعريف O. */
   if(rfilt==="dlyr")list=list.filter(o=>o[O.STATUS]==="arrived_at_res"&&o[O.TIME]&&(now-new Date(o[O.TIME]).getTime())/60000>10);
   if(rfilt==="dlyd")list=list.filter(o=>["picked_up","في الطريق","heading"].includes(o[O.STATUS])&&o[O.TIME]&&(now-new Date(o[O.TIME]).getTime())/60000>20);
 
@@ -2433,11 +2467,16 @@ function renderRadar(){
 
   let html="";
   _page.forEach(o=>{
-    const[oId,rN,oA,,oP,st,dp,oT,pU,isSov,,lastOff,isReady,, ,isDoubleDB]=o;
+    const[oId,rN,oA,,oP,st,dp,oT,pU,isSov,,lastOff,isReady,, ,isDoubleDB,oCr]=o;
     const hD=dp&&!["pending_driver","system_routing","manual_pending"].includes(dp);
     const dn=hD?dN(dp):"جاري البحث...";
-    const dMins=oT?Math.floor((now-new Date(oT).getTime())/60000):0;
-    const tF=fmtHM(oT);
+    /* 🕐 [V31.20] العمر من الإنشاء لا من آخر لمسة. وهذا يُصلح عطباً صامتاً
+       في نبضة «⚠️ بلا كابتن»: كانت تُصفَّر مع كل عرضٍ جديد، فطلبٌ ظلّ
+       ساعةً يدور بين الكباتن يظهر «⚠️ ١ دق» — أي أن المؤشّر كان يهدأ
+       كلّما اشتدّ السبب. والمسار الزمني يقيسها من الإنشاء أصلاً
+       (‹الطلب بلا كابتن منذ ageMin دقيقة›)، فهذا توحيدٌ لا اجتهاد. */
+    const dMins=oCr?Math.floor((now-new Date(oCr).getTime())/60000):0;
+    const tF=fmtHM(oCr);
     const isDbl = isDoubleDB === true;
 
     const _m=orderStatusMeta(st,hD,isSov);
@@ -2462,7 +2501,7 @@ function renderRadar(){
 
     html+=`<div class="oc ${clsCls}">${delH}
       <div class="oc-head" style="${delH?"margin-top:24px":""}">
-        <div><div class="oc-id">#${esc(oId)} ${dblB}${sovB}</div><div class="oc-tm">⏰ ${tF}</div></div>
+        <div><div class="oc-id">#${esc(oId)} ${dblB}${sovB}</div><div class="oc-tm">⏰ ${tF}${!delH&&dMins>0?` · ${dMins} د`:''}</div></div>
       </div>
       <div class="oc-acts">
         <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
@@ -3125,7 +3164,9 @@ function renderCtx(){
       const cust=_ccCustPhone(o[O.DETAILS]);
       const resPh=_ccResPhone(oid);
       const price=Number(o[O.PRICE]||0).toLocaleString('en-US');
-      const mins=o[O.TIME]?Math.floor((Date.now()-new Date(o[O.TIME]).getTime())/60000):null;
+      /* 🕐 [V31.20] النظير: كارت الرادار وكارت مركز الاتصال يعرضان الشيء
+         نفسه لليدر نفسه، فاختلافهما في مرجع الوقت مربكٌ بلا فائدة. */
+      const mins=o[O.CREATED]?Math.floor((Date.now()-new Date(o[O.CREATED]).getTime())/60000):null;
       /* 🔴 [إصلاح] لوحة «الطلبات معه الآن» كانت الوحيدة بلا شارة دمج — بينما
          هي أكثر مكان يحتاجها: الليدر يفتحها ليرى ماذا يحمل الكابتن، وهي
          اللحظة التي يسأل فيها «هل هذا دمج أم طلبان منفصلان؟».
@@ -3135,7 +3176,7 @@ function renderCtx(){
         <div class="co-top">
           <span class="co-id">#${esc(oid)} ${dblC}</span>
           <span class="stb ${meta.chip}">${meta.txt}</span>
-          <span class="co-tm">⏰ ${esc(fmtHM(o[O.TIME]))}${mins!==null&&mins>0?` · ${mins} د`:''}</span>
+          <span class="co-tm">⏰ ${esc(fmtHM(o[O.CREATED]))}${mins!==null&&mins>0?` · ${mins} د`:''}</span>
         </div>
         <div class="co-mid">
           <span class="co-res">🍽 ${esc(o[O.RES]||'—')}</span>
