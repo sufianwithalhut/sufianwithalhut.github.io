@@ -109,7 +109,7 @@
      الآن: رقمٌ واحد يُشتقّ منه كل شيء — الشاشة والإعدادات ومسح الكاش.
      **وأي تسليم جديد يجب أن يرفعه، وإلا لم يصل.**
      ═══════════════════════════════════════════════════════════════════════ */
-  const CURRENT_APP_VERSION = "31.24-NoSilentDeath";
+  const CURRENT_APP_VERSION = "31.25-MeasureNotGuess";
   window.APP_VERSION = CURRENT_APP_VERSION;
   /* اطبعه في شاشة الدخول فور جهوز الصفحة — نصّاً واحداً لا نسختين. */
   document.addEventListener('DOMContentLoaded', function(){
@@ -2554,6 +2554,22 @@ function track(ev, meta){
       if(meta.command)       rec.cmd=String(meta.command).slice(0,20);
       if(meta.ms!=null)      rec.ms=Number(meta.ms)||0;
       if(meta.reason)        rec.why=String(meta.reason).slice(0,60);
+      /* ═══════════════════════════════════════════════════════════════
+         🔴 [V31.25] الحقول الثلاثة التي بُنيت في V18.4 لتحسم «من يُطفئ
+         المفتاح أوّلاً» — ولم تُكتب مرّةً واحدة منذ بُنيت.
+         ───────────────────────────────────────────────────────────────
+         المرآة تُمرّر { want, odAge, ackAge }، وهذه الدالّة كانت تنسخ
+         orderId/command/ms/reason فقط ⇒ تُرمى الثلاثة قبل الكتابة.
+         وقياسُ ٢٤ ساعة أثبته بالرقم: ٩٥ حدث mirror_* · صفرٌ منها يحمل
+         want. أداةٌ وُثّقت في تعليقٍ طويل ولم تُوصَل بسلك.
+
+         ⚠️ وهذا هو الصنف الأخطر من الأعطاب: لا يُظهر خطأً، ولا يكسر
+            شيئاً — يُنتج **فراغاً يُقرأ نفياً**. وقد بنيتُ عليه استنتاجاً
+            كاملاً عن المرآة، ثم أسقطه القياس حين وُصلت الأداة أخيراً.
+         ═══════════════════════════════════════════════════════════════ */
+      if(meta.want  !== undefined) rec.want  = meta.want ? 1 : 0;
+      if(meta.odAge !== undefined) rec.odAge = Number(meta.odAge)  || 0;
+      if(meta.ackAge!== undefined) rec.ackAge= Number(meta.ackAge) || 0;
     }
     try{ rec.net=String((navigator.connection&&navigator.connection.effectiveType)||'').slice(0,12); }catch(e){}
     set(ref(db,`client_events/${drv.phone}/${id}`), rec).catch(()=>{});
@@ -2975,7 +2991,54 @@ window.toggleOnline=async function(){
       _mirrorOn = false;                     // [V15.6] انتهت العملية
       if(window._mirTmr){ clearTimeout(window._mirTmr); window._mirTmr=null; }
       if(okNet) armDisconnect(true);   /* [V15] السيرفر يُنصرِف عنك إن انقطعت */
+
+      /* ═══════════════════════════════════════════════════════════════════
+         🔬 [V31.25] الحارسُ ليس فشلاً — والقياس أثبته
+         ───────────────────────────────────────────────────────────────────
+         fbStatus تُعيد false في حالتين ليستا إخفاقَ شبكةٍ إطلاقاً:
+           epoch_drop   قرارٌ أحدث ألغى هذه الكتابة
+           toggled_off  الحالة تغيّرت أثناء الانتظار
+         وكلتاهما تعملان **كما صُمّمتا**. لكنّ الفرع أدناه كان يعاملهما
+         كإخفاق شبكة: يُطفئ المفتاح، ويكتب «⚠️ لم يتأكّد التفعيل — لن تصلك
+         طلبات»، ويُرسل بلاغاً.
+
+         وقياسُ ٢٤ ساعة (٢٨ بلاغاً · ١٩ جهازاً): **١٢ تعافياً، تسعةٌ منها
+         بإقرار الخادم `mirror_on`** — أي أن الكابتن كان على الرادار
+         ويقرأ خطأً أحمر. فيترك العمل، أو يُعيد الضغط فيولّد كتابةً ثالثة
+         على شبكةٍ متعثّرة أصلاً — وهو ما يصنع تتابع الإخفاقات المتقاربة
+         الذي رأيناه (7707469655: epoch_drop ثم toggled_off بفارق ٣ ثوانٍ).
+
+         العلاج هو **عين ما فعلته V18.3 للمهلة**، مطبَّقاً على الحارس:
+         لا تحكم بالفشل قبل أن تسأل الخادم. قراءةٌ واحدة تفصل «سُحبت
+         الكتابة» عن «لم يصل التفعيل».
+
+         ⚠️ وشرطُ wantOnline إلزاميّ: إن كان الكابتن قد أطفأ عمداً فالخادم
+            قد يقول active وهو لا يريد — فلا نُخضِّر مفتاحه رغماً عنه.
+            نيّتُه تُحترم في الاتجاهين، كما في مرآة V30[ع١].
+         ⚠️ وفشلُ القراءة يُبقي الحكم بالفشل — الاتجاه الآمن: أن يُنبَّه
+            عاملٌ خطأً أهون من أن يجلس متوقّفٌ يظنّ نفسه عاملاً.
+         ═══════════════════════════════════════════════════════════════════ */
+      let _guardSaved = false;
       if(!okNet){
+        const _gw = String(window._statusErr || '');
+        if((_gw === 'epoch_drop' || _gw === 'toggled_off') && wantOnline && drv && drv.phone){
+          try{
+            const _gs = await withTimeout(
+              get(ref(db,`drivers_locations/${drv.phone}/status`)), 12000, 'guard_verify');
+            if(String(_gs.val()||'') === 'active'){
+              _guardSaved = true;
+              lastAckTs = Date.now();
+              try{ window._statusErr=''; }catch(_){}
+              _mirrorOn = false; paintToggle(true);
+              armDisconnect(true);
+              track('activate_guard_ok', { reason: _gw });
+              updateLinkPill();
+            }
+          }catch(_){ /* تعذّر السؤال ⇒ يبقى الحكم بالفشل */ }
+        }
+      }
+
+      if(!okNet && !_guardSaved){
         /* 🪞 [V15.5] كان صندوق الرادار وحده يتغيّر، والمفتاح واللافتة يبقيان
            «متاح للطلبات» بينما الخادم يقول inactive. والمرآة لا تُصلحه:
            onValue لا يُطلق حدثاً بلا **تغيّر**، والحالة لم تتغيّر (بقيت
@@ -3284,6 +3347,8 @@ async function _fbStatusRaw(st, waitGeo){
   }
   u[`drivers_locations/${p}/status`]=st;
   u[`drivers_locations/${p}/last_update`]=new Date().toISOString();
+  /* [V31.25] لحظةُ بدء الكتابة — تُقاس منها مدّةُ الوصول الحقيقية. */
+  const _wStart = Date.now();
   try{
     await withTimeout(update(ref(db),u), _tmo, 'write_timeout');
     lastAckTs=Date.now(); window._statusErr=''; updateLinkPill(); return true;
@@ -3395,7 +3460,33 @@ async function _fbStatusRaw(st, waitGeo){
         get(ref(db,`drivers_locations/${p}/status`)), 12000, 'verify_timeout');
       if(String(_vs.val()||'') === st){
         lastAckTs=Date.now(); window._statusErr='';
-        try{ window._statusErr2='late_ok'; track('write_late_ok'); }catch(_){}
+        /* ═══════════════════════════════════════════════════════════
+           🔬 [V31.25] عيّنةٌ لا فيض — **وزمنٌ بدل عدّاد**
+           ───────────────────────────────────────────────────────────
+           قياسُ ٢٤ ساعة: ٣٤٬٢٠٨ حدثاً من هذه العلامة وحدها = ٩٨٪ من كل
+           أحداث العملاء. وهي:
+             ① ما أعاد ملء client_events إلى ١٬٠٢٠٬٠١٤ سجلّاً بعد كنسها؛
+             ② وما أعمى أداتَي تشخيصٍ بنيتُهما اليوم — بترتا نافذتيهما
+                على الفيض فأنتجتا «٧٪» ثم «١٨٪»، وكلتاهما كاذبة.
+           سجلٌّ يُغرق نفسه يُفسد كل قياسٍ يُبنى عليه لاحقاً.
+
+           والقاعدة: **يُسجَّل ما يُعلِّم، لا ما يتكرّر.**
+             · الذيل يُسجَّل كاملاً: كتابةٌ تجاوزت ١٥ ث حدثٌ نادرٌ ومهمّ،
+               وهو ما يقرّر إن كانت NET_TIMEOUT_MS=6000 قصيرةً فعلاً.
+             · والبقيّة عيّنة ١ من ٢٠ — تكفي لنسبةٍ وتوزيع، ولا تُغرق.
+           ⇒ ~٣٤ ألفاً تصير ~١٬٧٠٠، والمعلومة تزيد لا تنقص: صار لكل
+             سجلٍّ **مدّةٌ بالمِلّي ثانية** بدل أن يكون عدّاداً أعمى.
+
+           ⚠️ ولا تُغيّر شيئاً في السلوك: التحقّق تمّ، والدالّة تعود true
+              كما كانت. التغيير في **ما يُكتب عن نفسها** لا فيما تفعل.
+              وrec.ms تنسخها track منذ V17 — فلا تعديل هناك.
+           ═══════════════════════════════════════════════════════════ */
+        try{
+          window._statusErr2='late_ok';
+          const _lateMs = Date.now() - _wStart;
+          if (_lateMs > 15000 || Math.random() < 0.05)
+            track('write_late_ok', { ms: _lateMs, reason: st });
+        }catch(_){}
         updateLinkPill(); return true;
       }
     }catch(_){ /* تعذّر التحقّق ⇒ يبقى الحكم بالفشل */ }
