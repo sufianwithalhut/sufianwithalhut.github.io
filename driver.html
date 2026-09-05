@@ -109,7 +109,7 @@
      الآن: رقمٌ واحد يُشتقّ منه كل شيء — الشاشة والإعدادات ومسح الكاش.
      **وأي تسليم جديد يجب أن يرفعه، وإلا لم يصل.**
      ═══════════════════════════════════════════════════════════════════════ */
-  const CURRENT_APP_VERSION = "31.25-MeasureNotGuess";
+  const CURRENT_APP_VERSION = "31.26-ShowWhatYouMeasure";
   window.APP_VERSION = CURRENT_APP_VERSION;
   /* اطبعه في شاشة الدخول فور جهوز الصفحة — نصّاً واحداً لا نسختين. */
   document.addEventListener('DOMContentLoaded', function(){
@@ -3089,6 +3089,15 @@ window.toggleOnline=async function(){
             '<b>DIAG — أرسل هذا للإدارة</b><br>'+
             'why: '+_rsn+'<br>'+
             'raw: '+(window._statusRaw || '-')+'<br>'+
+            /* 🔬 [V31.26] _statusErr2 — الحقل الذي يقول **أين** توقّف المسار.
+               يُكتب في ثلاثة مواضع منذ V17 ولم يُعرض ولم يُرسل مرّةً واحدة:
+                 retry_direct  الكتابة الأولى انتهت مهلتها، وأُعيدت مباشرةً
+                 late_ok       تأخّر الردّ والكتابة وصلت (نجاح)
+                 <اسم الخطأ>   ما رمته إعادةُ المحاولة
+               وبدونه تُقرأ كل الإخفاقات «write_timeout» — فلا يُعرف أوقفت
+               الشبكةُ أوّلَ كتابةٍ أم ثانيتَها أم أن القراءة نفسها فشلت.
+               حقلٌ يُقاس ولا يُعرض هو نصفُ قياس. */
+            'err2: '+(window._statusErr2 || '-')+'<br>'+
             'uid: '+_u+'<br>'+
             'phone: '+_p+'  '+_m+'<br>'+
             'ver: '+CURRENT_APP_VERSION+
@@ -3110,6 +3119,7 @@ window.toggleOnline=async function(){
             + `&ev=activate_fail`
             + `&why=${encodeURIComponent(_rsn)}`
             + `&raw=${encodeURIComponent(window._statusRaw||'')}`
+            + `&err2=${encodeURIComponent(window._statusErr2||'')}`
             + `&uid=${encodeURIComponent(_u2)}`
             + `&ver=${encodeURIComponent(CURRENT_APP_VERSION)}`, null, 6000).catch(()=>{});
         }catch(_){ /* [V31.2] كان صامتاً. ولا لفافة حول track: جسمها كلّه داخل try/catch وset تحمل .catch — فهي لا ترمي في أي حال (مُثبَتٌ بالتنفيذ في tools/test_v31.js). واللفافة كانت ستُنتج كتلةً فارغةً جديدة — أي إعادةَ إنتاج العطب في الرقعة التي تعالجه. */ track('fail_net_write_3', { reason: String(_ && _.message || _).slice(0,60) }); }
@@ -3429,7 +3439,20 @@ async function _fbStatusRaw(st, waitGeo){
         lastAckTs=Date.now(); window._statusErr=''; updateLinkPill(); return true;
       }
     }catch(e2){
-      window._healOk = 0;
+      /* ═══════════════════════════════════════════════════════════════
+         🔴 [V31.26] |healfail كان يُوسَم على إخفاقٍ لم تُنادَ فيه healAuth.
+         ───────────────────────────────────────────────────────────────
+         الفرع أعلاه فرعان: مصادقةٌ (healAuth) وشبكةٌ (إعادة كتابةٍ مباشرة).
+         وهذه الـcatch تلتقط الاثنين، وكانت تضع _healOk = 0 في الحالين.
+         ⇒ فمهلةُ شبكةٍ خالصة تخرج موسومةً «فشل الشفاء» — والشفاء لم يُطلب.
+
+         وهذا **ثاني** ظهورٍ للوسم نفسه: V17.9 أصلحت «عالقاً للأبد»،
+         وبقي «يُوسَم في غير موضعه». وقد ضلّلني في بلاغ الميدان الليلة:
+             why: write_timeout|healfail
+         فبدا عطبَ مصادقةٍ وهو عطبُ كتابة.
+         ⚠️ ووسمٌ يُكتب حيث لا يصحّ يُساوي وسماً لا يُكتب — كلاهما يكذب.
+         ═══════════════════════════════════════════════════════════════ */
+      if (_isAuthErr) window._healOk = 0;      /* فشلُ شفاءٍ حقيقيّ فقط */
       try{ window._statusErr2 = String((e2 && (e2.code||e2.message))||'').slice(0,32); }catch(_){}
     }
     /* ═══════════════════════════════════════════════════════════════════
