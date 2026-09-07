@@ -1451,7 +1451,9 @@ function fmtHM(v){
 function toast(m,t="s"){const c=document.getElementById("toasts"),el=document.createElement("div");el.className=`ti t${t}`;el.innerHTML=`<div class="ti-ico">${t==="s"?"✅":"❌"}</div><span style="flex:1">${esc(m)}</span>`;c.appendChild(el);setTimeout(()=>{el.style.opacity="0";el.style.transition=".3s";setTimeout(()=>el.remove(),320);},3000);}
 function opImg(u){if(!u)return;document.getElementById("imgFull").src=u;document.getElementById("imgModal").style.display="flex";}
 function clImg(){document.getElementById("imgModal").style.display="none";document.getElementById("imgFull").src="";}
-function today(){return new Date().toISOString().split('T')[0];}
+/* [V31.35] يوم العمل (بغداد − ٤) — مفتاح daily_metrics/daily_ledgers. كان UTC فيُحسب
+   رفض ٠٣:٣٠ بغداد على «الغد» ويرى كابتن الليل أصفاراً. */
+function today(){return new Date(Date.now()+3*3600000-4*3600000).toISOString().split('T')[0];}
 
 /* ════ Bottom sheets ════ */
 function opSheet(id){document.getElementById(id).classList.add("open");}
@@ -2150,11 +2152,19 @@ function crewToday(){
       c.openTime=d.first_seen_today;
     }
     /* مدة العمل: من الفتح حتى آخر ظهور (أو الآن إن متصل) */
+    /* [V31.39] الوقت الحقيقي: online_ms يراكمه المحرّك كل دقيقة للنشط طازج النبضة —
+       لا «آخر ظهور − أوّل فتح» الذي كان يحسب ساعات البيت عملاً. الجدار يبقى احتياطاً
+       لعميلٍ قديم (بلا online_ms) ويُعرض «منذ الفتح» بجواره. */
     if(c.openTime){
       const startMs=new Date(c.openTime).getTime();
       const endRef=isOnline?now:(lastMs||now);
-      if(!isNaN(startMs))c.workedMin=Math.max(0,Math.floor((endRef-startMs)/60000));
+      if(!isNaN(startMs))c.sinceOpenMin=Math.max(0,Math.floor((endRef-startMs)/60000));
     }
+    if(pr&&pr.date===t&&Number(pr.online_ms)>=0&&pr.tick_at){
+      c.workedMin=Math.floor(Number(pr.online_ms)/60000);
+      c.breakMin=Math.floor(Number(pr.break_ms||0)/60000);
+      c.realTime=true;
+    }else{ c.workedMin=c.sinceOpenMin||0; }
   });
 
   /* حساب المشغولين من الطلبات الحيّة */
@@ -2216,7 +2226,7 @@ function renderCrew(){
           <div class="crew-time"><div class="crew-time-l">🕐 فتح</div><div class="crew-time-v">${fmtClock(c.openTime)}</div></div>
           <div class="crew-time"><div class="crew-time-l">👁 آخر ظهور</div><div class="crew-time-v">${fmtClock(c.lastSeen)}</div></div>
         </div>
-        <div class="crew-dur">⏱️ مدة العمل اليوم: ${fmtDur(c.workedMin)}</div>
+        <div class="crew-dur">⏱️ ${c.realTime?'عملٌ فعليّ':'مدة العمل اليوم'}: ${fmtDur(c.workedMin)}${c.realTime?` · استراحة ${fmtDur(c.breakMin||0)} · منذ الفتح ${fmtDur(c.sinceOpenMin||0)}`:''}</div>
         <div class="crew-acts">
           <button class="crew-b crew-b-call" onclick="window.open('tel:${ej(c.phone)}')">📞 اتصال</button>
           ${/* 🎖️ [V29 ← نحلة] صلاحية «message» */''}${canDo("message")?`<button class="crew-b crew-b-msg" onclick="msgCaptain('${ej(c.phone)}','${ej(c.name)}')">💬 رسالة</button>`:''}
@@ -3137,7 +3147,7 @@ function renderCtx(){
   /* إنجاز اليوم */
   let doneChip='';
   try{
-    const day=new Date().toISOString().split('T')[0];
+    const day=today();   /* [V31.35] يوم العمل */
     const m=(dailyMetrics[p]||{})[day]||{};
     const dn=Number(m.completed_orders||0),rj=Number(m.rejected_orders||0);
     doneChip=`<span class="ctx-p">✅ اليوم <b>${dn}</b>${rj?` · ❌ رفض <b>${rj}</b>`:''}</span>`;
@@ -3179,7 +3189,7 @@ function renderCtx(){
           <span class="co-tm">⏰ ${esc(fmtHM(o[O.CREATED]))}${mins!==null&&mins>0?` · ${mins} د`:''}</span>
         </div>
         <div class="co-mid">
-          <span class="co-res">🍽 ${esc(o[O.RES]||'—')}</span>
+          <span class="co-res">${(rawOrders[o[O.ID]]&&rawOrders[o[O.ID]].vehicle==='car')?'<b style="color:#0ea5e9">🚗 سيارة · </b>':''}🍽 ${esc(o[O.RES]||'—')}</span>
           <span class="co-pr">${price} د.ع</span>
         </div>
         ${o[O.AREA]&&o[O.AREA]!=='غير محدد'?`<div class="co-ar">📍 ${esc(o[O.AREA])}</div>`:''}
