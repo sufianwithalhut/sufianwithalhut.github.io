@@ -2121,7 +2121,7 @@ function filtEnt(type){
   updBadges(type,type==="RES"?gD.restaurants:gD.drivers);
   if(!list.length){cont.innerHTML=`<div class="empty-s" style="grid-column:1/-1"><div class="es-ic">🔍</div><div class="es-t">لا توجد نتائج</div></div>`;return;}
   if(cont.querySelector(".empty-s"))cont.innerHTML="";
-  const today=new Date().toISOString().split("T")[0];
+  const today=new Date(Date.now()+3*3600000-4*3600000).toISOString().split("T")[0];   /* [V31.35] يوم العمل بغداد−٤ — مفتاح daily_metrics */
   const rendered=new Set([...cont.querySelectorAll("[id^='card-']")].map(e=>e.id));
   const toR=new Set();
   list.forEach(item=>{
@@ -2206,6 +2206,7 @@ function filtEnt(type){
         </div>
         <div style="display:flex;gap:4px">
           <button class="ea ea-money" title="تصفير"  onclick="rstDebt('${type}','${pj}',this)">💵</button>
+          ${type==="DRV" ? `<button class="ea" title="فتح الشفت — يبدأ شفتاً جديداً اليوم" style="background:#f59e0b;color:#fff" onclick="rstShift('${pj}',this)">🔓</button><button class="ea" title="${(_lastLocs&&_lastLocs[n]&&_lastLocs[n].vehicle==='car')?'كابتن سيارة — اضغط لإعادته دراجة':'اجعله كابتن سيارة (لا تصله إلا طلبات السيارة)'}" style="background:${(_lastLocs&&_lastLocs[n]&&_lastLocs[n].vehicle==='car')?'#0ea5e9':'#cbd5e1'};color:#fff" onclick="setVehicle('${pj}',this)">🚗</button>` : ``}
           <button class="ea ea-c" title="اتصال"   onclick="window.open('tel:${pj}')">📞</button>
         </div>
       </div>
@@ -2366,6 +2367,36 @@ function doAct(cmd,type,id,el){
     .then(r=>r.json()).then(d=>{if(d&&d.success){const nm=item?item[1]:id;logAudit(cmd,`${type==="RES"?"مطعم":"كابتن"}: ${nm} → ${nSt}`);}})
     .catch(()=>{}).finally(()=>{if(el)el.disabled=false;});
 }
+/* ═══════════════════════════════════════════════════════════════════════════
+   🔓 [V31.28] rstShift — إعادة فتح يوم كابتنٍ واحد
+   ───────────────────────────────────────────────────────────────────────────
+   من انتهى شفته ويريد العودة لذروة المساء كان يقرأ «انتهى وقت شفتك لهذا
+   اليوم» حتى الفجر، ولم يكن لك إلا إيقاف الشفتات للأسطول كلّه. الآن زرٌّ
+   لهاتفٍ واحد: يمسح shift_end/last_shift_date عبر RESET_SHIFT (بوّابة
+   ADMIN_ACTIONS نفسها)، والكابتن ينزل بضغطة «متاح» متى شاء. */
+/* 🚗 [V31.42] شارة كابتن السيارة — SET_VEHICLE (بوّابة الإدارة) تكتب فايربيس والشيت */
+window.setVehicle=function(id,el){
+  const n=nP(id);
+  const cur=(_lastLocs&&_lastLocs[n]&&_lastLocs[n].vehicle==='car')?'car':'bike';
+  const next=cur==='car'?'bike':'car';
+  const nm=gD?.drivers?.find(i=>nP(i[2])===n)?.[1]||id;
+  if(!confirm(next==='car'?`جعل ${nm} كابتن سيارة؟\nلن تصله إلا طلبات السيارة (التي يفعّلها المطعم).`:`إعادة ${nm} إلى الدراجة؟`))return;
+  if(!MP)return toast("انتهت الجلسة","e");
+  if(el){el.disabled=true;}
+  fetch(API,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({action:"SET_VEHICLE",id,vehicle:next,token:TOK,pass:MP})})
+    .then(r=>r.json()).then(d=>{if(d&&d.success){toast(next==='car'?"🚗 صار كابتن سيارة":"🏍️ عاد إلى الدراجة");logAudit("setVehicle",`${nm}: ${next}`);}else toast(d&&d.msg?d.msg:"فشل",'e');})
+    .catch(()=>toast("تعذّر الإرسال","e")).finally(()=>{if(el)el.disabled=false;});
+};
+window.rstShift=function(id,el){
+  const n=nP(id);
+  const nm=gD?.drivers?.find(i=>nP(i[2])===n)?.[1]||id;
+  if(!confirm(`فتح شفت ${nm}؟ سيتمكّن من بدء شفتٍ جديد كامل الآن.`))return;
+  if(!MP)return toast("انتهت الجلسة","e");
+  if(el){el.disabled=true;}
+  fetch(API,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({action:"RESET_SHIFT",id,token:TOK,pass:MP})})
+    .then(r=>r.json()).then(d=>{if(d&&d.success){toast("فُتح الشفت 🔓");logAudit("resetShift",`فتح شفت كابتن: ${nm}`);}else toast(d&&d.msg?d.msg:"فشل فتح الشفت","e");})
+    .catch(()=>toast("تعذّر الإرسال","e")).finally(()=>{if(el)el.disabled=false;});
+};
 window.rstDebt=function(type,id,el){
   const n=nP(id);const lM=type==="RES"?liveLed.restaurants:liveLed.drivers;
   const debt=lM?.[n]?.debt||0;
