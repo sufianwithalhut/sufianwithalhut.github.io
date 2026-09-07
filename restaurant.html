@@ -191,6 +191,47 @@
         }
 
         .hidden-section { display: none !important; }
+        /* ═══ 🚗 [V31.46] وسيلة التوصيل — مبدّل مقطعيّ ═══
+           المؤشّر يتحرّك بـinset-inline-start لا بـtranslateX: المنطقيّ يصحّ في
+           الاتجاهين بلا شرط، والفيزيائيّ ينقلب في RTL. */
+        .veh-field { margin: 10px 0 12px; }
+        .veh-head  { display:flex; align-items:center; justify-content:space-between; margin-bottom:7px; }
+        .veh-title { font-size:.82rem; font-weight:800; color:#475569; letter-spacing:.1px; }
+        .veh-once  { font-size:.68rem; font-weight:700; color:#64748b; background:#f1f5f9;
+                     border:1px solid #e2e8f0; border-radius:999px; padding:2.5px 9px; }
+
+        .veh-seg   { position:relative; display:grid; grid-template-columns:1fr 1fr; gap:0;
+                     background:#f1f5f9; border:1px solid #e2e8f0; border-radius:14px; padding:4px;
+                     box-shadow: inset 0 1px 2px rgba(15,23,42,.04); }
+        .veh-thumb { position:absolute; inset-block:4px; inset-inline-start:4px;
+                     inline-size:calc(50% - 4px); border-radius:10px; background:#fff;
+                     box-shadow:0 1px 2px rgba(15,23,42,.10), 0 3px 8px rgba(15,23,42,.06);
+                     transition: inset-inline-start .24s cubic-bezier(.4,0,.2,1), background-color .24s ease; }
+        .veh-seg.is-car .veh-thumb { inset-inline-start:50%; background:#fffbeb; }
+
+        .veh-opt   { position:relative; z-index:1; display:flex; align-items:center; justify-content:center;
+                     gap:7px; min-height:44px; padding:0 10px; border:0; background:transparent;
+                     font-family:'Cairo',sans-serif; font-size:.9rem; font-weight:800; color:#64748b;
+                     cursor:pointer; border-radius:10px; transition:color .18s ease; -webkit-tap-highlight-color:transparent; }
+        .veh-opt svg { width:19px; height:19px; flex:none; }
+        .veh-opt.is-on { color:#0f172a; }
+        #vehCar.is-on  { color:#b45309; }
+        .veh-opt:focus-visible { outline:2px solid #3b82f6; outline-offset:2px; }
+
+        .veh-tag   { font-size:.63rem; font-weight:800; color:#b45309; background:#fef3c7;
+                     border-radius:999px; padding:1.5px 6px; line-height:1.5; }
+        #vehCar.is-on .veh-tag { background:#f59e0b; color:#fff; }
+
+        .veh-quote { margin-top:8px; border-radius:11px; padding:9px 12px; font-size:.84rem;
+                     font-weight:700; line-height:1.65; font-variant-numeric:tabular-nums;
+                     background:#fffbeb; border:1px solid #fde68a; color:#92400e; }
+        .veh-quote.is-warn { background:#fef2f2; border-color:#fecaca; color:#b91c1c; }
+        .veh-quote b { font-weight:900; }
+        .veh-quote .veh-was { color:#a16207; font-weight:700; text-decoration:line-through; opacity:.75; }
+        .veh-quote.is-warn .veh-was { color:inherit; }
+
+        @media (prefers-reduced-motion: reduce) { .veh-thumb { transition:none; } }
+
 
         #loadingOverlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -1162,13 +1203,27 @@
                             </div>
                         </div>
 
-                        <!-- 🚗 [V31.42] سيارة لهذا الطلب وحده — يعود إلى الدراجة بعد الإرسال (٩٥٪ من الطلبات دراجات) -->
-                <button type="button" id="carToggle" onclick="toggleCar()" style="width:100%;margin:6px 0 10px;padding:12px 14px;border-radius:14px;border:2px dashed #94a3b8;background:#f8fafc;color:#334155;font-weight:800;font-size:.95rem;display:flex;align-items:center;justify-content:space-between;gap:8px">
-                  <span>🚗 يحتاج سيارة <small style="font-weight:600;color:#64748b">(لهذا الطلب فقط · التوصيل +٤٠٪)</small></span>
-                  <span id="carToggleState" style="background:#e2e8f0;color:#475569;border-radius:999px;padding:3px 10px;font-size:.8rem">دراجة</span>
-                </button>
-                <div id="carPriceHint" class="hidden-section" style="margin:-4px 0 10px;font-size:.85rem;color:#b45309;font-weight:700"></div>
-                <button type="submit" id="submitOrderBtn" class="magical-submit-btn">
+                        <!-- 🚗 [V31.46] وسيلة التوصيل — مبدّلٌ مقطعيّ لطلبٍ واحد. الأجرة تُقرأ رقماً من قائمة الأسعار، لا نصّاً. -->
+                        <div class="veh-field">
+                          <div class="veh-head">
+                            <span class="veh-title">وسيلة التوصيل</span>
+                            <span class="veh-once">لهذا الطلب فقط</span>
+                          </div>
+                          <div class="veh-seg" id="vehSeg" role="radiogroup" aria-label="وسيلة التوصيل">
+                            <span class="veh-thumb" id="vehThumb" aria-hidden="true"></span>
+                            <button type="button" class="veh-opt is-on" id="vehBike" role="radio" aria-checked="true" onclick="setVehicle('bike')">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18.5" cy="17.5" r="3.5"/><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="15" cy="5" r="1"/><path d="M12 17.5V14l-3-3 4-3 2 3h2"/></svg>
+                              <span>دراجة</span>
+                            </button>
+                            <button type="button" class="veh-opt" id="vehCar" role="radio" aria-checked="false" onclick="setVehicle('car')">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>
+                              <span>سيارة</span>
+                              <span class="veh-tag">+٤٠٪</span>
+                            </button>
+                          </div>
+                          <div class="veh-quote" id="vehQuote" hidden></div>
+                        </div>
+                        <button type="submit" id="submitOrderBtn" class="magical-submit-btn">
                             إرسال الطلب الآن <i data-lucide="arrow-left" size="18"></i>
                         </button>
                     </form>
@@ -3299,43 +3354,110 @@ function escapeHtml(v) {
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
-       🚗 [V31.42] طلب سيارة
+       🚗 [V31.46] وسيلة التوصيل — الأجرة رقمٌ لا نصّ
        ───────────────────────────────────────────────────────────────────────
-       المطعم يضغط «يحتاج سيارة» ثم يُرسل ⇒ الطلب يحمل vehicle:"car" ولا يذهب إلا
-       لكباتن السيارة (شارةٌ تضعها الإدارة)، وكابتن السيارة لا يصله غيره. الزرّ
-       **لطلبٍ واحد** ثم يعود إلى الدراجة. التوصيل يزيد ٤٠٪ على تسعيرة المنطقة:
-         الأجرة في التلميح «(توصيل: N)» تصير «(توصيل بسيارة: N×1.4)»
-         السريع: السعر = أجرة السيارة · اليدوي/الصورة: السعر الكلي + الفرق
-       التقريب لأقرب ٢٥٠ دينار. الخادم يخزّن vehicle وcar_extra ولا يُعيد الحساب —
-       التسعيرة ملك المطعم. */
-    const CAR_FACTOR = 1.4;
-    let carMode = false;
-    function carRound(n){ return Math.round(n / 250) * 250; }
-    window.toggleCar = function(){
-        carMode = !carMode;
-        const b = document.getElementById('carToggle'), st = document.getElementById('carToggleState'), h = document.getElementById('carPriceHint');
-        if (!b) return;
-        b.style.borderColor = carMode ? '#f59e0b' : '#94a3b8'; b.style.background = carMode ? '#fffbeb' : '#f8fafc';
-        st.textContent = carMode ? '🚗 سيارة' : 'دراجة'; st.style.background = carMode ? '#f59e0b' : '#e2e8f0'; st.style.color = carMode ? '#fff' : '#475569';
-        if (carMode) { h.classList.remove('hidden-section'); h.textContent = 'التوصيل بسيارة = تسعيرة المنطقة + ٤٠٪ — يُحسب تلقائياً عند الإرسال. يعود إلى الدراجة بعد هذا الطلب.'; }
-        else h.classList.add('hidden-section');
-        try { resTrack(carMode ? 'car_on' : 'car_off'); } catch (e) { console.warn('car track', e); }
-    };
-    function applyCar(price, area, mode) {
-        if (!carMode) return { price: price, area: area, vehicle: 'bike', extra: 0 };
-        const m = String(area || '').match(/\(توصيل:\s*([0-9.]+)\)/);
-        const base = m ? (parseFloat(m[1]) || 0) : 0;
-        const carFee = base ? carRound(base * CAR_FACTOR) : 0;
-        const extra = carFee - base;
-        let newArea = area;
-        if (m) newArea = String(area).replace(m[0], '(توصيل بسيارة: ' + carFee + ')');
-        else newArea = String(area || '') + ' (سيارة)';
-        let newPrice = price;
-        if (mode === 'quick' && base) newPrice = carFee;            /* السريع: السعر هو الأجرة */
-        else if (extra > 0) newPrice = (parseFloat(price) || 0) + extra;   /* اليدوي/الصورة: الكلي + الفرق */
-        return { price: newPrice, area: newArea, vehicle: 'car', extra: extra };
+       ما كان معطوباً في V31.42: الأجرة تُستخرج بتعبيرٍ نمطي من نصّ المنطقة
+       `(توصيل: N)` بنمط [0-9.]+ — والرقم موجودٌ أصلاً في myCustomPriceList.
+       فكل صيغةٍ لا تطابق النمط تُنتج أساساً = صفر ⇒ **زيادةُ صفر بصمت**،
+       والطلب يخرج بسعر الدراجة وعليه شارة «(سيارة)». مقيسٌ بالتنفيذ:
+         "المنصورية"              ⇒ زيادة 0
+         "المنصورية (توصيل: 3,000)" ⇒ زيادة 0   ← الفاصلة وحدها كافية
+         "الواسطي - توصيل 3000"     ⇒ زيادة 0
+       والتقريب لأقرب 250 كان يسحب النسبة بين 33.3٪ و50٪ لا 40٪.
+
+       الآن: القراءة من مصدر الرقم مباشرةً (carBase)، والتقريب **لأعلى** 250
+       فلا تنزل الزيادة تحت 40٪ أبداً. وحين تُجهل الأجرة يُرسَل الطلب بسعر
+       الدراجة **مع تحذيرٍ أحمر ظاهر** وحدثِ قياس car_no_base — فالمناطق
+       الناقصة تُعرف بالأرقام لا بالشكوى.
+       ═══════════════════════════════════════════════════════════════════════ */
+    const CAR_FACTOR = 1.4, CAR_STEP = 250;
+    let carMode = false, _vehTmr = null;
+
+    /* الأرقام العربية والفارسية والفواصل ⇒ رقمٌ يفهمه JS. لوحةٌ عربية: الكاشير
+       قد يكتب ٣٠٠٠، و\d في JS لا تطابق إلا 0-9 اللاتينية. */
+    function vehNum(x) {
+        const s = String(x == null ? '' : x)
+            .replace(/[٠-٩]/g, d => String(d.charCodeAt(0) - 0x0660))
+            .replace(/[۰-۹]/g, d => String(d.charCodeAt(0) - 0x06F0))
+            .replace(/[^\d.]/g, '');
+        const n = parseFloat(s);
+        return isFinite(n) && n > 0 ? n : 0;
     }
-    function resetCar() { if (carMode) window.toggleCar(); }   /* toggleCar تقلب carMode إلى false وتُعيد الواجهة */
+
+    /* أجرة المنطقة الأساسية — من مصدرها الرقميّ، بلا تعبيرٍ نمطي على نصّ. */
+    function carBase() {
+        try {
+            const a = (document.getElementById('customerArea') || {}).value || '';
+            if (a && a !== 'أخرى' && myCustomPriceList && myCustomPriceList[a] != null) {
+                const n = vehNum(myCustomPriceList[a]);
+                if (n) return n;
+            }
+            return vehNum((document.getElementById('customAreaPrice') || {}).value);
+        } catch (e) { return 0; }
+    }
+
+    /* ٤٠٪ ثمّ تقريبٌ **لأعلى** لأقرب ٢٥٠ — الزيادة لا تنزل تحت ٤٠٪ أبداً. */
+    function carFeeFor(base) { return base > 0 ? Math.ceil(base * CAR_FACTOR / CAR_STEP) * CAR_STEP : 0; }
+
+    function vehFmt(n) { try { return Number(n).toLocaleString('en-US'); } catch (e) { return String(n); } }
+
+    window.setVehicle = function (v) {
+        const want = (v === 'car');
+        if (want === carMode) { paintVehicle(); return; }
+        carMode = want;
+        paintVehicle();
+        try { resTrack(carMode ? 'car_on' : 'car_off'); } catch (e) { }
+        /* المنطقة تُكتب في حقلٍ مخفيّ من أربعة مواضع لا تُطلق حدثاً. فبدل ربط
+           كلٍّ منها، نُنعش السطر ما دام وضع السيارة قائماً — ويتوقّف بإطفائه. */
+        if (_vehTmr) { clearInterval(_vehTmr); _vehTmr = null; }
+        if (carMode) _vehTmr = setInterval(paintVehicle, 600);
+    };
+
+    function paintVehicle() {
+        const seg = document.getElementById('vehSeg'), q = document.getElementById('vehQuote'),
+              cB = document.getElementById('vehBike'), cC = document.getElementById('vehCar');
+        if (!seg || !q || !cB || !cC) return;
+        seg.classList.toggle('is-car', carMode);
+        cB.classList.toggle('is-on', !carMode); cB.setAttribute('aria-checked', String(!carMode));
+        cC.classList.toggle('is-on', carMode);  cC.setAttribute('aria-checked', String(carMode));
+
+        if (!carMode) { q.hidden = true; q.classList.remove('is-warn'); q.innerHTML = ''; return; }
+        const base = carBase(), fee = carFeeFor(base);
+        q.hidden = false;
+        if (!base) {
+            q.classList.add('is-warn');
+            q.innerHTML = '⚠️ <b>أجرة هذه المنطقة غير معروفة</b> — سيُرسَل الطلب بسعر الدراجة بلا زيادة. اكتب الأجرة لتُحسب تلقائياً.';
+            return;
+        }
+        q.classList.remove('is-warn');
+        q.innerHTML = 'التوصيل بسيارة <b>' + vehFmt(fee) + ' د.ع</b> '
+                    + '<span class="veh-was">' + vehFmt(base) + '</span> '
+                    + '(+' + vehFmt(fee - base) + ')';
+    }
+
+    function applyCar(price, area, mode) {
+        if (!carMode) return { price: price, area: area, vehicle: 'bike', extra: 0, base: 0, fee: 0, unknown: false };
+        const base = carBase(), fee = carFeeFor(base), extra = fee > base ? fee - base : 0;
+        let newArea;
+        if (base > 0) {
+            /* [^)]* لا [0-9.]+ — فالفاصلة والمسافة لا تكسران الاستبدال. */
+            const m = String(area || '').match(/\(توصيل:\s*[^)]*\)/);
+            newArea = m ? String(area).replace(m[0], '(توصيل بسيارة: ' + fee + ')')
+                        : (String(area || '') + ' (توصيل بسيارة: ' + fee + ')');
+        } else {
+            newArea = String(area || '') + ' (سيارة — بلا زيادة: الأجرة غير معروفة)';
+            try { resTrack('car_no_base', { reason: String((document.getElementById('customerArea') || {}).value || '?').slice(0, 40) }); } catch (e) { }
+        }
+        let newPrice = price;
+        if (mode === 'quick' && base > 0) newPrice = fee;
+        else if (extra > 0) newPrice = (vehNum(price) || 0) + extra;
+        return { price: newPrice, area: newArea, vehicle: 'car', extra: extra, base: base, fee: fee, unknown: base <= 0 };
+    }
+
+    function resetCar() {
+        if (_vehTmr) { clearInterval(_vehTmr); _vehTmr = null; }
+        if (carMode) { carMode = false; paintVehicle(); try { resTrack('car_off'); } catch (e) { } }
+    }
 
     async function finalizeOrderPlacement(details, imageUrl, price, area, btn, originalBtnHtml) {
         try {
