@@ -78,7 +78,7 @@
            ولا reload — **إلى الأبد**. أي تحديث يُنشر لا يصل كاشيراً واحداً.
            ⚠️ ارفعه مع كل تسليم. وهذه القاعدة مكتوبة في DEPLOY.md:162
            وكانت منتهكة في التسليم الذي كتبها. */
-        const CURRENT_APP_VERSION = "42.3.Sufyan-Glance";
+        const CURRENT_APP_VERSION = "42.5.Sufyan-Car";
         const RES_VERSION_KEY = 'hut_res_app_version';
         /* ═══════════════════════════════════════════════════════════════════
            🔴 [إصلاح عاجل] كان: caches.delete() و r.update() **وعدان غير
@@ -1162,7 +1162,13 @@
                             </div>
                         </div>
 
-                        <button type="submit" id="submitOrderBtn" class="magical-submit-btn">
+                        <!-- 🚗 [V31.42] سيارة لهذا الطلب وحده — يعود إلى الدراجة بعد الإرسال (٩٥٪ من الطلبات دراجات) -->
+                <button type="button" id="carToggle" onclick="toggleCar()" style="width:100%;margin:6px 0 10px;padding:12px 14px;border-radius:14px;border:2px dashed #94a3b8;background:#f8fafc;color:#334155;font-weight:800;font-size:.95rem;display:flex;align-items:center;justify-content:space-between;gap:8px">
+                  <span>🚗 يحتاج سيارة <small style="font-weight:600;color:#64748b">(لهذا الطلب فقط · التوصيل +٤٠٪)</small></span>
+                  <span id="carToggleState" style="background:#e2e8f0;color:#475569;border-radius:999px;padding:3px 10px;font-size:.8rem">دراجة</span>
+                </button>
+                <div id="carPriceHint" class="hidden-section" style="margin:-4px 0 10px;font-size:.85rem;color:#b45309;font-weight:700"></div>
+                <button type="submit" id="submitOrderBtn" class="magical-submit-btn">
                             إرسال الطلب الآن <i data-lucide="arrow-left" size="18"></i>
                         </button>
                     </form>
@@ -1484,6 +1490,37 @@
        قائمة الأسعار والإحداثيات المحدثة من استجابة checkRes —
        🔧[خ١] هذا يعوّض getGlobalData الملغاة (صارت بوابة إدارية).
     ════════════════════════════════════════════════════════════ */
+    /* ═══════════════════════════════════════════════════════════════════════
+       🔑 [V31.35] الصنف نفسه الذي أصاب الكابتن (V31.32): btoa ترفض غير Latin-1 ⇒
+       كلمة مرورٍ عربية تُقبل عند الخادم و**تُفشل حفظ الجلسة كلّها** هنا (btoa داخل
+       كائن الجلسة ⇒ استثناء ⇒ لا setItem) ⇒ المطعم يُطلب دخوله كل مرّة، أو يبقى
+       بلا مفتاحٍ فلا شفاء. الآن UTF-8 ⇒ base64، والقديم (ASCII) يُقرأ كما هو. */
+    function encPass_(p){ return btoa(unescape(encodeURIComponent(String(p)))); }
+    function decPass_(v){ if(!v) return ''; try{ return decodeURIComponent(escape(atob(v))); }catch(e){ try{ return atob(v); }catch(_){ return ''; } } }
+    /* ═══════════════════════════════════════════════════════════════════════
+       🧟 [V31.35] مطعمٌ ميّت المصادقة: NEW_ORDER عبر GAS يعمل بلا فايربيس، وقائمة
+       الطلبات تموت بلا فايربيس ⇒ «أنشئ طلباتٍ ولا أراها». كان مستمع الطلبات عند
+       الرفض ينادي requireCloudAuth — التي تعود true إن كان currentUser موجوداً ولو
+       كان توكنه ميّتاً ⇒ حلقةُ رفضٍ بلا شفاء وبلا رسالة. الآن: ثلاثة رفوضٍ متتالية ⇒
+       إعادة دخولٍ قسريّة (signOut ثم الرمز الجديد)؛ فإن فشلت ⇒ تُمسح الجلسة الميّتة
+       وتظهر شاشة الدخول والرقم مكتوب — كما يفعل تطبيق الكابتن منذ V31.24. */
+    let _resDeny = 0;
+    window.onResReadDenied = async function(where) {
+        _resDeny++;
+        if (_resDeny < 3) { try { await requireCloudAuth(); } catch(e) { resTrack('reauth_soft_fail', { reason: String(e && e.message || e).slice(0, 60) }); } return; }
+        const s = localStorage.getItem('hut_res_session');
+        let sess = null; try { sess = s ? JSON.parse(s) : null; } catch(e) { sess = null; resTrack('session_parse_fail'); }
+        let ok = false;
+        if (sess && sess.phone && sess.password) {
+            try { await signOut(auth); } catch(e) { resTrack('signout_fail'); }
+            try { ok = await ensureResAuth(sess.phone, decPass_(sess.password)); } catch(e) { ok = false; resTrack('reauth_hard_fail', { reason: String(e && e.message || e).slice(0, 60) }); }
+        }
+        if (ok) { _resDeny = 0; return; }
+        try { localStorage.setItem('hut_res_phone', sess && sess.phone ? String(sess.phone) : ''); } catch(e) { resTrack('phone_keep_fail'); }
+        try { localStorage.removeItem('hut_res_session'); } catch(e) { resTrack('session_clear_fail'); }
+        alert('🔑 انتهت جلسة هذا الجهاز مع الخادم — طلباتك تُنشأ لكنها لا تظهر.\n\nسجّل الدخول مرّةً واحدة. لا حاجة لحذف التطبيق.');
+        location.reload();
+    };
     window.ensureResAuth = async function(phone, pass) {
         if (!phone || !pass) return false;
         const p = normalizeSystemPhone(phone);
@@ -1635,9 +1672,23 @@
             if (!ph || !auth.currentUser) return;
             const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
             const rec = { ev: String(ev).slice(0, 40), ts: new Date().toISOString() };
-            if (meta && meta.orderId) rec.oid = String(meta.orderId).slice(0, 80);
-            if (meta && meta.reason)  rec.why = String(meta.reason).slice(0, 60);
-            set(ref(db, `client_events/${ph}/${id}`), rec).catch(() => {});
+            if (meta) {
+            /*@schema:copy@*/ /* مولَّدٌ من tools/events.schema.json — لا تُعدَّل يدوياً */
+            if((meta.orderId??meta.oid)!=null) rec.oid=String((meta.orderId??meta.oid)).slice(0,80);
+            if((meta.command??meta.cmd)!=null) rec.cmd=String((meta.command??meta.cmd)).slice(0,24);
+            if(meta.ms!=null) rec.ms=Number(meta.ms)||0;
+            if((meta.reason??meta.why)) rec.why=String((meta.reason??meta.why)).slice(0,60);
+            { const _x=[]; for(const k of ["epoch","now","uid","phone","match","st","code","n"]){ if(meta[k]!==undefined) _x.push(k+'='+String(meta[k]).slice(0,24)); }
+              if(_x.length) rec.why=String((rec.why?rec.why+' ':'')+_x.join(' ')).slice(0,60); }
+            if(meta.want!==undefined) rec.want=meta.want?1:0;
+            if(meta.odAge!=null) rec.odAge=Number(meta.odAge)||0;
+            if(meta.ackAge!=null) rec.ackAge=Number(meta.ackAge)||0;
+            if(meta.ln!=null) rec.ln=Number(meta.ln)||0;
+            if(meta.ver!=null) rec.ver=String(meta.ver).slice(0,40);
+            /*@/schema:copy@*/
+            }
+            const u = {}; u[`client_events/${ph}/${id}`] = rec; u[`client_events_meta/${ph}/last`] = Date.now();   /* [V31.37] حدّ المعدّل */
+            update(ref(db), u).catch(() => {});
         } catch (e) {}
     }
 
@@ -1688,7 +1739,7 @@
         if (s) {
             try {
                 const sess = JSON.parse(s);
-                if (sess.phone && sess.password) await ensureResAuth(sess.phone, atob(sess.password));
+                if (sess.phone && sess.password) await ensureResAuth(sess.phone, decPass_(sess.password));
             } catch (e) {}
         }
         return !!auth.currentUser;
@@ -1701,7 +1752,7 @@
             if (s) {
                 try {
                     const sess = JSON.parse(s);
-                    if (sess.phone && sess.password) ensureResAuth(sess.phone, atob(sess.password));
+                    if (sess.phone && sess.password) ensureResAuth(sess.phone, decPass_(sess.password));
                 } catch (e) {}
             }
         }
@@ -2181,21 +2232,21 @@
             try {
                 const session = JSON.parse(sessionStr);
                 if (session.password) {
-                    document.getElementById('checkPassword').value = atob(session.password);
+                    document.getElementById('checkPassword').value = decPass_(session.password);
                 }
                 if ((Date.now() - session.timestamp) < 24 * 3600000) {
                     document.getElementById('checkPhone').value = session.phone.startsWith('0') ? session.phone : '0' + session.phone;
                     currentResName = session.name;
                     regPhone = session.phone;
                     if (session.lat && session.lng) { regLat = parseFloat(session.lat); regLng = parseFloat(session.lng); }
-                    if (session.password) { ensureResAuth(session.phone, atob(session.password)); }
+                    if (session.password) { ensureResAuth(session.phone, decPass_(session.password)); }
                     enterDashboard(); return true;
                 }
             } catch(e) {}
         } else if (pendingStr) {
             document.getElementById('checkPhone').value = pendingStr;
             const pendingPass = localStorage.getItem('hut_res_pending_pass');
-            if (pendingPass) document.getElementById('checkPassword').value = atob(pendingPass);
+            if (pendingPass) document.getElementById('checkPassword').value = decPass_(pendingPass);
             showWaitingRoom(); return true;
         }
         return false;
@@ -2415,7 +2466,7 @@
             window.showLoading(false);
             localStorage.setItem('hut_res_phone', phone);
             localStorage.setItem('hut_res_pending', phone);
-            localStorage.setItem('hut_res_pending_pass', btoa(password));
+            localStorage.setItem('hut_res_pending_pass', encPass_(password));
             // 📍 نحفظ إحداثيات التسجيل محلياً فوراً — تُستعمل للطلبات إلى أن
             //    يؤكدها السيرفر عبر استجابة checkRes.
             try {
@@ -2456,7 +2507,7 @@
         let pass  = document.getElementById('checkPassword').value.trim();
         if (!pass) {
             const savedPass = localStorage.getItem('hut_res_pending_pass');
-            if (savedPass) pass = atob(savedPass);
+            if (savedPass) pass = decPass_(savedPass);
         }
 
         fetch(`${API_URL}?action=checkRes&phone=${phone}&password=${encodeURIComponent(pass)}&token=${API_TOKEN}`)
@@ -2481,7 +2532,7 @@
                         phone, name: data.name, payType: data.payType || 'المطعم يدفع',
                         comm: commRaw, 
                         timestamp: Date.now(),
-                        password: btoa(pass),
+                        password: encPass_(pass),
                         lat: regLat, lng: regLng
                     }));
                     applyServerProfile(data, phone);
@@ -2539,14 +2590,14 @@
                 phone, name: data.name, payType: data.payType || 'المطعم يدفع',
                 comm: commRaw,
                 timestamp: Date.now(),
-                password: btoa(passAttempt)
+                password: encPass_(passAttempt)
             }));
             applyServerProfile(data, phone);
             enterDashboard();
         } else if (data.status === "pending" || data.status === "waiting") {
             localStorage.setItem('hut_res_phone', phone); 
             localStorage.setItem('hut_res_pending', phone);
-            localStorage.setItem('hut_res_pending_pass', btoa(passAttempt));
+            localStorage.setItem('hut_res_pending_pass', encPass_(passAttempt));
             showWaitingRoom();
         } else if (data.status === "banned") {
             alert("⚠️ الحساب محظور."); localStorage.clear(); sessionStorage.clear();
@@ -2751,8 +2802,8 @@
             rebuildOrderLists();
         }, (err) => {
             console.error("❌ مستمع الطلبات رُفض:", err && err.message);
-            // غالباً: المصادقة لم تكتمل بعد → نعيد المصادقة ثم يُعاد الاتصال تلقائياً
-            requireCloudAuth();
+            resTrack('orders_read_denied', { reason: String(err && (err.code || err.message) || '').slice(0, 60) });
+            onResReadDenied('orders');   /* [V31.35] ثلاثة رفوض ⇒ إعادة دخولٍ قسريّة ⇒ وإلا شاشة الدخول */
         });
 
         onValue(ref(db, `ledgers/restaurants/${myPhone}`), (snapshot) => {
@@ -3247,9 +3298,49 @@ function escapeHtml(v) {
         }
     }
 
+    /* ═══════════════════════════════════════════════════════════════════════
+       🚗 [V31.42] طلب سيارة
+       ───────────────────────────────────────────────────────────────────────
+       المطعم يضغط «يحتاج سيارة» ثم يُرسل ⇒ الطلب يحمل vehicle:"car" ولا يذهب إلا
+       لكباتن السيارة (شارةٌ تضعها الإدارة)، وكابتن السيارة لا يصله غيره. الزرّ
+       **لطلبٍ واحد** ثم يعود إلى الدراجة. التوصيل يزيد ٤٠٪ على تسعيرة المنطقة:
+         الأجرة في التلميح «(توصيل: N)» تصير «(توصيل بسيارة: N×1.4)»
+         السريع: السعر = أجرة السيارة · اليدوي/الصورة: السعر الكلي + الفرق
+       التقريب لأقرب ٢٥٠ دينار. الخادم يخزّن vehicle وcar_extra ولا يُعيد الحساب —
+       التسعيرة ملك المطعم. */
+    const CAR_FACTOR = 1.4;
+    let carMode = false;
+    function carRound(n){ return Math.round(n / 250) * 250; }
+    window.toggleCar = function(){
+        carMode = !carMode;
+        const b = document.getElementById('carToggle'), st = document.getElementById('carToggleState'), h = document.getElementById('carPriceHint');
+        if (!b) return;
+        b.style.borderColor = carMode ? '#f59e0b' : '#94a3b8'; b.style.background = carMode ? '#fffbeb' : '#f8fafc';
+        st.textContent = carMode ? '🚗 سيارة' : 'دراجة'; st.style.background = carMode ? '#f59e0b' : '#e2e8f0'; st.style.color = carMode ? '#fff' : '#475569';
+        if (carMode) { h.classList.remove('hidden-section'); h.textContent = 'التوصيل بسيارة = تسعيرة المنطقة + ٤٠٪ — يُحسب تلقائياً عند الإرسال. يعود إلى الدراجة بعد هذا الطلب.'; }
+        else h.classList.add('hidden-section');
+        try { resTrack(carMode ? 'car_on' : 'car_off'); } catch (e) { console.warn('car track', e); }
+    };
+    function applyCar(price, area, mode) {
+        if (!carMode) return { price: price, area: area, vehicle: 'bike', extra: 0 };
+        const m = String(area || '').match(/\(توصيل:\s*([0-9.]+)\)/);
+        const base = m ? (parseFloat(m[1]) || 0) : 0;
+        const carFee = base ? carRound(base * CAR_FACTOR) : 0;
+        const extra = carFee - base;
+        let newArea = area;
+        if (m) newArea = String(area).replace(m[0], '(توصيل بسيارة: ' + carFee + ')');
+        else newArea = String(area || '') + ' (سيارة)';
+        let newPrice = price;
+        if (mode === 'quick' && base) newPrice = carFee;            /* السريع: السعر هو الأجرة */
+        else if (extra > 0) newPrice = (parseFloat(price) || 0) + extra;   /* اليدوي/الصورة: الكلي + الفرق */
+        return { price: newPrice, area: newArea, vehicle: 'car', extra: extra };
+    }
+    function resetCar() { if (carMode) window.toggleCar(); }   /* toggleCar تقلب carMode إلى false وتُعيد الواجهة */
+
     async function finalizeOrderPlacement(details, imageUrl, price, area, btn, originalBtnHtml) {
         try {
             await finalizeOrderPlacementSilent(details, imageUrl, price, area, currentResName);
+            resetCar();   /* [V31.42] السيارة لطلبٍ واحد */
             btn.innerHTML = originalBtnHtml; btn.disabled = false;
             showSuccessMessage(`<div style="background: var(--success); width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 8px; box-shadow: 0 4px 15px rgba(16,185,129,0.3);"><i data-lucide="check" size="24" color="white"></i></div><div class="fw-black" style="font-size: 1rem;">تم إرسال الطلب عبر خوادم الحوت بنجاح! 🚀</div>`);
         } catch (e) { 
@@ -3387,12 +3478,17 @@ function escapeHtml(v) {
            [V40] ① السيرفر أولاً. المُعرّف يولّده هو، فيسقط حقن JS من أصله،
            وcid يضمن أن إعادة الإرسال لا تُنتج توأماً.
            ═══════════════════════════════════════════════════════════════════ */
+        /* [V31.42] سيارة؟ الأجرة والتلميح والسعر قبل الإنشاء — في المسارين */
+        const _car = applyCar(price, area, currentOrderMode === 'quick' ? 'quick' : currentOrderMode);
+        price = _car.price; area = _car.area;
+        if (_car.vehicle === 'car') resTrack('create_car', { ms: _car.extra });
         if (USE_SERVER_CREATE) {
             let serverId = null, unsure = false;
             try {
                 serverId = await createOrderOnServer({
                     resPhone: normResPhone, details: details, area: area,
-                    price: price, photoUrl: imageUrl, restaurant: resName
+                    price: price, photoUrl: imageUrl, restaurant: resName,
+                    vehicle: _car.vehicle, car_extra: _car.extra
                 });
             } catch (e) {
                 /* ⚠️ [V41] SERVER_DEDUP **يجب** أن يمرّ للأعلى. لو عومل
@@ -3418,7 +3514,8 @@ function escapeHtml(v) {
             id: uniqueId, restaurant: resName, area: area, details: details, status: "pending_driver",
             driverPhone: "system_routing", price: price, timestamp: tsIso, photoUrl: imageUrl,
             last_update: tsIso, resPhone: normResPhone, resLat: regLat || 0, resLng: regLng || 0,
-            comm: safeComm, payType: safePayType, is_sovereign: false, ready_for_pickup: false
+            comm: safeComm, payType: safePayType, is_sovereign: false, ready_for_pickup: false,
+            vehicle: _car.vehicle === 'car' ? 'car' : 'bike', car_extra: _car.extra || 0
         });
         resTrack('create_legacy', { orderId: uniqueId });
 
