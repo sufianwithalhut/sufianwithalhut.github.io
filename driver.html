@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
 
 <script>
-const CURRENT_APP_VERSION = "31.63-Unblock";
+const CURRENT_APP_VERSION = "31.66-BlackBox";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -1196,7 +1196,11 @@ try {
    _fbConnSince = Date.now();
    setTimeout(function() {
     try {
-     if (c === false && drv) track("fb_disconnected");
+     if (c === false && drv) {
+      bb("disconnect", "");
+      track("fb_disconnected");
+     }
+     if (c === true && drv && drv.phone) setTimeout(bbFlush, 2500);
      if (c === true && drv && drv.phone) {
       _diagLast = 0;
       _pushDiag(drv.phone);
@@ -1252,6 +1256,38 @@ document.addEventListener("visibilitychange", function() {
  }
 });
 
+function bb(tag, meta) {
+ try {
+  const a = JSON.parse(localStorage.getItem("suf_bb") || "[]");
+  a.push({
+   t: (new Date).toISOString().slice(11, 19),
+   k: String(tag).slice(0, 24),
+   m: String(meta == null ? "" : meta).slice(0, 60)
+  });
+  while (a.length > 40) a.shift();
+  localStorage.setItem("suf_bb", JSON.stringify(a));
+ } catch (_) {}
+}
+
+function bbFlush() {
+ try {
+  const raw = localStorage.getItem("suf_bb");
+  if (!raw) return;
+  const a = JSON.parse(raw) || [];
+  if (!a.length) {
+   localStorage.removeItem("suf_bb");
+   return;
+  }
+  localStorage.removeItem("suf_bb");
+  for (let i = 0; i < a.length; i += 8) {
+   const chunk = a.slice(i, i + 8).map(x => x.t + " " + x.k + (x.m ? "=" + x.m : "")).join(" | ");
+   track("blackbox", {
+    reason: chunk.slice(0, 60)
+   });
+  }
+ } catch (_) {}
+}
+
 let _sockDown = 0, _sockStep = 0, _sockBusy = false, _probed = false, _probeNet = null;
 
 async function _sockProbe() {
@@ -1301,6 +1337,7 @@ async function _sockProbe() {
  } catch (e) {
   out.push("probe_err");
  }
+ bb("probe", out.join(" "));
  _probeNet = out.some(x => x === "tok=ok" || /^rest=\d{3}$/.test(x) || x === "net=ok");
  out.push("netjudge=" + (_probeNet ? "up" : "down"));
  track("socket_probe", {
@@ -1316,9 +1353,11 @@ async function _sockWatch() {
   if (!drv || !drv.phone) return;
   if (FB_CONNECTED !== false) {
    if (_sockStep) {
+    bb("recovered", Math.round((Date.now() - _sockDown) / 1e3) + "s");
     track("socket_recovered", {
      ms: Date.now() - _sockDown
     });
+    bbFlush();
    }
    _sockDown = 0;
    _sockStep = 0;
@@ -1342,6 +1381,7 @@ async function _sockWatch() {
   if (secs >= 45 && _sockStep === 0) {
    _sockStep = 1;
    _sockBusy = true;
+   bb("rewire", Math.round(secs) + "s");
    track("socket_silent", {
     ms: Math.round(secs),
     reason: "reconnect"
@@ -1359,6 +1399,7 @@ async function _sockWatch() {
    }
   } else if (secs >= 90 && _sockStep === 1) {
    _sockStep = 2;
+   bb("reload", Math.round(secs) + "s");
    track("socket_silent", {
     ms: Math.round(secs),
     reason: "reload"
@@ -1382,6 +1423,7 @@ async function _sockWatch() {
    }
   } else if (secs >= 240 && _sockStep === 3) {
    _sockStep = 4;
+   bb("banner", Math.round(secs) + "s");
    track("socket_silent", {
     ms: Math.round(secs),
     reason: "banner"
@@ -2639,6 +2681,7 @@ function onLogin(d, phone, pass) {
    if (window.AndroidRadar && AndroidRadar.subscribeToDriverTopic) AndroidRadar.subscribeToDriverTopic(phone);
   } catch (e) {}
   showDash();
+  setTimeout(bbFlush, 6e3);
   document.getElementById("onlineTog").checked = false;
   toggleOnline();
   try {
@@ -3867,6 +3910,25 @@ async function _fbStatusRaw(st, waitGeo) {
     try {
      window._statusErr2 = "late_ok";
      const _lateMs = Date.now() - _wStart;
+     if (_lateMs > 25e3 && Date.now() - (window._rewireAt || 0) > 6e4) {
+      window._rewireAt = Date.now();
+      bb("stall", _lateMs + "ms");
+      track("rewire_on_stall", {
+       ms: _lateMs
+      });
+      try {
+       goOffline(db);
+       setTimeout(() => {
+        try {
+         goOnline(db);
+        } catch (_) {}
+       }, 500);
+      } catch (e) {
+       track("reconnect_fail", {
+        reason: "stall:" + String(e && e.message || e).slice(0, 28)
+       });
+      }
+     }
      if (_lateMs > _tmo * 4 || Math.random() < .01) track("write_late_ok", {
       ms: _lateMs,
       reason: st
