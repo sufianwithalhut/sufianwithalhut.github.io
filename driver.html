@@ -109,7 +109,7 @@
      الآن: رقمٌ واحد يُشتقّ منه كل شيء — الشاشة والإعدادات ومسح الكاش.
      **وأي تسليم جديد يجب أن يرفعه، وإلا لم يصل.**
      ═══════════════════════════════════════════════════════════════════════ */
-  const CURRENT_APP_VERSION = "31.45-Desired";
+  const CURRENT_APP_VERSION = "31.49-Silence";
   window.APP_VERSION = CURRENT_APP_VERSION;
   /* اطبعه في شاشة الدخول فور جهوز الصفحة — نصّاً واحداً لا نسختين. */
   document.addEventListener('DOMContentLoaded', function(){
@@ -1484,6 +1484,43 @@ try { onValue(ref(db, ".info/connected"), s => {
     if (c === true && drv && drv.phone) { _diagLast = 0; if (isOnline) _pushDiag(drv.phone); update(ref(db,`drivers_locations/${drv.phone}`),{web_disc:null}).catch(e=>track('web_disc_clear_fail')); }
   }
 }); } catch(e) { FB_CONNECTED = null; }   /* لا اشتراك ⇒ «لا نعرف» لا «مقطوع» */
+/* ═══════════════════════════════════════════════════════════════════════════
+   🔌 [V31.49] حارس المقبس — الصمت ليس شبكةً، والصمت لا يُشفى
+   ───────────────────────────────────────────────────────────────────────────
+   شهادة الميدان (فيديو ٠٨/٠٩): «الرادار يعمل» + «🔌 غير متصل بالخادم» + عدّاداتٌ
+   صفر + الزرّ أخضر — والهاتف على 4G بأربع شرطات. أي أن مقبس فايربيس **مغلق**
+   والشبكة سليمة. وكل مسارات الشفاء الخمس (healAuth · hardReauth · اللافتة ·
+   إعادة الربط · الزرّ الأحمر) معلّقةٌ على **رفضٍ من مستمع** — والمقبس المغلق لا
+   يُنتج رفضاً بل **صمتاً**: onValue لا يُطلق شيئاً، لا بيانات ولا خطأ. فيجلس
+   الكابتن ساعاتٍ بعدّاداتٍ صفر، والعلاج الوحيد حذف التطبيق (يمسح IndexedDB
+   فيُجبر دخولاً جديداً) — وهو حرفياً ما يصفه الكباتن.
+   الآن: صمتُ المقبس **حدثٌ بذاته**، وله سلّم تصعيد لا يعتمد على أيّ رفض:
+     ٤٥ ث بلا مقبس والشبكة قائمة  ⇒ healAuth   (رمزٌ جديد ⇒ RTDB يُعيد الوصل)
+     ٩٠ ث                          ⇒ hardReauth (خروجٌ ودخولٌ كامل)
+     ١٥٠ ث                         ⇒ اللافتة الحمراء + زرّ «إعادة تسجيل الدخول»
+   ويُصفَّر السلّم فور عودة المقبس. */
+let _sockDown=0, _sockStep=0, _sockBusy=false;
+async function _sockWatch(){
+  try{
+    if(!drv||!drv.phone) return;
+    if(FB_CONNECTED!==false){ if(_sockStep){ track('socket_recovered',{ms:Date.now()-_sockDown}); } _sockDown=0; _sockStep=0; return; }
+    if(navigator.onLine===false){ return; }              /* شبكةٌ مقطوعة فعلاً — ليس عطبنا */
+    if(!_sockDown) _sockDown=Date.now();
+    const secs=(Date.now()-_sockDown)/1000;
+    if(_sockBusy) return;
+    if(secs>=45 && _sockStep===0){
+      _sockStep=1; _sockBusy=true; track('socket_silent',{ms:Math.round(secs),reason:'heal'});
+      try{ await healAuth(); }finally{ _sockBusy=false; }
+    } else if(secs>=90 && _sockStep===1){
+      _sockStep=2; _sockBusy=true; track('socket_silent',{ms:Math.round(secs),reason:'hard'});
+      try{ await hardReauth(); }finally{ _sockBusy=false; }
+    } else if(secs>=150 && _sockStep===2){
+      _sockStep=3; track('socket_silent',{ms:Math.round(secs),reason:'banner'});
+      showAuthBanner(true);
+    }
+  }catch(e){ track('sock_watch_fail',{reason:String(e&&e.message||e).slice(0,50)}); }
+}
+setInterval(_sockWatch, 15000);
 function waitConnected(ms){
   return new Promise(res => {
     if (FB_CONNECTED !== false) return res(true);
@@ -1567,7 +1604,12 @@ function showLocBanner(on,msg){
 }
 function updateLinkPill(){
   const el=document.getElementById('radarD'); if(!el||!isOnline) return;
-  if(FB_CONNECTED===false){ el.innerHTML='🔌 غير متصل بالخادم'+(vpnActive()?' — أطفئ VPN':' — تحقّق من الشبكة'); el.style.color='#DC2626'; return; }
+  if(FB_CONNECTED===false){
+    /* [V31.49] الهاتف متصلٌ بالإنترنت والمقبس مغلق ⇒ العطب عندنا لا عند شبكته — لا نُرسله يفحص واي-فايه */
+    const _selfHeal = navigator.onLine!==false && !vpnActive();
+    el.innerHTML = vpnActive() ? '🔌 غير متصل بالخادم — أطفئ VPN'
+                 : (_selfHeal ? '🔌 غير متصل بالخادم — جارٍ إعادة الاتصال…' : '🔌 غير متصل بالخادم — تحقّق من الشبكة');
+    el.style.color='#DC2626'; return; }
   if(!lastAckTs){ el.innerHTML='⚠️ لم يتأكّد الاتصال بالخادم بعد'; el.style.color='#DC2626'; return; }
   const sec=Math.round((Date.now()-lastAckTs)/1000);
   if(sec<=90){ el.innerHTML='📡 متصل — آخر تأكيد قبل '+sec+' ثانية'; el.style.color=''; }
@@ -2573,7 +2615,13 @@ function checkSession(){
     if(sp)document.getElementById('pass').value=decPass_(sp);
     d.phone=nP(d.phone); /* 🔧[خ٧] جلسات قديمة قد تحمل صيغة غير مطبَّعة */
     drv=d; document.getElementById('phone').value=d.phone;
-    if(sp)fbAuth(d.phone,decPass_(sp));
+    /* 🔴 [V31.49] كان fbAuth بلا await ⇒ لوحةٌ تُفتح مهما فشلت المصادقة، وfbAuth
+       تبتلع الفشل (return {ok:false}) ولا أحد يقرؤه ⇒ عدّاداتٌ صفر بلا رسالة.
+       الآن: تُفتح اللوحة (لا نُبطئ الإقلاع)، ثم يُفحص الناتج — وفشلٌ صريح يُظهر
+       اللافتة الحمراء وزرّها بدل الصمت. */
+    if(sp) fbAuth(d.phone,decPass_(sp)).then(r=>{
+      if(!(r&&r.ok)){ track('boot_auth_fail',{reason:String((r&&r.data&&r.data.status)||'no_token').slice(0,40)}); showAuthBanner(true); }
+    }).catch(e=>{ track('boot_auth_fail',{reason:String(e&&e.message||e).slice(0,40)}); showAuthBanner(true); });
     showDash();
     const sv=localStorage.getItem('suf_orders');
     if(sv){active=JSON.parse(sv);active.forEach(o=>{if(!o.acceptedTime)o.acceptedTime=Date.now();});}
@@ -3239,7 +3287,7 @@ window.toggleOnline=async function(){
       if(issues.length){
         track('preflight',{reason:issues.join(',')});
         const msg={
-          net  :'🔌 لا اتصال بالخادم الآن — تحقّق من الشبكة؛ سيُرسَل تفعيلك فور عودته',
+          net  :'🔌 لا اتصال بالخادم الآن — جارٍ إعادة الاتصال تلقائياً؛ سيُرسَل تفعيلك فور عودته',
           vpn  :'🔌 لا اتصال بالخادم وVPN مفعّل — أطفئ VPN ثم أعد المحاولة',
           auth :'🔑 الاتصال الآمن غير مؤكَّد — سجّل خروجاً ودخولاً إن لم تصلك طلبات',
           skew :'🕐 ساعة جهازك تختلف عن الخادم '+Math.round(Math.abs(SRV_OFFSET)/1000)+' ث — فعّل «الوقت التلقائي» وإلا قد لا ترى البطاقات',
