@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
 
 <script>
-const CURRENT_APP_VERSION = "31.58-Windows";
+const CURRENT_APP_VERSION = "31.59-DontBreak";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -1237,7 +1237,7 @@ document.addEventListener("visibilitychange", function() {
  }
 });
 
-let _sockDown = 0, _sockStep = 0, _sockBusy = false, _probed = false;
+let _sockDown = 0, _sockStep = 0, _sockBusy = false, _probed = false, _probeNet = null;
 
 async function _sockProbe() {
  const out = [];
@@ -1280,8 +1280,10 @@ async function _sockProbe() {
    });
    clearTimeout(t2);
    out.push("net=ok");
+   _probeNet = true;
   } catch (e) {
    out.push("net=" + String(e && (e.name || e.message) || e).replace(/\s+/g, "_").slice(0, 18));
+   _probeNet = false;
   }
  } catch (e) {
   out.push("probe_err");
@@ -1306,6 +1308,7 @@ async function _sockWatch() {
    _sockDown = 0;
    _sockStep = 0;
    _probed = false;
+   _probeNet = null;
    return;
   }
   if (navigator.onLine === false) {
@@ -1316,7 +1319,10 @@ async function _sockWatch() {
   if (_sockBusy) return;
   if (secs >= 45 && !_probed) {
    _probed = true;
-   _sockProbe();
+   await _sockProbe();
+  }
+  if (secs >= 45 && _probeNet !== true) {
+   return;
   }
   if (secs >= 45 && _sockStep === 0) {
    _sockStep = 1;
@@ -2192,17 +2198,57 @@ async function hardReauth() {
    track("hard_reauth_nopass");
    return false;
   }
-  try {
-   await withTimeout(signOut(auth), 5e3, "signout");
-  } catch (e) {
-   track("fail_reauth_signout", {
-    reason: String(e && e.message || e).slice(0, 60)
+  if (navigator.onLine === false) {
+   track("hard_reauth_skipped", {
+    reason: "offline"
    });
+   return false;
   }
-  const r = await fbAuth(drv.phone, decPass_(sp));
-  const ok = !!(r && r.ok);
-  track(ok ? "hard_reauth_ok" : "hard_reauth_fail");
-  return ok;
+  try {
+   const c = new AbortController;
+   const t = setTimeout(() => c.abort(), 5e3);
+   await fetch("https://www.gstatic.com/generate_204", {
+    signal: c.signal,
+    mode: "no-cors"
+   });
+   clearTimeout(t);
+  } catch (e) {
+   track("hard_reauth_skipped", {
+    reason: "no_net"
+   });
+   return false;
+  }
+  try {
+   const pre = await checkDriverReq(drv.phone, decPass_(sp), false);
+   if (!(pre && pre.firebase_token)) {
+    track("hard_reauth_skipped", {
+     reason: "no_token"
+    });
+    return false;
+   }
+   try {
+    await withTimeout(signOut(auth), 5e3, "signout");
+   } catch (e) {
+    track("fail_reauth_signout", {
+     reason: String(e && e.message || e).slice(0, 40)
+    });
+   }
+   await signInWithCustomToken(auth, pre.firebase_token);
+   if (pre.session_token) {
+    try {
+     localStorage.setItem("suf_stoken", String(pre.session_token));
+    } catch (_) {
+     track("stoken_store_fail");
+    }
+   }
+   track("hard_reauth_ok");
+   return true;
+  } catch (e) {
+   track("hard_reauth_pre_fail", {
+    reason: String(e && (e.code || e.message) || e).slice(0, 40)
+   });
+   return false;
+  }
  } catch (e) {
   return false;
  } finally {
