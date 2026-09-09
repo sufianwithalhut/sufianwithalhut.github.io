@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
 
 <script>
-const CURRENT_APP_VERSION = "31.70-NoOverride";
+const CURRENT_APP_VERSION = "31.71-NativeAll";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -1290,6 +1290,14 @@ function bbFlush() {
 
 let NATIVE_SOCKET = false, _nativeSeenAt = 0;
 
+function nativeUp() {
+ try {
+  return !!(window.AndroidRadar && AndroidRadar.nativeSocketUp && AndroidRadar.nativeSocketUp());
+ } catch (e) {
+  return false;
+ }
+}
+
 window.onNativeOffer = function(o) {
  try {
   if (!o || typeof o !== "object") return;
@@ -1298,6 +1306,23 @@ window.onNativeOffer = function(o) {
    track("native_socket_state", {
     reason: o.up ? "up" : "down"
    });
+   return;
+  }
+  if (o.type === "accept_result") {
+   track(o.ok ? "accept_ok_native" : "accept_rejected_native", {
+    oid: o.id,
+    reason: String(o.why || "").slice(0, 20)
+   });
+   const b1 = document.getElementById("btnAccept");
+   if (o.ok) {
+    if (typeof refreshOrdersNow === "function") refreshOrdersNow();
+   } else {
+    if (b1) {
+     b1.innerHTML = "قبول الطلب";
+     b1.disabled = false;
+    }
+    toast(o.why === "taken" ? "⏱️ سبقك كابتنٌ آخر — الطلب لم يعد متاحاً." : "⚠️ تعذّر التأكيد — حاول ثانية.", "warn");
+   }
    return;
   }
   if (o.type === "gone") {
@@ -3292,6 +3317,18 @@ const EFF_TXT = {
 function setDesired(online, by) {
  if (!drv || !drv.phone) return;
  try {
+  if (NATIVE_SOCKET && nativeUp()) {
+   try {
+    AndroidRadar.nativeSetDesired(!!online, by || "captain");
+    _lastDesired = !!online;
+    track("desired_via_native", {
+     reason: online ? "on" : "off"
+    });
+    return;
+   } catch (e) {
+    track("desired_native_fail");
+   }
+  }
   const rec = {
    online: !!online,
    at: new Date(srvNow()).toISOString(),
@@ -5025,6 +5062,25 @@ window.acceptOrder = async function() {
   stopAlarm();
   curOrder = null;
   return;
+ }
+ if (NATIVE_SOCKET && nativeUp()) {
+  try {
+   const _id = curOrder && curOrder.id;
+   track("accept_via_native", {
+    oid: _id
+   });
+   AndroidRadar.nativeAccept(String(_id));
+   const b0 = document.getElementById("btnAccept");
+   if (b0) {
+    b0.innerHTML = '<div class="spin" style="border-top-color:#fff;"></div> جاري التأكيد من الخادم…';
+    b0.disabled = true;
+   }
+   return;
+  } catch (e) {
+   track("accept_native_fail", {
+    reason: String(e && e.message || e).slice(0, 40)
+   });
+  }
  }
  if (FB_CONNECTED === false) {
   track("accept_blocked_offline", {
