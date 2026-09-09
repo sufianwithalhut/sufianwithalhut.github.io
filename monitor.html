@@ -162,6 +162,9 @@ code{font-family:var(--mono);font-size:12px;background:var(--field);padding:1.5p
     <div class="bar">
       <button id="btnR">تحديث</button>
       <select id="win">
+        <!-- ⏱️ [V31.58] نوافذُ قصيرة: رقعةٌ نُشرت قبل ساعات لا تُرى في متوسّط ثلاثة أيام -->
+        <option value="0.25">آخر ٦ ساعات</option>
+        <option value="1">آخر ٢٤ ساعة</option>
         <option value="7">آخر ٧ أيام</option>
         <option value="14">آخر ١٤ يوماً</option>
         <option value="3">آخر ٣ أيام</option>
@@ -383,13 +386,14 @@ async function load(){
      المدى ولا تحكم عليه: عرضت «29-08 ← 04-09» ومرّ الأمر كأنه طبيعي. */
   const _spanDays = rows.length
     ? Math.round((new Date(rows[rows.length-1].ts) - new Date(rows[0].ts))/86400000) : 0;
-  const _staleKeep = _spanDays > 3;
+  const _staleKeep = _spanDays > 3 && (Number($('win').value)||7) > 3;   /* [V31.58] لا حكمَ على الكنس من نافذةٍ قصيرة */
   $('meta').textContent=fmt(rows.length)+' حدثاً · '+
     (rows.length?day(rows[0].ts)+' ← '+day(rows[rows.length-1].ts):'لا بيانات')+
     ' · المصدر: '+(SRV.ok?'السجلّ السيرفري ✓':'المرآة فقط ⚠')+
     (_staleKeep?'  ⚠ '+_spanDays+' يوماً محفوظة والمصمَّم ٣ — الكنس لا يعمل':'');
   window.__staleKeep = _staleKeep;
   window.__spanDays  = _spanDays;
+  window.__spanFrac  = Math.max(0.05, Number($('win').value)||1);   /* [V31.58] المدى المطلوب بأجزاء اليوم */
 
   renderGates(rows,C,byDay,SRV);
   renderEvidence(rows,C,SRV);
@@ -807,7 +811,8 @@ function renderEvidence(rows,C,SRV){
   if(!evK.length) h+='<p class="empty">لا أحداث في النطاق.</p>';
   else{
     h+='<table><tr><th>الحدث</th><th>العدد</th><th>النسبة</th><th>لكل يوم</th><th>أعلى جهاز</th></tr>';
-    const dv=Math.max(1, window.__spanDays||1);
+    /* [V31.58] نافذةٌ أقصر من يوم: القسمة على ١ تكذب. نقسم على المدى الفعليّ بأجزاء اليوم. */
+    const dv=Math.max(0.05, Number(window.__spanFrac)||Number(window.__spanDays)||1);
     /* esc: r.ev نصٌّ يكتبه العميل — نفس سِنك الحقن المعالَج في V28. */
     let flagged=0;
     evK.slice(0,40).forEach(k=>{
