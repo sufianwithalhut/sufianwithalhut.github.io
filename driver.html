@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
 
 <script>
-const CURRENT_APP_VERSION = "31.56-Reach";
+const CURRENT_APP_VERSION = "31.57-Probe";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -1237,7 +1237,62 @@ document.addEventListener("visibilitychange", function() {
  }
 });
 
-let _sockDown = 0, _sockStep = 0, _sockBusy = false;
+let _sockDown = 0, _sockStep = 0, _sockBusy = false, _probed = false;
+
+async function _sockProbe() {
+ const out = [];
+ try {
+  let idTok = null;
+  try {
+   if (auth.currentUser) {
+    idTok = await Promise.race([ auth.currentUser.getIdToken(true), new Promise((_, r) => setTimeout(() => r(new Error("tok_timeout")), 8e3)) ]);
+    out.push("tok=ok");
+   } else out.push("tok=nouser");
+  } catch (e) {
+   out.push("tok=" + String(e && (e.code || e.message) || e).replace(/\s+/g, "_").slice(0, 26));
+  }
+  try {
+   const u = DB_REST + "/.json?shallow=true" + (idTok ? "&auth=" + encodeURIComponent(idTok) : "");
+   const c = new AbortController;
+   const t = setTimeout(() => c.abort(), 8e3);
+   const r = await fetch(u, {
+    signal: c.signal
+   });
+   clearTimeout(t);
+   out.push("rest=" + r.status);
+   const d = r.headers.get("date");
+   if (d) {
+    out.push("skew=" + Math.round((Date.parse(d) - Date.now()) / 1e3) + "s");
+   }
+   if (!r.ok) {
+    const b = await r.text();
+    out.push("b=" + String(b).replace(/\s+/g, "_").slice(0, 26));
+   }
+  } catch (e) {
+   out.push("rest=" + String(e && (e.name || e.message) || e).replace(/\s+/g, "_").slice(0, 22));
+  }
+  try {
+   const c2 = new AbortController;
+   const t2 = setTimeout(() => c2.abort(), 6e3);
+   await fetch("https://www.gstatic.com/generate_204", {
+    signal: c2.signal,
+    mode: "no-cors"
+   });
+   clearTimeout(t2);
+   out.push("net=ok");
+  } catch (e) {
+   out.push("net=" + String(e && (e.name || e.message) || e).replace(/\s+/g, "_").slice(0, 18));
+  }
+ } catch (e) {
+  out.push("probe_err");
+ }
+ track("socket_probe", {
+  reason: out.join(" ").slice(0, 60)
+ });
+ try {
+  window._statusErr2 = "probe:" + out.join(" ");
+ } catch (_) {}
+}
 
 async function _sockWatch() {
  try {
@@ -1250,6 +1305,7 @@ async function _sockWatch() {
    }
    _sockDown = 0;
    _sockStep = 0;
+   _probed = false;
    return;
   }
   if (navigator.onLine === false) {
@@ -1258,6 +1314,10 @@ async function _sockWatch() {
   if (!_sockDown) _sockDown = Date.now();
   const secs = (Date.now() - _sockDown) / 1e3;
   if (_sockBusy) return;
+  if (secs >= 45 && !_probed) {
+   _probed = true;
+   _sockProbe();
+  }
   if (secs >= 45 && _sockStep === 0) {
    _sockStep = 1;
    _sockBusy = true;
