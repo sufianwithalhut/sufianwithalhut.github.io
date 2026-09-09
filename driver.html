@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
 
 <script>
-const CURRENT_APP_VERSION = "31.66-BlackBox";
+const CURRENT_APP_VERSION = "31.67-RestWrite";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -3888,8 +3888,58 @@ async function _fbStatusRaw(st, waitGeo) {
     window._healOk = 0;
    } else {
     try {
-     window._statusErr2 = "retry_direct";
+     window._statusErr2 = "retry_rest";
     } catch (_) {}
+    let restOk = false;
+    try {
+     const tok = auth.currentUser ? await auth.currentUser.getIdToken() : "";
+     const body = {};
+     Object.keys(u).forEach(k => {
+      body[k.replace("drivers_locations/" + p + "/", "")] = u[k];
+     });
+     const c = new AbortController;
+     const t = setTimeout(() => c.abort(), 9e3);
+     const r = await fetch(DB_REST + "/drivers_locations/" + encodeURIComponent(p) + ".json" + (tok ? "?auth=" + encodeURIComponent(tok) : ""), {
+      method: "PATCH",
+      signal: c.signal,
+      headers: {
+       "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body)
+     });
+     clearTimeout(t);
+     restOk = r.ok;
+     if (!r.ok) {
+      try {
+       window._statusErr2 = "retry_rest_" + r.status;
+      } catch (_) {}
+     }
+    } catch (e3) {
+     try {
+      window._statusErr2 = "retry_rest_" + String(e3 && (e3.name || e3.message) || "").slice(0, 16);
+     } catch (_) {}
+    }
+    if (restOk) {
+     lastAckTs = Date.now();
+     window._statusErr = "";
+     updateLinkPill();
+     track("write_via_rest", {
+      reason: st
+     });
+     bb("rest_write", "ok");
+     if (Date.now() - (window._rewireAt || 0) > 6e4) {
+      window._rewireAt = Date.now();
+      try {
+       goOffline(db);
+       setTimeout(() => {
+        try {
+         goOnline(db);
+        } catch (_) {}
+       }, 500);
+      } catch (_) {}
+     }
+     return true;
+    }
     await withTimeout(update(ref(db), u), _tmo, "write_timeout");
     lastAckTs = Date.now();
     window._statusErr = "";
