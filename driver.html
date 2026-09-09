@@ -109,7 +109,7 @@
      الآن: رقمٌ واحد يُشتقّ منه كل شيء — الشاشة والإعدادات ومسح الكاش.
      **وأي تسليم جديد يجب أن يرفعه، وإلا لم يصل.**
      ═══════════════════════════════════════════════════════════════════════ */
-  const CURRENT_APP_VERSION = "31.49-Silence";
+  const CURRENT_APP_VERSION = "31.55-Flap";
   window.APP_VERSION = CURRENT_APP_VERSION;
   /* اطبعه في شاشة الدخول فور جهوز الصفحة — نصّاً واحداً لا نسختين. */
   document.addEventListener('DOMContentLoaded', function(){
@@ -1479,9 +1479,18 @@ try { onValue(ref(db, ".info/connected"), s => {
   const c = s.val() === true;
   if (c !== FB_CONNECTED) {
     FB_CONNECTED = c; _fbConnSince = Date.now();
-    if (c === false && drv) track('fb_disconnected');
-    /* [V31.35] عاد المقبس ⇒ web_at فوراً وweb_disc يُمحى — لا انتظار للخنق */
-    if (c === true && drv && drv.phone) { _diagLast = 0; if (isOnline) _pushDiag(drv.phone); update(ref(db,`drivers_locations/${drv.phone}`),{web_disc:null}).catch(e=>track('web_disc_clear_fail')); }
+    /* 🔴 [V31.54] كان: `if (c === false && drv)` — وهذا المستمع يُسجَّل في السطر ١٤٧٨ بينما
+       `let drv` في ١٥٥١، والنداء الأوّل يقع أثناء تقييم الوحدة ⇒ **منطقة الموت الزمنيّ**:
+       "Cannot access 'drv' before initialization" — أعلى خطأٍ برمجيّ في الأسطول (١٬١٩٦ في
+       أربعة أيام: واحدٌ عند كل إقلاع). وtypeof لا تنجو من TDZ أيضاً (مُثبَتٌ بالتنفيذ)،
+       فالحلّ: لا نلمس drv هنا إطلاقاً — نؤجّل اللمس إلى دورةٍ تالية بعد اكتمال التقييم. */
+    setTimeout(function(){ try{
+      if (c === false && drv) track('fb_disconnected');
+      /* [V31.55] كان دفع web_at مشروطاً بـisOnline — والمحرّك يقرؤها في الحالين. كابتنٌ
+         مقبسه يتقطّع (٣٥ مرّة في ٦ ساعات في خطّ الميدان) كان يترك web_at تشيخ خمس دقائق
+         بينما web_disc أحدث منها ⇒ web_dead ⇒ inactive ⇒ **تتوقّف طلباته** وهو يعمل. */
+      if (c === true && drv && drv.phone) { _diagLast = 0; _pushDiag(drv.phone); update(ref(db,`drivers_locations/${drv.phone}`),{web_disc:null}).catch(e=>track('web_disc_clear_fail')); }
+    }catch(_){ /* ما زلنا قبل التصريح — لا بلاغ ولا كتابة */ } }, 0);
   }
 }); } catch(e) { FB_CONNECTED = null; }   /* لا اشتراك ⇒ «لا نعرف» لا «مقطوع» */
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1816,14 +1825,24 @@ function devId(){
 }
 /* 🔐 [V31.45] driverLogin السحابية أوّلاً: لا حصّة يومية، ثوانٍ لا ثلاث، وApp Check حين يُلزَم.
    not_mirrored (حسابٌ لم يُرآَ بعد — دخوله الأوّل على الشيت) أو أيّ فشل ⇒ Apps Script كما كان. */
+/* 🔴 [V31.54] قياس الميدان (خطّ زمن كرار): driverLogin تردّ functions/internal أو تنتهي مهلتها
+   ١٢ ث — **مرّتين** في كل دخول (الدخول ثم التجديد) قبل أن يعود إلى Apps Script. أي أن الكابتن
+   ينتظر نحو ٢٤ ثانية على بابٍ لا يفتح، ويظنّ التطبيق معلَّقاً. الآن: مهلة ٤ ث، وقاطع دائرة —
+   فشلان متتاليان ⇒ لا نسأل السحابة ٣٠ دقيقة، ثم يُعاد المحاولة تلقائياً. فإن أُصلحت الدالّة
+   (PW_PEPPER أو صلاحية createCustomToken) عملت بلا نشرٍ جديد. */
+function cloudOpen(){ try{ return Date.now() > Number(localStorage.getItem('suf_cloud_off')||0); }catch(_){ return true; } }
+function cloudFail(){ try{ const k=Number(localStorage.getItem('suf_cloud_n')||0)+1; localStorage.setItem('suf_cloud_n',String(k));
+  if(k>=2){ localStorage.setItem('suf_cloud_off',String(Date.now()+30*60000)); localStorage.setItem('suf_cloud_n','0'); track('cloud_breaker_open'); } }catch(_){}}
+function cloudOk(){ try{ localStorage.setItem('suf_cloud_n','0'); localStorage.removeItem('suf_cloud_off'); }catch(_){}}
 async function cloudLogin(ph,pass,claim){
+  if(!cloudOpen()) return null;
   try{
-    const r=await Promise.race([ httpsCallable(fns,'driverLogin')({phone:ph,password:String(pass||''),dev:devId(),claim:claim?'1':'0'}), new Promise((_,rej)=>setTimeout(()=>rej(new Error('cloud_timeout')),12000)) ]);
+    const r=await Promise.race([ httpsCallable(fns,'driverLogin')({phone:ph,password:String(pass||''),dev:devId(),claim:claim?'1':'0'}), new Promise((_,rej)=>setTimeout(()=>rej(new Error('cloud_timeout')),4000)) ]);
     const d=r&&r.data; if(!d||!d.status) return null;
-    if(d.status==='not_mirrored'||d.status==='no_pepper') { track('cloud_login_fallback',{reason:d.status}); return null; }
-    track('cloud_login',{reason:d.status});
+    if(d.status==='not_mirrored'||d.status==='no_pepper'||d.status==='mint_failed') { cloudFail(); track('cloud_login_fallback',{reason:d.status}); return null; }
+    cloudOk(); track('cloud_login',{reason:d.status});
     return d;
-  }catch(e){ track('cloud_login_miss',{reason:String(e&&(e.code||e.message)||e).slice(0,40)}); return null; }
+  }catch(e){ cloudFail(); track('cloud_login_miss',{reason:String(e&&(e.code||e.message)||e).slice(0,40)}); return null; }
 }
 async function checkDriverReq(phone,pass,claim){
   const ph=nP(phone);
@@ -1984,12 +2003,13 @@ function clearPass(){ try{ localStorage.removeItem('suf_pass_p'); sessionStorage
 /* 🔐 [V31.45] refreshSession السحابية أوّلاً: بهويّة رمز فايربيس نفسه — بلا كلمة مرور ولا
    حصّة Apps Script. إن غاب المستخدم أو فشلت (لم تُنشر بعد) ⇒ REFRESH_TOKEN في GAS كما كان. */
 async function refreshCloud(){
+  if(!cloudOpen()) return null;   /* [V31.54] القاطع نفسه — لا ننتظر بابين مغلقين */
   try{
     if(!auth.currentUser) return null;
-    const r=await Promise.race([ httpsCallable(fns,'refreshSession')({}), new Promise((_,rej)=>setTimeout(()=>rej(new Error('cloud_timeout')),12000)) ]);
-    const d=r&&r.data; if(!(d&&d.success&&d.firebase_token)) return null;
-    return d;
-  }catch(e){ track('cloud_refresh_miss',{reason:String(e&&(e.code||e.message)||e).slice(0,40)}); return null; }
+    const r=await Promise.race([ httpsCallable(fns,'refreshSession')({}), new Promise((_,rej)=>setTimeout(()=>rej(new Error('cloud_timeout')),4000)) ]);
+    const d=r&&r.data; if(!(d&&d.success&&d.firebase_token)) { cloudFail(); return null; }
+    cloudOk(); return d;
+  }catch(e){ cloudFail(); track('cloud_refresh_miss',{reason:String(e&&(e.code||e.message)||e).slice(0,40)}); return null; }
 }
 async function refreshTok(){
   if(!drv||!drv.phone) return false;
@@ -3988,7 +4008,7 @@ async function _fbStatusRaw(st, waitGeo){
           const _lateMs = Date.now() - _wStart;
           /* [V31.43] كانت العتبة ١٥ ث — تحت أرضيّة القياس (مهلتان + قراءة تحقّق ≥ ١٢ ث) فيمرّ الجميع من باب
              «الذيل» والعيّنة لا تعمل: ٧٠ ألف حدثٍ/يوم في الميدان. الآن الذيل = ٤ × المهلة الفعلية. */
-          if (_lateMs > _tmo * 4 || Math.random() < 0.05)
+          if (_lateMs > _tmo * 4 || Math.random() < 0.01)   /* [V31.53] ١٪ — قياس ٤ أيام: ٦٦ ألف حدثاً (٧٣٪ من السجلّ) وهي p95 لا تحتاج هذا العدد */
             track('write_late_ok', { ms: _lateMs, reason: st });
         }catch(_){}
         updateLinkPill(); return true;
