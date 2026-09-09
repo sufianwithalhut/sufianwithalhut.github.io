@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
 
 <script>
-const CURRENT_APP_VERSION = "31.59-DontBreak";
+const CURRENT_APP_VERSION = "31.60-Rewire";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -1150,7 +1150,7 @@ window.addEventListener("popstate", () => {
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 
-import { serverTimestamp, getDatabase, ref, onValue, update, set, get, increment, onDisconnect, query, orderByChild, equalTo } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
+import { serverTimestamp, getDatabase, ref, onValue, update, set, get, increment, onDisconnect, query, orderByChild, equalTo, goOffline, goOnline } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
 
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js";
 
@@ -1217,6 +1217,21 @@ const _pageBorn = Date.now();
 document.addEventListener("visibilitychange", function() {
  try {
   if (document.visibilityState !== "visible") return;
+  if (FB_CONNECTED === false && navigator.onLine !== false) {
+   try {
+    goOffline(db);
+    setTimeout(() => {
+     try {
+      goOnline(db);
+     } catch (_) {}
+    }, 500);
+    track("rewire_on_focus");
+   } catch (e) {
+    track("reconnect_fail", {
+     reason: "focus:" + String(e && e.message || e).slice(0, 30)
+    });
+   }
+  }
   if (Date.now() - _pageBorn < 2 * 36e5) return;
   if (!drv || !drv.phone) return;
   if (active && active.length || curOrder) return;
@@ -1329,6 +1344,35 @@ async function _sockWatch() {
    _sockBusy = true;
    track("socket_silent", {
     ms: Math.round(secs),
+    reason: "reconnect"
+   });
+   try {
+    goOffline(db);
+    await new Promise(r => setTimeout(r, 600));
+    goOnline(db);
+   } catch (e) {
+    track("reconnect_fail", {
+     reason: String(e && e.message || e).slice(0, 40)
+    });
+   } finally {
+    _sockBusy = false;
+   }
+  } else if (secs >= 90 && _sockStep === 1) {
+   _sockStep = 2;
+   track("socket_silent", {
+    ms: Math.round(secs),
+    reason: "reload"
+   });
+   if (!(active && active.length) && !curOrder) {
+    setTimeout(() => location.reload(), 300);
+   } else track("reload_deferred", {
+    reason: "busy"
+   });
+  } else if (secs >= 150 && _sockStep === 2) {
+   _sockStep = 3;
+   _sockBusy = true;
+   track("socket_silent", {
+    ms: Math.round(secs),
     reason: "heal"
    });
    try {
@@ -1336,20 +1380,8 @@ async function _sockWatch() {
    } finally {
     _sockBusy = false;
    }
-  } else if (secs >= 90 && _sockStep === 1) {
-   _sockStep = 2;
-   _sockBusy = true;
-   track("socket_silent", {
-    ms: Math.round(secs),
-    reason: "hard"
-   });
-   try {
-    await hardReauth();
-   } finally {
-    _sockBusy = false;
-   }
-  } else if (secs >= 150 && _sockStep === 2) {
-   _sockStep = 3;
+  } else if (secs >= 240 && _sockStep === 3) {
+   _sockStep = 4;
    track("socket_silent", {
     ms: Math.round(secs),
     reason: "banner"
@@ -1364,6 +1396,24 @@ async function _sockWatch() {
 }
 
 setInterval(_sockWatch, 15e3);
+
+window.addEventListener("online", function() {
+ try {
+  if (FB_CONNECTED === false) {
+   goOffline(db);
+   setTimeout(() => {
+    try {
+     goOnline(db);
+    } catch (_) {}
+   }, 400);
+   track("rewire_on_online");
+  }
+ } catch (e) {
+  track("reconnect_fail", {
+   reason: "online:" + String(e && e.message || e).slice(0, 30)
+  });
+ }
+});
 
 function waitConnected(ms) {
  return new Promise(res => {
