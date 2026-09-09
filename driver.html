@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
 
 <script>
-const CURRENT_APP_VERSION = "31.68-HonestStop";
+const CURRENT_APP_VERSION = "31.70-NoOverride";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -1288,7 +1288,47 @@ function bbFlush() {
  } catch (_) {}
 }
 
-let _sockDown = 0, _sockStep = 0, _sockBusy = false, _probed = false, _probeNet = null;
+let NATIVE_SOCKET = false, _nativeSeenAt = 0;
+
+window.onNativeOffer = function(o) {
+ try {
+  if (!o || typeof o !== "object") return;
+  _nativeSeenAt = Date.now();
+  if (o.type === "socket") {
+   track("native_socket_state", {
+    reason: o.up ? "up" : "down"
+   });
+   return;
+  }
+  if (o.type === "gone") {
+   if (curOrder && String(curOrder.id) === String(o.id)) {
+    track("native_offer_gone", {
+     oid: o.id
+    });
+   }
+   return;
+  }
+  if (o.type !== "order" || !o.id) return;
+  track("native_offer", {
+   oid: o.id,
+   reason: String(o.status || "").slice(0, 20)
+  });
+  bb("native_offer", String(o.id).slice(-6) + " " + String(o.status || ""));
+  if (typeof refreshOrdersNow === "function") {
+   try {
+    refreshOrdersNow();
+   } catch (e) {
+    track("native_refresh_fail");
+   }
+  }
+ } catch (e) {
+  track("native_offer_fail", {
+   reason: String(e && e.message || e).slice(0, 40)
+  });
+ }
+};
+
+let _sockDown = 0, _sockStep = 0, _sockBusy = false, _probed = false, _probeNet = null, _ordersCb = null;
 
 async function _sockProbe() {
  const out = [];
@@ -1371,7 +1411,7 @@ async function _sockWatch() {
   if (!_sockDown) _sockDown = Date.now();
   const secs = (Date.now() - _sockDown) / 1e3;
   if (_sockBusy) return;
-  if (secs >= 20 && isOnline && !(active && active.length) && !curOrder) {
+  if (secs >= 20 && isOnline && !(active && active.length) && !curOrder && Date.now() - (window._tapAt || 0) > 6e4 && !window._statusBusy) {
    bb("forced_off", Math.round(secs) + "s");
    track("forced_off_no_socket", {
     ms: Math.round(secs)
@@ -3524,6 +3564,7 @@ window.toggleOnline = async function() {
   }
  }
  isOnline = document.getElementById("onlineTog").checked;
+ window._tapAt = Date.now();
  if (!isOnline) setDesired(false);
  setWantOnline(isOnline);
  availEpoch++;
@@ -3734,6 +3775,15 @@ function heartbeat() {
 let availEpoch = 0;
 
 async function fbStatus(st, epoch, waitGeo) {
+ window._statusBusy = true;
+ try {
+  return await _fbStatusGuarded(st, epoch, waitGeo);
+ } finally {
+  window._statusBusy = false;
+ }
+}
+
+async function _fbStatusGuarded(st, epoch, waitGeo) {
  if (epoch !== undefined && epoch !== availEpoch) {
   try {
    window._statusErr = "epoch_drop";
@@ -4563,6 +4613,9 @@ function startListeners() {
  listen(() => ref(db, "system_settings/tunables"), s => {
   applyTunables(s.val());
  });
+ listen(() => ref(db, "system_settings/flags/native_socket"), s => {
+  NATIVE_SOCKET = s.val() === true;
+ });
  listen(() => ref(db, `system_settings/tunables_by_phone/${drv.phone}`), s => {
   if (s.val()) applyTunables(s.val());
  });
@@ -4756,7 +4809,17 @@ async function fetchResLoc(phone) {
 }
 
 function listenOrders() {
- listen(() => query(ref(db, "active_orders"), orderByChild("driverPhone"), equalTo(drv.phone)), s => {
+ window.refreshOrdersNow = async function() {
+  try {
+   const snap = await get(query(ref(db, "active_orders"), orderByChild("driverPhone"), equalTo(drv.phone)));
+   if (typeof _ordersCb === "function") _ordersCb(snap);
+  } catch (e) {
+   track("native_refresh_fail", {
+    reason: String(e && e.code || e && e.message || e).slice(0, 40)
+   });
+  }
+ };
+ listen(() => query(ref(db, "active_orders"), orderByChild("driverPhone"), equalTo(drv.phone)), _ordersCb = s => {
   const fb = s.val() || {}, myId = nP(drv.phone);
   const rm = [];
   for (let i = active.length - 1; i >= 0; i--) {
