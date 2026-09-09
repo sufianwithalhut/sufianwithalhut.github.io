@@ -161,6 +161,9 @@ code{font-family:var(--mono);font-size:12px;background:var(--field);padding:1.5p
     <p class="sub">هل يجوز أن تُلقي كل مفتاح — ولماذا لا.</p>
     <div class="bar">
       <button id="btnR">تحديث</button>
+      <!-- 📋 [V31.61] تقريرٌ نصّيّ كامل بدل لقطات الشاشة -->
+      <button id="btnCopy" title="ينسخ تقريراً نصّيّاً كاملاً إلى الحافظة">📋 نسخ التقرير</button>
+      <button id="btnFile" title="يُنزّل التقرير نفسه ملفّاً نصّياً">⬇️ ملف</button>
       <select id="win">
         <!-- ⏱️ [V31.58] نوافذُ قصيرة: رقعةٌ نُشرت قبل ساعات لا تُرى في متوسّط ثلاثة أيام -->
         <option value="0.25">آخر ٦ ساعات</option>
@@ -458,7 +461,13 @@ const EV_DICT = {
   car_no_base: { s:2, t:"طلب سيارة بلا تسعيرة منطقة", h:"reason = المنطقة — أضف رقمها في قائمة المطعم" },
   cloud_breaker_open: { s:2, t:"أُغلق باب السحابة ٣٠ د بعد فشلين", h:"driverLogin/refreshSession تفشلان — راجع PW_PEPPER وصلاحية createCustomToken" },
   auto_reload: { s:0, t:"أُعيد تحميل الصفحة لالتقاط نسخةٍ جديدة", h:"ms = عمر الصفحة بالدقائق" },
-  socket_probe: { s:3, t:"فحصٌ ذاتيّ عند صمت المقبس", h:"tok= رمز الهويّة · rest= رقم الحالة · skew= انحراف الساعة من ترويسة الخادم · net= الإنترنت العامّ" }
+  socket_probe: { s:3, t:"فحصٌ ذاتيّ عند صمت المقبس", h:"tok= رمز الهويّة · rest= رقم الحالة · skew= انحراف الساعة من ترويسة الخادم · net= الإنترنت العامّ" },
+  hard_reauth_skipped: { s:1, t:"أُلغيت إعادة المصادقة الكاملة (وقايةً)", h:"reason: offline · no_net · no_token — لا نهدم جلسةً لا نستطيع بناءها" },
+  hard_reauth_pre_fail: { s:2, t:"فشل تجهيز الرمز قبل إعادة المصادقة", h:"الجلسة القديمة سليمة — لم يُهدم شيء" },
+  reconnect_fail: { s:2, t:"فشل إعادة بناء مقبس فايربيس", h:"goOffline/goOnline رمت" },
+  reload_deferred: { s:1, t:"أُجّلت إعادة التحميل لطلبٍ نشط", h:"" },
+  rewire_on_focus: { s:1, t:"أُعيد بناء المقبس عند فتح التطبيق", h:"كان مغلقاً والشبكة قائمة" },
+  rewire_on_online: { s:1, t:"أُعيد بناء المقبس عند عودة الشبكة", h:"" }
 };
 /*@/schema:dict@*/
 const CAP_IGNORE = new Set(['accept_local','accept_start','activate_ok','activate_guard_ok','break_ok','break_ok_retry','profile_saved','tok_refreshed','shadow_reject','shadow_err','write_late_ok','day_rollover','decline']);
@@ -509,6 +518,71 @@ function drawCapList(){
   }).join('') || '<p class="note">لا كباتن في النافذة.</p>';
 }
 $('capQ').addEventListener('input', drawCapList);
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   📋 [V31.61] تقريرٌ نصّيّ كامل — بدل لقطات الشاشة
+   ───────────────────────────────────────────────────────────────────────────
+   لقطة الشاشة تقتطع، ولا تُقرأ آلياً، وتُخفي خطوط الزمن. هذا يبني نصّاً واحداً
+   يحوي: المدى والمصدر · جرد الأنواع كاملاً · أعلى الأجهزة · ملخّص كل كابتنٍ
+   يحتاج نظرة · وخطوط زمن العشرة الأسوأ كاملةً (وأيّ كابتنٍ مفتوحٍ الآن).
+   زرّان: نسخٌ إلى الحافظة، وتنزيلُ ملفّ. */
+function buildReport(){
+  const L=[], rows=window.__rows||[], days=Number($('win').value)||7;
+  const pad=(x,w)=>String(x).padEnd(w);
+  L.push('═══ تقرير لوحة الظلّ — سفيان ═══');
+  L.push('وقت التقرير: '+new Date().toISOString());
+  L.push('النافذة: '+days+' يوم · الأحداث: '+rows.length+' · الكباتن: '+((CAP.list||[]).length));
+  L.push('المصدر: '+($('meta')?$('meta').textContent:''));
+  L.push('');
+  L.push('── جرد الأنواع ──');
+  const byEv={}; rows.forEach(r=>{ byEv[r.ev]=(byEv[r.ev]||0)+1; });
+  Object.entries(byEv).sort((a,b)=>b[1]-a[1]).forEach(([k,v])=>L.push('  '+pad(k,26)+String(v).padStart(7)));
+  L.push('');
+  L.push('── الإصدارات في الأسطول ──');
+  const byVer={}; (CAP.list||[]).forEach(c=>{ const v=(c.d&&c.d.ver)||'?'; byVer[v]=(byVer[v]||0)+1; });
+  Object.entries(byVer).sort((a,b)=>b[1]-a[1]).forEach(([k,v])=>L.push('  '+pad(k,26)+String(v).padStart(5)+' كابتناً'));
+  L.push('');
+  L.push('── الكباتن (الأعلى حاجةً للنظر) ──');
+  (CAP.list||[]).slice(0,40).forEach(c=>{
+    const d=c.d||{};
+    L.push('  '+c.ph+' · '+(c.name||'—')+' · '+(d.ver||'?')+' · '+(d.status||'—')+' · src='+(d.src||'?')
+      +' · skew='+(d.skew!=null?Math.round(Number(d.skew)/1000)+'s':'?')
+      +' · web_at='+agoTxt(d.web_at)+' · fcm='+(d.fcm_token?'✓':'✗')+' · أحداث='+c.evs.length
+      +(c.flags.length?(' · '+c.flags.join(' · ')):''));
+    const top=Object.entries(c.kinds).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([k,v])=>k+'×'+v).join(' · ');
+    if(top) L.push('      '+top);
+  });
+  L.push('');
+  L.push('── خطوط الزمن (أسوأ ١٠ كباتن · كل الأحداث) ──');
+  (CAP.list||[]).slice(0,10).forEach(c=>{
+    L.push('');
+    L.push('  ▶ '+c.ph+' · '+(c.name||'—')+' · '+((c.d&&c.d.ver)||'?'));
+    c.evs.slice(-120).forEach(r=>{
+      const meta=[r.why&&('why='+r.why), r.cmd&&('cmd='+r.cmd), r.ms!=null&&('ms='+r.ms), r.oid&&('#'+String(r.oid).slice(-6)), r.net, r.ver, r.ln!=null&&('ln='+r.ln)].filter(Boolean).join(' · ');
+      L.push('    '+String(r.ts||'').replace('T',' ').slice(0,19)+'  '+pad(r.ev,24)+'  '+meta);
+    });
+  });
+  return L.join('\n');
+}
+function reportName(){ return 'sufyan-monitor-'+new Date().toISOString().replace(/[:.]/g,'-').slice(0,19)+'.txt'; }
+$('btnCopy').addEventListener('click', async ()=>{
+  const btn=$('btnCopy'), old=btn.textContent;
+  try{
+    const t=buildReport();
+    try{ await navigator.clipboard.writeText(t); }
+    catch(e){ const ta=document.createElement('textarea'); ta.value=t; ta.style.position='fixed'; ta.style.opacity='0';
+      document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+    btn.textContent='✅ نُسخ ('+Math.round(t.length/1024)+' ك.ب)';
+  }catch(e){ btn.textContent='⚠️ تعذّر — استعمل «ملف»'; }
+  setTimeout(()=>{ btn.textContent=old; }, 2500);
+});
+$('btnFile').addEventListener('click', ()=>{
+  try{
+    const blob=new Blob([buildReport()],{type:'text/plain;charset=utf-8'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=reportName();
+    document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }catch(e){ alert('تعذّر التنزيل: '+(e&&e.message||e)); }
+});
 window.showCap=function(ph){
   const x=(CAP.list||[]).find(y=>y.ph===ph); if(!x) return;
   const d=x.d, evs=x.evs.slice(-80).reverse();
