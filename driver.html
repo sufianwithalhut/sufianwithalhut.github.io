@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
 
 <script>
-const CURRENT_APP_VERSION = "31.79-NoFalseKick";
+const CURRENT_APP_VERSION = "31.80-AcceptTimeout";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -1326,6 +1326,9 @@ window.onNativeOffer = function(o) {
    return;
   }
   if (o.type === "accept_result") {
+   try {
+    clearTimeout(window._accTmo);
+   } catch (_) {}
    track(o.ok ? "accept_ok_native" : "accept_rejected_native", {
     oid: o.id,
     reason: String(o.why || "").slice(0, 20)
@@ -5119,6 +5122,20 @@ window.acceptOrder = async function() {
     b0.innerHTML = '<div class="spin" style="border-top-color:#fff;"></div> جاري التأكيد من الخادم…';
     b0.disabled = true;
    }
+   try {
+    clearTimeout(window._accTmo);
+   } catch (_) {}
+   window._accTmo = setTimeout(() => {
+    const bb2 = document.getElementById("btnAccept");
+    if (bb2 && bb2.disabled) {
+     bb2.innerHTML = "قبول الطلب";
+     bb2.disabled = false;
+     track("accept_native_timeout", {
+      oid: _id
+     });
+     toast("⚠️ لم يصل تأكيد الخادم — حاول ثانية.", "warn");
+    }
+   }, 1e4);
    return;
   } catch (e) {
    track("accept_native_fail", {
