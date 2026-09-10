@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
 
 <script>
-const CURRENT_APP_VERSION = "31.54-Persist";
+const CURRENT_APP_VERSION = "31.80-NoBootLoop";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -1194,6 +1194,8 @@ function _webAtIso() {
  return (new Date).toISOString();
 }
 
+let drv = null, curOrder = null, active = [], isOnline = false, isReg = false;
+
 let FB_CONNECTED = null, _fbConnSince = 0;
 
 try {
@@ -1369,8 +1371,6 @@ function nP(p) {
  if (s.length > 10 && s.startsWith("964")) s = s.slice(3);
  return s.replace(/^0+/, "");
 }
-
-let drv = null, curOrder = null, active = [], isOnline = false, isReg = false;
 
 let cdTimer, hbTimer = null, shTimer = null, tokTimer = null, waitTimer = null;
 
@@ -2616,11 +2616,38 @@ function checkSession() {
      document.getElementById("phone").value = _ph;
      gasFetch(`${API_URL}?action=DIAG&token=${API_TOKEN}` + `&phone=${encodeURIComponent(_ph)}` + `&ev=session_without_key&why=boot_no_pass&raw=&uid=null` + `&ver=${encodeURIComponent(CURRENT_APP_VERSION)}`, null, 6e3).catch(() => {});
     } catch (_) {}
-    setTimeout(function() {
+    try {
+     let _n = 0;
      try {
-      alert("🔑 انتهت جلستك على هذا الجهاز.\n\nسجّل الدخول مرّةً واحدة — ولا حاجة لحذف التطبيق.");
+      _n = Number(sessionStorage.getItem("suf_nokey_n") || 0);
+     } catch (_) {
+      _n = window.__nokeyN || 0;
+     }
+     _n++;
+     window.__nokeyN = _n;
+     try {
+      sessionStorage.setItem("suf_nokey_n", String(_n));
      } catch (_) {}
-    }, 500);
+     let _sto = "ok";
+     try {
+      localStorage.setItem("__t", "1");
+      localStorage.removeItem("__t");
+     } catch (_) {
+      _sto = "FAIL";
+     }
+     const _looped = _n >= 3 || _sto === "FAIL";
+     const b = document.createElement("div");
+     b.id = "noKeyBanner";
+     b.setAttribute("dir", "rtl");
+     b.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:99999;background:#1e3a8a;color:#fff;" + "padding:13px 16px;text-align:center;font-weight:800;font-size:.9rem;line-height:1.7;" + "box-shadow:0 4px 14px rgba(0,0,0,.3);";
+     b.innerHTML = _looped ? '🔁 <b>تعذّر حفظ جلستك على هذا الجهاز.</b><br><span style="font-weight:600;font-size:.82rem;opacity:.95">تخزين التطبيق لا يستجيب. سجّل الدخول الآن — وإن تكرّر، امسح بيانات التطبيق من إعدادات الهاتف.</span>' : '🔑 <b>انتهت جلستك على هذا الجهاز.</b><br><span style="font-weight:600;font-size:.82rem;opacity:.95">سجّل الدخول مرّةً واحدة — ولا حاجة لحذف التطبيق.</span>';
+     document.body.appendChild(b);
+     if (_looped) {
+      try {
+       gasFetch(`${API_URL}?action=DIAG&token=${API_TOKEN}` + `&phone=${encodeURIComponent(nP(d.phone || "") || "")}` + `&ev=boot_loop&why=${encodeURIComponent("nokey_x" + _n)}&raw=${encodeURIComponent("sto=" + _sto)}` + `&uid=null&ver=${encodeURIComponent(CURRENT_APP_VERSION)}`, null, 6e3).catch(() => {});
+      } catch (_) {}
+     }
+    } catch (_) {}
     return false;
    }
    if (sp) document.getElementById("pass").value = decPass_(sp);
