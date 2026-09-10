@@ -94,7 +94,7 @@ try{if(localStorage.getItem(VK)!==V){localStorage.setItem(VK,V);if("caches"in wi
 
    📌 ارفع هذا الرقم كلّما غيّرت الملف — وإلا لم يصل تغييرك.
    ═══════════════════════════════════════════════════════════════════════════ */
-const ADMIN_APP_VERSION = "5.4-Sufyan-Ledger";
+const ADMIN_APP_VERSION = "5.5-Quota-Visible";
 try {
   if (localStorage.getItem('hut_adm_version') !== ADMIN_APP_VERSION) {
     var _rk='hut_adm_version_reload_ts', _last=Number(localStorage.getItem(_rk)||0);
@@ -1477,6 +1477,29 @@ function authBanner(show,msg){
   b.innerHTML=msg+' &nbsp; <span style="text-decoration:underline;cursor:pointer" onclick="location.reload()">أعد التحميل</span>';
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   🚧 [V31.52] gdBanner — شريط «البيانات ناقصة»، أخٌ لـauthBanner
+   ───────────────────────────────────────────────────────────────────────────
+   منفصلٌ عنه عمداً: authBanner يعني «القراءة مرفوضة من فايربيس»، وهذا يعني
+   «Apps Script لم يسلّم المطاعم والأسطول». سببان مختلفان وعلاجان مختلفان،
+   ودمجهما في شريطٍ واحد يُخفي أيّهما وقع — وهو ما جعل هذا العطب يُشخَّص
+   أشهراً على أنه «عطبٌ في اللوحة».
+   وأصفر لا أحمر: البيانات ناقصةٌ لا مفقودة، والتمييز يُقرأ من بعيد.
+   ═══════════════════════════════════════════════════════════════════════════ */
+function gdBanner(show,msg){
+  let b=document.getElementById("gdBanner");
+  if(!show){ if(b)b.remove(); return; }
+  if(!b){
+    b=document.createElement("div"); b.id="gdBanner"; b.setAttribute("dir","rtl");
+    b.style.cssText="position:fixed;top:0;left:0;right:0;z-index:99998;background:#b45309;color:#fff;"
+      +"padding:11px 16px;text-align:center;font-weight:700;font-size:.84rem;line-height:1.75;"
+      +"box-shadow:0 2px 10px rgba(0,0,0,.3)";
+    document.body.appendChild(b);
+  }
+  b.innerHTML=msg+' &nbsp; <span style="text-decoration:underline;cursor:pointer" '
+    +'onclick="loadData(1)">أعد المحاولة</span>';
+}
+
 function listen(mkRef,cb){
   const ref=mkRef();
   const cancel=async(err)=>{
@@ -1830,9 +1853,30 @@ async function loadData(attempt){
     } finally { clearTimeout(timer); }
 
     if(data&&data.success===false){
-      toast(data.msg||"مرفوض — تحقّق من كلمة مرور الإدارة","e");
+      /* ═══════════════════════════════════════════════════════════════════
+         🔴 [V31.52] رفضُ الحصّة كان **رسالةً عابرة فوق شاشةٍ فارغة**.
+         ───────────────────────────────────────────────────────────────────
+         toast يختفي بعد ثوانٍ، وتبقى التبويبات صفراً بلا سبب مرئي. فيقرأ
+         المسؤول «إدارة الأسطول: لا نتائج» ويظنّ البيانات ضاعت — وهي سليمة
+         تماماً، والقراءة وحدها مرفوضة. وهو **أخطر من رسالة خطأ**: الصفر
+         يبدو حقيقةً والخطأ يبدو خطأً.
+
+         الآن: شريطٌ ثابت يسمّي السبب والعلاج ولا يزول إلا بنجاح الجلب.
+         ═══════════════════════════════════════════════════════════════════ */
+      if(data.quota===true){
+        gdBanner(true,
+          "⚠️ <b>حصّة Apps Script اليومية بلغت العتبة</b> — لم تُجلب بيانات المطاعم والأسطول. "+
+          "الأرقام والقوائم المعروضة <b>ليست كاملة</b>، ولا تعتمد عليها في قرار."+
+          "<br><span style='font-weight:600;opacity:.92'>العلاج فوراً وبلا نشر: ارفع "+
+          "<code>GAS_DAILY_BUDGET</code> في Script Properties. ولمعرفة أين تُستهلك: شغّل "+
+          "<code>AUDIT_QuotaBudget()</code> في محرّر السكربت.</span>");
+      } else {
+        gdBanner(true,"⚠️ <b>تعذّر جلب البيانات:</b> "+esc(String(data.msg||"مرفوض"))+
+          " — القوائم المعروضة غير كاملة.");
+      }
       return;
     }
+    gdBanner(false);
     applyGD(data);
     try{ sessionStorage.setItem(GD_CACHE_KEY, JSON.stringify({t:Date.now(),
       restaurants:data.restaurants, drivers:data.drivers})); }catch(_){}
@@ -1849,7 +1893,10 @@ async function loadData(attempt){
     if(cached && cached.restaurants && cached.drivers){
       applyGD(cached);
       const mins = Math.round((Date.now()-(cached.t||0))/60000);
-      toast("تعذّر التحديث — تعرض بيانات عمرها "+mins+" دقيقة","w");
+      /* [V31.52] الشريط لا الرسالة العابرة: العمل على نسخةٍ قديمة قرارٌ
+         يجب أن يبقى مرئياً ما دام قائماً — لا أن يومض ويختفي. */
+      gdBanner(true,"🕒 <b>تعذّر التحديث</b> — تعرض بيانات عمرها "+mins+
+        " دقيقة. قد لا تعكس آخر التفعيلات والحظر.");
     } else {
       toast("فشل جلب البيانات — اضغط للإعادة","e");
       const el=document.getElementById("dhT");
@@ -2556,7 +2603,7 @@ function shApplyLocal(n,patch){
   const d=_lastLocs[n];
   if(d.shift_h!==undefined&&d.shift_h!==null){ const h=Number(d.shift_h), l=Number(d.shift_len||10); drvShift[n]=shLb(h)+" ← "+shLb((h+l)%24)+" · "+l+"س"; }
   else delete drvShift[n];
-  try{ if(gD&&document.getElementById("pg-drivers").classList.contains("on")) filtEnt("DRV"); }catch(e){}
+  try{ if(gD&&document.getElementById("pg-drivers").classList.contains("on")) filtEnt("DRV"); }catch(e){ console.warn("shift repaint", e); }
 }
 
 async function shWrite(n,patch,auditTxt,okTxt){
