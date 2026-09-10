@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
 
 <script>
-const CURRENT_APP_VERSION = "31.78-NoFalseOff";
+const CURRENT_APP_VERSION = "31.79-NoFalseKick";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -1288,7 +1288,7 @@ function bbFlush() {
  } catch (_) {}
 }
 
-let NATIVE_SOCKET = false, _nativeSeenAt = 0;
+let NATIVE_SOCKET = false, ONE_DEVICE = false, _nativeSeenAt = 0;
 
 function nativeUp() {
  try {
@@ -4576,6 +4576,26 @@ function startListeners() {
   const v = s.val();
   if (!v || !v.dev) return;
   if (String(v.dev) === String(devId())) return;
+  if (!ONE_DEVICE) {
+   track("session_superseded_ignored", {
+    reason: String(v.dev).slice(0, 20)
+   });
+   return;
+  }
+  const seen = Number(localStorage.getItem("suf_sess_conflict") || 0);
+  if (!seen) {
+   try {
+    localStorage.setItem("suf_sess_conflict", String(Date.now()));
+   } catch (_) {}
+   track("session_conflict_seen", {
+    reason: String(v.dev).slice(0, 20)
+   });
+   return;
+  }
+  if (Date.now() - seen < 12e4) return;
+  try {
+   localStorage.removeItem("suf_sess_conflict");
+  } catch (_) {}
   track("session_superseded", {
    reason: String(v.dev).slice(0, 20)
   });
@@ -4673,6 +4693,9 @@ function startListeners() {
  });
  listen(() => ref(db, "system_settings/flags/native_socket"), s => {
   NATIVE_SOCKET = s.val() === true;
+ });
+ listen(() => ref(db, "system_settings/flags/one_device"), s => {
+  ONE_DEVICE = s.val() === true;
  });
  listen(() => ref(db, `system_settings/tunables_by_phone/${drv.phone}`), s => {
   if (s.val()) applyTunables(s.val());
