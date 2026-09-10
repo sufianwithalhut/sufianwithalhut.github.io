@@ -161,13 +161,7 @@ code{font-family:var(--mono);font-size:12px;background:var(--field);padding:1.5p
     <p class="sub">هل يجوز أن تُلقي كل مفتاح — ولماذا لا.</p>
     <div class="bar">
       <button id="btnR">تحديث</button>
-      <!-- 📋 [V31.61] تقريرٌ نصّيّ كامل بدل لقطات الشاشة -->
-      <button id="btnCopy" title="ينسخ تقريراً نصّيّاً كاملاً إلى الحافظة">📋 نسخ التقرير</button>
-      <button id="btnFile" title="يُنزّل التقرير نفسه ملفّاً نصّياً">⬇️ ملف</button>
       <select id="win">
-        <!-- ⏱️ [V31.58] نوافذُ قصيرة: رقعةٌ نُشرت قبل ساعات لا تُرى في متوسّط ثلاثة أيام -->
-        <option value="0.25">آخر ٦ ساعات</option>
-        <option value="1">آخر ٢٤ ساعة</option>
         <option value="7">آخر ٧ أيام</option>
         <option value="14">آخر ١٤ يوماً</option>
         <option value="3">آخر ٣ أيام</option>
@@ -274,24 +268,6 @@ function withTo(p, ms, tag){ return Promise.race([p, new Promise((_,rej)=>setTim
 /* [V31.51] أربعة مصادرَ للفهرس، ولكلٍّ مهلته — والخطأ **يُسمّي** أيّها سقط ولماذا.
    الرسالة العامّة («فارغتان أو مرفوضتان») أضاعت دقائق: السبب كان قاعدةً ناقصة
    لـclient_events_meta لا شيئاً آخر. ما يُقال في الشاشة يجب أن يكفي للإصلاح. */
-/* ═══════════════════════════════════════════════════════════════════════════
-   📄 [V31.52] file:// لا يتصل بقاعدة البيانات — والعَرَض «مهلة» في كل مصدر
-   ───────────────────────────────────────────────────────────────────────────
-   الشاشة قالت: كل المصادر الأربعة «مهلة» — حتى client_events_meta الصغيرة. ولا
-   شيء يُنتج ذلك إلا **غياب الاتصال أصلاً**: الصفحة مفتوحة من مجلّدٍ مؤقّت
-   (file:///C:/Users/…/Temp/…/monitor.html) لا من الموقع. مقبس RTDB لا يقوم على
-   أصلٍ file:، بينما Master وليدر تعملان لأنهما مستضافتان. فالعلاج ليس في اللوحة
-   بل في مكان فتحها. ونقولها **قبل** الانتظار لا بعد أربع مهل. */
-if(location.protocol === 'file:'){
-  document.addEventListener('DOMContentLoaded', function(){
-    const b=document.createElement('div');
-    b.style.cssText='background:#7f1d1d;color:#fff;padding:14px 18px;font-weight:800;line-height:1.9;position:sticky;top:0;z-index:99';
-    b.innerHTML='📄 هذه الصفحة مفتوحة من ملفٍّ محليّ (file://) — ولا يقوم اتصال قاعدة البيانات على هذا الأصل، فكل قراءة ستنتهي بـ«مهلة».<br>'+
-                '<span style="font-weight:600">ارفع monitor.html إلى الموقع وافتحها من https://sufianwithalhut.github.io/monitor.html — أو شغّلها محلياً على خادمٍ: '+
-                '<code style="background:#00000030;padding:2px 6px;border-radius:6px">python -m http.server 8080</code> ثم http://localhost:8080/monitor.html</span>';
-    document.body.insertBefore(b, document.body.firstChild);
-  });
-}
 window.__idxDiag = [];
 async function phoneIndex(){
   const sources = [
@@ -389,14 +365,13 @@ async function load(){
      المدى ولا تحكم عليه: عرضت «29-08 ← 04-09» ومرّ الأمر كأنه طبيعي. */
   const _spanDays = rows.length
     ? Math.round((new Date(rows[rows.length-1].ts) - new Date(rows[0].ts))/86400000) : 0;
-  const _staleKeep = _spanDays > 3 && (Number($('win').value)||7) > 3;   /* [V31.58] لا حكمَ على الكنس من نافذةٍ قصيرة */
+  const _staleKeep = _spanDays > 3;
   $('meta').textContent=fmt(rows.length)+' حدثاً · '+
     (rows.length?day(rows[0].ts)+' ← '+day(rows[rows.length-1].ts):'لا بيانات')+
     ' · المصدر: '+(SRV.ok?'السجلّ السيرفري ✓':'المرآة فقط ⚠')+
     (_staleKeep?'  ⚠ '+_spanDays+' يوماً محفوظة والمصمَّم ٣ — الكنس لا يعمل':'');
   window.__staleKeep = _staleKeep;
   window.__spanDays  = _spanDays;
-  window.__spanFrac  = Math.max(0.05, Number($('win').value)||1);   /* [V31.58] المدى المطلوب بأجزاء اليوم */
 
   renderGates(rows,C,byDay,SRV);
   renderEvidence(rows,C,SRV);
@@ -451,6 +426,9 @@ const EV_DICT = {
   tunables_applied: { s:0, t:"طُبّق ضبطٌ من الخادم", h:"reason = المفاتيح" },
   socket_silent: { s:3, t:"مقبس فايربيس صامتٌ والشبكة قائمة", h:"ms = الثواني · reason: heal · hard · banner — هذا هو عطب «العدّادات صفر»" },
   socket_recovered: { s:1, t:"عاد المقبس بعد صمت", h:"ms = مدّة الصمت" },
+  socket_flap: { s:3, t:"المقبس يخفق: يتّصل ثم يُغلق قبل أن يستقرّ", h:"ms = الصمت المتراكم · بصمةُ رمزٍ يرفضه الخادم — وقبل V31.54 كان يُصفّر الحارس فلا يُشفى أبداً" },
+  hard_reauth_ok: { s:1, t:"نجحت إعادة الدخول الكاملة — تعافى", h:"الشفاء العميق عمل" },
+  hard_reauth_fail: { s:3, t:"فشلت إعادة الدخول الكاملة", h:"العطب أعمق من المقبس — رمزٌ محفوظ مرفوض أو حسابٌ موقوف · relogin() هو العلاج" },
   boot_auth_fail: { s:3, t:"فشلت المصادقة عند الإقلاع — اللافتة الحمراء", h:"reason = حالة الردّ" },
   desired_off_external: { s:2, t:"أُطفئ من جهةٍ أخرى (مدير/إشعار)", h:"reason = by" },
   desired_write_fail: { s:3, t:"القواعد ترفض كتابة الرغبة", h:"المُصالِح لن يراه — القواعد لم تُنشر؟" },
@@ -458,16 +436,7 @@ const EV_DICT = {
   cloud_login_fallback: { s:1, t:"الدخول عاد إلى Apps Script", h:"reason: not_mirrored (طبيعيّ مرّة) · no_pepper (اضبط PW_PEPPER)" },
   cloud_login_miss: { s:1, t:"تعذّر الدخول السحابي", h:"شبكة أو الدالّة لم تُنشر" },
   cloud_refresh_miss: { s:1, t:"تعذّر التجديد السحابي", h:"" },
-  car_no_base: { s:2, t:"طلب سيارة بلا تسعيرة منطقة", h:"reason = المنطقة — أضف رقمها في قائمة المطعم" },
-  cloud_breaker_open: { s:2, t:"أُغلق باب السحابة ٣٠ د بعد فشلين", h:"driverLogin/refreshSession تفشلان — راجع PW_PEPPER وصلاحية createCustomToken" },
-  auto_reload: { s:0, t:"أُعيد تحميل الصفحة لالتقاط نسخةٍ جديدة", h:"ms = عمر الصفحة بالدقائق" },
-  socket_probe: { s:3, t:"فحصٌ ذاتيّ عند صمت المقبس", h:"tok= رمز الهويّة · rest= رقم الحالة · skew= انحراف الساعة من ترويسة الخادم · net= الإنترنت العامّ" },
-  hard_reauth_skipped: { s:1, t:"أُلغيت إعادة المصادقة الكاملة (وقايةً)", h:"reason: offline · no_net · no_token — لا نهدم جلسةً لا نستطيع بناءها" },
-  hard_reauth_pre_fail: { s:2, t:"فشل تجهيز الرمز قبل إعادة المصادقة", h:"الجلسة القديمة سليمة — لم يُهدم شيء" },
-  reconnect_fail: { s:2, t:"فشل إعادة بناء مقبس فايربيس", h:"goOffline/goOnline رمت" },
-  reload_deferred: { s:1, t:"أُجّلت إعادة التحميل لطلبٍ نشط", h:"" },
-  rewire_on_focus: { s:1, t:"أُعيد بناء المقبس عند فتح التطبيق", h:"كان مغلقاً والشبكة قائمة" },
-  rewire_on_online: { s:1, t:"أُعيد بناء المقبس عند عودة الشبكة", h:"" }
+  car_no_base: { s:2, t:"طلب سيارة بلا تسعيرة منطقة", h:"reason = المنطقة — أضف رقمها في قائمة المطعم" }
 };
 /*@/schema:dict@*/
 const CAP_IGNORE = new Set(['accept_local','accept_start','activate_ok','activate_guard_ok','break_ok','break_ok_retry','profile_saved','tok_refreshed','shadow_reject','shadow_err','write_late_ok','day_rollover','decline']);
@@ -518,71 +487,6 @@ function drawCapList(){
   }).join('') || '<p class="note">لا كباتن في النافذة.</p>';
 }
 $('capQ').addEventListener('input', drawCapList);
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   📋 [V31.61] تقريرٌ نصّيّ كامل — بدل لقطات الشاشة
-   ───────────────────────────────────────────────────────────────────────────
-   لقطة الشاشة تقتطع، ولا تُقرأ آلياً، وتُخفي خطوط الزمن. هذا يبني نصّاً واحداً
-   يحوي: المدى والمصدر · جرد الأنواع كاملاً · أعلى الأجهزة · ملخّص كل كابتنٍ
-   يحتاج نظرة · وخطوط زمن العشرة الأسوأ كاملةً (وأيّ كابتنٍ مفتوحٍ الآن).
-   زرّان: نسخٌ إلى الحافظة، وتنزيلُ ملفّ. */
-function buildReport(){
-  const L=[], rows=window.__rows||[], days=Number($('win').value)||7;
-  const pad=(x,w)=>String(x).padEnd(w);
-  L.push('═══ تقرير لوحة الظلّ — سفيان ═══');
-  L.push('وقت التقرير: '+new Date().toISOString());
-  L.push('النافذة: '+days+' يوم · الأحداث: '+rows.length+' · الكباتن: '+((CAP.list||[]).length));
-  L.push('المصدر: '+($('meta')?$('meta').textContent:''));
-  L.push('');
-  L.push('── جرد الأنواع ──');
-  const byEv={}; rows.forEach(r=>{ byEv[r.ev]=(byEv[r.ev]||0)+1; });
-  Object.entries(byEv).sort((a,b)=>b[1]-a[1]).forEach(([k,v])=>L.push('  '+pad(k,26)+String(v).padStart(7)));
-  L.push('');
-  L.push('── الإصدارات في الأسطول ──');
-  const byVer={}; (CAP.list||[]).forEach(c=>{ const v=(c.d&&c.d.ver)||'?'; byVer[v]=(byVer[v]||0)+1; });
-  Object.entries(byVer).sort((a,b)=>b[1]-a[1]).forEach(([k,v])=>L.push('  '+pad(k,26)+String(v).padStart(5)+' كابتناً'));
-  L.push('');
-  L.push('── الكباتن (الأعلى حاجةً للنظر) ──');
-  (CAP.list||[]).slice(0,40).forEach(c=>{
-    const d=c.d||{};
-    L.push('  '+c.ph+' · '+(c.name||'—')+' · '+(d.ver||'?')+' · '+(d.status||'—')+' · src='+(d.src||'?')
-      +' · skew='+(d.skew!=null?Math.round(Number(d.skew)/1000)+'s':'?')
-      +' · web_at='+agoTxt(d.web_at)+' · fcm='+(d.fcm_token?'✓':'✗')+' · أحداث='+c.evs.length
-      +(c.flags.length?(' · '+c.flags.join(' · ')):''));
-    const top=Object.entries(c.kinds).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([k,v])=>k+'×'+v).join(' · ');
-    if(top) L.push('      '+top);
-  });
-  L.push('');
-  L.push('── خطوط الزمن (أسوأ ١٠ كباتن · كل الأحداث) ──');
-  (CAP.list||[]).slice(0,10).forEach(c=>{
-    L.push('');
-    L.push('  ▶ '+c.ph+' · '+(c.name||'—')+' · '+((c.d&&c.d.ver)||'?'));
-    c.evs.slice(-120).forEach(r=>{
-      const meta=[r.why&&('why='+r.why), r.cmd&&('cmd='+r.cmd), r.ms!=null&&('ms='+r.ms), r.oid&&('#'+String(r.oid).slice(-6)), r.net, r.ver, r.ln!=null&&('ln='+r.ln)].filter(Boolean).join(' · ');
-      L.push('    '+String(r.ts||'').replace('T',' ').slice(0,19)+'  '+pad(r.ev,24)+'  '+meta);
-    });
-  });
-  return L.join('\n');
-}
-function reportName(){ return 'sufyan-monitor-'+new Date().toISOString().replace(/[:.]/g,'-').slice(0,19)+'.txt'; }
-$('btnCopy').addEventListener('click', async ()=>{
-  const btn=$('btnCopy'), old=btn.textContent;
-  try{
-    const t=buildReport();
-    try{ await navigator.clipboard.writeText(t); }
-    catch(e){ const ta=document.createElement('textarea'); ta.value=t; ta.style.position='fixed'; ta.style.opacity='0';
-      document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
-    btn.textContent='✅ نُسخ ('+Math.round(t.length/1024)+' ك.ب)';
-  }catch(e){ btn.textContent='⚠️ تعذّر — استعمل «ملف»'; }
-  setTimeout(()=>{ btn.textContent=old; }, 2500);
-});
-$('btnFile').addEventListener('click', ()=>{
-  try{
-    const blob=new Blob([buildReport()],{type:'text/plain;charset=utf-8'});
-    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=reportName();
-    document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
-  }catch(e){ alert('تعذّر التنزيل: '+(e&&e.message||e)); }
-});
 window.showCap=function(ph){
   const x=(CAP.list||[]).find(y=>y.ph===ph); if(!x) return;
   const d=x.d, evs=x.evs.slice(-80).reverse();
@@ -593,8 +497,6 @@ window.showCap=function(ph){
   if(d.status==='active'&&d.web_at&&(Date.now()-Date.parse(d.web_at))/60000>12) dx.push('تطبيقه صامتٌ والموقع يتحدّث ⇒ لن يُرنّ له — اتصل به ليضغط «إعادة تسجيل الدخول».');
   if(cnt('js_error')>=3) dx.push('أخطاءٌ برمجية متكرّرة ('+cnt('js_error')+') — افتح Crashlytics على إصداره '+(d.ver||'؟')+'.');
   if(cnt('tap_no_socket')+cnt('fb_disconnected')>=5) dx.push('شبكته تنقطع كثيراً ('+(cnt('tap_no_socket')+cnt('fb_disconnected'))+') — VPN أو تغطية.');
-  /* [V31.55] الانقطاع المتواتر ليس إزعاجاً: كل انقطاعٍ يتجاوز المهلة يُقصيه من التوزيع */
-  if(cnt('fb_disconnected')>=20) dx.push('🔌 مقبسه ينقطع كثيراً ('+cnt('fb_disconnected')+') — كل انقطاعٍ طويل يُخرجه من التوزيع. تحقّق من تغطيته ومن استثناء التطبيق من توفير البطارية.');
   if(cnt('activate_fail')>=3) dx.push('يفشل في التفعيل مراراً ('+cnt('activate_fail')+') — راجع raw: مهلة (شبكة) أم رفض (مصادقة).');
   if(cnt('hard_reauth')+cnt('hard_reauth_nopass')+cnt('auth_banner_shown')>=2) dx.push('مصادقته تموت وتُشفى — إن كان على نسخةٍ قبل 31.32 فكلمة مروره عربية غالباً.');
   if(cnt('shift_over_blocked')>=2) dx.push('يحاول العودة بعد انتهاء شفته ('+cnt('shift_over_blocked')+') — افتح شفته من الإدارة إن أردت.');
@@ -885,8 +787,7 @@ function renderEvidence(rows,C,SRV){
   if(!evK.length) h+='<p class="empty">لا أحداث في النطاق.</p>';
   else{
     h+='<table><tr><th>الحدث</th><th>العدد</th><th>النسبة</th><th>لكل يوم</th><th>أعلى جهاز</th></tr>';
-    /* [V31.58] نافذةٌ أقصر من يوم: القسمة على ١ تكذب. نقسم على المدى الفعليّ بأجزاء اليوم. */
-    const dv=Math.max(0.05, Number(window.__spanFrac)||Number(window.__spanDays)||1);
+    const dv=Math.max(1, window.__spanDays||1);
     /* esc: r.ev نصٌّ يكتبه العميل — نفس سِنك الحقن المعالَج في V28. */
     let flagged=0;
     evK.slice(0,40).forEach(k=>{
