@@ -1220,6 +1220,17 @@ const SOCK_STABLE_MS = 2e4;
 
 const SOCK_RETRY_MS = 18e4;
 
+let _sockDiagAt = 0;
+
+function _sockDiag(why, secs) {
+ try {
+  if (Date.now() - _sockDiagAt < 6e5) return;
+  _sockDiagAt = Date.now();
+  const u = auth && auth.currentUser ? String(auth.currentUser.uid) : "null";
+  gasFetch(`${API_URL}?action=DIAG&token=${API_TOKEN}` + `&phone=${encodeURIComponent(drv && drv.phone || "")}` + `&ev=socket_stuck` + `&why=${encodeURIComponent(String(why) + "|" + Math.round(secs) + "s|step" + _sockStep)}` + `&raw=${encodeURIComponent("online=" + (navigator.onLine !== false ? 1 : 0) + ",vpn=" + (vpnActive() ? 1 : 0) + ",pass=" + (getPass() ? 1 : 0))}` + `&uid=${encodeURIComponent(u)}` + `&ver=${encodeURIComponent(CURRENT_APP_VERSION)}`, null, 6e3).catch(() => {});
+ } catch (e) {}
+}
+
 let _sockDown = 0, _sockStep = 0, _sockBusy = false, _sockUpAt = 0, _offAt = 0, _offMs = 0, _lastEsc = 0;
 
 async function _sockWatch() {
@@ -1295,6 +1306,7 @@ async function _sockWatch() {
     reason: "banner"
    });
    showAuthBanner(true);
+   _sockDiag("stuck", secs);
   } else if (_sockStep >= 3 && Date.now() - _lastEsc >= SOCK_RETRY_MS) {
    _lastEsc = Date.now();
    _sockBusy = true;
@@ -1302,12 +1314,14 @@ async function _sockWatch() {
     ms: Math.round(secs),
     reason: "retry"
    });
+   let _r = false;
    try {
-    await hardReauth();
+    _r = await hardReauth();
    } finally {
     _sockBusy = false;
    }
    showAuthBanner(true);
+   if (!_r) _sockDiag("retry_fail", secs);
   }
  } catch (e) {
   track("sock_watch_fail", {
