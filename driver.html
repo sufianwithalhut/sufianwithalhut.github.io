@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
 
 <script>
-const CURRENT_APP_VERSION = "31.73-SelfHeal";
+const CURRENT_APP_VERSION = "31.76-NahlaClient";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -3477,8 +3477,8 @@ function paintEffective(reason) {
    lbl.parentNode.insertBefore(el, lbl.nextSibling);
   }
   if (FB_CONNECTED === false) {
-   el.textContent = "⚠️ غير مرئيّ: لا اتصال بالخادم";
-   el.style.color = "#dc2626";
+   el.textContent = "🔄 الشاشة تتأخّر — أنت في الخدمة";
+   el.style.color = "#b45309";
    return;
   }
   if (!reason) {
@@ -3692,7 +3692,7 @@ window.toggleOnline = async function() {
   window._pfLast = Date.now();
   try {
    const issues = [];
-   if (FB_CONNECTED === false) issues.push(vpnActive() ? "vpn" : "net");
+   if (FB_CONNECTED === false && vpnActive()) issues.push("vpn");
    if (!auth.currentUser) issues.push("auth");
    if (Math.abs(Number(SRV_OFFSET) || 0) > 3e4) issues.push("skew");
    if (!window.AndroidRadar && "Notification" in window && Notification.permission !== "granted") issues.push("notif");
@@ -3998,12 +3998,9 @@ function _pushDiag(p) {
 async function _fbStatusRaw(st, waitGeo) {
  const _tmo = netTimeout(waitGeo ? TAP_TIMEOUT_MS : NET_TIMEOUT_MS);
  if (waitGeo && FB_CONNECTED === false) {
-  const up = await waitConnected(8e3);
-  if (!up) {
-   track("tap_no_socket", {
-    reason: vpnActive() ? "vpn" : "offline"
-   });
-  }
+  track("tap_no_socket", {
+   reason: vpnActive() ? "vpn" : "offline"
+  });
  }
  if (!drv) {
   try {
@@ -5201,11 +5198,10 @@ window.acceptOrder = async function() {
   }
  }
  if (FB_CONNECTED === false) {
-  track("accept_blocked_offline", {
+  track("accept_try_no_socket", {
    oid: curOrder && curOrder.id
   });
-  bb("accept_blocked", "");
-  toast("🔌 لا اتصال بالخادم — لا تقبل الآن. جارٍ إعادة الاتصال…", "warn");
+  bb("accept_no_socket", "");
   try {
    if (Date.now() - (window._rewireAt || 0) > 2e4) {
     window._rewireAt = Date.now();
@@ -5217,7 +5213,6 @@ window.acceptOrder = async function() {
     }, 400);
    }
   } catch (_) {}
-  return;
  }
  const b = document.getElementById("btnAccept");
  b.innerHTML = '<div class="spin" style="border-top-color:#fff;"></div> جاري تأمين الطلب...';
