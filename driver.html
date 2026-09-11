@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
 
 <script>
-const CURRENT_APP_VERSION = "31.77-TruthfulPill";
+const CURRENT_APP_VERSION = "31.79-RestSync";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -4217,6 +4217,9 @@ window.__nativeEvent = function(ev) {
  try {
   if (!ev) return;
   if (typeof ev === "string") ev = JSON.parse(ev);
+  try {
+   if (typeof refreshOrdersNow === "function") refreshOrdersNow();
+  } catch (_) {}
   if (ev.type === "order_revoked" && ev.order_id) {
    const id = String(ev.order_id);
    if (active.some(o => String(o.id) === id)) removeOrdersBatch([ {
@@ -4966,14 +4969,46 @@ async function fetchResLoc(phone) {
 function listenOrders() {
  window.refreshOrdersNow = async function() {
   try {
-   const snap = await get(query(ref(db, "active_orders"), orderByChild("driverPhone"), equalTo(drv.phone)));
-   if (typeof _ordersCb === "function") _ordersCb(snap);
-  } catch (e) {
-   track("native_refresh_fail", {
-    reason: String(e && e.code || e && e.message || e).slice(0, 40)
+   const tok = auth.currentUser ? await withTimeout(auth.currentUser.getIdToken(), 6e3, "idtok") : "";
+   const url = DB_REST + "/active_orders.json?orderBy=" + encodeURIComponent('"driverPhone"') + "&equalTo=" + encodeURIComponent('"' + nP(drv.phone) + '"') + (tok ? "&auth=" + encodeURIComponent(tok) : "");
+   const c = new AbortController;
+   const t = setTimeout(() => c.abort(), 9e3);
+   const r = await fetch(url, {
+    signal: c.signal,
+    cache: "no-store"
    });
+   clearTimeout(t);
+   if (!r.ok) {
+    track("rest_sync_fail", {
+     reason: "http_" + r.status
+    });
+    return false;
+   }
+   const val = await r.json();
+   if (typeof _ordersCb === "function") _ordersCb({
+    val: () => val
+   });
+   track("rest_sync_ok", {
+    ms: Object.keys(val || {}).length
+   });
+   return true;
+  } catch (e) {
+   track("rest_sync_fail", {
+    reason: String(e && (e.name || e.message) || e).slice(0, 40)
+   });
+   return false;
   }
  };
+ try {
+  document.addEventListener("visibilitychange", () => {
+   if (document.visibilityState === "visible" && drv && drv.phone) refreshOrdersNow();
+  });
+ } catch (_) {}
+ try {
+  setInterval(() => {
+   if (isOnline && drv && drv.phone) refreshOrdersNow();
+  }, 45e3);
+ } catch (_) {}
  listen(() => query(ref(db, "active_orders"), orderByChild("driverPhone"), equalTo(drv.phone)), _ordersCb = s => {
   const fb = s.val() || {}, myId = nP(drv.phone);
   const rm = [];
@@ -4981,13 +5016,17 @@ function listenOrders() {
    const mo = active[i], f = fb[mo.id];
    if (!f && mo.acceptedTime && Date.now() - mo.acceptedTime < 12e3) continue;
    if (!f) {
-    if (!auth.currentUser) continue;
-    rm.push({
-     id: mo.id,
-     m: "انتهى هذا الطلب أو سُحب منك."
+    if (!window._absSeen) window._absSeen = {};
+    const _n = (window._absSeen[mo.id] || 0) + 1;
+    window._absSeen[mo.id] = _n;
+    if (_n === 3) track("order_absent_kept", {
+     oid: mo.id
     });
     continue;
    }
+   try {
+    if (window._absSeen) delete window._absSeen[mo.id];
+   } catch (_) {}
    const st = String(f.status || "").toLowerCase();
    const DONE = [ "completed", "مكتمل", "settled", "delivered", "done", "تم التسليم", "تم", "deleted" ];
    if (DONE.includes(st) || DONE.includes(f.status)) {
