@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
 
 <script>
-const CURRENT_APP_VERSION = "31.79-RestSync";
+const CURRENT_APP_VERSION = "31.80-RestState";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -3045,13 +3045,35 @@ function checkSession() {
     });
    }
    (async () => {
+    let _stOk = false;
     try {
-     const st = await withTimeout(get(ref(db, `drivers_locations/${d.phone}/status`)), NET_TIMEOUT_MS, "mystatus");
-     paintToggle(String(st.val() || "") === "active");
+     const tok = auth.currentUser ? await withTimeout(auth.currentUser.getIdToken(), 6e3, "idtok") : "";
+     const c = new AbortController;
+     const t = setTimeout(() => c.abort(), 8e3);
+     const r = await fetch(DB_REST + "/drivers_locations/" + encodeURIComponent(nP(d.phone)) + "/status.json" + (tok ? "?auth=" + encodeURIComponent(tok) : ""), {
+      signal: c.signal,
+      cache: "no-store"
+     });
+     clearTimeout(t);
+     if (r.ok) {
+      const v = await r.json();
+      paintToggle(String(v || "") === "active");
+      _stOk = true;
+      track("mystatus_rest_ok");
+     }
     } catch (e) {
-     paintToggle(false);
-     toast("⚠️ تعذّرت قراءة حالتك — حدّث الصفحة للتأكّد", "warn");
+     track("mystatus_rest_fail", {
+      reason: String(e && (e.name || e.message) || e).slice(0, 30)
+     });
     }
+    if (!_stOk) {
+     try {
+      const st = await withTimeout(get(ref(db, `drivers_locations/${d.phone}/status`)), NET_TIMEOUT_MS, "mystatus");
+      paintToggle(String(st.val() || "") === "active");
+      _stOk = true;
+     } catch (e) {}
+    }
+    if (!_stOk) toast("📡 جارٍ التحقّق من حالتك…", "info");
     listenMyStatus();
    })();
    return true;
