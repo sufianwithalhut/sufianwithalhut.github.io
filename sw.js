@@ -21,7 +21,7 @@
       build.js يرفض البناء عند الاختلاف، وtest_gate يحرسه. فتغيير الإصدار
       يُنشئ كاشاً جديداً ويُسقط القديم عند التفعيل — لا نسختين معاً.
    ═══════════════════════════════════════════════════════════════════════════ */
-const VER   = '31.79-RestSync';
+const VER   = '31.80-RestState';
 const CACHE = 'suf-' + VER;
 const SHELL = ['./driver.html'];
 const NET_TIMEOUT_MS = 8000;
