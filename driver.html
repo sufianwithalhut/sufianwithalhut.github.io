@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
 
 <script>
-const CURRENT_APP_VERSION = "31.80-NoBootLoop";
+const CURRENT_APP_VERSION = "31.71-NativeAll";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -1150,7 +1150,7 @@ window.addEventListener("popstate", () => {
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 
-import { serverTimestamp, getDatabase, ref, onValue, update, set, get, increment, onDisconnect, query, orderByChild, equalTo } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
+import { serverTimestamp, getDatabase, ref, onValue, update, set, get, increment, onDisconnect, query, orderByChild, equalTo, goOffline, goOnline } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
 
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js";
 
@@ -1186,16 +1186,6 @@ function srvNow() {
  return Date.now() + SRV_OFFSET;
 }
 
-function _webAtIso() {
- try {
-  const t = Date.now() + (Number(SRV_OFFSET) || 0);
-  if (isFinite(t) && Math.abs(t) < 864e13) return new Date(t).toISOString();
- } catch (_) {}
- return (new Date).toISOString();
-}
-
-let drv = null, curOrder = null, active = [], isOnline = false, isReg = false;
-
 let FB_CONNECTED = null, _fbConnSince = 0;
 
 try {
@@ -1204,80 +1194,299 @@ try {
   if (c !== FB_CONNECTED) {
    FB_CONNECTED = c;
    _fbConnSince = Date.now();
-   if (c === false && drv) track("fb_disconnected");
-   if (c === true && drv && drv.phone) {
-    _diagLast = 0;
-    if (isOnline) _pushDiag(drv.phone);
-    update(ref(db, `drivers_locations/${drv.phone}`), {
-     web_disc: null
-    }).catch(e => track("web_disc_clear_fail"));
-   }
+   setTimeout(function() {
+    try {
+     if (c === false && drv) {
+      bb("disconnect", "");
+      track("fb_disconnected");
+     }
+     if (c === true && drv && drv.phone) setTimeout(bbFlush, 2500);
+     if (c === true && drv && drv.phone) {
+      _diagLast = 0;
+      _pushDiag(drv.phone);
+      update(ref(db, `drivers_locations/${drv.phone}`), {
+       web_disc: null
+      }).catch(e => track("web_disc_clear_fail"));
+     }
+    } catch (_) {}
+   }, 0);
   }
  });
 } catch (e) {
  FB_CONNECTED = null;
 }
 
-const SOCK_STABLE_MS = 2e4;
+const _pageBorn = Date.now();
 
-const SOCK_RETRY_MS = 18e4;
-
-let _sockDiagAt = 0;
-
-function _sockDiag(why, secs) {
+document.addEventListener("visibilitychange", function() {
  try {
-  if (Date.now() - _sockDiagAt < 6e5) return;
-  _sockDiagAt = Date.now();
-  const u = auth && auth.currentUser ? String(auth.currentUser.uid) : "null";
-  gasFetch(`${API_URL}?action=DIAG&token=${API_TOKEN}` + `&phone=${encodeURIComponent(drv && drv.phone || "")}` + `&ev=socket_stuck` + `&why=${encodeURIComponent(String(why) + "|" + Math.round(secs) + "s|step" + _sockStep)}` + `&raw=${encodeURIComponent("online=" + (navigator.onLine !== false ? 1 : 0) + ",vpn=" + (vpnActive() ? 1 : 0) + ",pass=" + (getPass() ? 1 : 0))}` + `&uid=${encodeURIComponent(u)}` + `&ver=${encodeURIComponent(CURRENT_APP_VERSION)}`, null, 6e3).catch(() => {});
- } catch (e) {}
+  if (document.visibilityState !== "visible") return;
+  if (FB_CONNECTED === false && navigator.onLine !== false) {
+   try {
+    goOffline(db);
+    setTimeout(() => {
+     try {
+      goOnline(db);
+     } catch (_) {}
+    }, 500);
+    track("rewire_on_focus");
+   } catch (e) {
+    track("reconnect_fail", {
+     reason: "focus:" + String(e && e.message || e).slice(0, 30)
+    });
+   }
+  }
+  if (Date.now() - _pageBorn < 2 * 36e5) return;
+  if (!drv || !drv.phone) return;
+  if (active && active.length || curOrder) return;
+  if (FB_CONNECTED === false) return;
+  const last = Number(localStorage.getItem("suf_auto_reload") || 0);
+  if (Date.now() - last < 6 * 36e5) return;
+  localStorage.setItem("suf_auto_reload", String(Date.now()));
+  track("auto_reload", {
+   ms: Math.round((Date.now() - _pageBorn) / 6e4)
+  });
+  setTimeout(function() {
+   location.reload();
+  }, 400);
+ } catch (e) {
+  track("auto_reload_fail", {
+   reason: String(e && e.message || e).slice(0, 40)
+  });
+ }
+});
+
+function bb(tag, meta) {
+ try {
+  const a = JSON.parse(localStorage.getItem("suf_bb") || "[]");
+  a.push({
+   t: (new Date).toISOString().slice(11, 19),
+   k: String(tag).slice(0, 24),
+   m: String(meta == null ? "" : meta).slice(0, 60)
+  });
+  while (a.length > 40) a.shift();
+  localStorage.setItem("suf_bb", JSON.stringify(a));
+ } catch (_) {}
 }
 
-let _sockDown = 0, _sockStep = 0, _sockBusy = false, _sockUpAt = 0, _offAt = 0, _offMs = 0, _lastEsc = 0;
+function bbFlush() {
+ try {
+  const raw = localStorage.getItem("suf_bb");
+  if (!raw) return;
+  const a = JSON.parse(raw) || [];
+  if (!a.length) {
+   localStorage.removeItem("suf_bb");
+   return;
+  }
+  localStorage.removeItem("suf_bb");
+  for (let i = 0; i < a.length; i += 8) {
+   const chunk = a.slice(i, i + 8).map(x => x.t + " " + x.k + (x.m ? "=" + x.m : "")).join(" | ");
+   track("blackbox", {
+    reason: chunk.slice(0, 60)
+   });
+  }
+ } catch (_) {}
+}
+
+let NATIVE_SOCKET = false, _nativeSeenAt = 0;
+
+function nativeUp() {
+ try {
+  return !!(window.AndroidRadar && AndroidRadar.nativeSocketUp && AndroidRadar.nativeSocketUp());
+ } catch (e) {
+  return false;
+ }
+}
+
+window.onNativeOffer = function(o) {
+ try {
+  if (!o || typeof o !== "object") return;
+  _nativeSeenAt = Date.now();
+  if (o.type === "socket") {
+   track("native_socket_state", {
+    reason: o.up ? "up" : "down"
+   });
+   return;
+  }
+  if (o.type === "accept_result") {
+   track(o.ok ? "accept_ok_native" : "accept_rejected_native", {
+    oid: o.id,
+    reason: String(o.why || "").slice(0, 20)
+   });
+   const b1 = document.getElementById("btnAccept");
+   if (o.ok) {
+    if (typeof refreshOrdersNow === "function") refreshOrdersNow();
+   } else {
+    if (b1) {
+     b1.innerHTML = "قبول الطلب";
+     b1.disabled = false;
+    }
+    toast(o.why === "taken" ? "⏱️ سبقك كابتنٌ آخر — الطلب لم يعد متاحاً." : "⚠️ تعذّر التأكيد — حاول ثانية.", "warn");
+   }
+   return;
+  }
+  if (o.type === "gone") {
+   if (curOrder && String(curOrder.id) === String(o.id)) {
+    track("native_offer_gone", {
+     oid: o.id
+    });
+   }
+   return;
+  }
+  if (o.type !== "order" || !o.id) return;
+  track("native_offer", {
+   oid: o.id,
+   reason: String(o.status || "").slice(0, 20)
+  });
+  bb("native_offer", String(o.id).slice(-6) + " " + String(o.status || ""));
+  if (typeof refreshOrdersNow === "function") {
+   try {
+    refreshOrdersNow();
+   } catch (e) {
+    track("native_refresh_fail");
+   }
+  }
+ } catch (e) {
+  track("native_offer_fail", {
+   reason: String(e && e.message || e).slice(0, 40)
+  });
+ }
+};
+
+let _sockDown = 0, _sockStep = 0, _sockBusy = false, _probed = false, _probeNet = null, _ordersCb = null;
+
+async function _sockProbe() {
+ const out = [];
+ try {
+  let idTok = null;
+  try {
+   if (auth.currentUser) {
+    idTok = await Promise.race([ auth.currentUser.getIdToken(true), new Promise((_, r) => setTimeout(() => r(new Error("tok_timeout")), 8e3)) ]);
+    out.push("tok=ok");
+   } else out.push("tok=nouser");
+  } catch (e) {
+   out.push("tok=" + String(e && (e.code || e.message) || e).replace(/\s+/g, "_").slice(0, 26));
+  }
+  try {
+   const u = DB_REST + "/drivers_locations/" + encodeURIComponent(drv && drv.phone || "0") + "/status.json" + (idTok ? "?auth=" + encodeURIComponent(idTok) : "");
+   const c = new AbortController;
+   const t = setTimeout(() => c.abort(), 8e3);
+   const r = await fetch(u, {
+    signal: c.signal
+   });
+   clearTimeout(t);
+   out.push("rest=" + r.status);
+   const d = r.headers.get("date");
+   if (d) {
+    out.push("skew=" + Math.round((Date.parse(d) - Date.now()) / 1e3) + "s");
+   }
+   if (!r.ok) {
+    const b = await r.text();
+    out.push("b=" + String(b).replace(/\s+/g, "_").slice(0, 26));
+   }
+  } catch (e) {
+   out.push("rest=" + String(e && (e.name || e.message) || e).replace(/\s+/g, "_").slice(0, 22));
+  }
+  try {
+   const c2 = new AbortController;
+   const t2 = setTimeout(() => c2.abort(), 6e3);
+   await fetch("https://www.gstatic.com/generate_204", {
+    signal: c2.signal,
+    mode: "no-cors"
+   });
+   clearTimeout(t2);
+   out.push("net=ok");
+  } catch (e) {
+   out.push("net=" + String(e && (e.name || e.message) || e).replace(/\s+/g, "_").slice(0, 18));
+  }
+ } catch (e) {
+  out.push("probe_err");
+ }
+ bb("probe", out.join(" "));
+ _probeNet = out.some(x => x === "tok=ok" || /^rest=\d{3}$/.test(x) || x === "net=ok");
+ out.push("netjudge=" + (_probeNet ? "up" : "down"));
+ track("socket_probe", {
+  reason: out.join(" ").slice(0, 60)
+ });
+ try {
+  window._statusErr2 = "probe:" + out.join(" ");
+ } catch (_) {}
+}
 
 async function _sockWatch() {
  try {
   if (!drv || !drv.phone) return;
   if (FB_CONNECTED !== false) {
-   if (_offAt) {
-    _offMs += Date.now() - _offAt;
-    _offAt = 0;
-   }
-   if (!_sockUpAt) _sockUpAt = Date.now();
-   if (Date.now() - _sockUpAt < SOCK_STABLE_MS) {
-    if (_sockStep) track("socket_flap", {
-     ms: Math.round((Date.now() - _sockDown - _offMs) / 1e3)
-    });
-    return;
-   }
    if (_sockStep) {
+    bb("recovered", Math.round((Date.now() - _sockDown) / 1e3) + "s");
     track("socket_recovered", {
      ms: Date.now() - _sockDown
     });
-    showAuthBanner(false);
+    bbFlush();
    }
    _sockDown = 0;
    _sockStep = 0;
-   _offMs = 0;
-   _lastEsc = 0;
+   _probed = false;
+   _probeNet = null;
    return;
   }
-  _sockUpAt = 0;
   if (navigator.onLine === false) {
-   if (!_offAt) _offAt = Date.now();
    return;
-  }
-  if (_offAt) {
-   _offMs += Date.now() - _offAt;
-   _offAt = 0;
   }
   if (!_sockDown) _sockDown = Date.now();
-  const secs = (Date.now() - _sockDown - _offMs) / 1e3;
+  const secs = (Date.now() - _sockDown) / 1e3;
   if (_sockBusy) return;
+  if (secs >= 20 && isOnline && !(active && active.length) && !curOrder && Date.now() - (window._tapAt || 0) > 6e4 && !window._statusBusy) {
+   bb("forced_off", Math.round(secs) + "s");
+   track("forced_off_no_socket", {
+    ms: Math.round(secs)
+   });
+   setWantOnline(false);
+   paintToggle(false);
+   setDesired(false);
+   toast("🔌 انقطع الاتصال بالخادم — أُوقفت الطلبات مؤقّتاً حتى يعود.", "warn");
+  }
+  if (secs >= 45 && !_probed) {
+   _probed = true;
+   await _sockProbe();
+  }
+  if (secs >= 45 && _probeNet !== true) {
+   return;
+  }
   if (secs >= 45 && _sockStep === 0) {
    _sockStep = 1;
    _sockBusy = true;
-   _lastEsc = Date.now();
+   bb("rewire", Math.round(secs) + "s");
+   track("socket_silent", {
+    ms: Math.round(secs),
+    reason: "reconnect"
+   });
+   try {
+    goOffline(db);
+    await new Promise(r => setTimeout(r, 600));
+    goOnline(db);
+   } catch (e) {
+    track("reconnect_fail", {
+     reason: String(e && e.message || e).slice(0, 40)
+    });
+   } finally {
+    _sockBusy = false;
+   }
+  } else if (secs >= 90 && _sockStep === 1) {
+   _sockStep = 2;
+   bb("reload", Math.round(secs) + "s");
+   track("socket_silent", {
+    ms: Math.round(secs),
+    reason: "reload"
+   });
+   if (!(active && active.length) && !curOrder) {
+    setTimeout(() => location.reload(), 300);
+   } else track("reload_deferred", {
+    reason: "busy"
+   });
+  } else if (secs >= 150 && _sockStep === 2) {
+   _sockStep = 3;
+   _sockBusy = true;
    track("socket_silent", {
     ms: Math.round(secs),
     reason: "heal"
@@ -1287,43 +1496,14 @@ async function _sockWatch() {
    } finally {
     _sockBusy = false;
    }
-  } else if (secs >= 90 && _sockStep === 1) {
-   _sockStep = 2;
-   _sockBusy = true;
-   _lastEsc = Date.now();
-   track("socket_silent", {
-    ms: Math.round(secs),
-    reason: "hard"
-   });
-   try {
-    await hardReauth();
-   } finally {
-    _sockBusy = false;
-   }
-  } else if (secs >= 150 && _sockStep === 2) {
-   _sockStep = 3;
-   _lastEsc = Date.now();
+  } else if (secs >= 240 && _sockStep === 3) {
+   _sockStep = 4;
+   bb("banner", Math.round(secs) + "s");
    track("socket_silent", {
     ms: Math.round(secs),
     reason: "banner"
    });
    showAuthBanner(true);
-   _sockDiag("stuck", secs);
-  } else if (_sockStep >= 3 && Date.now() - _lastEsc >= SOCK_RETRY_MS) {
-   _lastEsc = Date.now();
-   _sockBusy = true;
-   track("socket_silent", {
-    ms: Math.round(secs),
-    reason: "retry"
-   });
-   let _r = false;
-   try {
-    _r = await hardReauth();
-   } finally {
-    _sockBusy = false;
-   }
-   showAuthBanner(true);
-   if (!_r) _sockDiag("retry_fail", secs);
   }
  } catch (e) {
   track("sock_watch_fail", {
@@ -1333,6 +1513,24 @@ async function _sockWatch() {
 }
 
 setInterval(_sockWatch, 15e3);
+
+window.addEventListener("online", function() {
+ try {
+  if (FB_CONNECTED === false) {
+   goOffline(db);
+   setTimeout(() => {
+    try {
+     goOnline(db);
+    } catch (_) {}
+   }, 400);
+   track("rewire_on_online");
+  }
+ } catch (e) {
+  track("reconnect_fail", {
+   reason: "online:" + String(e && e.message || e).slice(0, 30)
+  });
+ }
+});
 
 function waitConnected(ms) {
  return new Promise(res => {
@@ -1371,6 +1569,8 @@ function nP(p) {
  if (s.length > 10 && s.startsWith("964")) s = s.slice(3);
  return s.replace(/^0+/, "");
 }
+
+let drv = null, curOrder = null, active = [], isOnline = false, isReg = false;
 
 let cdTimer, hbTimer = null, shTimer = null, tokTimer = null, waitTimer = null;
 
@@ -1433,9 +1633,6 @@ function updateLinkPill() {
  if (FB_CONNECTED === false) {
   const _selfHeal = navigator.onLine !== false && !vpnActive();
   el.innerHTML = vpnActive() ? "🔌 غير متصل بالخادم — أطفئ VPN" : _selfHeal ? "🔌 غير متصل بالخادم — جارٍ إعادة الاتصال…" : "🔌 غير متصل بالخادم — تحقّق من الشبكة";
-  if (_selfHeal && _sockDown && Date.now() - _sockDown - _offMs >= 12e4) {
-   el.innerHTML += '<br><button onclick="relogin()" style="margin-top:8px;background:#DC2626;' + "color:#fff;border:none;border-radius:12px;padding:9px 20px;font-family:inherit;" + 'font-weight:900;font-size:.86rem;">🔑 إعادة تسجيل الدخول</button>';
-  }
   el.style.color = "#DC2626";
   return;
  }
@@ -1804,27 +2001,58 @@ function devId() {
  }
 }
 
+function cloudOpen() {
+ try {
+  return Date.now() > Number(localStorage.getItem("suf_cloud_off") || 0);
+ } catch (_) {
+  return true;
+ }
+}
+
+function cloudFail() {
+ try {
+  const k = Number(localStorage.getItem("suf_cloud_n") || 0) + 1;
+  localStorage.setItem("suf_cloud_n", String(k));
+  if (k >= 2) {
+   localStorage.setItem("suf_cloud_off", String(Date.now() + 30 * 6e4));
+   localStorage.setItem("suf_cloud_n", "0");
+   track("cloud_breaker_open");
+  }
+ } catch (_) {}
+}
+
+function cloudOk() {
+ try {
+  localStorage.setItem("suf_cloud_n", "0");
+  localStorage.removeItem("suf_cloud_off");
+ } catch (_) {}
+}
+
 async function cloudLogin(ph, pass, claim) {
+ if (!cloudOpen()) return null;
  try {
   const r = await Promise.race([ httpsCallable(fns, "driverLogin")({
    phone: ph,
    password: String(pass || ""),
    dev: devId(),
    claim: claim ? "1" : "0"
-  }), new Promise((_, rej) => setTimeout(() => rej(new Error("cloud_timeout")), 12e3)) ]);
+  }), new Promise((_, rej) => setTimeout(() => rej(new Error("cloud_timeout")), 4e3)) ]);
   const d = r && r.data;
   if (!d || !d.status) return null;
-  if (d.status === "not_mirrored" || d.status === "no_pepper") {
+  if (d.status === "not_mirrored" || d.status === "no_pepper" || d.status === "mint_failed") {
+   cloudFail();
    track("cloud_login_fallback", {
     reason: d.status
    });
    return null;
   }
+  cloudOk();
   track("cloud_login", {
    reason: d.status
   });
   return d;
  } catch (e) {
+  cloudFail();
   track("cloud_login_miss", {
    reason: String(e && (e.code || e.message) || e).slice(0, 40)
   });
@@ -1986,13 +2214,19 @@ function clearPass() {
 }
 
 async function refreshCloud() {
+ if (!cloudOpen()) return null;
  try {
   if (!auth.currentUser) return null;
-  const r = await Promise.race([ httpsCallable(fns, "refreshSession")({}), new Promise((_, rej) => setTimeout(() => rej(new Error("cloud_timeout")), 12e3)) ]);
+  const r = await Promise.race([ httpsCallable(fns, "refreshSession")({}), new Promise((_, rej) => setTimeout(() => rej(new Error("cloud_timeout")), 4e3)) ]);
   const d = r && r.data;
-  if (!(d && d.success && d.firebase_token)) return null;
+  if (!(d && d.success && d.firebase_token)) {
+   cloudFail();
+   return null;
+  }
+  cloudOk();
   return d;
  } catch (e) {
+  cloudFail();
   track("cloud_refresh_miss", {
    reason: String(e && (e.code || e.message) || e).slice(0, 40)
   });
@@ -2131,17 +2365,57 @@ async function hardReauth() {
    track("hard_reauth_nopass");
    return false;
   }
-  try {
-   await withTimeout(signOut(auth), 5e3, "signout");
-  } catch (e) {
-   track("fail_reauth_signout", {
-    reason: String(e && e.message || e).slice(0, 60)
+  if (navigator.onLine === false) {
+   track("hard_reauth_skipped", {
+    reason: "offline"
    });
+   return false;
   }
-  const r = await fbAuth(drv.phone, decPass_(sp));
-  const ok = !!(r && r.ok);
-  track(ok ? "hard_reauth_ok" : "hard_reauth_fail");
-  return ok;
+  try {
+   const c = new AbortController;
+   const t = setTimeout(() => c.abort(), 5e3);
+   await fetch("https://www.gstatic.com/generate_204", {
+    signal: c.signal,
+    mode: "no-cors"
+   });
+   clearTimeout(t);
+  } catch (e) {
+   track("hard_reauth_skipped", {
+    reason: "no_net"
+   });
+   return false;
+  }
+  try {
+   const pre = await checkDriverReq(drv.phone, decPass_(sp), false);
+   if (!(pre && pre.firebase_token)) {
+    track("hard_reauth_skipped", {
+     reason: "no_token"
+    });
+    return false;
+   }
+   try {
+    await withTimeout(signOut(auth), 5e3, "signout");
+   } catch (e) {
+    track("fail_reauth_signout", {
+     reason: String(e && e.message || e).slice(0, 40)
+    });
+   }
+   await signInWithCustomToken(auth, pre.firebase_token);
+   if (pre.session_token) {
+    try {
+     localStorage.setItem("suf_stoken", String(pre.session_token));
+    } catch (_) {
+     track("stoken_store_fail");
+    }
+   }
+   track("hard_reauth_ok");
+   return true;
+  } catch (e) {
+   track("hard_reauth_pre_fail", {
+    reason: String(e && (e.code || e.message) || e).slice(0, 40)
+   });
+   return false;
+  }
  } catch (e) {
   return false;
  } finally {
@@ -2482,6 +2756,7 @@ function onLogin(d, phone, pass) {
    if (window.AndroidRadar && AndroidRadar.subscribeToDriverTopic) AndroidRadar.subscribeToDriverTopic(phone);
   } catch (e) {}
   showDash();
+  setTimeout(bbFlush, 6e3);
   document.getElementById("onlineTog").checked = false;
   toggleOnline();
   try {
@@ -2616,38 +2891,11 @@ function checkSession() {
      document.getElementById("phone").value = _ph;
      gasFetch(`${API_URL}?action=DIAG&token=${API_TOKEN}` + `&phone=${encodeURIComponent(_ph)}` + `&ev=session_without_key&why=boot_no_pass&raw=&uid=null` + `&ver=${encodeURIComponent(CURRENT_APP_VERSION)}`, null, 6e3).catch(() => {});
     } catch (_) {}
-    try {
-     let _n = 0;
+    setTimeout(function() {
      try {
-      _n = Number(sessionStorage.getItem("suf_nokey_n") || 0);
-     } catch (_) {
-      _n = window.__nokeyN || 0;
-     }
-     _n++;
-     window.__nokeyN = _n;
-     try {
-      sessionStorage.setItem("suf_nokey_n", String(_n));
+      alert("🔑 انتهت جلستك على هذا الجهاز.\n\nسجّل الدخول مرّةً واحدة — ولا حاجة لحذف التطبيق.");
      } catch (_) {}
-     let _sto = "ok";
-     try {
-      localStorage.setItem("__t", "1");
-      localStorage.removeItem("__t");
-     } catch (_) {
-      _sto = "FAIL";
-     }
-     const _looped = _n >= 3 || _sto === "FAIL";
-     const b = document.createElement("div");
-     b.id = "noKeyBanner";
-     b.setAttribute("dir", "rtl");
-     b.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:99999;background:#1e3a8a;color:#fff;" + "padding:13px 16px;text-align:center;font-weight:800;font-size:.9rem;line-height:1.7;" + "box-shadow:0 4px 14px rgba(0,0,0,.3);";
-     b.innerHTML = _looped ? '🔁 <b>تعذّر حفظ جلستك على هذا الجهاز.</b><br><span style="font-weight:600;font-size:.82rem;opacity:.95">تخزين التطبيق لا يستجيب. سجّل الدخول الآن — وإن تكرّر، امسح بيانات التطبيق من إعدادات الهاتف.</span>' : '🔑 <b>انتهت جلستك على هذا الجهاز.</b><br><span style="font-weight:600;font-size:.82rem;opacity:.95">سجّل الدخول مرّةً واحدة — ولا حاجة لحذف التطبيق.</span>';
-     document.body.appendChild(b);
-     if (_looped) {
-      try {
-       gasFetch(`${API_URL}?action=DIAG&token=${API_TOKEN}` + `&phone=${encodeURIComponent(nP(d.phone || "") || "")}` + `&ev=boot_loop&why=${encodeURIComponent("nokey_x" + _n)}&raw=${encodeURIComponent("sto=" + _sto)}` + `&uid=null&ver=${encodeURIComponent(CURRENT_APP_VERSION)}`, null, 6e3).catch(() => {});
-      } catch (_) {}
-     }
-    } catch (_) {}
+    }, 500);
     return false;
    }
    if (sp) document.getElementById("pass").value = decPass_(sp);
@@ -3069,6 +3317,18 @@ const EFF_TXT = {
 function setDesired(online, by) {
  if (!drv || !drv.phone) return;
  try {
+  if (NATIVE_SOCKET && nativeUp()) {
+   try {
+    AndroidRadar.nativeSetDesired(!!online, by || "captain");
+    _lastDesired = !!online;
+    track("desired_via_native", {
+     reason: online ? "on" : "off"
+    });
+    return;
+   } catch (e) {
+    track("desired_native_fail");
+   }
+  }
   const rec = {
    online: !!online,
    at: new Date(srvNow()).toISOString(),
@@ -3097,6 +3357,11 @@ function paintEffective(reason) {
    el.id = "effLine";
    el.style.cssText = "font-size:.78rem;font-weight:700;margin-top:4px;text-align:center;color:#64748b";
    lbl.parentNode.insertBefore(el, lbl.nextSibling);
+  }
+  if (FB_CONNECTED === false) {
+   el.textContent = "⚠️ غير مرئيّ: لا اتصال بالخادم";
+   el.style.color = "#dc2626";
+   return;
   }
   if (!reason) {
    el.textContent = "";
@@ -3305,7 +3570,8 @@ window.toggleOnline = async function() {
    }
   }
  }
- if (_tog && _tog.checked && drv) {
+ if (_tog && _tog.checked && drv && Date.now() - (window._pfLast || 0) > 3e3) {
+  window._pfLast = Date.now();
   try {
    const issues = [];
    if (FB_CONNECTED === false) issues.push(vpnActive() ? "vpn" : "net");
@@ -3335,6 +3601,7 @@ window.toggleOnline = async function() {
   }
  }
  isOnline = document.getElementById("onlineTog").checked;
+ window._tapAt = Date.now();
  if (!isOnline) setDesired(false);
  setWantOnline(isOnline);
  availEpoch++;
@@ -3545,6 +3812,15 @@ function heartbeat() {
 let availEpoch = 0;
 
 async function fbStatus(st, epoch, waitGeo) {
+ window._statusBusy = true;
+ try {
+  return await _fbStatusGuarded(st, epoch, waitGeo);
+ } finally {
+  window._statusBusy = false;
+ }
+}
+
+async function _fbStatusGuarded(st, epoch, waitGeo) {
  if (epoch !== undefined && epoch !== availEpoch) {
   try {
    window._statusErr = "epoch_drop";
@@ -3587,7 +3863,8 @@ function _pushDiag(p) {
   update(ref(db, `drivers_locations/${p}`), {
    ver: String(CURRENT_APP_VERSION).slice(0, 40),
    skew: sk,
-   src: _buildSrc()
+   src: _buildSrc(),
+   web_at: new Date(srvNow()).toISOString()
   }).catch(e => {
    track("diag_write_fail", {
     reason: String(e && e.code || e && e.message || e).slice(0, 60)
@@ -3676,7 +3953,6 @@ async function _fbStatusRaw(st, waitGeo) {
  }
  if (!_reconciled) u[`drivers_locations/${p}/status`] = st;
  u[`drivers_locations/${p}/last_update`] = (new Date).toISOString();
- u[`drivers_locations/${p}/web_at`] = _webAtIso();
  const _wStart = Date.now();
  try {
   await withTimeout(update(ref(db), u), _tmo, "write_timeout");
@@ -3714,8 +3990,58 @@ async function _fbStatusRaw(st, waitGeo) {
     window._healOk = 0;
    } else {
     try {
-     window._statusErr2 = "retry_direct";
+     window._statusErr2 = "retry_rest";
     } catch (_) {}
+    let restOk = false;
+    try {
+     const tok = auth.currentUser ? await auth.currentUser.getIdToken() : "";
+     const body = {};
+     Object.keys(u).forEach(k => {
+      body[k.replace("drivers_locations/" + p + "/", "")] = u[k];
+     });
+     const c = new AbortController;
+     const t = setTimeout(() => c.abort(), 9e3);
+     const r = await fetch(DB_REST + "/drivers_locations/" + encodeURIComponent(p) + ".json" + (tok ? "?auth=" + encodeURIComponent(tok) : ""), {
+      method: "PATCH",
+      signal: c.signal,
+      headers: {
+       "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body)
+     });
+     clearTimeout(t);
+     restOk = r.ok;
+     if (!r.ok) {
+      try {
+       window._statusErr2 = "retry_rest_" + r.status;
+      } catch (_) {}
+     }
+    } catch (e3) {
+     try {
+      window._statusErr2 = "retry_rest_" + String(e3 && (e3.name || e3.message) || "").slice(0, 16);
+     } catch (_) {}
+    }
+    if (restOk) {
+     lastAckTs = Date.now();
+     window._statusErr = "";
+     updateLinkPill();
+     track("write_via_rest", {
+      reason: st
+     });
+     bb("rest_write", "ok");
+     if (Date.now() - (window._rewireAt || 0) > 6e4) {
+      window._rewireAt = Date.now();
+      try {
+       goOffline(db);
+       setTimeout(() => {
+        try {
+         goOnline(db);
+        } catch (_) {}
+       }, 500);
+      } catch (_) {}
+     }
+     return true;
+    }
     await withTimeout(update(ref(db), u), _tmo, "write_timeout");
     lastAckTs = Date.now();
     window._statusErr = "";
@@ -3736,7 +4062,26 @@ async function _fbStatusRaw(st, waitGeo) {
     try {
      window._statusErr2 = "late_ok";
      const _lateMs = Date.now() - _wStart;
-     if (_lateMs > _tmo * 4 || Math.random() < .05) track("write_late_ok", {
+     if (_lateMs > 25e3 && Date.now() - (window._rewireAt || 0) > 6e4) {
+      window._rewireAt = Date.now();
+      bb("stall", _lateMs + "ms");
+      track("rewire_on_stall", {
+       ms: _lateMs
+      });
+      try {
+       goOffline(db);
+       setTimeout(() => {
+        try {
+         goOnline(db);
+        } catch (_) {}
+       }, 500);
+      } catch (e) {
+       track("reconnect_fail", {
+        reason: "stall:" + String(e && e.message || e).slice(0, 28)
+       });
+      }
+     }
+     if (_lateMs > _tmo * 4 || Math.random() < .01) track("write_late_ok", {
       ms: _lateMs,
       reason: st
      });
@@ -4305,6 +4650,9 @@ function startListeners() {
  listen(() => ref(db, "system_settings/tunables"), s => {
   applyTunables(s.val());
  });
+ listen(() => ref(db, "system_settings/flags/native_socket"), s => {
+  NATIVE_SOCKET = s.val() === true;
+ });
  listen(() => ref(db, `system_settings/tunables_by_phone/${drv.phone}`), s => {
   if (s.val()) applyTunables(s.val());
  });
@@ -4345,7 +4693,7 @@ function startListeners() {
   try {
    const cfg = s.val() || {};
    const needWeb = Number(cfg.min_web_version) || 0;
-   const mineWeb = parseInt(String(CURRENT_APP_VERSION).match(/^\d+/) || [ "0" ], 10) || 0;
+   const mineWeb = parseFloat(String(CURRENT_APP_VERSION).match(/^\d+(\.\d+)?/) || [ "0" ]) || 0;
    let needNat = Number(cfg.min_native_version) || 0, mineNat = 0;
    try {
     if (window.AndroidRadar && AndroidRadar.getNativeVersion) mineNat = parseInt(String(AndroidRadar.getNativeVersion()).match(/\d+/) || [ "0" ], 10) || 0;
@@ -4498,7 +4846,17 @@ async function fetchResLoc(phone) {
 }
 
 function listenOrders() {
- listen(() => query(ref(db, "active_orders"), orderByChild("driverPhone"), equalTo(drv.phone)), s => {
+ window.refreshOrdersNow = async function() {
+  try {
+   const snap = await get(query(ref(db, "active_orders"), orderByChild("driverPhone"), equalTo(drv.phone)));
+   if (typeof _ordersCb === "function") _ordersCb(snap);
+  } catch (e) {
+   track("native_refresh_fail", {
+    reason: String(e && e.code || e && e.message || e).slice(0, 40)
+   });
+  }
+ };
+ listen(() => query(ref(db, "active_orders"), orderByChild("driverPhone"), equalTo(drv.phone)), _ordersCb = s => {
   const fb = s.val() || {}, myId = nP(drv.phone);
   const rm = [];
   for (let i = active.length - 1; i >= 0; i--) {
@@ -4703,6 +5061,44 @@ window.acceptOrder = async function() {
   clearInterval(cdTimer);
   stopAlarm();
   curOrder = null;
+  return;
+ }
+ if (NATIVE_SOCKET && nativeUp()) {
+  try {
+   const _id = curOrder && curOrder.id;
+   track("accept_via_native", {
+    oid: _id
+   });
+   AndroidRadar.nativeAccept(String(_id));
+   const b0 = document.getElementById("btnAccept");
+   if (b0) {
+    b0.innerHTML = '<div class="spin" style="border-top-color:#fff;"></div> جاري التأكيد من الخادم…';
+    b0.disabled = true;
+   }
+   return;
+  } catch (e) {
+   track("accept_native_fail", {
+    reason: String(e && e.message || e).slice(0, 40)
+   });
+  }
+ }
+ if (FB_CONNECTED === false) {
+  track("accept_blocked_offline", {
+   oid: curOrder && curOrder.id
+  });
+  bb("accept_blocked", "");
+  toast("🔌 لا اتصال بالخادم — لا تقبل الآن. جارٍ إعادة الاتصال…", "warn");
+  try {
+   if (Date.now() - (window._rewireAt || 0) > 2e4) {
+    window._rewireAt = Date.now();
+    goOffline(db);
+    setTimeout(() => {
+     try {
+      goOnline(db);
+     } catch (_) {}
+    }, 400);
+   }
+  } catch (_) {}
   return;
  }
  const b = document.getElementById("btnAccept");
