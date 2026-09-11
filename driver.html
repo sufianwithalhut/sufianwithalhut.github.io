@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
 
 <script>
-const CURRENT_APP_VERSION = "31.71-NativeAll";
+const CURRENT_APP_VERSION = "31.73-SelfHeal";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -1353,6 +1353,8 @@ window.onNativeOffer = function(o) {
  }
 };
 
+let _sockUpAt = 0, _lastRecTry = 0;
+
 let _sockDown = 0, _sockStep = 0, _sockBusy = false, _probed = false, _probeNet = null, _ordersCb = null;
 
 async function _sockProbe() {
@@ -1417,12 +1419,20 @@ async function _sockWatch() {
  try {
   if (!drv || !drv.phone) return;
   if (FB_CONNECTED !== false) {
+   if (!_sockUpAt) _sockUpAt = Date.now();
+   if (Date.now() - _sockUpAt < 2e4) {
+    if (_sockStep) track("socket_flap", {
+     ms: Math.round((Date.now() - _sockDown) / 1e3)
+    });
+    return;
+   }
    if (_sockStep) {
     bb("recovered", Math.round((Date.now() - _sockDown) / 1e3) + "s");
     track("socket_recovered", {
      ms: Date.now() - _sockDown
     });
     bbFlush();
+    showAuthBanner(false);
    }
    _sockDown = 0;
    _sockStep = 0;
@@ -1430,6 +1440,7 @@ async function _sockWatch() {
    _probeNet = null;
    return;
   }
+  _sockUpAt = 0;
   if (navigator.onLine === false) {
    return;
   }
@@ -1504,6 +1515,14 @@ async function _sockWatch() {
     reason: "banner"
    });
    showAuthBanner(true);
+  } else if (_sockStep >= 4 && secs >= 300 && Date.now() - _lastRecTry >= 12e4) {
+   _lastRecTry = Date.now();
+   _sockBusy = true;
+   try {
+    await hardRecover("socket_stuck_" + Math.round(secs) + "s");
+   } finally {
+    _sockBusy = false;
+   }
   }
  } catch (e) {
   track("sock_watch_fail", {
@@ -2311,7 +2330,106 @@ async function reAuth() {
 
 let _denyStreak = 0;
 
+const RECOVER_GAP_MS = 9e5;
+
+const RECOVER_MAX_DAY = 3;
+
+let _recovering = false, _recoverMem = 0;
+
+function _recoverQuota_() {
+ const today = (new Date).toISOString().slice(0, 10);
+ let rec = {
+  d: today,
+  n: 0,
+  at: 0
+ };
+ try {
+  const raw = localStorage.getItem("suf_recover");
+  if (raw) {
+   const j = JSON.parse(raw);
+   if (j && j.d === today) rec = j;
+  }
+ } catch (_) {
+  if (_recoverMem && Date.now() - _recoverMem < RECOVER_GAP_MS) return null;
+ }
+ if (Date.now() - Number(rec.at || 0) < RECOVER_GAP_MS) return null;
+ if (Number(rec.n || 0) >= RECOVER_MAX_DAY) return null;
+ return rec;
+}
+
+async function hardRecover(why) {
+ if (_recovering) return false;
+ if (!getPass()) {
+  track("recover_skip", {
+   reason: "nopass"
+  });
+  return false;
+ }
+ const q = _recoverQuota_();
+ if (!q) {
+  track("recover_skip", {
+   reason: "quota"
+  });
+  return false;
+ }
+ _recovering = true;
+ try {
+  q.n = Number(q.n || 0) + 1;
+  q.at = Date.now();
+  _recoverMem = q.at;
+  try {
+   localStorage.setItem("suf_recover", JSON.stringify(q));
+  } catch (_) {}
+  try {
+   gasFetch(`${API_URL}?action=DIAG&token=${API_TOKEN}` + `&phone=${encodeURIComponent(drv && drv.phone || "")}` + `&ev=hard_recover&why=${encodeURIComponent(String(why || "auto"))}` + `&raw=${encodeURIComponent("n=" + q.n + ",step=" + _sockStep + ",online=" + (navigator.onLine !== false ? 1 : 0))}` + `&uid=${encodeURIComponent(auth && auth.currentUser ? String(auth.currentUser.uid) : "null")}` + `&ver=${encodeURIComponent(CURRENT_APP_VERSION)}`, null, 6e3).catch(() => {});
+  } catch (_) {}
+  track("hard_recover", {
+   reason: String(why || "auto"),
+   ms: q.n
+  });
+  try {
+   await withTimeout(signOut(auth), 4e3, "recover_signout");
+  } catch (e) {
+   track("recover_signout_fail", {
+    reason: String(e && e.message || e).slice(0, 40)
+   });
+  }
+  try {
+   indexedDB.deleteDatabase("firebaseLocalStorageDb");
+  } catch (_) {}
+  try {
+   if ("caches" in window) {
+    const ks = await caches.keys();
+    ks.forEach(k => caches.delete(k));
+   }
+  } catch (_) {}
+  setTimeout(() => {
+   try {
+    location.reload();
+   } catch (_) {}
+  }, 400);
+  return true;
+ } catch (e) {
+  _recovering = false;
+  track("hard_recover_fail", {
+   reason: String(e && e.message || e).slice(0, 50)
+  });
+  return false;
+ }
+}
+
 window.relogin = function() {
+ try {
+  signOut(auth);
+ } catch (e) {
+  track("relogin_signout_fail");
+ }
+ try {
+  indexedDB.deleteDatabase("firebaseLocalStorageDb");
+ } catch (e) {}
+ try {
+  if ("caches" in window) caches.keys().then(ks => ks.forEach(k => caches.delete(k)));
+ } catch (e) {}
  try {
   localStorage.removeItem("suf_session");
  } catch (e) {
