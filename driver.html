@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
 
 <script>
-const CURRENT_APP_VERSION = "31.80-RestState";
+const CURRENT_APP_VERSION = "31.81-IntentWins";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -1447,15 +1447,11 @@ async function _sockWatch() {
   if (!_sockDown) _sockDown = Date.now();
   const secs = (Date.now() - _sockDown) / 1e3;
   if (_sockBusy) return;
-  if (secs >= 20 && isOnline && !(active && active.length) && !curOrder && Date.now() - (window._tapAt || 0) > 6e4 && !window._statusBusy) {
-   bb("forced_off", Math.round(secs) + "s");
-   track("forced_off_no_socket", {
+  if (secs >= 20 && isOnline && !window._sockNoted) {
+   window._sockNoted = true;
+   track("socket_silent_noted", {
     ms: Math.round(secs)
    });
-   setWantOnline(false);
-   paintToggle(false);
-   setDesired(false);
-   toast("🔌 انقطع الاتصال بالخادم — أُوقفت الطلبات مؤقّتاً حتى يعود.", "warn");
   }
   if (secs >= 45 && !_probed) {
    _probed = true;
@@ -3848,10 +3844,20 @@ window.toggleOnline = async function() {
     }
    }
    if (!okNet && !_guardSaved) {
+    setWantOnline(true);
+    setTimeout(() => {
+     try {
+      if (wantOnline) fbStatus("active", availEpoch, false);
+     } catch (_) {}
+    }, 3e3);
+    setTimeout(() => {
+     try {
+      if (wantOnline) fbStatus("active", availEpoch, false);
+     } catch (_) {}
+    }, 12e3);
     _mirrorOn = false;
-    paintToggle(false);
-    document.getElementById("radarT").innerText = "⚠️ لم يتأكّد التفعيل";
-    document.getElementById("radarD").innerHTML = '<b style="color:#DC2626">لم يصل تفعيلك للخادم — لن تصلك طلبات.</b><br>تحقّق من الشبكة وGPS ثم أعد المحاولة.';
+    document.getElementById("radarT").innerText = "الرادار يعمل 📡";
+    document.getElementById("radarD").innerHTML = "📡 جارٍ تأكيد التفعيل…";
     rad.classList.remove("on");
     rad.classList.add("off");
     const _rsn = (window._statusErr || "unknown") + (window._statusOnline === 0 ? "|offline" : "") + (window._healOk === 0 ? "|healfail" : "");
