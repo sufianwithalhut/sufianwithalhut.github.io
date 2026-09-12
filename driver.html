@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
 
 <script>
-const CURRENT_APP_VERSION = "31.81-IntentWins";
+const CURRENT_APP_VERSION = "31.83-NoFalseAlarm";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -2545,9 +2545,32 @@ function listen(mkRef, cb) {
  const onErr = async err => {
   console.warn("🔒 رُفضت القراءة:", err && err.message);
   _denyStreak++;
-  if (_denyStreak >= 3) showAuthBanner(true);
+  if (_denyStreak >= 3) {
+   let _authReallyBad = true;
+   try {
+    const tok = auth.currentUser ? await withTimeout(auth.currentUser.getIdToken(), 6e3, "idtok") : "";
+    const c = new AbortController;
+    const t = setTimeout(() => c.abort(), 8e3);
+    const rr = await fetch(DB_REST + "/drivers_locations/" + encodeURIComponent(nP(drv && drv.phone || "")) + "/status.json" + (tok ? "?auth=" + encodeURIComponent(tok) : ""), {
+     signal: c.signal,
+     cache: "no-store"
+    });
+    clearTimeout(t);
+    if (rr.ok) {
+     _authReallyBad = false;
+     track("deny_but_rest_ok");
+    } else if (rr.status !== 401 && rr.status !== 403) {
+     _authReallyBad = false;
+     track("deny_rest_" + rr.status);
+    }
+   } catch (e) {
+    _authReallyBad = false;
+    track("deny_rest_unknown");
+   }
+   if (_authReallyBad) showAuthBanner(true); else showAuthBanner(false);
+  }
   let ok = await healAuth();
-  if (!ok && _denyStreak >= 3) ok = await hardReauth();
+  if (!ok && _denyStreak >= 3 && document.getElementById("authBanner")) ok = await hardReauth();
   if (ok) {
    _denyStreak = 0;
    showAuthBanner(false);
@@ -5015,7 +5038,7 @@ function listenOrders() {
    const val = await r.json();
    if (typeof _ordersCb === "function") _ordersCb({
     val: () => val
-   });
+   }, true);
    track("rest_sync_ok", {
     ms: Object.keys(val || {}).length
    });
@@ -5037,19 +5060,31 @@ function listenOrders() {
    if (isOnline && drv && drv.phone) refreshOrdersNow();
   }, 45e3);
  } catch (_) {}
- listen(() => query(ref(db, "active_orders"), orderByChild("driverPhone"), equalTo(drv.phone)), _ordersCb = s => {
+ listen(() => query(ref(db, "active_orders"), orderByChild("driverPhone"), equalTo(drv.phone)), _ordersCb = (s, fromRest) => {
   const fb = s.val() || {}, myId = nP(drv.phone);
   const rm = [];
   for (let i = active.length - 1; i >= 0; i--) {
    const mo = active[i], f = fb[mo.id];
    if (!f && mo.acceptedTime && Date.now() - mo.acceptedTime < 12e3) continue;
    if (!f) {
+    if (fromRest) {
+     rm.push({
+      id: mo.id,
+      m: "انتهى هذا الطلب أو سُحب منك."
+     });
+     continue;
+    }
     if (!window._absSeen) window._absSeen = {};
     const _n = (window._absSeen[mo.id] || 0) + 1;
     window._absSeen[mo.id] = _n;
-    if (_n === 3) track("order_absent_kept", {
-     oid: mo.id
-    });
+    if (_n === 3) {
+     track("order_absent_kept", {
+      oid: mo.id
+     });
+     try {
+      refreshOrdersNow();
+     } catch (_) {}
+    }
     continue;
    }
    try {
