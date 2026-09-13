@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
 
 <script>
-const CURRENT_APP_VERSION = "31.77-NoProxyOff";
+const CURRENT_APP_VERSION = "31.78-NoSelfKick";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -2030,6 +2030,16 @@ function getStoken() {
  }
 }
 
+let __devMem = null;
+
+function devIdTrusted() {
+ try {
+  return !!localStorage.getItem("suf_dev");
+ } catch (e) {
+  return false;
+ }
+}
+
 function devId() {
  try {
   let d = localStorage.getItem("suf_dev");
@@ -2039,7 +2049,13 @@ function devId() {
   }
   return d;
  } catch (e) {
-  return "nostore";
+  if (!__devMem) {
+   __devMem = "mem-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+  }
+  try {
+   track("devid_nostore");
+  } catch (_) {}
+  return __devMem;
  }
 }
 
@@ -4711,6 +4727,12 @@ function startListeners() {
   const v = s.val();
   if (!v || !v.dev) return;
   if (String(v.dev) === String(devId())) return;
+  if (!devIdTrusted()) {
+   track("supersede_skipped", {
+    reason: "nostore"
+   });
+   return;
+  }
   track("session_superseded", {
    reason: String(v.dev).slice(0, 20)
   });
@@ -4728,16 +4750,23 @@ function startListeners() {
   } catch (e) {
    track("supersede_clear_fail");
   }
-  clearPass();
   try {
    fbStatus("inactive");
   } catch (e) {
    track("supersede_off_fail");
   }
+  try {
+   const b = document.createElement("div");
+   b.setAttribute("dir", "rtl");
+   b.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(15,23,42,.96);color:#fff;" + "display:flex;align-items:center;justify-content:center;text-align:center;padding:28px;" + "font-weight:800;font-size:1rem;line-height:2";
+   b.innerHTML = "📱 <b>تم تسجيل الدخول من جهازٍ آخر بهذا الرقم.</b><br>" + '<span style="font-weight:600;font-size:.88rem;opacity:.9">هذا الجهاز خرج تلقائياً كي لا يرنّ جهازان ' + "ويتعارض الموقع.<br>إن كان هذا جهازك الأساسيّ فسجّل الدخول عليه.</span>";
+   document.body.appendChild(b);
+  } catch (_) {}
   setTimeout(() => {
-   alert("📱 تم تسجيل الدخول من جهازٍ آخر بهذا الرقم.\n\nهذا الجهاز خرج تلقائياً كي لا يرنّ جهازان ويتعارض الموقع. إن كان هذا جهازك الأساسيّ فسجّل الدخول عليه.");
-   location.reload();
-  }, 400);
+   try {
+    location.reload();
+   } catch (_) {}
+  }, 6e3);
  });
  listen(() => ref(db, `drivers_locations/${drv.phone}/account_status`), s => {
   if (s.val() === "banned") {
