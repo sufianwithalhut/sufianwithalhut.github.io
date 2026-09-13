@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
 
 <script>
-const CURRENT_APP_VERSION = "31.75-NoTDZ";
+const CURRENT_APP_VERSION = "31.76-ProbeReset";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -1355,7 +1355,7 @@ window.onNativeOffer = function(o) {
  }
 };
 
-let _sockUpAt = 0, _lastRecTry = 0;
+let _sockUpAt = 0, _lastRecTry = 0, _probeAt = 0;
 
 let _sockDown = 0, _sockStep = 0, _sockBusy = false, _probed = false, _probeNet = null, _ordersCb = null;
 
@@ -1444,6 +1444,14 @@ async function _sockWatch() {
   }
   _sockUpAt = 0;
   if (navigator.onLine === false) {
+   if (_sockDown || _probed) track("sock_offline_reset", {
+    ms: Math.round((Date.now() - (_sockDown || Date.now())) / 1e3)
+   });
+   _sockDown = 0;
+   _sockStep = 0;
+   _probed = false;
+   _probeNet = null;
+   _sockUpAt = 0;
    return;
   }
   if (!_sockDown) _sockDown = Date.now();
@@ -1461,9 +1469,14 @@ async function _sockWatch() {
   }
   if (secs >= 45 && !_probed) {
    _probed = true;
+   _probeAt = Date.now();
    await _sockProbe();
   }
   if (secs >= 45 && _probeNet !== true) {
+   if (Date.now() - _probeAt >= 9e4) {
+    _probed = false;
+    _probeNet = null;
+   }
    return;
   }
   if (secs >= 45 && _sockStep === 0) {
@@ -3043,10 +3056,25 @@ function checkSession() {
    }
    (async () => {
     try {
-     const st = await withTimeout(get(ref(db, `drivers_locations/${d.phone}/status`)), NET_TIMEOUT_MS, "mystatus");
-     paintToggle(String(st.val() || "") === "active");
+     const des = await withTimeout(get(ref(db, `drivers_desired/${d.phone}/online`)), NET_TIMEOUT_MS, "mydesire");
+     const dv = des.val();
+     if (dv === true || dv === false) {
+      paintToggle(dv === true);
+      track("boot_paint", {
+       reason: dv ? "desire_on" : "desire_off"
+      });
+     } else {
+      const st = await withTimeout(get(ref(db, `drivers_locations/${d.phone}/status`)), NET_TIMEOUT_MS, "mystatus");
+      paintToggle(String(st.val() || "") === "active");
+      track("boot_paint", {
+       reason: "status_fallback"
+      });
+     }
     } catch (e) {
      paintToggle(false);
+     track("boot_paint", {
+      reason: "read_fail"
+     });
      toast("⚠️ تعذّرت قراءة حالتك — حدّث الصفحة للتأكّد", "warn");
     }
     listenMyStatus();
