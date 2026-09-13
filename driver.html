@@ -3,10 +3,10 @@
 <html lang="ar" dir="rtl">
 <head>
 
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app https://www.gstatic.com; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
 
 <script>
-const CURRENT_APP_VERSION = "31.79-NoReloadStep";
+const CURRENT_APP_VERSION = "31.80-OemGuard";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -1681,7 +1681,19 @@ function updateLinkPill() {
  if (!el || !isOnline) return;
  if (FB_CONNECTED === false) {
   const _selfHeal = navigator.onLine !== false && !vpnActive();
+  if (NATIVE_SOCKET && nativeUp()) {
+   el.innerHTML = "📡 المقبس الأصليّ يعمل — الطلبات تصلك";
+   el.style.color = "#2563eb";
+   return;
+  }
   el.innerHTML = vpnActive() ? "🔌 غير متصل بالخادم — أطفئ VPN" : _selfHeal ? "🔌 غير متصل بالخادم — جارٍ إعادة الاتصال…" : "🔌 غير متصل بالخادم — تحقّق من الشبكة";
+  const _down = _sockDown ? Date.now() - _sockDown : 0;
+  if (_selfHeal && _down >= 6e4 && window.AndroidRadar && AndroidRadar.openReliabilitySetup) {
+   el.innerHTML += "<br><button onclick=\"try{AndroidRadar.openReliabilitySetup();track('oem_setup_tap')}catch(e){}\" " + 'style="margin-top:8px;background:#1e3a8a;color:#fff;border:none;border-radius:12px;padding:9px 20px;' + 'font-family:inherit;font-weight:900;font-size:.86rem;">🛡️ إبقاء التطبيق يعمل</button>';
+  }
+  if (_selfHeal && _down >= 12e4) {
+   el.innerHTML += '<br><button onclick="relogin()" style="margin-top:8px;background:#DC2626;' + "color:#fff;border:none;border-radius:12px;padding:9px 20px;font-family:inherit;" + 'font-weight:900;font-size:.86rem;">🔑 إعادة تسجيل الدخول</button>';
+  }
   el.style.color = "#DC2626";
   return;
  }
