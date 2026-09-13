@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
 
 <script>
-const CURRENT_APP_VERSION = "31.76-ProbeReset";
+const CURRENT_APP_VERSION = "31.77-NoProxyOff";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -1355,7 +1355,7 @@ window.onNativeOffer = function(o) {
  }
 };
 
-let _sockUpAt = 0, _lastRecTry = 0, _probeAt = 0;
+let _sockUpAt = 0, _lastRecTry = 0, _probeAt = 0, _visualOff = false;
 
 let _sockDown = 0, _sockStep = 0, _sockBusy = false, _probed = false, _probeNet = null, _ordersCb = null;
 
@@ -1428,13 +1428,17 @@ async function _sockWatch() {
     });
     return;
    }
-   if (_sockStep) {
+   if (_sockStep || _visualOff) {
     bb("recovered", Math.round((Date.now() - _sockDown) / 1e3) + "s");
     track("socket_recovered", {
      ms: Date.now() - _sockDown
     });
     bbFlush();
     showAuthBanner(false);
+   }
+   if (_visualOff) {
+    _visualOff = false;
+    paintToggle(wantOnline === true);
    }
    _sockDown = 0;
    _sockStep = 0;
@@ -1457,15 +1461,21 @@ async function _sockWatch() {
   if (!_sockDown) _sockDown = Date.now();
   const secs = (Date.now() - _sockDown) / 1e3;
   if (_sockBusy) return;
-  if (secs >= 20 && isOnline && !(active && active.length) && !curOrder && Date.now() - (window._tapAt || 0) > 6e4 && !window._statusBusy) {
+  if (secs >= 20 && isOnline && !_visualOff && !(active && active.length) && !curOrder && Date.now() - (window._tapAt || 0) > 6e4 && !window._statusBusy) {
    bb("forced_off", Math.round(secs) + "s");
    track("forced_off_no_socket", {
     ms: Math.round(secs)
    });
-   setWantOnline(false);
-   paintToggle(false);
-   setDesired(false);
-   toast("🔌 انقطع الاتصال بالخادم — أُوقفت الطلبات مؤقّتاً حتى يعود.", "warn");
+   _visualOff = true;
+   try {
+    const t = document.getElementById("onlineTog"), lbl = document.getElementById("togLbl");
+    if (t) t.checked = false;
+    if (lbl) {
+     lbl.className = "tog-lbl";
+     lbl.innerText = "انقطع الاتصال — نُعيد الوصل";
+    }
+   } catch (_) {}
+   toast("🔌 انقطع الاتصال بالخادم — نُعيد الوصل تلقائياً. لم تُلغَ إتاحتك.", "warn");
   }
   if (secs >= 45 && !_probed) {
    _probed = true;
