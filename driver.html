@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
 
 <script>
-const CURRENT_APP_VERSION = "31.78-NoSelfKick";
+const CURRENT_APP_VERSION = "31.79-NoReloadStep";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -1510,16 +1510,23 @@ async function _sockWatch() {
    }
   } else if (secs >= 90 && _sockStep === 1) {
    _sockStep = 2;
-   bb("reload", Math.round(secs) + "s");
+   bb("rebuild2", Math.round(secs) + "s");
    track("socket_silent", {
     ms: Math.round(secs),
-    reason: "reload"
+    reason: "rebuild2"
    });
-   if (!(active && active.length) && !curOrder) {
-    setTimeout(() => location.reload(), 300);
-   } else track("reload_deferred", {
-    reason: "busy"
-   });
+   _sockBusy = true;
+   try {
+    goOffline(db);
+    await new Promise(r => setTimeout(r, 600));
+    goOnline(db);
+   } catch (e) {
+    track("reconnect_fail", {
+     reason: String(e && e.message || e).slice(0, 40)
+    });
+   } finally {
+    _sockBusy = false;
+   }
   } else if (secs >= 150 && _sockStep === 2) {
    _sockStep = 3;
    _sockBusy = true;
