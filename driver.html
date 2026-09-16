@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://*.firebasedatabase.app https://*.firebaseio.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app https://www.gstatic.com; object-src 'none'; base-uri 'none'; form-action 'self';">
 
 <script>
-const CURRENT_APP_VERSION = "31.81-CspLongPoll";
+const CURRENT_APP_VERSION = "31.87-VerGate";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -1290,6 +1290,8 @@ function bbFlush() {
  } catch (_) {}
 }
 
+const DB_URL = "https://sufyan-delivery-default-rtdb.europe-west1.firebasedatabase.app";
+
 let NATIVE_SOCKET = false, _nativeSeenAt = 0;
 
 function nativeUp() {
@@ -1311,6 +1313,9 @@ window.onNativeOffer = function(o) {
    return;
   }
   if (o.type === "accept_result") {
+   try {
+    clearTimeout(window._accWait);
+   } catch (_) {}
    track(o.ok ? "accept_ok_native" : "accept_rejected_native", {
     oid: o.id,
     reason: String(o.why || "").slice(0, 20)
@@ -4900,7 +4905,14 @@ function startListeners() {
    const mineWeb = parseFloat(String(CURRENT_APP_VERSION).match(/^\d+(\.\d+)?/) || [ "0" ]) || 0;
    let needNat = Number(cfg.min_native_version) || 0, mineNat = 0;
    try {
-    if (window.AndroidRadar && AndroidRadar.getNativeVersion) mineNat = parseInt(String(AndroidRadar.getNativeVersion()).match(/\d+/) || [ "0" ], 10) || 0;
+    if (window.AndroidRadar && AndroidRadar.getNativeVersion) {
+     const raw = String(AndroidRadar.getNativeVersion() || "");
+     const inParen = raw.match(/\((\d+)\)/);
+     if (inParen) mineNat = parseInt(inParen[1], 10) || 0; else {
+      const all = raw.match(/\d+/g);
+      mineNat = all ? parseInt(all[all.length - 1], 10) || 0 : 0;
+     }
+    }
    } catch (e) {}
    if (!mineNat) needNat = 0;
    const webStale = needWeb > 0 && mineWeb > 0 && mineWeb < needWeb;
@@ -5052,12 +5064,53 @@ async function fetchResLoc(phone) {
 function listenOrders() {
  window.refreshOrdersNow = async function() {
   try {
-   const snap = await get(query(ref(db, "active_orders"), orderByChild("driverPhone"), equalTo(drv.phone)));
+   const snap = await withTimeout(get(query(ref(db, "active_orders"), orderByChild("driverPhone"), equalTo(drv.phone))), 4e3, "orders_sdk");
    if (typeof _ordersCb === "function") _ordersCb(snap);
+   return true;
   } catch (e) {
    track("native_refresh_fail", {
     reason: String(e && e.code || e && e.message || e).slice(0, 40)
    });
+  }
+  try {
+   if (!auth.currentUser) {
+    track("orders_rest_skip", {
+     reason: "nouser"
+    });
+    return false;
+   }
+   const tok = await withTimeout(auth.currentUser.getIdToken(), 6e3, "rest_token");
+   const url = DB_URL + "/active_orders.json" + "?orderBy=" + encodeURIComponent('"driverPhone"') + "&equalTo=" + encodeURIComponent('"' + String(drv.phone) + '"') + "&auth=" + encodeURIComponent(tok);
+   const c = new AbortController;
+   const tm = setTimeout(() => c.abort(), 8e3);
+   let r;
+   try {
+    r = await fetch(url, {
+     signal: c.signal,
+     cache: "no-store"
+    });
+   } finally {
+    clearTimeout(tm);
+   }
+   if (!r.ok) {
+    track("orders_rest_fail", {
+     reason: "http_" + r.status
+    });
+    return false;
+   }
+   const obj = await r.json();
+   track("orders_rest_ok", {
+    ln: obj ? Object.keys(obj).length : 0
+   });
+   if (typeof _ordersCb === "function") _ordersCb({
+    val: () => obj || {}
+   });
+   return true;
+  } catch (e) {
+   track("orders_rest_fail", {
+    reason: String(e && e.name || e && e.message || e).slice(0, 40)
+   });
+   return false;
   }
  };
  listen(() => query(ref(db, "active_orders"), orderByChild("driverPhone"), equalTo(drv.phone)), _ordersCb = s => {
@@ -5279,6 +5332,23 @@ window.acceptOrder = async function() {
     b0.innerHTML = '<div class="spin" style="border-top-color:#fff;"></div> جاري التأكيد من الخادم…';
     b0.disabled = true;
    }
+   try {
+    clearTimeout(window._accWait);
+   } catch (_) {}
+   window._accWait = setTimeout(function() {
+    const bx = document.getElementById("btnAccept");
+    if (bx && bx.disabled) {
+     bx.innerHTML = "قبول الطلب";
+     bx.disabled = false;
+     track("accept_native_timeout", {
+      oid: _id
+     });
+     toast("⏱️ لم يصل تأكيد الخادم — اضغط القبول ثانيةً.", "warn");
+     try {
+      if (typeof refreshOrdersNow === "function") refreshOrdersNow();
+     } catch (_) {}
+    }
+   }, 8e3);
    return;
   } catch (e) {
    track("accept_native_fail", {
