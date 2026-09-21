@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://*.firebasedatabase.app https://*.firebaseio.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app https://www.gstatic.com; object-src 'none'; base-uri 'none'; form-action 'self';">
 
 <script>
-const CURRENT_APP_VERSION = "31.87-VerGate";
+const CURRENT_APP_VERSION = "31.87-QueuePurge";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -4008,6 +4008,23 @@ function heartbeat() {
 let availEpoch = 0;
 
 async function fbStatus(st, epoch, waitGeo) {
+ /* ═══════════════════════════════════════════════════════════════════════
+    [V31.94 · ①] القفل الذي كان يُكتب ولا يُقرأ.
+    ───────────────────────────────────────────────────────────────────────
+    window._statusBusy مضبوطٌ هنا منذ كُتبت الدالّة، ولا شرطَ واحدٌ يفحصه —
+    فنبضتان متداخلتان تمضيان معاً، وكلٌّ تترك كتابتها في طابور فايربيس.
+    الآن: نبضة خلفيّةٍ تجد أختها تعمل ⇒ تُسقَط.
+    ⚠️ ولا يُسقَط شيءٌ إلا ما أمِنَ إسقاطه:
+       • waitGeo = ضغطةُ كابتن (المفتاح) ⇒ تمرّ دائماً
+       • st !== "active" = انصرافٌ أو استراحة ⇒ تمرّ دائماً
+       ولا تُسقَط إلا نبضة «ما زلت متاحاً» — وتاليتُها بعد عشر ثوانٍ.
+    ═══════════════════════════════════════════════════════════════════════ */
+ if (window._statusBusy === true && !waitGeo && st === "active") {
+  /* ⚠️ _crumb لا track: track() تكتب على الجذر، فرصدُ إسقاطِ كتابةٍ
+     بكتابةٍ أخرى عبثٌ يُبقي الحمل كما هو. الصندوق الأسود يكفي. */
+  try { _crumb("hb_coalesced"); } catch (_) {}
+  return false;
+ }
  window._statusBusy = true;
  try {
   return await _fbStatusGuarded(st, epoch, waitGeo);
@@ -4070,6 +4087,66 @@ function _pushDiag(p) {
   track("diag_write_fail", {
    reason: "throw:" + String(e && e.message || e).slice(0, 52)
   });
+ }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   🔴 [V31.94 · ②③] الكتابة المعلّقة — السبب الجذري لفاتورة النطاق
+   ───────────────────────────────────────────────────────────────────────────
+   المقيس (firebase database:profile · ٢١-٠٩ · ٦٠ث خام):
+       realtime-update  209/ثانية   منها ٩٧٪ من هذا الملف
+       والمقصود        ~3/ثانية    (٤٦ كابتناً × نبضة كل ١٠–٢٠ث)
+       ⇒ تضخيمٌ ٦٥ ضعفاً · بثٌّ إلى ٢٫٩٤ مستمع ⇒ ٣٫٤ غيغا/يوم
+
+   والآلية ليست حلقةً في الكود — إنها **تراكمٌ ثم إفراغ**:
+     ① الشبكة تتعثّر ⇒ update() **تُعلَّق ولا تفشل** (فايربيس يطبّرها)
+     ② withTimeout يستسلم بعد ٦ث ⇒ الاحتياطي REST ⇒ كتابةٌ ثانية
+        ⚠️ والأولى **باقيةٌ في الطابور** — وهو ما تقوله ملاحظة V18.3 حرفياً:
+           «withTimeout يوقف الانتظار ولا يوقف الكتابة»
+     ③ كل نبضةٍ أثناء التعثّر تترك يتيماً
+     ④ عند عودة الوصل يُفرَغ الطابور دفعةً واحدة
+        الشاهد في client_events/7710514079:
+            ٥٧ × write_late_ok خلال ٥٠ مللي · ms = 40,678 … 101,824
+
+   العلاج طبقتان:
+     ② **لا تُولَد**: وصلٌ ميّتٌ يقيناً ⇒ لا نُطلق update() أصلاً، بل نرمي
+        مباشرةً فيأخذ الفرع القائم مسار REST المُختبَر. (والشرط === false
+        صارمٌ عمداً: null أو true تمرّان — الاتجاه الآمن ألّا نمنع كتابةً
+        قد تنجح.)
+     ③ **وإن وُلدت تُقتل**: goOffline يُسقط الكتابات المعلّقة، ثم goOnline.
+        ⚠️ وهي الرقعة الموجودة أصلاً في مسار rest_write — لكنها هناك
+           **مخنوقةٌ بمرّةٍ كل ٦٠ث ومشروطةٌ بنجاح REST**، فبينهما تتراكم
+           خمسُ كتاباتٍ يتيمة في الدقيقة لكل جهازٍ متعثّر.
+        ⚠️ ولا نُطهّر ويدُ الكابتن على طلب: الطابور حينها قد يحمل قبولاً أو
+           تسليماً، وإسقاطه يخسر إجراءً حقيقياً. فالتطهير للفارغ وحده —
+           والمشغول يبقى على سلوك اليوم (وحارس الستّين ثانية يخدمه كما كان).
+   ═══════════════════════════════════════════════════════════════════════════ */
+async function _safeUpdate(u, tmo) {
+ if (FB_CONNECTED === false) {
+  /* ⚠️ _crumb لا track — وهذا الموضع **أخطرها**: الوصل ميّتٌ هنا بالتعريف،
+     فكتابةُ الرصد تُعلَّق في الطابور وتصير هي اليتيمة التي نمنعها. */
+  try { _crumb("skip_dead_socket"); } catch (_) {}
+  const e = new Error("write_timeout");
+  e.code = "write_timeout";
+  throw e;
+ }
+ try {
+  await withTimeout(update(ref(db), u), tmo, "write_timeout");
+  return true;
+ } catch (e) {
+  try {
+   const raw = String(e && (e.code || e.message) || "").toLowerCase();
+   if (raw.indexOf("timeout") > -1 && !curOrder && !(active && active.length)) {
+    goOffline(db);
+    setTimeout(function () { try { goOnline(db); } catch (_) {} }, 300);
+    /* ⚠️ _crumb لا track: الكتابة هنا تقع **داخل** نافذة التطهير نفسها،
+       فتُسقَط بـgoOffline ثم يُعاد إرسالها — رصدٌ يُنتج ما يرصده.
+       والإسناد لا يحتاجها أصلاً: النسخة 31.87-QueuePurge تُختم في
+       drivers_locations/<هاتف>/ver وفي slo_events.ver، وهي المقياس. */
+    _crumb("queue_purged");
+   }
+  } catch (_) {}
+  throw e;
  }
 }
 
@@ -4151,7 +4228,7 @@ async function _fbStatusRaw(st, waitGeo) {
  u[`drivers_locations/${p}/last_update`] = (new Date).toISOString();
  const _wStart = Date.now();
  try {
-  await withTimeout(update(ref(db), u), _tmo, "write_timeout");
+  await _safeUpdate(u, _tmo);   /* [V31.94] كان: withTimeout(update(ref(db), u), …) */
   noteRtt(Date.now() - _wStart);
   lastAckTs = Date.now();
   window._statusErr = "";
@@ -4238,7 +4315,7 @@ async function _fbStatusRaw(st, waitGeo) {
      }
      return true;
     }
-    await withTimeout(update(ref(db), u), _tmo, "write_timeout");
+    await _safeUpdate(u, _tmo);   /* [V31.94] آخر ملاذ — لا يترك يتيماً هو الآخر */
     lastAckTs = Date.now();
     window._statusErr = "";
     updateLinkPill();
