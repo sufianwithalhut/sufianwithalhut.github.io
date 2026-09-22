@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://*.firebasedatabase.app https://*.firebaseio.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app https://www.gstatic.com; object-src 'none'; base-uri 'none'; form-action 'self';">
 
 <script>
-const CURRENT_APP_VERSION = "31.87-OfferClose";
+const CURRENT_APP_VERSION = "31.87-QuietRestore";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -5225,6 +5225,7 @@ function listenOrders() {
   {
    const DONE_R = [ "completed", "مكتمل", "settled", "delivered", "done", "تم التسليم", "تم", "deleted" ];
    let restored = 0;
+   const restoredIds = [];   /* [V31.97] لتمييز «قبولي أنا» من «تعافٍ حقيقي» */
    Object.keys(fb).forEach(kk => {
     const f = fb[kk];
     if (!f) return;
@@ -5257,12 +5258,39 @@ function listenOrders() {
     });
     if (f.ready_for_pickup === true) readySet.add(oid);
     restored++;
+    restoredIds.push(oid);
    });
    if (restored) {
     localStorage.setItem("suf_orders", JSON.stringify(active));
     adjustHB();
     renderOrders();
-    toast(`♻️ استُرجع ${restored === 1 ? "طلب" : restored + " طلبات"} ما زال باسمك.<br>راجع الحالة قبل المتابعة.`, "info");
+    /* ═══════════════════════════════════════════════════════════════════
+       🔕 [V31.97] لافتةُ تعافٍ في غير موضعها
+       ───────────────────────────────────────────────────────────────────
+       هذه اللافتة وُضعت لحالةٍ واحدة: الخادم يحمل طلباً باسم الكابتن
+       والتطبيق لا يعرفه (بعد محو بيانات · إعادة تثبيت · جهازٍ آخر).
+       ولذلك نصّها «راجع الحالة قبل المتابعة» — تحذيرٌ لا إخبار.
+
+       ومنذ V31.96 صارت تُطلَق في **كل قبولٍ عبر الجسر الأصليّ**: لأننا
+       تعمّدنا ألّا نُنادي finalizeAccept (كي لا تُعاد الكتابة للخادم
+       عبر guaranteeAccept والقبولُ قد تمّ)، فيدخل الطلبُ من هنا لا
+       من هناك. فاللافتة صادقةٌ حرفياً وكاذبةٌ معنىً — والكابتن يقرأ
+       تحذيراً عن فعلٍ فعله هو قبل ثانية.
+
+       ⚠️ ولا نكتمها كتماً عامّاً: التعافي الحقيقي يجب أن يبقى مرئياً.
+          فنكتمها **فقط** إن كان المُسترجَع طلباً واحداً، وهو بعينه
+          الذي قبِلناه للتوّ (المعرّف يطابق)، وخلال ثلاثين ثانية.
+          وأي استرجاعٍ آخر — أو طلبان — تظهر لافتته كما كانت.
+       ═══════════════════════════════════════════════════════════════════ */
+    let _selfOnly = false;
+    try {
+     const sa = window._selfAccepted;
+     _selfOnly = !!(sa && restored === 1 && restoredIds.length === 1 &&
+                    String(restoredIds[0]) === String(sa.id) &&
+                    Date.now() - sa.at < 3e4);
+    } catch (_) {}
+    if (_selfOnly) { try { window._selfAccepted = null; } catch (_) {} }
+    else toast(`♻️ استُرجع ${restored === 1 ? "طلب" : restored + " طلبات"} ما زال باسمك.<br>راجع الحالة قبل المتابعة.`, "info");
    }
   }
   active.forEach(mo => {
@@ -5446,6 +5474,9 @@ window.acceptOrder = async function() {
     oid: _id
    });
    AndroidRadar.nativeAccept(String(_id));
+   /* [V31.97] وسمُ «قبولي أنا» — تقرؤه كتلةُ الاسترجاع فتكتم لافتة التعافي
+      عن هذا الطلب وحده. الشرح الكامل عند تلك الكتلة. */
+   try { window._selfAccepted = { id: String(_id), at: Date.now() }; } catch (_) {}
    const b0 = document.getElementById("btnAccept");
    if (b0) {
     b0.innerHTML = '<div class="spin" style="border-top-color:#fff;"></div> جاري التأكيد من الخادم…';
