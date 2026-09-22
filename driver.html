@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://*.firebasedatabase.app https://*.firebaseio.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app https://www.gstatic.com; object-src 'none'; base-uri 'none'; form-action 'self';">
 
 <script>
-const CURRENT_APP_VERSION = "31.87-AcceptHeal";
+const CURRENT_APP_VERSION = "31.87-OfferClose";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -1322,6 +1322,8 @@ window.onNativeOffer = function(o) {
    });
    const b1 = document.getElementById("btnAccept");
    if (o.ok) {
+    /* [V31.96] أغلق الشاشة أولاً — الشرح عند window._closeOffer */
+    try { if (window._closeOffer) window._closeOffer(); } catch (_) {}
     if (typeof refreshOrdersNow === "function") refreshOrdersNow();
    } else {
     if (b1) {
@@ -5370,6 +5372,46 @@ function countdown() {
  }, 1e3);
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   🔴 [V31.96] شاشة العرض لا تُغلق حين يُقبل الطلب عبر الجسر الأصليّ
+   ───────────────────────────────────────────────────────────────────────────
+   المقيس من السجلّ (٢٢-٠٩ · جهاز اختبار · native_socket=true):
+       09:49:34.317  accept_via_native
+       09:49:34.680  accept_ok_native   why=ok      ← ٣٦٣ مللي · الجسر سلّم
+       accept_native_timeout = صفر                  ← فلا مهلة انقضت أصلاً
+   أي أن accept_result **يصل**، والقبول **ينجح**، والطلب **يدخل active**
+   (ولهذا تظهر لافتة «♻️ استُرجع طلب ما زال باسمك» من كتلة الاسترجاع).
+
+   والعطب أن مسار accept_result{ok:true} ينادي refreshOrdersNow() **وحدها**،
+   ولا يفعل شيئاً من تسلسل الإغلاق المعياريّ الذي تفعله كل المسارات الأخرى:
+
+       clearInterval(cdTimer)                    ← إيقاف العدّاد
+       alertOv.classList.add("dn")               ← إخفاء الشاشة   ★
+       stopAlarm()                               ← إيقاف المنبّه
+       curOrder = null
+
+   ⇒ الطلب يُرسَم **تحت** الشاشة، والشاشة تبقى فوقه: الزرّ يدور،
+     والعدّاد يعدّ، والمنبّه يرنّ. ولا ينكسر إلا بخروجٍ وعودة.
+   ⇒ ويورث الزرُّ حالته المعطَّلة إلى **العرض التالي**، فيبدو عالقاً قبل
+     أن يضغط الكابتن شيئاً (رُصد في الميدان: عرضٌ جديدٌ وعدّاده ٥٠
+     وزرُّه «جاري التأكيد من الخادم…»).
+
+   ⚠️ ولا نُنادي finalizeAccept هنا: هي تُضيف الطلب إلى active **وتكتب
+      للخادم** (guaranteeAccept) — والقبول تمّ فعلاً عبر nativeAccept،
+      وكتلةُ الاسترجاع في _ordersCb تتكفّل بإدخال الطلب. فالمطلوب
+      إغلاقُ الواجهة لا إعادةُ الفعل.
+   ═══════════════════════════════════════════════════════════════════════════ */
+window._closeOffer = function() {
+ try { clearInterval(cdTimer); } catch (_) {}
+ try { document.getElementById("alertOv").classList.add("dn"); } catch (_) {}
+ try { stopAlarm(); } catch (_) {}
+ try { curOrder = null; } catch (_) {}
+ try {
+  const b = document.getElementById("btnAccept");
+  if (b) { b.innerHTML = "قبول الطلب"; b.disabled = false; }
+ } catch (_) {}
+};
+
 window.declineOrder = function(auto) {
  if (curOrder?.is_sovereign) return alert("⚠️ تعيين إداري لا يمكن تجاهله.");
  clearInterval(cdTimer);
@@ -5453,8 +5495,12 @@ window.acceptOrder = async function() {
      });
     } catch (_) {}
     if (mine) {
-     /* نجح القبول وتأخّر خبرُه — لا تُرجع الزرّ ولا تُنذر. */
+     /* نجح القبول وتأخّر خبرُه.
+        ⚠️ [V31.96] وكان هذا الفرع **يخرج صامتاً بلا إغلاق الشاشة** —
+        فحتى لو أمسك الحالة لبقي الزرّ يدور والعدّاد يعدّ. العلّة نفسها
+        التي في مسار accept_result، وقد فاتتني حين كتبتُ هذا الحارس. */
      track("accept_ok_verified", { oid: _id });
+     try { if (window._closeOffer) window._closeOffer(); } catch (_) {}
      return;
     }
     bx.innerHTML = "قبول الطلب";
