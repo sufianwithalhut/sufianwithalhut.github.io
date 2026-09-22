@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://*.firebasedatabase.app https://*.firebaseio.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app https://www.gstatic.com; object-src 'none'; base-uri 'none'; form-action 'self';">
 
 <script>
-const CURRENT_APP_VERSION = "31.87-QueuePurge";
+const CURRENT_APP_VERSION = "31.87-AcceptHeal";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -5412,19 +5412,57 @@ window.acceptOrder = async function() {
    try {
     clearTimeout(window._accWait);
    } catch (_) {}
-   window._accWait = setTimeout(function() {
+   /* ═══════════════════════════════════════════════════════════════════
+      🔴 [V31.95] «جاري التأكيد من الخادم…» يدور أبداً حين native_socket=true
+      ───────────────────────────────────────────────────────────────────
+      السبب في الطبقة الأصلية لا هنا — لكنّ العلاج ممكنٌ هنا وحده اليوم:
+
+        MainActivity.onResume()  →  OrderSocket.bindWeb { … }   يربط
+        MainActivity.onPause()   →  OrderSocket.bindWeb(null)   **يقطع**
+        OrderSocket.pushToWeb()  →  val cb = webSink ?: return  صمتٌ تام
+
+      وشاشة العرض (AlarmActivity) تُطلَق **فوق** MainActivity فتُدخلها
+      onPause ⇒ القناة مقطوعةٌ في اللحظة التي يضغط فيها الكابتن قبول
+      بالضبط. فالقبول **ينجح** (nativeAccept معاملةٌ ذرّية تكتب accepted
+      في RTDB — ولهذا يجده باسمه إن خرج وعاد)، و accept_result يُرمى في
+      العدم ⇒ الزرّ يدور.
+
+      وهذا الحارس كان يزيد الطين بلّة: بعد ثمانِ ثوانٍ يقول «اضغط القبول
+      ثانيةً» — **والطلب صار accepted فالضغطة الثانية تُرفض**، فيبدو
+      معلّقاً على أي حال ويظنّ الكابتن أنه خسر الطلب.
+
+      العلاج: **اسأل الخادم قبل أن تنصح.** refreshOrdersNow متينة
+      (SDK بمهلة ٤ث ثم REST بـidToken) فتعمل على مقبسٍ ميّت — وهي بعينها
+      ما ينادَى في مسار النجاح accept_result{ok:true}. فإن عاد الطلب
+      باسمنا فقد نجح القبول، ولا نلمس شيئاً: إعادةُ الرسم تتكفّل بالبطاقة.
+      ولا نُرجع الزرّ ولا نُنذر إلا إن لم يكن الطلب لنا فعلاً.
+
+      ⚠️ وهذا **علاجُ عَرَضٍ لا جذر**: الجذر يُغلق في الكوتلن
+      (APK 25 · 5.9-BridgeFix على سطح المكتب — يوجّه إلى
+      MainActivity.pushEventToWeb مباشرةً فلا تهمّ دورة الحياة).
+      وحتى يُبنى ذلك، هذه الرقعة تجعل native_socket=true آمناً.
+      ═══════════════════════════════════════════════════════════════════ */
+   window._accWait = setTimeout(async function() {
     const bx = document.getElementById("btnAccept");
-    if (bx && bx.disabled) {
-     bx.innerHTML = "قبول الطلب";
-     bx.disabled = false;
-     track("accept_native_timeout", {
-      oid: _id
+    if (!bx || !bx.disabled) return;
+    let mine = false;
+    try {
+     if (typeof refreshOrdersNow === "function") await refreshOrdersNow();
+     mine = Array.isArray(active) && active.some(function(x) {
+      return String(x && x.id) === String(_id);
      });
-     toast("⏱️ لم يصل تأكيد الخادم — اضغط القبول ثانيةً.", "warn");
-     try {
-      if (typeof refreshOrdersNow === "function") refreshOrdersNow();
-     } catch (_) {}
+    } catch (_) {}
+    if (mine) {
+     /* نجح القبول وتأخّر خبرُه — لا تُرجع الزرّ ولا تُنذر. */
+     track("accept_ok_verified", { oid: _id });
+     return;
     }
+    bx.innerHTML = "قبول الطلب";
+    bx.disabled = false;
+    track("accept_native_timeout", {
+     oid: _id
+    });
+    toast("⏱️ لم يصل تأكيد الخادم — اضغط القبول ثانيةً.", "warn");
    }, 8e3);
    return;
   } catch (e) {
