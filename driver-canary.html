@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://*.firebasedatabase.app https://*.firebaseio.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app https://www.gstatic.com; object-src 'none'; base-uri 'none'; form-action 'self';">
 
 <script>
-const CURRENT_APP_VERSION = "31.87-QueuePurge";
+const CURRENT_APP_VERSION = "32.0-ResLoc";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -1210,6 +1210,7 @@ try {
        web_disc: null
       }).catch(e => track("web_disc_clear_fail"));
      }
+     if (c === true && typeof pullResLocs === "function" && Date.now() - _resLocAt > RESLOC_MS) pullResLocs("reconnect");
     } catch (_) {}
    }, 0);
   }
@@ -1322,6 +1323,9 @@ window.onNativeOffer = function(o) {
    });
    const b1 = document.getElementById("btnAccept");
    if (o.ok) {
+    try {
+     if (window._closeOffer) window._closeOffer();
+    } catch (_) {}
     if (typeof refreshOrdersNow === "function") refreshOrdersNow();
    } else {
     if (b1) {
@@ -2643,11 +2647,14 @@ let NET_TIMEOUT_MS = 6e3;
 
 let TAP_TIMEOUT_MS = 18e3, HB_BUSY_MS = 1e4, HB_IDLE_MS = 2e4;
 
+let RESLOC_MS = 18e5, _resLocAt = 0, _resLocTimer = null;
+
 const TUNE_LIMITS = {
  NET_TIMEOUT_MS: [ 3e3, 2e4 ],
  TAP_TIMEOUT_MS: [ 8e3, 4e4 ],
  HB_BUSY_MS: [ 5e3, 6e4 ],
- HB_IDLE_MS: [ 1e4, 12e4 ]
+ HB_IDLE_MS: [ 1e4, 12e4 ],
+ RESLOC_MS: [ 3e5, 216e5 ]
 };
 
 const _rtt = [];
@@ -2677,9 +2684,14 @@ function applyTunables(t) {
   v = Number(v);
   if (!lim || !isFinite(v)) return;
   v = Math.min(lim[1], Math.max(lim[0], v));
-  if (k === "NET_TIMEOUT_MS") NET_TIMEOUT_MS = v; else if (k === "TAP_TIMEOUT_MS") TAP_TIMEOUT_MS = v; else if (k === "HB_BUSY_MS") HB_BUSY_MS = v; else if (k === "HB_IDLE_MS") HB_IDLE_MS = v;
+  if (k === "NET_TIMEOUT_MS") NET_TIMEOUT_MS = v; else if (k === "TAP_TIMEOUT_MS") TAP_TIMEOUT_MS = v; else if (k === "HB_BUSY_MS") HB_BUSY_MS = v; else if (k === "HB_IDLE_MS") HB_IDLE_MS = v; else if (k === "RESLOC_MS") RESLOC_MS = v;
  };
  Object.keys(t).forEach(k => set(k, t[k]));
+ try {
+  if (t.RESLOC_MS !== undefined && typeof scheduleResLocs === "function") scheduleResLocs();
+ } catch (e) {
+  track("tune_resloc_fail");
+ }
  try {
   if (typeof adjustHB === "function") adjustHB();
  } catch (e) {
@@ -4008,21 +4020,10 @@ function heartbeat() {
 let availEpoch = 0;
 
 async function fbStatus(st, epoch, waitGeo) {
- /* ═══════════════════════════════════════════════════════════════════════
-    [V31.94 · ①] القفل الذي كان يُكتب ولا يُقرأ.
-    ───────────────────────────────────────────────────────────────────────
-    window._statusBusy مضبوطٌ هنا منذ كُتبت الدالّة، ولا شرطَ واحدٌ يفحصه —
-    فنبضتان متداخلتان تمضيان معاً، وكلٌّ تترك كتابتها في طابور فايربيس.
-    الآن: نبضة خلفيّةٍ تجد أختها تعمل ⇒ تُسقَط.
-    ⚠️ ولا يُسقَط شيءٌ إلا ما أمِنَ إسقاطه:
-       • waitGeo = ضغطةُ كابتن (المفتاح) ⇒ تمرّ دائماً
-       • st !== "active" = انصرافٌ أو استراحة ⇒ تمرّ دائماً
-       ولا تُسقَط إلا نبضة «ما زلت متاحاً» — وتاليتُها بعد عشر ثوانٍ.
-    ═══════════════════════════════════════════════════════════════════════ */
  if (window._statusBusy === true && !waitGeo && st === "active") {
-  /* ⚠️ _crumb لا track: track() تكتب على الجذر، فرصدُ إسقاطِ كتابةٍ
-     بكتابةٍ أخرى عبثٌ يُبقي الحمل كما هو. الصندوق الأسود يكفي. */
-  try { _crumb("hb_coalesced"); } catch (_) {}
+  try {
+   _crumb("hb_coalesced");
+  } catch (_) {}
   return false;
  }
  window._statusBusy = true;
@@ -4058,6 +4059,19 @@ async function _fbStatusGuarded(st, epoch, waitGeo) {
  return await _fbStatusRaw(st, waitGeo);
 }
 
+function _natVer() {
+ try {
+  if (window.AndroidRadar && AndroidRadar.getNativeVersion) {
+   const raw = String(AndroidRadar.getNativeVersion() || "");
+   const inParen = raw.match(/\((\d+)\)/);
+   if (inParen) return parseInt(inParen[1], 10) || 0;
+   const all = raw.match(/\d+/g);
+   return all ? parseInt(all[all.length - 1], 10) || 0 : 0;
+  }
+ } catch (_) {}
+ return 0;
+}
+
 let _diagLast = 0, _diagSkew = null;
 
 function _pushDiag(p) {
@@ -4075,6 +4089,7 @@ function _pushDiag(p) {
   }
   update(ref(db, `drivers_locations/${p}`), {
    ver: String(CURRENT_APP_VERSION).slice(0, 40),
+   nat: _natVer(),
    skew: sk,
    src: _buildSrc(),
    web_at: new Date(srvNow()).toISOString()
@@ -4090,42 +4105,11 @@ function _pushDiag(p) {
  }
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   🔴 [V31.94 · ②③] الكتابة المعلّقة — السبب الجذري لفاتورة النطاق
-   ───────────────────────────────────────────────────────────────────────────
-   المقيس (firebase database:profile · ٢١-٠٩ · ٦٠ث خام):
-       realtime-update  209/ثانية   منها ٩٧٪ من هذا الملف
-       والمقصود        ~3/ثانية    (٤٦ كابتناً × نبضة كل ١٠–٢٠ث)
-       ⇒ تضخيمٌ ٦٥ ضعفاً · بثٌّ إلى ٢٫٩٤ مستمع ⇒ ٣٫٤ غيغا/يوم
-
-   والآلية ليست حلقةً في الكود — إنها **تراكمٌ ثم إفراغ**:
-     ① الشبكة تتعثّر ⇒ update() **تُعلَّق ولا تفشل** (فايربيس يطبّرها)
-     ② withTimeout يستسلم بعد ٦ث ⇒ الاحتياطي REST ⇒ كتابةٌ ثانية
-        ⚠️ والأولى **باقيةٌ في الطابور** — وهو ما تقوله ملاحظة V18.3 حرفياً:
-           «withTimeout يوقف الانتظار ولا يوقف الكتابة»
-     ③ كل نبضةٍ أثناء التعثّر تترك يتيماً
-     ④ عند عودة الوصل يُفرَغ الطابور دفعةً واحدة
-        الشاهد في client_events/7710514079:
-            ٥٧ × write_late_ok خلال ٥٠ مللي · ms = 40,678 … 101,824
-
-   العلاج طبقتان:
-     ② **لا تُولَد**: وصلٌ ميّتٌ يقيناً ⇒ لا نُطلق update() أصلاً، بل نرمي
-        مباشرةً فيأخذ الفرع القائم مسار REST المُختبَر. (والشرط === false
-        صارمٌ عمداً: null أو true تمرّان — الاتجاه الآمن ألّا نمنع كتابةً
-        قد تنجح.)
-     ③ **وإن وُلدت تُقتل**: goOffline يُسقط الكتابات المعلّقة، ثم goOnline.
-        ⚠️ وهي الرقعة الموجودة أصلاً في مسار rest_write — لكنها هناك
-           **مخنوقةٌ بمرّةٍ كل ٦٠ث ومشروطةٌ بنجاح REST**، فبينهما تتراكم
-           خمسُ كتاباتٍ يتيمة في الدقيقة لكل جهازٍ متعثّر.
-        ⚠️ ولا نُطهّر ويدُ الكابتن على طلب: الطابور حينها قد يحمل قبولاً أو
-           تسليماً، وإسقاطه يخسر إجراءً حقيقياً. فالتطهير للفارغ وحده —
-           والمشغول يبقى على سلوك اليوم (وحارس الستّين ثانية يخدمه كما كان).
-   ═══════════════════════════════════════════════════════════════════════════ */
 async function _safeUpdate(u, tmo) {
  if (FB_CONNECTED === false) {
-  /* ⚠️ _crumb لا track — وهذا الموضع **أخطرها**: الوصل ميّتٌ هنا بالتعريف،
-     فكتابةُ الرصد تُعلَّق في الطابور وتصير هي اليتيمة التي نمنعها. */
-  try { _crumb("skip_dead_socket"); } catch (_) {}
+  try {
+   _crumb("skip_dead_socket");
+  } catch (_) {}
   const e = new Error("write_timeout");
   e.code = "write_timeout";
   throw e;
@@ -4138,11 +4122,11 @@ async function _safeUpdate(u, tmo) {
    const raw = String(e && (e.code || e.message) || "").toLowerCase();
    if (raw.indexOf("timeout") > -1 && !curOrder && !(active && active.length)) {
     goOffline(db);
-    setTimeout(function () { try { goOnline(db); } catch (_) {} }, 300);
-    /* ⚠️ _crumb لا track: الكتابة هنا تقع **داخل** نافذة التطهير نفسها،
-       فتُسقَط بـgoOffline ثم يُعاد إرسالها — رصدٌ يُنتج ما يرصده.
-       والإسناد لا يحتاجها أصلاً: النسخة 31.87-QueuePurge تُختم في
-       drivers_locations/<هاتف>/ver وفي slo_events.ver، وهي المقياس. */
+    setTimeout(function() {
+     try {
+      goOnline(db);
+     } catch (_) {}
+    }, 300);
     _crumb("queue_purged");
    }
   } catch (_) {}
@@ -4228,7 +4212,7 @@ async function _fbStatusRaw(st, waitGeo) {
  u[`drivers_locations/${p}/last_update`] = (new Date).toISOString();
  const _wStart = Date.now();
  try {
-  await _safeUpdate(u, _tmo);   /* [V31.94] كان: withTimeout(update(ref(db), u), …) */
+  await _safeUpdate(u, _tmo);
   noteRtt(Date.now() - _wStart);
   lastAckTs = Date.now();
   window._statusErr = "";
@@ -4315,7 +4299,7 @@ async function _fbStatusRaw(st, waitGeo) {
      }
      return true;
     }
-    await _safeUpdate(u, _tmo);   /* [V31.94] آخر ملاذ — لا يترك يتيماً هو الآخر */
+    await withTimeout(update(ref(db), u), _tmo, "write_timeout");
     lastAckTs = Date.now();
     window._statusErr = "";
     updateLinkPill();
@@ -5052,7 +5036,29 @@ function startListeners() {
   if (navigator.vibrate) navigator.vibrate([ 200, 80, 200 ]);
   modal("📨", "رسالة من " + (d.from || "الإدارة"), d.msg, "ok");
  });
- listen(() => ref(db, "restaurants_locations"), s => {
+ pullResLocs("boot");
+ scheduleResLocs();
+ startChat();
+ listenOrders();
+}
+
+let resCache = {}, resByPhone = {};
+
+try {
+ resCache = JSON.parse(localStorage.getItem("suf_res_cache") || "{}");
+} catch (e) {
+ resCache = {};
+}
+
+try {
+ resByPhone = JSON.parse(localStorage.getItem("suf_res_by_phone") || "{}");
+} catch (e) {
+ resByPhone = {};
+}
+
+async function pullResLocs(why) {
+ try {
+  const s = await withTimeout(get(ref(db, "restaurants_locations")), netTimeout(NET_TIMEOUT_MS), "resloc_all");
   const v = s.val() || {};
   Object.keys(v).forEach(ph => {
    const L = v[ph];
@@ -5079,26 +5085,27 @@ function startListeners() {
   try {
    localStorage.setItem("suf_res_by_phone", JSON.stringify(resByPhone));
   } catch (e) {}
+  _resLocAt = Date.now();
   active.forEach(enrichOrder);
   lastHtml = "";
   renderOrders();
- });
- startChat();
- listenOrders();
+  return true;
+ } catch (e) {
+  track("resloc_pull_fail", {
+   reason: String(e && e.code || e && e.message || e).slice(0, 40),
+   why: String(why || "").slice(0, 16)
+  });
+  return false;
+ }
 }
 
-let resCache = {}, resByPhone = {};
-
-try {
- resCache = JSON.parse(localStorage.getItem("suf_res_cache") || "{}");
-} catch (e) {
- resCache = {};
-}
-
-try {
- resByPhone = JSON.parse(localStorage.getItem("suf_res_by_phone") || "{}");
-} catch (e) {
- resByPhone = {};
+function scheduleResLocs() {
+ try {
+  clearTimeout(_resLocTimer);
+ } catch (_) {}
+ _resLocTimer = setTimeout(function() {
+  pullResLocs("tick").then(scheduleResLocs, scheduleResLocs);
+ }, RESLOC_MS);
 }
 
 function enrichOrder(o) {
@@ -5223,6 +5230,7 @@ function listenOrders() {
   {
    const DONE_R = [ "completed", "مكتمل", "settled", "delivered", "done", "تم التسليم", "تم", "deleted" ];
    let restored = 0;
+   const restoredIds = [];
    Object.keys(fb).forEach(kk => {
     const f = fb[kk];
     if (!f) return;
@@ -5255,12 +5263,22 @@ function listenOrders() {
     });
     if (f.ready_for_pickup === true) readySet.add(oid);
     restored++;
+    restoredIds.push(oid);
    });
    if (restored) {
     localStorage.setItem("suf_orders", JSON.stringify(active));
     adjustHB();
     renderOrders();
-    toast(`♻️ استُرجع ${restored === 1 ? "طلب" : restored + " طلبات"} ما زال باسمك.<br>راجع الحالة قبل المتابعة.`, "info");
+    let _selfOnly = false;
+    try {
+     const sa = window._selfAccepted;
+     _selfOnly = !!(sa && restored === 1 && restoredIds.length === 1 && String(restoredIds[0]) === String(sa.id) && Date.now() - sa.at < 3e4);
+    } catch (_) {}
+    if (_selfOnly) {
+     try {
+      window._selfAccepted = null;
+     } catch (_) {}
+    } else toast(`♻️ استُرجع ${restored === 1 ? "طلب" : restored + " طلبات"} ما زال باسمك.<br>راجع الحالة قبل المتابعة.`, "info");
    }
   }
   active.forEach(mo => {
@@ -5370,6 +5388,28 @@ function countdown() {
  }, 1e3);
 }
 
+window._closeOffer = function() {
+ try {
+  clearInterval(cdTimer);
+ } catch (_) {}
+ try {
+  document.getElementById("alertOv").classList.add("dn");
+ } catch (_) {}
+ try {
+  stopAlarm();
+ } catch (_) {}
+ try {
+  curOrder = null;
+ } catch (_) {}
+ try {
+  const b = document.getElementById("btnAccept");
+  if (b) {
+   b.innerHTML = "قبول الطلب";
+   b.disabled = false;
+  }
+ } catch (_) {}
+};
+
 window.declineOrder = function(auto) {
  if (curOrder?.is_sovereign) return alert("⚠️ تعيين إداري لا يمكن تجاهله.");
  clearInterval(cdTimer);
@@ -5404,6 +5444,12 @@ window.acceptOrder = async function() {
     oid: _id
    });
    AndroidRadar.nativeAccept(String(_id));
+   try {
+    window._selfAccepted = {
+     id: String(_id),
+     at: Date.now()
+    };
+   } catch (_) {}
    const b0 = document.getElementById("btnAccept");
    if (b0) {
     b0.innerHTML = '<div class="spin" style="border-top-color:#fff;"></div> جاري التأكيد من الخادم…';
@@ -5412,19 +5458,31 @@ window.acceptOrder = async function() {
    try {
     clearTimeout(window._accWait);
    } catch (_) {}
-   window._accWait = setTimeout(function() {
+   window._accWait = setTimeout(async function() {
     const bx = document.getElementById("btnAccept");
-    if (bx && bx.disabled) {
-     bx.innerHTML = "قبول الطلب";
-     bx.disabled = false;
-     track("accept_native_timeout", {
+    if (!bx || !bx.disabled) return;
+    let mine = false;
+    try {
+     if (typeof refreshOrdersNow === "function") await refreshOrdersNow();
+     mine = Array.isArray(active) && active.some(function(x) {
+      return String(x && x.id) === String(_id);
+     });
+    } catch (_) {}
+    if (mine) {
+     track("accept_ok_verified", {
       oid: _id
      });
-     toast("⏱️ لم يصل تأكيد الخادم — اضغط القبول ثانيةً.", "warn");
      try {
-      if (typeof refreshOrdersNow === "function") refreshOrdersNow();
+      if (window._closeOffer) window._closeOffer();
      } catch (_) {}
+     return;
     }
+    bx.innerHTML = "قبول الطلب";
+    bx.disabled = false;
+    track("accept_native_timeout", {
+     oid: _id
+    });
+    toast("⏱️ لم يصل تأكيد الخادم — اضغط القبول ثانيةً.", "warn");
    }, 8e3);
    return;
   } catch (e) {
