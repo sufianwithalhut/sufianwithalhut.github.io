@@ -1795,7 +1795,7 @@ window.doAuth=async function(){
       document.getElementById("app").classList.remove("dn");
       const a=document.getElementById("snd");
       a.volume=0;a.play().then(()=>{a.pause();a.currentTime=0;a.volume=1;}).catch(()=>{});
-      startClk();loadData();setupFB();
+      startClk();paintCached();loadData();setupFB();   /* [V32.3] الذاكرة أوّلاً ثم الشبكة */
     }else{MP="";toast("رمز المرور غير صحيح","e");}
   }catch(e){MP="";toast("فشل الاتصال بالخادم","e");}
   finally{btn.classList.remove("loading");btn.disabled=false;}
@@ -1839,6 +1839,46 @@ function startClk(){
    ═══════════════════════════════════════════════════════════════════════════ */
 const GD_CACHE_KEY = "hut_adm_gd_v1";
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   ⚡ [V32.3] الرسم من الذاكرة قبل انتظار الشبكة
+   ───────────────────────────────────────────────────────────────────────────
+   الذاكرة موجودةٌ منذ V31.52 وتُكتب مع كل جلبٍ ناجح — لكنها **لا تُقرأ إلا
+   بعد فشل ثلاث محاولات**. والحساب من loadData نفسها:
+
+       25 ث مهلة  +  2 ث انتظار  +  25  +  4  +  25   =  81 ثانية
+
+   فالمسؤول ينظر إلى شاشةٍ فارغة إحدى وثمانين ثانية في أسوأ الحالات، **وفي
+   جيبه نسخةٌ كاملة**. وأسوأُ ما تكون عند بداية الشفت: نداء اللوحة يقف في
+   طابور الثلاثين تنفيذاً المتزامنة خلف الكباتن الداخلين.
+
+   الآن: تُرسم النسخة المحفوظة فوراً، ويعلوها شريطٌ يقول عمرها بالدقائق،
+   ثم تحلّ محلّها البيانات الطازجة ويختفي الشريط.
+
+   ⚠️ والشريط **ليس زينة**: هذه اللوحة تعرض عمولاتٍ وحالاتِ حظر. نسخةٌ
+      عمرها عشرون دقيقة قد لا تُظهر كابتناً حُظر للتوّ. فالقاعدة المكتوبة
+      فيه صريحة — لا قرار قبل اختفائه. وهو النمط نفسه الذي اعتمده V31.52
+      في مسار الفشل (شريطٌ ثابت لا رسالةٌ عابرة)، ونقلناه إلى مسار الإقلاع.
+
+   ⚠️ وفخٌّ التُقط قبل الشحن: applyGD تملأ قائمتَي الأرشيف **مرّةً واحدة**
+      (`options.length===1`). فلو ملأتهما النسخة المحفوظة، لتجمّدتا عليها
+      ولم تُحدّثهما البيانات الطازجة — مطعمٌ أُضيف اليوم لا يظهر في الأرشيف
+      حتى إعادة التحميل. ولذلك تُفرَّغان قبل applyGD الطازجة.
+   ═══════════════════════════════════════════════════════════════════════════ */
+let _gdFromCache = false;
+function paintCached(){
+  let c = null;
+  try{ c = JSON.parse(sessionStorage.getItem(GD_CACHE_KEY)||"null"); }catch(_){}
+  if(!c || !Array.isArray(c.restaurants) || !Array.isArray(c.drivers)) return false;
+  try{
+    applyGD({ restaurants: c.restaurants, drivers: c.drivers });
+    _gdFromCache = true;
+    const mins = Math.round((Date.now()-(c.t||0))/60000);
+    gdBanner(true, "🕒 <b>تُعرض نسخةٌ محفوظة</b> عمرها "+mins+" دقيقة — جارٍ التحديث…"
+      + "<br><span style='font-weight:600;opacity:.92'>لا تعتمد عليها في قرارٍ حتى يختفي هذا الشريط.</span>");
+    return true;
+  }catch(e){ return false; }
+}
+
 async function loadData(attempt){
   if(!MP)return;
   attempt = attempt || 1;
@@ -1875,6 +1915,13 @@ async function loadData(attempt){
           " — القوائم المعروضة غير كاملة.");
       }
       return;
+    }
+    /* [V32.3] لو رُسمت النسخة المحفوظة فقد ملأت قائمتَي الأرشيف، وapplyGD
+       لا تملؤهما إلا حين تكون فارغة. نُفرّغهما كي تبنيهما الطازجة. */
+    if(_gdFromCache){
+      try{ ["arcRS","arcDS"].forEach(id=>{ const s=document.getElementById(id);
+        if(s) while(s.options.length>1) s.remove(1); }); }catch(_){}
+      _gdFromCache = false;
     }
     gdBanner(false);
     applyGD(data);
