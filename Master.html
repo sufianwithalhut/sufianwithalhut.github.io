@@ -1422,12 +1422,55 @@ async function consumeAdminToken(tok,pass){
     scheduleAdminTokenRefresh(pass);
   }catch(e){console.error("Firebase Auth (admin):",e);}
 }
+/* ═══════════════════════════════════════════════════════════════════════════
+   🔑 [V32.4] VERIFY_MASTER_PASS — ثلاثةُ نداءاتٍ عارية، لا واحد
+   ───────────────────────────────────────────────────────────────────────────
+   رقعة V32.4 الأولى حدّت نداء doAuth وحده. والفحص كشف اثنين آخرين بلا مهلة:
+
+       doAuth                     ← الدخول اليدويّ   (حُدّ أوّلاً)
+       scheduleAdminTokenRefresh  ← كل ٥٠ دقيقة
+       healAdminAuth              ← عند رفض أي قراءة
+
+   والثاني والثالث هما تفسير «أحياناً لا تظهر الخانتان إطلاقاً»:
+
+     تجديدُ التوكن يتعلّق ⇒ التوكن ينتهي ⇒ المستمعات تُرفَض ⇒ listen تنادي
+     healAdminAuth ⇒ **وهي تتعلّق أيضاً** ⇒ _reauthInFlight يبقى وعداً
+     معلّقاً أبداً ⇒ كلُّ نداءٍ تالٍ يعود **بالوعد نفسه** (هذا غرضُ العلَم)
+     ⇒ اللوحة لا تتعافى ما دامت مفتوحة، والخانتان صفرٌ بلا رسالة.
+
+   ⚠️ والعلَم `_reauthInFlight` — وهو حارسٌ صحيحٌ ضدّ تكرار النداء — يصير
+      **مُضاعِفاً للعطب** حين لا يستقرّ الوعد: حارسٌ ينقلب سجناً. والمهلة هي
+      ما يضمن استقراره دائماً، فيتحرّر العلَم ويُعاد المحاولة لاحقاً.
+
+   ⇒ وسيطٌ واحد للثلاثة: مهلةٌ تقطع، وإلغاءٌ يصل إلى fetch، ورمزُ خطأٍ يفرّق
+     بين «الخادم مشغول» و«رمزك خطأ». ومحاولةٌ إضافية للدخول اليدويّ وحده —
+     حيث ينتظر إنسان — وصفرٌ لما يعمل في الخلفية ويُعيد نفسه أصلاً.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const ADM_TMO = 20000;
+async function gasVerifyPass(pass, opt){
+  opt = opt || {};
+  const tmo = opt.timeout || ADM_TMO, tries = opt.tries || 1;
+  for(let i=1;i<=tries;i++){
+    const ctl = new AbortController();
+    let hit = false;
+    const timer = setTimeout(()=>{ hit = true; ctl.abort(); }, tmo);
+    try{
+      const r = await fetch(API,{method:"POST",signal:ctl.signal,
+        body:JSON.stringify({action:"VERIFY_MASTER_PASS",pass,token:TOK})});
+      return await r.json();
+    }catch(e){
+      const to = hit || (e && e.name === "AbortError");
+      if(i < tries){ await new Promise(r=>setTimeout(r,3000)); continue; }
+      const err = new Error(to ? "timeout" : "network"); err.code = to ? "timeout" : "network"; throw err;
+    }finally{ clearTimeout(timer); }
+  }
+}
+
 function scheduleAdminTokenRefresh(pass){
   if(_adminTokenTimer)clearTimeout(_adminTokenTimer);
   _adminTokenTimer=setTimeout(async()=>{
     try{
-      const r=await fetch(API,{method:"POST",body:JSON.stringify({action:"VERIFY_MASTER_PASS",pass,token:TOK})});
-      const d=await r.json();
+      const d=await gasVerifyPass(pass);   /* [V32.4] يعمل في الخلفية ويُعيد نفسه ⇒ بلا إعادة محاولة */
       if(d&&d.success&&d.firebase_token){await auth.signInWithCustomToken(d.firebase_token);}
       scheduleAdminTokenRefresh(pass);
     }catch(e){console.error("تعذّر تجديد توكن الإدارة:",e);scheduleAdminTokenRefresh(pass);}
@@ -1442,8 +1485,9 @@ function healAdminAuth(){
     let ok=false;
     try{
       if(MP){
-        const r=await fetch(API,{method:"POST",body:JSON.stringify({action:"VERIFY_MASTER_PASS",pass:MP,token:TOK})});
-        const d=await r.json();
+        /* [V32.4] المهلة هنا ليست تحسيناً: بلاها يبقى _reauthInFlight معلّقاً
+           أبداً، فيمنع كلَّ محاولةِ شفاءٍ تالية — حارسٌ ينقلب سجناً. */
+        const d=await gasVerifyPass(MP);
         if(d&&d.success&&d.firebase_token){await auth.signInWithCustomToken(d.firebase_token);ok=true;}
       }
     }catch(e){}
@@ -1785,8 +1829,24 @@ window.doAuth=async function(){
   MP=pass;const btn=document.getElementById("authB");
   btn.classList.add("loading");btn.disabled=true;
   try{
-    const r=await fetch(API,{method:"POST",body:JSON.stringify({action:"VERIFY_MASTER_PASS",pass,token:TOK})});
-    const d=await r.json();
+    /* 🔴 [V32.4] كان `fetch` عارياً بلا مهلة — **وهو أوّل ما ينتظره المسؤول**،
+       وقبل paintCached بخطوة. فمهما أسرعنا في الرسم، الدخول نفسه كان يقف في
+       طابور الثلاثين تنفيذاً المتزامنة خلف الكباتن الداخلين، بلا شيءٍ يقطعه
+       ولا رسالةٍ تفسّره. وهو عين ما عولج في restaurant.html — والحارس كان
+       موجوداً في ملفٍّ ومنسيّاً في نظيره، للمرّة الرابعة في هذا المشروع.
+       ⚠️ ومحاولةٌ إضافية واحدة لا ثلاث: البركة مشبعة، وإعادةُ المحاولة
+          الثلاثية تزيدها إشباعاً — علاجٌ يصنع داءه. */
+    let d;
+    try{
+      /* محاولةٌ إضافية واحدة — هنا وحدَه ينتظر إنسان */
+      d = await gasVerifyPass(pass, { tries: 2 });
+    }catch(err){
+      MP="";
+      toast(err && err.code === "timeout"
+        ? "⏳ الخادم لا يستجيب — ازدحامٌ غالباً. أعد المحاولة بعد نصف دقيقة؛ رمزك سليم."
+        : "فشل الاتصال بالخادم","e");
+      return;
+    }
     if(d.success){
       /* المصادقة تكتمل هنا قبل setupFB — فالمستمعات تُربط دائماً
          بجلسة admin فعلية (شرط القراءة في قواعد V2.0). */
@@ -1838,6 +1898,51 @@ function startClk(){
      ④ زرّ إعادة صريح في التنبيه بدل «فشل» أصمّ.
    ═══════════════════════════════════════════════════════════════════════════ */
 const GD_CACHE_KEY = "hut_adm_gd_v1";
+/* ═══════════════════════════════════════════════════════════════════════════
+   🔴 [V32.4] الكاش كان في sessionStorage — فلم تعمل رقعة V32.3 أصلاً
+   ───────────────────────────────────────────────────────────────────────────
+   sessionStorage **يموت بإغلاق التبويب**. والمسؤول يفتح اللوحة من جديد في كل
+   مرّة، فيجدها فارغة دائماً، فتعود paintCached بـfalse ولا ترسم شيئاً.
+   أي أن العلاج لم يشتغل في الحالة الوحيدة التي وُجد لها — وهو ما أبلغ به
+   المالك: «ما زالت تتأخّر، وأحياناً لا تظهر الخانتان إطلاقاً».
+
+   و«أحياناً لا تظهر» هي العَرَض نفسه من الباب الآخر: loadData تسقط ثلاث
+   محاولات ثم تلجأ إلى الكاش — فتجده فارغاً للسبب نفسه، فتبقى الخانتان صفراً.
+
+   ⇒ localStorage: يبقى بين الجلسات فيُرسم فوراً عند أوّل فتح.
+   ⚠️ والثمن معلوم: قائمة المطاعم والكباتن (بأسمائهم وأرقامهم وعمولاتهم) تبقى
+      على قرص الجهاز. وكلمات المرور **مُعمّاة أصلاً** قبل الإرسال
+      (maskColumn في getGlobalData) فلا تُخزَّن. والخروج يمسح الاثنين
+      (sessionStorage.clear() + localStorage.clear() في زرّ الخروج).
+      ⇒ لا تفتح هذه اللوحة على جهازٍ مشترك ثم تتركها بلا خروج.
+   ⚠️ وسقفٌ للعمر: ما تجاوز ثلاثة أيام لا يُرسم إطلاقاً. نسخةٌ بهذا القِدَم
+      لا تعكس أسطولاً يتغيّر يومياً، وعرضُها أسوأ من انتظارها.
+   📌 والقراءة تقبل المخزنين: نسخةٌ في sessionStorage من جلسةٍ قائمة لا تُهدر. */
+const GD_CACHE_MAX_MS = 3 * 24 * 3600 * 1000;
+function gdCacheRead(){
+  for (const st of [localStorage, sessionStorage]) {
+    try {
+      const c = JSON.parse(st.getItem(GD_CACHE_KEY) || "null");
+      if (c && Array.isArray(c.restaurants) && Array.isArray(c.drivers)) return c;
+    }catch(_){}
+  }
+  return null;
+}
+function gdCacheWrite(data){
+  const payload = JSON.stringify({ t: Date.now(), restaurants: data.restaurants, drivers: data.drivers });
+  /* الدائم أوّلاً، والجلسة احتياطاً (نافذةٌ خاصّة قد ترفض localStorage).
+     وحلقةٌ بدل catch متداخلة: الصيغة المعفاة في الحارس هي catch(_){} وحدها. */
+  for (const st of [localStorage, sessionStorage]) {
+    try { st.setItem(GD_CACHE_KEY, payload); return; } catch(_){}
+  }
+}
+/* «١٧ دقيقة» مقروءة، و«٤٣٢٠ دقيقة» ليست. */
+function gdAgeText(ms){
+  const m = Math.round(ms / 60000);
+  if (m < 90) return m + " دقيقة";
+  const h = Math.round(m / 60);
+  return h < 36 ? h + " ساعة" : Math.round(h / 24) + " يوم";
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════
    ⚡ [V32.3] الرسم من الذاكرة قبل انتظار الشبكة
@@ -1866,14 +1971,14 @@ const GD_CACHE_KEY = "hut_adm_gd_v1";
    ═══════════════════════════════════════════════════════════════════════════ */
 let _gdFromCache = false;
 function paintCached(){
-  let c = null;
-  try{ c = JSON.parse(sessionStorage.getItem(GD_CACHE_KEY)||"null"); }catch(_){}
-  if(!c || !Array.isArray(c.restaurants) || !Array.isArray(c.drivers)) return false;
+  const c = gdCacheRead();
+  if(!c) return false;
+  const age = Date.now() - (c.t || 0);
+  if(!(age >= 0) || age > GD_CACHE_MAX_MS) return false;   /* أقدمُ من ثلاثة أيام ⇒ لا تُرسم */
   try{
     applyGD({ restaurants: c.restaurants, drivers: c.drivers });
     _gdFromCache = true;
-    const mins = Math.round((Date.now()-(c.t||0))/60000);
-    gdBanner(true, "🕒 <b>تُعرض نسخةٌ محفوظة</b> عمرها "+mins+" دقيقة — جارٍ التحديث…"
+    gdBanner(true, "🕒 <b>تُعرض نسخةٌ محفوظة</b> عمرها "+gdAgeText(age)+" — جارٍ التحديث…"
       + "<br><span style='font-weight:600;opacity:.92'>لا تعتمد عليها في قرارٍ حتى يختفي هذا الشريط.</span>");
     return true;
   }catch(e){ return false; }
@@ -1925,8 +2030,7 @@ async function loadData(attempt){
     }
     gdBanner(false);
     applyGD(data);
-    try{ sessionStorage.setItem(GD_CACHE_KEY, JSON.stringify({t:Date.now(),
-      restaurants:data.restaurants, drivers:data.drivers})); }catch(_){}
+    gdCacheWrite(data);
   }catch(e){
     const aborted = e && e.name === "AbortError";
     if(attempt < 3){
@@ -1935,15 +2039,14 @@ async function loadData(attempt){
       return loadData(attempt+1);
     }
     /* ثلاث محاولات فشلت — نعمل بآخر نسخة ناجحة بدل شاشة فارغة */
-    let cached=null;
-    try{ cached = JSON.parse(sessionStorage.getItem(GD_CACHE_KEY)||"null"); }catch(_){}
-    if(cached && cached.restaurants && cached.drivers){
+    const cached = gdCacheRead();
+    if(cached){
       applyGD(cached);
-      const mins = Math.round((Date.now()-(cached.t||0))/60000);
+      const ageTxt = gdAgeText(Date.now()-(cached.t||0));
       /* [V31.52] الشريط لا الرسالة العابرة: العمل على نسخةٍ قديمة قرارٌ
          يجب أن يبقى مرئياً ما دام قائماً — لا أن يومض ويختفي. */
-      gdBanner(true,"🕒 <b>تعذّر التحديث</b> — تعرض بيانات عمرها "+mins+
-        " دقيقة. قد لا تعكس آخر التفعيلات والحظر.");
+      gdBanner(true,"🕒 <b>تعذّر التحديث</b> — تعرض بيانات عمرها "+ageTxt+
+        ". قد لا تعكس آخر التفعيلات والحظر.");
     } else {
       toast("فشل جلب البيانات — اضغط للإعادة","e");
       const el=document.getElementById("dhT");
