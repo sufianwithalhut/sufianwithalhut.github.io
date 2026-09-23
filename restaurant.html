@@ -1585,12 +1585,77 @@
         alert('🔑 انتهت جلسة هذا الجهاز مع الخادم — طلباتك تُنشأ لكنها لا تظهر.\n\nسجّل الدخول مرّةً واحدة. لا حاجة لحذف التطبيق.');
         location.reload();
     };
+/* ═══════════════════════════════════════════════════════════════════════════
+   ⏳ [V32.3] دخول المطعم: انتظارٌ محدود بدل دائرةٍ لا تنتهي
+   ───────────────────────────────────────────────────────────────────────────
+   كانت نداءات checkRes الثلاثة `fetch` **عارية**: بلا AbortController ولا
+   مهلة ولا إعادة محاولة. وفي هذا الملفّ كلّه كان العدد صفراً لكلٍّ منها،
+   بينما driver.html يحمل الثلاثة منذ إصدارات.
+
+   وأثرُه ليس «بطئاً» بل **انتظارٌ غير محدود**: نداء المطعم يقف في طابور
+   الثلاثين تنفيذاً المتزامنة خلف الكباتن الداخلين عند بداية الشفت، فتبقى
+   showLoading(true) تدور بلا نهاية — لا مهلة تقطعها ولا رسالة تفسّرها.
+   وصاحب المطعم يظنّ كلمته خطأً أو حسابه معطّلاً، وكلاهما سليم.
+
+   🔴 ومُضخِّمان كانا يجعلانه يتكرّر:
+     ① الاستطلاع كل ١٥ ث بلا مهلة ⇒ نداءٌ يستغرق ٣٠ ث يتداخل مع تاليه،
+        فتتراكم الطلبات على البركة نفسها التي عطّلتها.
+     ② ensureResAuth تُنادى من أربعة مواضع منها onAuthStateChanged — وكل
+        سقوطِ مصادقةٍ (انتهاء رمز · ارتجافة مقبس · عودة تبويبٍ من النوم)
+        يُطلق دخولاً كاملاً. فارتجافةٌ واحدة تصير رشقةً.
+
+   ⚠️ وفخُّ العلاج البديهيّ: **إعادة المحاولة تُضخّم الازدحام.** ثلاث محاولاتٍ
+      لكل مطعمٍ تدخل البركة المشبعة أصلاً فتزيدها إشباعاً — علاجٌ يصنع داءه.
+      ولذلك هنا: محاولةٌ إضافية **واحدة** للدخول اليدويّ (حيث ينتظر إنسان)،
+      و**صفر** للاستطلاع (هو دوريٌّ أصلاً، وإعادتُه مضاعفةٌ صريحة).
+
+   📌 ومهلة الاستطلاع (١٢ ث) **أقصر من دورته** (١٥ ث) عمداً: فلا يتداخل
+      نداءان أبداً مهما بطؤ الخادم. والحارس `_resBusy` يضمنها ولو تغيّرت.
+   ═══════════════════════════════════════════════════════════════════════════ */
+    const RES_TMO_LOGIN = 20000, RES_TMO_POLL = 12000;
+    let _resBusy = { login: false, poll: false, auth: 0 };
+
+    async function gasCheckRes(phone, pass, opt) {
+        opt = opt || {};
+        const tmo   = opt.timeout || RES_TMO_LOGIN;
+        const tries = opt.tries   || 1;
+        let aborted = false;
+        for (let i = 1; i <= tries; i++) {
+            const ctl = new AbortController();
+            const timer = setTimeout(() => { aborted = true; ctl.abort(); }, tmo);
+            try {
+                const r = await fetch(
+                    `${API_URL}?action=checkRes&phone=${phone}&password=${encodeURIComponent(pass)}&token=${API_TOKEN}`,
+                    { signal: ctl.signal });
+                return await r.json();
+            } catch (e) {
+                const wasAbort = aborted || (e && e.name === "AbortError");
+                if (i < tries) { aborted = false; await new Promise(r => setTimeout(r, 3000)); continue; }
+                const err = new Error(wasAbort ? "timeout" : "network");
+                err.code = wasAbort ? "timeout" : "network";
+                throw err;
+            } finally { clearTimeout(timer); }
+        }
+    }
+
+    /* الرسالة تفرّق بين «الخادم مشغول» و«كلمتك خطأ» — والخلط بينهما هو ما
+       يجعل صاحب المطعم يظنّ حسابه معطّلاً وهو سليم. */
+    function resNetMsg(e) {
+        return (e && e.code === "timeout")
+            ? "⏳ الخادم لا يستجيب الآن — غالباً ازدحامٌ في بداية الشفت.\n\n" +
+              "انتظر نصف دقيقة وأعد المحاولة. كلمة مرورك سليمة ولم يُرفض شيء."
+            : "تعذّر الاتصال بالخادم. تحقّق من الإنترنت وأعد المحاولة.";
+    }
+
     window.ensureResAuth = async function(phone, pass) {
         if (!phone || !pass) return false;
         const p = normalizeSystemPhone(phone);
+        /* [V32.3] حارسُ الرشقة: أربعة مُنادين وكلُّ ارتجافةِ مقبسٍ تُطلق واحداً.
+           بلا هذا، انقطاعٌ واحد يصير خمسة نداءاتٍ في ثوانٍ على بركةٍ مشبعة. */
+        if (Date.now() - _resBusy.auth < 8000) return false;
+        _resBusy.auth = Date.now();
         try {
-            const r = await fetch(`${API_URL}?action=checkRes&phone=${p}&password=${encodeURIComponent(pass)}&token=${API_TOKEN}`);
-            const d = await r.json();
+            const d = await gasCheckRes(p, pass, { timeout: RES_TMO_LOGIN, tries: 1 });
             if (d && d.firebase_token) {
                 await signInWithCustomToken(auth, d.firebase_token);
                 console.log("✅ المطعم: تمت إعادة المصادقة بنجاح");
@@ -2509,11 +2574,14 @@
 
         if (!passAttempt) return alert("يرجى إدخال كلمة المرور.");
 
+        /* [V32.3] حارسٌ ضدّ الضغط المتكرّر: كل ضغطةٍ كانت تُطلق نداءً جديداً
+           على بركةٍ مشبعة، والمؤشّر يدور فيظنّ أنه لم يُسجَّل فيضغط ثانيةً. */
+        if (_resBusy.login) return;
+        _resBusy.login = true;
         window.showLoading(true);
-        fetch(`${API_URL}?action=checkRes&phone=${phone}&password=${encodeURIComponent(passAttempt)}&token=${API_TOKEN}`)
-            .then(r => r.json())
-            .then(data => handleLogin(data, phone, passAttempt))
-            .catch(() => { window.showLoading(false); alert("خطأ في الاتصال، حاول مجدداً."); });
+        gasCheckRes(phone, passAttempt, { timeout: RES_TMO_LOGIN, tries: 2 })
+            .then(data => { _resBusy.login = false; handleLogin(data, phone, passAttempt); })
+            .catch(e => { _resBusy.login = false; window.showLoading(false); alert(resNetMsg(e)); });
     };
 
     function sendRegistration(name, phone, password, area, comm, pay, lat, lng, priceListStr) {
@@ -2574,8 +2642,11 @@
             if (savedPass) pass = decPass_(savedPass);
         }
 
-        fetch(`${API_URL}?action=checkRes&phone=${phone}&password=${encodeURIComponent(pass)}&token=${API_TOKEN}`)
-            .then(r => r.json())
+        /* [V32.3] لا تداخل: نداءٌ بطيءٌ لا يُراكم خلفه دورات الخمس عشرة ثانية. */
+        if (_resBusy.poll) return;
+        _resBusy.poll = true;
+        gasCheckRes(phone, pass, { timeout: RES_TMO_POLL, tries: 1 })
+            .finally(() => { _resBusy.poll = false; })
             .then(data => {
                 if (data.status === "active" || data.status === "inactive") {
                     clearInterval(waitingPollingTimer);
