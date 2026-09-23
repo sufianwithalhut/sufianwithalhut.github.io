@@ -1612,6 +1612,74 @@
    📌 ومهلة الاستطلاع (١٢ ث) **أقصر من دورته** (١٥ ث) عمداً: فلا يتداخل
       نداءان أبداً مهما بطؤ الخادم. والحارس `_resBusy` يضمنها ولو تغيّرت.
    ═══════════════════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════════════
+   ☁️ [V32.7] دخول المطعم من السحابة أوّلاً — وApps Script احتياطاً
+   ───────────────────────────────────────────────────────────────────────────
+   كان دخول المطاعم **مئةً بالمئة** على Apps Script، بينما دخول الكباتن
+   انتقل منذ V31.45 (والقياس في ٢٣-٠٩ أعطى ٨٣٪ منه على السحابة فعلاً).
+   وكلُّ نداء مطعمٍ يزاحم الكباتن في بركة الثلاثين تنفيذاً المتزامنة.
+
+   والنمط هنا **هو نمط driver.html نفسه حرفاً بحرف** — لا اجتهاد جديد في
+   طبقة مصادقة:
+     · سباقٌ محدود بمهلة، فلا ينتظر صاحب المطعم بابًا لا يفتح
+     · قاطعُ دائرة: فشلان متتاليان ⇒ لا نسأل السحابة ٣٠ دقيقة، ثم يُعاد
+       المحاولة تلقائياً. فإن تعطّلت الدالّة لا يُعاقب المستخدم بمهلةٍ في
+       كل دخول.
+     · سقوطٌ آمن إلى Apps Script على not_mirrored · no_pepper · mint_failed
+       — وهي الحالات التي تعني «السحابة لا تعرف»، لا «الحساب خاطئ».
+     · و**wrong_password لا يسقط**: هو حكمٌ صحيحٌ من السحابة، وإعادةُ سؤال
+       Apps Script عنه تُضاعف الحمل وتُبطل الحاجز.
+
+   ⚠️ ومفاتيح القاطع بادئتُها hut_res_ لا suf_: اللوحتان على **الأصل نفسه**
+      (sufianwithalhut.github.io)، فمفتاحٌ مشترك يجعل قاطعَ الكباتن يُسكت
+      سحابةَ المطاعم وبالعكس — عطبٌ صامتٌ يصعب تفسيره لاحقاً.
+
+   📌 والقياس مؤجَّل لا مُهمَل: resTrack تشترط auth.currentUser، فلا تُسجّل
+      شيئاً **وقت الدخول** (قبل المصادقة). فتُحفظ النتيجة هنا وتُفرَّغ بعد
+      نجاح signInWithCustomToken — فأحصل على النسبة كما حصلتُ عليها للكباتن.
+   ═══════════════════════════════════════════════════════════════════════════ */
+    const RES_CLOUD_RACE_MS = 8000;
+    let _resCloudNote = null;
+
+    function resCloudOpen(){ try{ return Date.now() > Number(localStorage.getItem('hut_res_cloud_off')||0); }catch(_){ return true; } }
+    function resCloudFail(){ try{ const k=Number(localStorage.getItem('hut_res_cloud_n')||0)+1; localStorage.setItem('hut_res_cloud_n',String(k));
+      if(k>=2){ localStorage.setItem('hut_res_cloud_off',String(Date.now()+30*60000)); localStorage.setItem('hut_res_cloud_n','0'); _resCloudNote={ev:'res_cloud_breaker_open'}; } }catch(_){}}
+    function resCloudOk(){ try{ localStorage.setItem('hut_res_cloud_n','0'); localStorage.removeItem('hut_res_cloud_off'); }catch(_){}}
+
+    /** يردّ عقد checkRes من السحابة، أو null ليسقط المُنادي إلى Apps Script. */
+    async function resCloudLogin(phone, pass){
+        if(!resCloudOpen()) return null;
+        try{
+            const r = await Promise.race([
+                httpsCallable(fns,'restaurantLogin')({ phone: phone, password: String(pass||''), dev: '', claim: '0' }),
+                new Promise((_,rej)=>setTimeout(()=>rej(new Error('cloud_timeout')), RES_CLOUD_RACE_MS))
+            ]);
+            const d = r && r.data;
+            if(!d || !d.status) return null;
+            if(d.status==='not_mirrored' || d.status==='no_pepper' || d.status==='mint_failed'){
+                resCloudFail(); _resCloudNote={ev:'res_cloud_fallback', why:d.status}; return null;
+            }
+            resCloudOk(); _resCloudNote={ev:'res_cloud_login', why:d.status};
+            return d;
+        }catch(e){
+            resCloudFail();
+            _resCloudNote={ev:'res_cloud_miss', why:String(e&&(e.code||e.message)||e).slice(0,40)};
+            return null;
+        }
+    }
+
+    /** الدخول: السحابة أوّلاً ثم Apps Script — نقطةُ دخولٍ واحدة للمسارين. */
+    async function resLogin(phone, pass, opt){
+        const c = await resCloudLogin(phone, pass);
+        if(c) return c;
+        return await gasCheckRes(phone, pass, opt || { timeout: RES_TMO_LOGIN, tries: 2 });
+    }
+
+    /** يُفرَّغ بعد المصادقة — resTrack صامتةٌ قبلها. */
+    function resFlushCloudNote(){
+        try{ if(_resCloudNote){ const n=_resCloudNote; _resCloudNote=null; resTrack(n.ev, n.why?{why:n.why}:undefined); } }catch(_){}
+    }
+
     const RES_TMO_LOGIN = 20000, RES_TMO_POLL = 12000;
     let _resBusy = { login: false, poll: false, auth: 0 };
 
@@ -1655,10 +1723,11 @@
         if (Date.now() - _resBusy.auth < 8000) return false;
         _resBusy.auth = Date.now();
         try {
-            const d = await gasCheckRes(p, pass, { timeout: RES_TMO_LOGIN, tries: 1 });
+            const d = await resLogin(p, pass, { timeout: RES_TMO_LOGIN, tries: 1 });
             if (d && d.firebase_token) {
                 await signInWithCustomToken(auth, d.firebase_token);
                 console.log("✅ المطعم: تمت إعادة المصادقة بنجاح");
+                resFlushCloudNote();
             } else {
                 console.warn("⚠️ لم يصل firebase_token عند إعادة مصادقة المطعم");
             }
@@ -2579,7 +2648,7 @@
         if (_resBusy.login) return;
         _resBusy.login = true;
         window.showLoading(true);
-        gasCheckRes(phone, passAttempt, { timeout: RES_TMO_LOGIN, tries: 2 })
+        resLogin(phone, passAttempt, { timeout: RES_TMO_LOGIN, tries: 2 })
             .then(data => { _resBusy.login = false; handleLogin(data, phone, passAttempt); })
             .catch(e => { _resBusy.login = false; window.showLoading(false); alert(resNetMsg(e)); });
     };
@@ -2712,7 +2781,7 @@
         if (data.status === "active" || data.status === "inactive") {
             if (data.firebase_token) {
                 signInWithCustomToken(auth, data.firebase_token)
-                    .then(() => console.log("✅ تم تسجيل الدخول لفايربيس بأمان"))
+                    .then(() => { console.log("✅ تم تسجيل الدخول لفايربيس بأمان"); resFlushCloudNote(); })
                     .catch(e => console.error("❌ Firebase Auth Error:", e));
             }
 
