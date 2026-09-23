@@ -3659,15 +3659,76 @@ window.delOrder=function(oId,el){
     const card=el?.closest(".oc");if(card){card.style.opacity="0";setTimeout(()=>card.remove(),260);}
   }).catch(()=>toast("خطأ","e")).finally(()=>{if(el){el.disabled=false;el.classList.remove("loading");}});
 };
-window.asgnDrv=function(oId,dPhone,el){
-  if(!dPhone||!MP)return;el.disabled=true;
-  const now=new Date().toISOString();
-  ovr.o[String(oId)]={status:"manual_pending",dp:dPhone,ts:Date.now()};
-  shadowCmd("OFFER",oId,dPhone);   /* [V17] قياس في الظلّ — مع الكابتن الهدف */
-  db.ref(`active_orders/${oId}`).update({status:"manual_pending",driverPhone:dPhone,last_update:now,is_sovereign:true});
-  fetch(API,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({action:"ASSIGN_DRIVER",orderId:oId,driverPhone:dPhone,token:TOK,pass:MP})})
-    .then(r=>r.json()).then(d=>{if(d.success){toast("تم التعيين السيادي 👑");logAudit("assignDriver",`طلب #${oId} ← ${dN(dPhone)}`);}else toast("خطأ","e");})
-    .catch(()=>toast("تم الإرسال")).finally(()=>el.disabled=false);
+/* ═══════════════════════════════════════════════════════════════════════════
+   🎯 [V32.8] التعيين السياديّ: سحابةٌ أوّلاً، وعطبان أُصلحا معه
+   ───────────────────────────────────────────────────────────────────────────
+   لماذا هذا الإجراء وحده من أحد عشر تناديها اللوحة: هو **الوحيد الذي ينتظره
+   طرفٌ ثالث**. بقيّتُها ينتظرها المسؤول أمام شاشته (وحُدّت مهلتُه في V32.4)،
+   أمّا هذا فخلفه كابتنٌ وزبون — وتأخّرُه في بركة الثلاثين تأخيرُ طلب.
+
+   🔴 والعطب الأوّل، وكان هنا لا في الخادم: الكتابةُ المباشرة إلى RTDB كانت
+      تكتب أربعة حقول وتُغفل **last_offered_to**. وهو بالضبط ما يحذّر منه
+      Code.gs (V31 · ح-٢): المحرّك يعرض على «أ»، ثم يعيّن الليدر لـ«ج»
+      ⇒ driverPhone = ج بينما last_offered_to يبقى «أ» ⇒ بطاقةُ «أ» لا تُسحب
+      ⇒ يضغط قبول ⇒ يسقط إلى مسار الخدمة الذي يتجاوز القواعد
+      ⇒ **«أ» يسرق التعيين من «ج»**، وكابتنان في المطعم.
+      والخادم يكتب الزوج صحيحاً — لكنّ الكتابة المباشرة كانت تسبقه، ففتحت
+      النافذةَ التي أُغلقت في الخادم. ⇒ أُزيلت: كاتبٌ واحد لا اثنان.
+      والأثر الفوريّ في الواجهة يبقى عبر ovr المحلّي بلا كتابةٍ ناقصة.
+
+   🔴 والعطب الثاني: **needsConfirm لم يكن يُعالَج إطلاقاً.** فحصُ الإتاحة
+      مبنيٌّ في الخادم منذ V19.2 (حالة الكابتن · عمرُ نبضته · حظرُه · انتهاءُ
+      شفته · إحداثياته) ويردّ needsConfirm مع الأسباب — وكانت اللوحة تعرض
+      «خطأ» وحدها. فالميزة موجودةٌ ولا تصل المسؤول. الآن تُعرض الأسباب
+      ويُطلب تأكيدٌ صريح، ثم يُعاد النداء بـforce.
+
+   ⚠️ ولا قاطعَ دائرةٍ هنا — بخلاف driver.html وrestaurant.html. والسبب
+      مقصود: القاطع وُجد كي لا يدفع **أربعةٌ وثمانون جهازاً** ثمنَ مهلةٍ
+      لكلٍّ منها. واللوحة يفتحها واحدٌ أو ثلاثة، فمهلةٌ عابرة لا تستحقّ
+      حالةً ثابتة قد تعلق مفتوحة. السقوط إلى Apps Script يكفي.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const ASGN_RACE_MS = 8000;
+async function asgnCall(oId, dPhone, force){
+  /* السحابة أوّلاً */
+  try{
+    const call = firebase.app().functions('europe-west1').httpsCallable('assignDriver');
+    const r = await Promise.race([
+      call({ orderId: oId, driverPhone: dPhone, force: force === true }),
+      new Promise((_,rej)=>setTimeout(()=>rej(new Error('cloud_timeout')), ASGN_RACE_MS))
+    ]);
+    if(r && r.data) return r.data;
+  }catch(e){ console.warn("assignDriver سحابياً:", e && (e.code||e.message)); }
+  /* وApps Script احتياطاً — العقد نفسه (success · needsConfirm · availability) */
+  const res = await fetch(API,{method:"POST",headers:{"Content-Type":"text/plain"},
+    body:JSON.stringify({action:"ASSIGN_DRIVER",orderId:oId,driverPhone:dPhone,force:force===true,token:TOK,pass:MP})});
+  return await res.json();
+}
+window.asgnDrv=async function(oId,dPhone,el,force){
+  if(!dPhone||!MP)return;
+  if(el)el.disabled=true;
+  try{
+    const d = await asgnCall(oId,dPhone,force===true);
+    if(d && d.needsConfirm){
+      /* الأسباب تُعرض كما جاءت من الخادم — لا تُختصر ولا تُترجَم */
+      if(!confirm(d.msg || "⚠️ الكابتن غير متاح. أتؤكّد التعيين القسري؟")) return;
+      if(el)el.disabled=false;
+      return window.asgnDrv(oId,dPhone,el,true);
+    }
+    if(d && d.success){
+      ovr.o[String(oId)]={status:"manual_pending",dp:dPhone,ts:Date.now()};
+      shadowCmd("OFFER",oId,dPhone);   /* [V17] قياس في الظلّ — مع الكابتن الهدف */
+      toast(d.forced ? "تم التعيين **القسري** 👑" : "تم التعيين السيادي 👑");
+      logAudit("assignDriver",`طلب #${oId} ← ${dN(dPhone)}${d.forced?" (قسريّ)":""}`);
+    } else {
+      toast((d && d.msg) || "تعذّر التعيين","e");
+    }
+  }catch(e){
+    /* ⚠️ كان `catch(()=>toast("تم الإرسال"))` — يقول «تمّ» على فشلٍ صريح،
+       فيظنّ المسؤول الطلبَ معيَّناً وهو ليس كذلك. */
+    toast("تعذّر التعيين — تحقّق ثم أعد المحاولة","e");
+  }finally{
+    if(el)el.disabled=false;
+  }
 };
 /* ملاحظة V16.0 — **بطلت في V31.3**: كانت تصف نداء DECLINE_ORDER من هذه
    الدالّة، وقد حُذف النداء (الشرح الكامل عند موضعه أدناه). وتُترك مشطوبةً
