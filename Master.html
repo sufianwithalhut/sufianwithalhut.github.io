@@ -157,6 +157,8 @@ try {
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <!-- [V17] دوال السحابة — لنداء orderCommand في وضع الظلّ -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+<!-- 📷 [V32.11] Storage — رفعُ صورة الكابتن من زرّ القلم. الإصدار نفسه كبقيّة الحزم. -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
 <!-- 🗑️ [حذف] Leaflet + leaflet-heat + Chart.js — نحو 355 ك.ب و عشرات طلبات
      بلاطات basemaps.cartocdn مع كل تحريك. الخريطة الحيّة والرسمان أُزيلا بطلبك.
      ⚠️ خرائط جوجل (مُنتقي موقع المطعم) **باقية** — وهي تُحمَّل عند الطلب فقط
@@ -1035,6 +1037,17 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
       </div>
     </div>
     <div id="eDF" style="display:none">
+      <!-- 📷 [V32.11] صورة الكابتن — الإدارة تغيّرها مباشرةً. تُرفع عند «حفظ» لا عند الاختيار. -->
+      <label class="el">📷 صورة الكابتن</label>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:13px;padding:10px 12px;background:var(--base2);border:1px solid var(--line2);border-radius:14px">
+        <div id="ePhBox" style="width:62px;height:62px;border-radius:50%;background:var(--sky-l);overflow:hidden;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:24px;border:2px solid transparent">
+          <img id="ePhImg" alt="" style="width:100%;height:100%;object-fit:cover;display:none">
+          <span id="ePhPh">👤</span>
+        </div>
+        <div id="ePhMsg" style="flex:1;min-width:0;font-size:.76rem;font-weight:700;color:var(--ink3)">—</div>
+        <button type="button" id="ePhBtn" onclick="document.getElementById('ePhFile').click()" style="padding:9px 13px;background:var(--sky);color:#fff;border:none;border-radius:12px;font-weight:800;cursor:pointer;font-family:'Cairo';white-space:nowrap">📷 تغيير</button>
+        <input type="file" id="ePhFile" accept="image/*" style="display:none" onchange="ePickPhoto(this)">
+      </div>
       <label class="el">المنطقة المفضلة</label>
       <input type="text" id="eDA" class="fc" style="margin-bottom:11px" placeholder="منطقة عمل الكابتن">
       <label class="el">حالة الحساب</label>
@@ -3310,8 +3323,91 @@ function rdPL(){
   });
   return JSON.stringify(r);
 }
+/* ═══════════════════════════════════════════════════════════════════════════
+   📷 [V32.11] تعديل صورة الكابتن من زرّ القلم — الإدارة ترفعها بنفسها
+   ───────────────────────────────────────────────────────────────────────────
+   منذ V32.10 لا يغيّر الكابتن صورته بعد إنشاء حسابه. وكان للإدارة زرٌّ واحد:
+   «اسمح بتغييرها» (نافذة الشفت) يفتح للكابتن نافذةَ رفعٍ واحدة. وهذا يتطلّب
+   الكابتنَ نفسه. أمّا هنا فالمدير يختار الصورة ويرفعها، والكابتن لا يلمس شيئاً.
+
+   المسار: الملفّ ⇐ ضغطٌ على canvas (٤٠٠ بكسل · JPEG 0.82 — كتطبيق الكابتن
+   حرفاً) ⇐ Storage في driver_photos/<هاتف>.jpg (الاسم نفسه ⇒ لا تتكدّس نسخ)
+   ⇐ رابط التنزيل ⇐ drivers_locations/<هاتف>/{photo, photo_at}.
+
+   🔒 ما يجعل هذا ممكناً — والترتيب مهمّ:
+     • قواعد Storage: الإداري (auth.token.role == 'admin') يكتب ملفَّ أيّ كابتن،
+       والاسم محصورٌ بنمط الهاتف. ⇐ تُنشر **قبل** هذه الصفحة، وإلّا رُفض الرفع.
+     • قواعد RTDB: photo يكتبها الإداري دائماً، والتحقّق يشترط أن يبدأ الرابط
+       بـ https://firebasestorage.googleapis.com/ — ورابط getDownloadURL يبدأ به.
+
+   ⚠️ الصورة تُرفع **أوّلاً** عند «حفظ»، وفشلُها يوقف الحفظ كلّه: فلا يرى المسؤول
+      «تم الحفظ» وصورتُه لم تُحفظ. أمّا نجاحها ثم فشل Apps Script فيُقال صراحةً
+      — فالصورة حُفظت فعلاً ولا يُوهَم أنّ شيئاً لم يحدث.
+   ⚠️ وupdateEntityInfo لا يلمس الصورة: يكتب ورقة account_status وحدها لا العقدة.
+   ═══════════════════════════════════════════════════════════════════════════ */
+let _ePhoto=null;              /* dataURL مضغوطة بانتظار «حفظ» */
+const E_PH_UP_MS=25000, E_PH_URL_MS=15000;
+
+function eRace(p,ms,tag){
+  return Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error(tag+"_timeout")),ms))]);
+}
+function eErrTxt(e){
+  const c=String(e&&(e.code||e.message)||"خطأ");
+  if(/unauthorized|permission/i.test(c)) return "الصلاحية مرفوضة — قواعد التخزين";
+  if(/timeout/i.test(c)) return "انتهت المهلة — الشبكة بطيئة";
+  return c.slice(0,60);
+}
+function ePaintPhoto(n){
+  const loc=(typeof _lastLocs!=="undefined"&&_lastLocs&&_lastLocs[n])||{};
+  const url=_ePhoto||loc.photo||drvPhoto[n]||"";
+  const img=document.getElementById("ePhImg"), ph=document.getElementById("ePhPh");
+  const box=document.getElementById("ePhBox"), msg=document.getElementById("ePhMsg");
+  if(url){ img.src=url; img.style.display="block"; ph.style.display="none"; }
+  else   { img.removeAttribute("src"); img.style.display="none"; ph.style.display="block"; }
+  box.style.borderColor=_ePhoto?"var(--sky)":"transparent";
+  msg.textContent=_ePhoto ? "صورةٌ جديدة — تُرفع عند «حفظ»"
+                 : url    ? "الصورة الحالية — الكابتن لا يستطيع تغييرها"
+                          : "لا صورة بعد";
+}
+window.ePickPhoto=function(inp){
+  const f=inp.files&&inp.files[0]; if(!f) return;
+  /* الثمانية ميغا حدُّ الأصل قبل الضغط لا حدُّ المرفوع — كتطبيق الكابتن */
+  if(f.size>8*1024*1024){ inp.value=""; return toast("الصورة كبيرة جداً — اختر أصغر","e"); }
+  if(!/^image\//.test(f.type||"")){ inp.value=""; return toast("الملفّ ليس صورة","e"); }
+  const r=new FileReader();
+  r.onload=()=>{
+    const im=new Image();
+    im.onload=()=>{
+      const M=400, sc=Math.min(1,M/Math.max(im.width,im.height));
+      const c=document.createElement("canvas");
+      c.width=Math.round(im.width*sc); c.height=Math.round(im.height*sc);
+      c.getContext("2d").drawImage(im,0,0,c.width,c.height);
+      _ePhoto=c.toDataURL("image/jpeg",0.82);
+      inp.value="";
+      ePaintPhoto(nP(ePh));
+    };
+    im.onerror=()=>{ inp.value=""; toast("تعذّرت قراءة الصورة","e"); };
+    im.src=r.result;
+  };
+  r.onerror=()=>{ inp.value=""; toast("تعذّرت قراءة الملفّ","e"); };
+  r.readAsDataURL(f);
+};
+async function eUploadPhoto(n){
+  if(!/^7\d{9}$/.test(n)) throw new Error("رقمٌ غير صالح");
+  const ref=firebase.storage().ref("driver_photos/"+n+".jpg");
+  await eRace(ref.putString(_ePhoto,"data_url",{contentType:"image/jpeg"}),E_PH_UP_MS,"photo_up");
+  const url=await eRace(ref.getDownloadURL(),E_PH_URL_MS,"photo_url");
+  await db.ref("drivers_locations/"+n).update({photo:url,photo_at:new Date().toISOString()});
+  drvPhoto[n]=url;
+  if(typeof _lastLocs!=="undefined"&&_lastLocs){ if(!_lastLocs[n]) _lastLocs[n]={}; _lastLocs[n].photo=url; }
+  _ePhoto=null;       /* فلا يُعاد الرفع لو أُعيد «حفظ» بعد فشل Apps Script */
+  logAudit("drvPhoto","تغيير صورة الكابتن: "+n);
+  return url;
+}
+
 window.opEdit=function(type,phone){
   eType=type;ePh=phone;
+  _ePhoto=null;
   const list=type==="DRV"?gD?.drivers:gD?.restaurants;
   const entity=list?.find(i=>nP(i[2])===nP(phone));
   if(!entity)return toast("لم يُعثر على البيانات","e");
@@ -3337,6 +3433,7 @@ window.opEdit=function(type,phone){
     document.getElementById("eDA").value=entity[D.AREA]||"";
     document.getElementById("eST").value=entity[D.STATUS]||"active";
     document.getElementById("eSH").value=entity[D.SHIFT]||"10";
+    ePaintPhoto(nP(phone));
     opMod("editMod");
   }
 };
@@ -3356,12 +3453,23 @@ window.svEdit=async function(){
     upd.shift=document.getElementById("eSH").value;
   }
   const apiType=eType==="RES"?"RESTAURANT":"DRIVER";
+  /* 📷 [V32.11] الصورة أوّلاً — وفشلُها يوقف الحفظ كلّه (انظر الشرح عند eUploadPhoto) */
+  let photoSaved=false;
+  if(eType==="DRV"&&_ePhoto){
+    try{ await eUploadPhoto(nP(ePh)); photoSaved=true; }
+    catch(e){
+      console.warn("eUploadPhoto:",e&&(e.code||e.message));
+      toast("لم تُحفظ الصورة ("+eErrTxt(e)+") — ولم يُحفظ شيءٌ آخر","e");
+      btn.disabled=false;btn.classList.remove("loading");
+      return;
+    }
+  }
   try{
     const r=await fetch(API,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({token:TOK,action:"updateEntityInfo",type:apiType,phone:ePh,updates:upd,pass:MP})});
     const d=await r.json();
-    if(d&&d.success){toast("تم الحفظ بنجاح ✅");logAudit("updateEntity","تحديث "+(eType==="DRV"?"كابتن":"مطعم")+": "+upd.name);clEdit();loadData();}
-    else toast("فشل الحفظ: "+(d&&d.msg||""),"e");
-  }catch(e){toast("خطأ في الاتصال","e");}
+    if(d&&d.success){toast(photoSaved?"تم الحفظ بنجاح ✅ — مع الصورة":"تم الحفظ بنجاح ✅");logAudit("updateEntity","تحديث "+(eType==="DRV"?"كابتن":"مطعم")+": "+upd.name);clEdit();loadData();}
+    else toast((photoSaved?"حُفظت الصورة ✅ — لكن فشل حفظ البيانات: ":"فشل الحفظ: ")+(d&&d.msg||""),"e");
+  }catch(e){toast(photoSaved?"حُفظت الصورة ✅ — لكن تعذّر حفظ البيانات (الاتصال)":"خطأ في الاتصال","e");}
   finally{btn.disabled=false;btn.classList.remove("loading");}
 };
 
@@ -4177,8 +4285,8 @@ function renderAudit(){
   const AUD_MAX = 100;
   const q=(document.getElementById("auSch")?.value.trim().toLowerCase()||"");
   const list=auData.filter(e=>!q||JSON.stringify(e).toLowerCase().includes(q)).slice(0, AUD_MAX);
-  const iMap={updateEntity:"✏️",resetDebt:"💵",assignDriver:"👑",withdrawOrder:"↩",forceComplete:"✅",deleteOrder:"🗑",ACCEPT:"✓",PAUSE:"⏸",BAN:"🚫",toggleShifts:"⏱",DEL:"🗑",manageStaff:"🧑‍💼"};
-  const nMap={updateEntity:"تحديث بيانات",resetDebt:"تصفير ديون",assignDriver:"تعيين سيادي",withdrawOrder:"سحب طلب",forceComplete:"إكمال يدوي",deleteOrder:"إلغاء طلب",ACCEPT:"تفعيل حساب",PAUSE:"تجميد حساب",BAN:"حظر حساب",toggleShifts:"نظام الشفتات",DEL:"حذف نهائي",manageStaff:"إدارة موظف"};
+  const iMap={updateEntity:"✏️",resetDebt:"💵",assignDriver:"👑",withdrawOrder:"↩",forceComplete:"✅",deleteOrder:"🗑",ACCEPT:"✓",PAUSE:"⏸",BAN:"🚫",toggleShifts:"⏱",DEL:"🗑",manageStaff:"🧑‍💼",drvPhoto:"📷",freeDrvPhoto:"🔓"};
+  const nMap={updateEntity:"تحديث بيانات",resetDebt:"تصفير ديون",assignDriver:"تعيين سيادي",withdrawOrder:"سحب طلب",forceComplete:"إكمال يدوي",deleteOrder:"إلغاء طلب",ACCEPT:"تفعيل حساب",PAUSE:"تجميد حساب",BAN:"حظر حساب",toggleShifts:"نظام الشفتات",DEL:"حذف نهائي",manageStaff:"إدارة موظف",drvPhoto:"تغيير صورة كابتن",freeDrvPhoto:"فتح صورة كابتن"};
   let html="";
   list.forEach(e=>{
     const ico=iMap[e.action]||"⚡",nm=nMap[e.action]||e.action;
