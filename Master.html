@@ -919,6 +919,20 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
     <h4 style="font-weight:900;text-align:center;color:var(--ink);margin-bottom:3px">شفت الكابتن</h4>
     <p id="shSub" style="text-align:center;color:var(--ink3);font-size:.82rem;font-weight:700;margin:0 0 6px"></p>
 
+    <!-- 🖼️ [V32.10] صورة الكابتن — الإدارة وحدها تُقرّر تغييرها.
+         وهذه النافذة هي موضعُها الطبيعيّ: نافذةُ الكابتن الإدارية. -->
+    <div id="shPhotoRow" style="display:flex;align-items:center;gap:12px;margin:10px 0 12px;padding:11px 13px;background:var(--bg2,#f6f7f9);border:1px solid var(--line,#e5e7eb);border-radius:13px">
+      <div style="width:54px;height:54px;border-radius:50%;background:var(--sky-l,#e6f1fb);overflow:hidden;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:22px" id="shPhBox">
+        <img id="shPhImg" alt="" style="width:100%;height:100%;object-fit:cover;display:none">
+        <span id="shPhPh">👤</span>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:900;font-size:.85rem;color:var(--ink,#111)">صورة الكابتن</div>
+        <div id="shPhMsg" style="font-size:.76rem;font-weight:700;color:var(--ink3,#6b7280);margin-top:2px"></div>
+      </div>
+      <button type="button" id="shPhBtn" class="sh-free" style="margin:0;width:auto;padding:9px 13px;white-space:nowrap" onclick="freeDrvPhoto()">🔓 اسمح بتغييرها</button>
+    </div>
+
     <div class="sh-cur" id="shCur"></div>
 
     <div class="sh-lbl"><span>ساعة البدء</span><b id="shHLbl">—</b></div>
@@ -2709,7 +2723,58 @@ window.opShift=function(phone){
   shH=hasWin?Number(loc.shift_h):16;
   shLen=hasWin?Math.min(12,Math.max(1,Number(loc.shift_len)||cap)):cap;
   shRenderHours(); shPaint();
+  shPaintPhoto();
   opMod("shiftMod");
+};
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   🖼️ [V32.10] صورة الكابتن — من يملك تغييرها
+   ───────────────────────────────────────────────────────────────────────────
+   منذ V32.10 لا يغيّر الكابتن صورته: يرفعها مرّةً عند إنشاء حسابه ثم تُقفل.
+   وبلا هذا الزرّ تصبح الصورة **غير قابلة للتغيير من أحد** — فالحظرُ يصير
+   عطباً. فهنا تُفتح النافذةُ ثانيةً بقرارٍ إداريّ.
+
+   📌 والإدارة **تفتح** ولا **ترفع**: الرفع إلى Storage محكومٌ بـauth.uid ==
+      الهاتف، فرفعُ المسؤول نيابةً عنه يقتضي قاعدةَ تخزينٍ جديدة ومنتقيَ
+      ملفّاتٍ في اللوحة. والفتحُ يكفي: يُمسح photo فيعود قفلُ الكابتن
+      مفتوحاً (photoLocked مبنيّةٌ على وجود الحقل لا غير) فيرفع صورةً
+      واحدةً جديدة ثم يُقفل من تلقاء نفسه.
+
+   ⚠️ ولا مسحَ لملفّ Storage: driver_photos/<هاتف>.jpg يُكتب فوقه بالاسم نفسه
+      عند الرفع التالي. ومسحُه هنا يترك الكابتنَ بلا صورةٍ لو لم يرفع.
+   ═══════════════════════════════════════════════════════════════════════════ */
+function shPaintPhoto(){
+  const loc=(_lastLocs&&_lastLocs[shPh])||{};
+  const url=loc.photo||drvPhoto[shPh]||"";
+  const img=document.getElementById("shPhImg"), ph=document.getElementById("shPhPh");
+  const msg=document.getElementById("shPhMsg"), btn=document.getElementById("shPhBtn");
+  if(url){ img.src=url; img.style.display="block"; ph.style.display="none"; }
+  else   { img.removeAttribute("src"); img.style.display="none"; ph.style.display="block"; }
+  msg.textContent = url
+    ? "مثبّتة — الكابتن لا يستطيع تغييرها"
+    : "لا صورة — الكابتن يستطيع رفع واحدة الآن";
+  btn.style.display = url ? "block" : "none";
+}
+
+window.freeDrvPhoto=async function(){
+  if(!shPh) return;
+  if(!confirm("السماح لـ"+shNm+" برفع صورةٍ جديدة؟\n\nتُمسح صورته الحالية من ملفّه، ويُطلب منه رفعُ واحدةٍ عند فتح التطبيق — ثم تُقفل ثانيةً.")) return;
+  const btn=document.getElementById("shPhBtn"); btn.disabled=true;
+  const prev={ photo:(_lastLocs?.[shPh]?.photo)??null, photo_at:(_lastLocs?.[shPh]?.photo_at)??null };
+  try{
+    await db.ref("drivers_locations/"+shPh).update({ photo:null, photo_at:null });
+    if(_lastLocs&&_lastLocs[shPh]){ delete _lastLocs[shPh].photo; delete _lastLocs[shPh].photo_at; }
+    delete drvPhoto[shPh];
+    shPaintPhoto();
+    toast("فُتحت الصورة 🔓 — يرفع الكابتن واحدةً جديدة");
+    logAudit("freeDrvPhoto", shNm+": فتحُ الصورة للتغيير");
+    try{ if(gD&&document.getElementById("pg-drivers").classList.contains("on")) filtEnt("DRV"); }catch(e){ console.warn("photo repaint", e); }
+  }catch(e){
+    if(_lastLocs&&_lastLocs[shPh]){ if(prev.photo) _lastLocs[shPh].photo=prev.photo; if(prev.photo_at) _lastLocs[shPh].photo_at=prev.photo_at; }
+    if(prev.photo) drvPhoto[shPh]=prev.photo;
+    shPaintPhoto();
+    toast("لم يُفتح: "+String(e&&(e.code||e.message)||"خطأ").slice(0,60),"e");
+  }finally{ btn.disabled=false; }
 };
 
 function shRenderHours(){
