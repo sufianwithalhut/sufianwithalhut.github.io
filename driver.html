@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://*.firebasedatabase.app https://*.firebaseio.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app https://www.gstatic.com; object-src 'none'; base-uri 'none'; form-action 'self';">
 
 <script>
-const CURRENT_APP_VERSION = "31.87-QuietRestore";
+const CURRENT_APP_VERSION = "32.10-ProfileLock";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -826,7 +826,9 @@ window.__SND = {
             <div class="set-h" id="setShiftNext" style="color:var(--warn-dp)"></div>
           </div>
         </div>
-        <button class="stp-b" style="width:auto;padding:0 14px" onclick="openOnboarding(false)">تعديل</button>
+        
+        <button class="stp-b" id="setProfBtn" style="width:auto;padding:0 14px;display:none" onclick="openOnboarding(false)">إكمال</button>
+        <div class="set-h" id="setProfLock" style="display:none;white-space:nowrap;text-align:center">🔒 تُعدَّل<br>من الإدارة</div>
       </div>
     </div>
 
@@ -881,7 +883,7 @@ window.__SND = {
           <img id="obImg" style="width:100%;height:100%;object-fit:cover;display:none" alt="">
         </div>
         <div style="flex:1">
-          <button class="cta cta-1" style="padding:11px" onclick="document.getElementById('obFile').click()">اختر صورة</button>
+          <button class="cta cta-1" id="obPickBtn" style="padding:11px" onclick="document.getElementById('obFile').click()">اختر صورة</button>
           <div id="obImgMsg" style="font-size:.76rem;color:var(--muted);margin-top:7px">لم تُختَر صورة بعد</div>
         </div>
       </div>
@@ -902,6 +904,7 @@ window.__SND = {
           <select id="obHours" class="inp-clay" style="margin-bottom:0;padding:12px 14px"></select>
         </div>
       </div>
+      <div id="obShiftLock" style="display:none;margin-top:11px;padding:10px 12px;background:var(--bg2);border:1px solid var(--line);border-radius:11px;font-size:.82rem;font-weight:700;color:var(--muted)">🔒 موعدك مثبّت — تغييره من الإدارة</div>
       <div id="obWin" style="margin-top:11px;padding:10px 12px;background:var(--royal-soft);border:1px solid var(--royal-lt);border-radius:11px;font-size:.83rem;font-weight:700;color:var(--royal-dk)"></div>
     </div>
 
@@ -1210,6 +1213,7 @@ try {
        web_disc: null
       }).catch(e => track("web_disc_clear_fail"));
      }
+     if (c === true && typeof pullResLocs === "function" && Date.now() - _resLocAt > RESLOC_MS) pullResLocs("reconnect");
     } catch (_) {}
    }, 0);
   }
@@ -1322,8 +1326,9 @@ window.onNativeOffer = function(o) {
    });
    const b1 = document.getElementById("btnAccept");
    if (o.ok) {
-    /* [V31.96] أغلق الشاشة أولاً — الشرح عند window._closeOffer */
-    try { if (window._closeOffer) window._closeOffer(); } catch (_) {}
+    try {
+     if (window._closeOffer) window._closeOffer();
+    } catch (_) {}
     if (typeof refreshOrdersNow === "function") refreshOrdersNow();
    } else {
     if (b1) {
@@ -2085,6 +2090,8 @@ function devId() {
  }
 }
 
+let CLOUD_RACE_MS = 8e3;
+
 function cloudOpen() {
  try {
   return Date.now() > Number(localStorage.getItem("suf_cloud_off") || 0);
@@ -2120,7 +2127,7 @@ async function cloudLogin(ph, pass, claim) {
    password: String(pass || ""),
    dev: devId(),
    claim: claim ? "1" : "0"
-  }), new Promise((_, rej) => setTimeout(() => rej(new Error("cloud_timeout")), 4e3)) ]);
+  }), new Promise((_, rej) => setTimeout(() => rej(new Error("cloud_timeout")), CLOUD_RACE_MS)) ]);
   const d = r && r.data;
   if (!d || !d.status) return null;
   if (d.status === "not_mirrored" || d.status === "no_pepper" || d.status === "mint_failed") {
@@ -2301,7 +2308,7 @@ async function refreshCloud() {
  if (!cloudOpen()) return null;
  try {
   if (!auth.currentUser) return null;
-  const r = await Promise.race([ httpsCallable(fns, "refreshSession")({}), new Promise((_, rej) => setTimeout(() => rej(new Error("cloud_timeout")), 4e3)) ]);
+  const r = await Promise.race([ httpsCallable(fns, "refreshSession")({}), new Promise((_, rej) => setTimeout(() => rej(new Error("cloud_timeout")), CLOUD_RACE_MS)) ]);
   const d = r && r.data;
   if (!(d && d.success && d.firebase_token)) {
    cloudFail();
@@ -2645,11 +2652,15 @@ let NET_TIMEOUT_MS = 6e3;
 
 let TAP_TIMEOUT_MS = 18e3, HB_BUSY_MS = 1e4, HB_IDLE_MS = 2e4;
 
+let RESLOC_MS = 18e5, _resLocAt = 0, _resLocTimer = null;
+
 const TUNE_LIMITS = {
  NET_TIMEOUT_MS: [ 3e3, 2e4 ],
  TAP_TIMEOUT_MS: [ 8e3, 4e4 ],
  HB_BUSY_MS: [ 5e3, 6e4 ],
- HB_IDLE_MS: [ 1e4, 12e4 ]
+ HB_IDLE_MS: [ 1e4, 12e4 ],
+ RESLOC_MS: [ 3e5, 216e5 ],
+ CLOUD_RACE_MS: [ 2e3, 12e3 ]
 };
 
 const _rtt = [];
@@ -2679,9 +2690,14 @@ function applyTunables(t) {
   v = Number(v);
   if (!lim || !isFinite(v)) return;
   v = Math.min(lim[1], Math.max(lim[0], v));
-  if (k === "NET_TIMEOUT_MS") NET_TIMEOUT_MS = v; else if (k === "TAP_TIMEOUT_MS") TAP_TIMEOUT_MS = v; else if (k === "HB_BUSY_MS") HB_BUSY_MS = v; else if (k === "HB_IDLE_MS") HB_IDLE_MS = v;
+  if (k === "NET_TIMEOUT_MS") NET_TIMEOUT_MS = v; else if (k === "TAP_TIMEOUT_MS") TAP_TIMEOUT_MS = v; else if (k === "HB_BUSY_MS") HB_BUSY_MS = v; else if (k === "HB_IDLE_MS") HB_IDLE_MS = v; else if (k === "RESLOC_MS") RESLOC_MS = v; else if (k === "CLOUD_RACE_MS") CLOUD_RACE_MS = v;
  };
  Object.keys(t).forEach(k => set(k, t[k]));
+ try {
+  if (t.RESLOC_MS !== undefined && typeof scheduleResLocs === "function") scheduleResLocs();
+ } catch (e) {
+  track("tune_resloc_fail");
+ }
  try {
   if (typeof adjustHB === "function") adjustHB();
  } catch (e) {
@@ -4010,21 +4026,10 @@ function heartbeat() {
 let availEpoch = 0;
 
 async function fbStatus(st, epoch, waitGeo) {
- /* ═══════════════════════════════════════════════════════════════════════
-    [V31.94 · ①] القفل الذي كان يُكتب ولا يُقرأ.
-    ───────────────────────────────────────────────────────────────────────
-    window._statusBusy مضبوطٌ هنا منذ كُتبت الدالّة، ولا شرطَ واحدٌ يفحصه —
-    فنبضتان متداخلتان تمضيان معاً، وكلٌّ تترك كتابتها في طابور فايربيس.
-    الآن: نبضة خلفيّةٍ تجد أختها تعمل ⇒ تُسقَط.
-    ⚠️ ولا يُسقَط شيءٌ إلا ما أمِنَ إسقاطه:
-       • waitGeo = ضغطةُ كابتن (المفتاح) ⇒ تمرّ دائماً
-       • st !== "active" = انصرافٌ أو استراحة ⇒ تمرّ دائماً
-       ولا تُسقَط إلا نبضة «ما زلت متاحاً» — وتاليتُها بعد عشر ثوانٍ.
-    ═══════════════════════════════════════════════════════════════════════ */
  if (window._statusBusy === true && !waitGeo && st === "active") {
-  /* ⚠️ _crumb لا track: track() تكتب على الجذر، فرصدُ إسقاطِ كتابةٍ
-     بكتابةٍ أخرى عبثٌ يُبقي الحمل كما هو. الصندوق الأسود يكفي. */
-  try { _crumb("hb_coalesced"); } catch (_) {}
+  try {
+   _crumb("hb_coalesced");
+  } catch (_) {}
   return false;
  }
  window._statusBusy = true;
@@ -4060,6 +4065,19 @@ async function _fbStatusGuarded(st, epoch, waitGeo) {
  return await _fbStatusRaw(st, waitGeo);
 }
 
+function _natVer() {
+ try {
+  if (window.AndroidRadar && AndroidRadar.getNativeVersion) {
+   const raw = String(AndroidRadar.getNativeVersion() || "");
+   const inParen = raw.match(/\((\d+)\)/);
+   if (inParen) return parseInt(inParen[1], 10) || 0;
+   const all = raw.match(/\d+/g);
+   return all ? parseInt(all[all.length - 1], 10) || 0 : 0;
+  }
+ } catch (_) {}
+ return 0;
+}
+
 let _diagLast = 0, _diagSkew = null;
 
 function _pushDiag(p) {
@@ -4092,42 +4110,11 @@ function _pushDiag(p) {
  }
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   🔴 [V31.94 · ②③] الكتابة المعلّقة — السبب الجذري لفاتورة النطاق
-   ───────────────────────────────────────────────────────────────────────────
-   المقيس (firebase database:profile · ٢١-٠٩ · ٦٠ث خام):
-       realtime-update  209/ثانية   منها ٩٧٪ من هذا الملف
-       والمقصود        ~3/ثانية    (٤٦ كابتناً × نبضة كل ١٠–٢٠ث)
-       ⇒ تضخيمٌ ٦٥ ضعفاً · بثٌّ إلى ٢٫٩٤ مستمع ⇒ ٣٫٤ غيغا/يوم
-
-   والآلية ليست حلقةً في الكود — إنها **تراكمٌ ثم إفراغ**:
-     ① الشبكة تتعثّر ⇒ update() **تُعلَّق ولا تفشل** (فايربيس يطبّرها)
-     ② withTimeout يستسلم بعد ٦ث ⇒ الاحتياطي REST ⇒ كتابةٌ ثانية
-        ⚠️ والأولى **باقيةٌ في الطابور** — وهو ما تقوله ملاحظة V18.3 حرفياً:
-           «withTimeout يوقف الانتظار ولا يوقف الكتابة»
-     ③ كل نبضةٍ أثناء التعثّر تترك يتيماً
-     ④ عند عودة الوصل يُفرَغ الطابور دفعةً واحدة
-        الشاهد في client_events/7710514079:
-            ٥٧ × write_late_ok خلال ٥٠ مللي · ms = 40,678 … 101,824
-
-   العلاج طبقتان:
-     ② **لا تُولَد**: وصلٌ ميّتٌ يقيناً ⇒ لا نُطلق update() أصلاً، بل نرمي
-        مباشرةً فيأخذ الفرع القائم مسار REST المُختبَر. (والشرط === false
-        صارمٌ عمداً: null أو true تمرّان — الاتجاه الآمن ألّا نمنع كتابةً
-        قد تنجح.)
-     ③ **وإن وُلدت تُقتل**: goOffline يُسقط الكتابات المعلّقة، ثم goOnline.
-        ⚠️ وهي الرقعة الموجودة أصلاً في مسار rest_write — لكنها هناك
-           **مخنوقةٌ بمرّةٍ كل ٦٠ث ومشروطةٌ بنجاح REST**، فبينهما تتراكم
-           خمسُ كتاباتٍ يتيمة في الدقيقة لكل جهازٍ متعثّر.
-        ⚠️ ولا نُطهّر ويدُ الكابتن على طلب: الطابور حينها قد يحمل قبولاً أو
-           تسليماً، وإسقاطه يخسر إجراءً حقيقياً. فالتطهير للفارغ وحده —
-           والمشغول يبقى على سلوك اليوم (وحارس الستّين ثانية يخدمه كما كان).
-   ═══════════════════════════════════════════════════════════════════════════ */
 async function _safeUpdate(u, tmo) {
  if (FB_CONNECTED === false) {
-  /* ⚠️ _crumb لا track — وهذا الموضع **أخطرها**: الوصل ميّتٌ هنا بالتعريف،
-     فكتابةُ الرصد تُعلَّق في الطابور وتصير هي اليتيمة التي نمنعها. */
-  try { _crumb("skip_dead_socket"); } catch (_) {}
+  try {
+   _crumb("skip_dead_socket");
+  } catch (_) {}
   const e = new Error("write_timeout");
   e.code = "write_timeout";
   throw e;
@@ -4140,11 +4127,11 @@ async function _safeUpdate(u, tmo) {
    const raw = String(e && (e.code || e.message) || "").toLowerCase();
    if (raw.indexOf("timeout") > -1 && !curOrder && !(active && active.length)) {
     goOffline(db);
-    setTimeout(function () { try { goOnline(db); } catch (_) {} }, 300);
-    /* ⚠️ _crumb لا track: الكتابة هنا تقع **داخل** نافذة التطهير نفسها،
-       فتُسقَط بـgoOffline ثم يُعاد إرسالها — رصدٌ يُنتج ما يرصده.
-       والإسناد لا يحتاجها أصلاً: النسخة 31.87-QueuePurge تُختم في
-       drivers_locations/<هاتف>/ver وفي slo_events.ver، وهي المقياس. */
+    setTimeout(function() {
+     try {
+      goOnline(db);
+     } catch (_) {}
+    }, 300);
     _crumb("queue_purged");
    }
   } catch (_) {}
@@ -4230,7 +4217,7 @@ async function _fbStatusRaw(st, waitGeo) {
  u[`drivers_locations/${p}/last_update`] = (new Date).toISOString();
  const _wStart = Date.now();
  try {
-  await _safeUpdate(u, _tmo);   /* [V31.94] كان: withTimeout(update(ref(db), u), …) */
+  await _safeUpdate(u, _tmo);
   noteRtt(Date.now() - _wStart);
   lastAckTs = Date.now();
   window._statusErr = "";
@@ -4317,7 +4304,7 @@ async function _fbStatusRaw(st, waitGeo) {
      }
      return true;
     }
-    await _safeUpdate(u, _tmo);   /* [V31.94] آخر ملاذ — لا يترك يتيماً هو الآخر */
+    await withTimeout(update(ref(db), u), _tmo, "write_timeout");
     lastAckTs = Date.now();
     window._statusErr = "";
     updateLinkPill();
@@ -4504,7 +4491,21 @@ function profileComplete() {
  return !!(drv && drv.photo && myShift());
 }
 
+function photoLocked() {
+ return !!(drv && drv.photo);
+}
+
+function shiftLocked() {
+ if (drv && drv.shift_next && drv.shift_next.h != null) return true;
+ return !!myShift();
+}
+
 window.obPick = function(inp) {
+ if (photoLocked()) {
+  inp.value = "";
+  obErr("صورتك مثبّتة — تغييرها من الإدارة");
+  return;
+ }
  const f = inp.files && inp.files[0];
  if (!f) return;
  if (f.size > 8 * 1024 * 1024) {
@@ -4549,6 +4550,10 @@ window.closeSheet = function(id) {
 };
 
 window.openOnboarding = function(force) {
+ if (photoLocked() && shiftLocked()) {
+  toast("صورتك وموعد شفتك مثبّتان — تعديلهما من الإدارة", "info");
+  return;
+ }
  const st = document.getElementById("obStart"), hr = document.getElementById("obHours");
  if (!st.options.length) {
   for (let i = 0; i < 24; i++) st.add(new Option(hLabel(i), String(i)));
@@ -4571,7 +4576,20 @@ window.openOnboarding = function(force) {
   document.getElementById("obImgBox").style.borderStyle = "solid";
   document.getElementById("obImgMsg").textContent = "صورتك الحالية — اختر أخرى لتغييرها";
  }
- document.getElementById("obTitle").textContent = force ? "👋 أكمل ملفّك" : "⚙️ ملفّي وشفتي";
+ document.getElementById("obTitle").textContent = force ? "👋 أكمل ملفّك" : "⚙️ إكمال ملفّي";
+ const _pL = photoLocked(), _sL = shiftLocked();
+ const _btn = document.getElementById("obPickBtn");
+ if (_btn) {
+  _btn.disabled = _pL;
+  _btn.style.opacity = _pL ? ".45" : "";
+  _btn.style.pointerEvents = _pL ? "none" : "";
+ }
+ if (_pL) document.getElementById("obImgMsg").innerHTML = "🔒 صورتك مثبّتة — تغييرها من الإدارة";
+ st.disabled = _sL;
+ hr.disabled = _sL;
+ st.style.opacity = hr.style.opacity = _sL ? ".55" : "";
+ const _sn = document.getElementById("obShiftLock");
+ if (_sn) _sn.style.display = _sL ? "block" : "none";
  const later = document.getElementById("obLater");
  later.style.display = !REQUIRE_PROFILE || force ? "block" : "none";
  later.textContent = active.length ? "لاحقاً — عندي طلب الآن" : "لاحقاً";
@@ -4595,21 +4613,27 @@ window.obSave = async function() {
   obErr("اختيار غير صالح — الحدّ الأقصى ١٢ ساعة");
   return;
  }
+ const pL = photoLocked(), sL = shiftLocked();
+ if (pL && sL) {
+  obErr("صورتك وموعدك مثبّتان — تعديلهما من الإدارة");
+  return;
+ }
  btn.disabled = true;
  btn.innerHTML = '<div class="spin" style="border-top-color:#fff"></div> جارٍ الحفظ…';
  try {
   let url = drv.photo || null;
-  if (_obPhoto) {
+  if (_obPhoto && !pL) {
    const path = `driver_photos/${drv.phone}.jpg`;
    await withTimeout(uploadString(sRef(storage, path), _obPhoto, "data_url"), 25e3, "photo_up");
    url = await withTimeout(getDownloadURL(sRef(storage, path)), 15e3, "photo_url");
   }
   const cur = myShift();
-  const patch = {
-   photo: url,
-   photo_at: (new Date).toISOString()
-  };
-  if (!cur || cur.h !== h || cur.len !== len) {
+  const patch = {};
+  if (!pL) {
+   patch.photo = url;
+   patch.photo_at = (new Date).toISOString();
+  }
+  if (!sL && (!cur || cur.h !== h || cur.len !== len)) {
    const t = new Date(srvNow() + 3 * 36e5);
    if (cur) t.setUTCDate(t.getUTCDate() + 1);
    patch.shift_next = {
@@ -4619,8 +4643,12 @@ window.obSave = async function() {
    };
    patch.shift_set_at = (new Date).toISOString();
   }
+  if (Object.keys(patch).length === 0) {
+   document.getElementById("obOv").classList.add("dn");
+   return;
+  }
   await withTimeout(update(ref(db, `drivers_locations/${drv.phone}`), patch), NET_TIMEOUT_MS, "prof_save");
-  drv.photo = url;
+  if (!pL) drv.photo = url;
   if (patch.shift_next) drv.shift_next = patch.shift_next;
   try {
    localStorage.setItem("suf_session", JSON.stringify(drv));
@@ -4628,7 +4656,7 @@ window.obSave = async function() {
   _obPhoto = null;
   document.getElementById("obOv").classList.add("dn");
   const _today = new Date(srvNow() + 3 * 36e5).toISOString().slice(0, 10);
-  toast(patch.shift_next && patch.shift_next.from > _today ? "✅ حُفظ — وموعدك الجديد يسري من الغد" : "✅ حُفظ ملفّك — " + winLabel(h, len), "ok");
+  toast(patch.shift_next && patch.shift_next.from > _today ? "✅ حُفظ — وموعدك الجديد يسري من الغد" : patch.shift_next ? "✅ حُفظ ملفّك — " + winLabel(h, len) : "✅ حُفظت صورتك", "ok");
   track("profile_saved");
   paintShiftInfo();
  } catch (e) {
@@ -4683,6 +4711,10 @@ function paintShiftInfo() {
   const ph = document.getElementById("setPhotoPh");
   if (ph) ph.style.display = "none";
  }
+ const _pb = document.getElementById("setProfBtn"), _pl = document.getElementById("setProfLock");
+ const _anyOpen = !photoLocked() || !shiftLocked();
+ if (_pb) _pb.style.display = _anyOpen ? "block" : "none";
+ if (_pl) _pl.style.display = _anyOpen ? "none" : "block";
  const nx = document.getElementById("setShiftNext");
  if (nx) nx.textContent = drv && drv.shift_next && drv.shift_next.h != null ? "⏳ موعدك الجديد (" + hLabel(Number(drv.shift_next.h)) + " · " + drv.shift_next.len + " ساعة) يسري من " + drv.shift_next.from : "";
 }
@@ -5054,7 +5086,29 @@ function startListeners() {
   if (navigator.vibrate) navigator.vibrate([ 200, 80, 200 ]);
   modal("📨", "رسالة من " + (d.from || "الإدارة"), d.msg, "ok");
  });
- listen(() => ref(db, "restaurants_locations"), s => {
+ pullResLocs("boot");
+ scheduleResLocs();
+ startChat();
+ listenOrders();
+}
+
+let resCache = {}, resByPhone = {};
+
+try {
+ resCache = JSON.parse(localStorage.getItem("suf_res_cache") || "{}");
+} catch (e) {
+ resCache = {};
+}
+
+try {
+ resByPhone = JSON.parse(localStorage.getItem("suf_res_by_phone") || "{}");
+} catch (e) {
+ resByPhone = {};
+}
+
+async function pullResLocs(why) {
+ try {
+  const s = await withTimeout(get(ref(db, "restaurants_locations")), netTimeout(NET_TIMEOUT_MS), "resloc_all");
   const v = s.val() || {};
   Object.keys(v).forEach(ph => {
    const L = v[ph];
@@ -5081,26 +5135,27 @@ function startListeners() {
   try {
    localStorage.setItem("suf_res_by_phone", JSON.stringify(resByPhone));
   } catch (e) {}
+  _resLocAt = Date.now();
   active.forEach(enrichOrder);
   lastHtml = "";
   renderOrders();
- });
- startChat();
- listenOrders();
+  return true;
+ } catch (e) {
+  track("resloc_pull_fail", {
+   reason: String(e && e.code || e && e.message || e).slice(0, 40),
+   why: String(why || "").slice(0, 16)
+  });
+  return false;
+ }
 }
 
-let resCache = {}, resByPhone = {};
-
-try {
- resCache = JSON.parse(localStorage.getItem("suf_res_cache") || "{}");
-} catch (e) {
- resCache = {};
-}
-
-try {
- resByPhone = JSON.parse(localStorage.getItem("suf_res_by_phone") || "{}");
-} catch (e) {
- resByPhone = {};
+function scheduleResLocs() {
+ try {
+  clearTimeout(_resLocTimer);
+ } catch (_) {}
+ _resLocTimer = setTimeout(function() {
+  pullResLocs("tick").then(scheduleResLocs, scheduleResLocs);
+ }, RESLOC_MS);
 }
 
 function enrichOrder(o) {
@@ -5225,7 +5280,7 @@ function listenOrders() {
   {
    const DONE_R = [ "completed", "مكتمل", "settled", "delivered", "done", "تم التسليم", "تم", "deleted" ];
    let restored = 0;
-   const restoredIds = [];   /* [V31.97] لتمييز «قبولي أنا» من «تعافٍ حقيقي» */
+   const restoredIds = [];
    Object.keys(fb).forEach(kk => {
     const f = fb[kk];
     if (!f) return;
@@ -5264,33 +5319,16 @@ function listenOrders() {
     localStorage.setItem("suf_orders", JSON.stringify(active));
     adjustHB();
     renderOrders();
-    /* ═══════════════════════════════════════════════════════════════════
-       🔕 [V31.97] لافتةُ تعافٍ في غير موضعها
-       ───────────────────────────────────────────────────────────────────
-       هذه اللافتة وُضعت لحالةٍ واحدة: الخادم يحمل طلباً باسم الكابتن
-       والتطبيق لا يعرفه (بعد محو بيانات · إعادة تثبيت · جهازٍ آخر).
-       ولذلك نصّها «راجع الحالة قبل المتابعة» — تحذيرٌ لا إخبار.
-
-       ومنذ V31.96 صارت تُطلَق في **كل قبولٍ عبر الجسر الأصليّ**: لأننا
-       تعمّدنا ألّا نُنادي finalizeAccept (كي لا تُعاد الكتابة للخادم
-       عبر guaranteeAccept والقبولُ قد تمّ)، فيدخل الطلبُ من هنا لا
-       من هناك. فاللافتة صادقةٌ حرفياً وكاذبةٌ معنىً — والكابتن يقرأ
-       تحذيراً عن فعلٍ فعله هو قبل ثانية.
-
-       ⚠️ ولا نكتمها كتماً عامّاً: التعافي الحقيقي يجب أن يبقى مرئياً.
-          فنكتمها **فقط** إن كان المُسترجَع طلباً واحداً، وهو بعينه
-          الذي قبِلناه للتوّ (المعرّف يطابق)، وخلال ثلاثين ثانية.
-          وأي استرجاعٍ آخر — أو طلبان — تظهر لافتته كما كانت.
-       ═══════════════════════════════════════════════════════════════════ */
     let _selfOnly = false;
     try {
      const sa = window._selfAccepted;
-     _selfOnly = !!(sa && restored === 1 && restoredIds.length === 1 &&
-                    String(restoredIds[0]) === String(sa.id) &&
-                    Date.now() - sa.at < 3e4);
+     _selfOnly = !!(sa && restored === 1 && restoredIds.length === 1 && String(restoredIds[0]) === String(sa.id) && Date.now() - sa.at < 3e4);
     } catch (_) {}
-    if (_selfOnly) { try { window._selfAccepted = null; } catch (_) {} }
-    else toast(`♻️ استُرجع ${restored === 1 ? "طلب" : restored + " طلبات"} ما زال باسمك.<br>راجع الحالة قبل المتابعة.`, "info");
+    if (_selfOnly) {
+     try {
+      window._selfAccepted = null;
+     } catch (_) {}
+    } else toast(`♻️ استُرجع ${restored === 1 ? "طلب" : restored + " طلبات"} ما زال باسمك.<br>راجع الحالة قبل المتابعة.`, "info");
    }
   }
   active.forEach(mo => {
@@ -5400,43 +5438,25 @@ function countdown() {
  }, 1e3);
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   🔴 [V31.96] شاشة العرض لا تُغلق حين يُقبل الطلب عبر الجسر الأصليّ
-   ───────────────────────────────────────────────────────────────────────────
-   المقيس من السجلّ (٢٢-٠٩ · جهاز اختبار · native_socket=true):
-       09:49:34.317  accept_via_native
-       09:49:34.680  accept_ok_native   why=ok      ← ٣٦٣ مللي · الجسر سلّم
-       accept_native_timeout = صفر                  ← فلا مهلة انقضت أصلاً
-   أي أن accept_result **يصل**، والقبول **ينجح**، والطلب **يدخل active**
-   (ولهذا تظهر لافتة «♻️ استُرجع طلب ما زال باسمك» من كتلة الاسترجاع).
-
-   والعطب أن مسار accept_result{ok:true} ينادي refreshOrdersNow() **وحدها**،
-   ولا يفعل شيئاً من تسلسل الإغلاق المعياريّ الذي تفعله كل المسارات الأخرى:
-
-       clearInterval(cdTimer)                    ← إيقاف العدّاد
-       alertOv.classList.add("dn")               ← إخفاء الشاشة   ★
-       stopAlarm()                               ← إيقاف المنبّه
-       curOrder = null
-
-   ⇒ الطلب يُرسَم **تحت** الشاشة، والشاشة تبقى فوقه: الزرّ يدور،
-     والعدّاد يعدّ، والمنبّه يرنّ. ولا ينكسر إلا بخروجٍ وعودة.
-   ⇒ ويورث الزرُّ حالته المعطَّلة إلى **العرض التالي**، فيبدو عالقاً قبل
-     أن يضغط الكابتن شيئاً (رُصد في الميدان: عرضٌ جديدٌ وعدّاده ٥٠
-     وزرُّه «جاري التأكيد من الخادم…»).
-
-   ⚠️ ولا نُنادي finalizeAccept هنا: هي تُضيف الطلب إلى active **وتكتب
-      للخادم** (guaranteeAccept) — والقبول تمّ فعلاً عبر nativeAccept،
-      وكتلةُ الاسترجاع في _ordersCb تتكفّل بإدخال الطلب. فالمطلوب
-      إغلاقُ الواجهة لا إعادةُ الفعل.
-   ═══════════════════════════════════════════════════════════════════════════ */
 window._closeOffer = function() {
- try { clearInterval(cdTimer); } catch (_) {}
- try { document.getElementById("alertOv").classList.add("dn"); } catch (_) {}
- try { stopAlarm(); } catch (_) {}
- try { curOrder = null; } catch (_) {}
+ try {
+  clearInterval(cdTimer);
+ } catch (_) {}
+ try {
+  document.getElementById("alertOv").classList.add("dn");
+ } catch (_) {}
+ try {
+  stopAlarm();
+ } catch (_) {}
+ try {
+  curOrder = null;
+ } catch (_) {}
  try {
   const b = document.getElementById("btnAccept");
-  if (b) { b.innerHTML = "قبول الطلب"; b.disabled = false; }
+  if (b) {
+   b.innerHTML = "قبول الطلب";
+   b.disabled = false;
+  }
  } catch (_) {}
 };
 
@@ -5474,9 +5494,12 @@ window.acceptOrder = async function() {
     oid: _id
    });
    AndroidRadar.nativeAccept(String(_id));
-   /* [V31.97] وسمُ «قبولي أنا» — تقرؤه كتلةُ الاسترجاع فتكتم لافتة التعافي
-      عن هذا الطلب وحده. الشرح الكامل عند تلك الكتلة. */
-   try { window._selfAccepted = { id: String(_id), at: Date.now() }; } catch (_) {}
+   try {
+    window._selfAccepted = {
+     id: String(_id),
+     at: Date.now()
+    };
+   } catch (_) {}
    const b0 = document.getElementById("btnAccept");
    if (b0) {
     b0.innerHTML = '<div class="spin" style="border-top-color:#fff;"></div> جاري التأكيد من الخادم…';
@@ -5485,36 +5508,6 @@ window.acceptOrder = async function() {
    try {
     clearTimeout(window._accWait);
    } catch (_) {}
-   /* ═══════════════════════════════════════════════════════════════════
-      🔴 [V31.95] «جاري التأكيد من الخادم…» يدور أبداً حين native_socket=true
-      ───────────────────────────────────────────────────────────────────
-      السبب في الطبقة الأصلية لا هنا — لكنّ العلاج ممكنٌ هنا وحده اليوم:
-
-        MainActivity.onResume()  →  OrderSocket.bindWeb { … }   يربط
-        MainActivity.onPause()   →  OrderSocket.bindWeb(null)   **يقطع**
-        OrderSocket.pushToWeb()  →  val cb = webSink ?: return  صمتٌ تام
-
-      وشاشة العرض (AlarmActivity) تُطلَق **فوق** MainActivity فتُدخلها
-      onPause ⇒ القناة مقطوعةٌ في اللحظة التي يضغط فيها الكابتن قبول
-      بالضبط. فالقبول **ينجح** (nativeAccept معاملةٌ ذرّية تكتب accepted
-      في RTDB — ولهذا يجده باسمه إن خرج وعاد)، و accept_result يُرمى في
-      العدم ⇒ الزرّ يدور.
-
-      وهذا الحارس كان يزيد الطين بلّة: بعد ثمانِ ثوانٍ يقول «اضغط القبول
-      ثانيةً» — **والطلب صار accepted فالضغطة الثانية تُرفض**، فيبدو
-      معلّقاً على أي حال ويظنّ الكابتن أنه خسر الطلب.
-
-      العلاج: **اسأل الخادم قبل أن تنصح.** refreshOrdersNow متينة
-      (SDK بمهلة ٤ث ثم REST بـidToken) فتعمل على مقبسٍ ميّت — وهي بعينها
-      ما ينادَى في مسار النجاح accept_result{ok:true}. فإن عاد الطلب
-      باسمنا فقد نجح القبول، ولا نلمس شيئاً: إعادةُ الرسم تتكفّل بالبطاقة.
-      ولا نُرجع الزرّ ولا نُنذر إلا إن لم يكن الطلب لنا فعلاً.
-
-      ⚠️ وهذا **علاجُ عَرَضٍ لا جذر**: الجذر يُغلق في الكوتلن
-      (APK 25 · 5.9-BridgeFix على سطح المكتب — يوجّه إلى
-      MainActivity.pushEventToWeb مباشرةً فلا تهمّ دورة الحياة).
-      وحتى يُبنى ذلك، هذه الرقعة تجعل native_socket=true آمناً.
-      ═══════════════════════════════════════════════════════════════════ */
    window._accWait = setTimeout(async function() {
     const bx = document.getElementById("btnAccept");
     if (!bx || !bx.disabled) return;
@@ -5526,12 +5519,12 @@ window.acceptOrder = async function() {
      });
     } catch (_) {}
     if (mine) {
-     /* نجح القبول وتأخّر خبرُه.
-        ⚠️ [V31.96] وكان هذا الفرع **يخرج صامتاً بلا إغلاق الشاشة** —
-        فحتى لو أمسك الحالة لبقي الزرّ يدور والعدّاد يعدّ. العلّة نفسها
-        التي في مسار accept_result، وقد فاتتني حين كتبتُ هذا الحارس. */
-     track("accept_ok_verified", { oid: _id });
-     try { if (window._closeOffer) window._closeOffer(); } catch (_) {}
+     track("accept_ok_verified", {
+      oid: _id
+     });
+     try {
+      if (window._closeOffer) window._closeOffer();
+     } catch (_) {}
      return;
     }
     bx.innerHTML = "قبول الطلب";
