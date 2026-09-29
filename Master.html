@@ -2881,8 +2881,10 @@ window.rstDebt=function(type,id,el){
   if(!confirm(`تصفير ديون ${nm} (${debt.toLocaleString("ar-EG")} د.ع)؟`))return;
   if(el){el.disabled=true;}
   const apiType=type==="RES"?"RESTAURANT":"DRIVER";
-  fetch(API,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({action:"RESET_DEBT",type:apiType,id,token:TOK,pass:MP})})
-    .then(r=>r.json()).then(d=>{if(d&&d.success){toast("تم التصفير ✅");logAudit("resetDebt",`تصفير ${type==="DRV"?"كابتن":"مطعم"}: ${nm} — ${debt} د.ع`);}else toast("فشل التصفير","e");})
+  /* 💰 [V33.5] seen = الدين الذي رآه المدير ووافق عليه. الخادم يطرحه وحده، فما أرشفه
+     المحرّك بين العرض والضغط (كلّ ١٥ د) يبقى ديناً قائماً بدل أن يُمحى مع التصفير. */
+  fetch(API,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({action:"RESET_DEBT",type:apiType,id,seen:debt,token:TOK,pass:MP})})
+    .then(r=>r.json()).then(d=>{if(d&&d.success){const rem=Number(d.remaining)||0;toast(rem>0?`تم التصفير ✅ — وبقي ${rem.toLocaleString("ar-EG")} د.ع من طلباتٍ اكتملت للتوّ`:"تم التصفير ✅");logAudit("resetDebt",`تصفير ${type==="DRV"?"كابتن":"مطعم"}: ${nm} — ${debt} د.ع`+(rem>0?` (بقي ${rem})`:""));}else toast("فشل التصفير","e");})
     .catch(()=>toast("تم الإرسال")).finally(()=>{if(el)el.disabled=false;});
 };
 
