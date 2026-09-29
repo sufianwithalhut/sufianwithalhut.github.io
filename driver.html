@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://*.firebasedatabase.app https://*.firebaseio.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app https://www.gstatic.com; object-src 'none'; base-uri 'none'; form-action 'self';">
 
 <script>
-const CURRENT_APP_VERSION = "32.10-ProfileLock";
+const CURRENT_APP_VERSION = "32.11-FreshSession";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -2061,6 +2061,12 @@ function getStoken() {
  }
 }
 
+/* 🔑 [V32.11-FreshSession] الجلسة تُحفظ مع وقتها — ليعرف التطبيق عمرها قبل بدء الشفت. */
+function setStoken(v) {
+ localStorage.setItem("suf_stoken", String(v));
+ try { localStorage.setItem("suf_stoken_ts", String(Date.now())); } catch (_) {}
+}
+
 let __devMem = null;
 
 function devIdTrusted() {
@@ -2165,7 +2171,7 @@ async function checkDriverReq(phone, pass, claim) {
  let d = await cloudLogin(ph, pass, claim);
  if (d) {
   try {
-   if (d.session_token) localStorage.setItem("suf_stoken", String(d.session_token));
+   if (d.session_token) setStoken(d.session_token);
   } catch (e) {
    track("stoken_store_fail");
   }
@@ -2185,7 +2191,7 @@ async function checkDriverReq(phone, pass, claim) {
   d = await r.json();
  }
  try {
-  if (d && d.session_token) localStorage.setItem("suf_stoken", String(d.session_token));
+  if (d && d.session_token) setStoken(d.session_token);
  } catch (e) {
   track("stoken_store_fail");
  }
@@ -2200,7 +2206,7 @@ async function fbAuth(phone, pass) {
    pushTokenToNative(d.firebase_token);
    schedTok(phone, pass);
    try {
-    if (d.session_token) localStorage.setItem("suf_stoken", String(d.session_token));
+    if (d.session_token) setStoken(d.session_token);
    } catch (e) {}
    armDisconnect(true);
    return {
@@ -2347,7 +2353,7 @@ async function refreshTok() {
    return false;
   }
   try {
-   if (d.session_token) localStorage.setItem("suf_stoken", String(d.session_token));
+   if (d.session_token) setStoken(d.session_token);
   } catch (e) {
    track("stoken_store_fail");
   }
@@ -2394,6 +2400,35 @@ function healAuth() {
   return ok;
  })();
  return _reauthInFlight;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   🔑 [V32.11-FreshSession] جلسةٌ طازجة قبل بدء الشفت
+   ───────────────────────────────────────────────────────────────────────────
+   legacy_usage/gate: 32–87 «START_SHIFT_bad_token» يومياً (22→29-09) — بعدد من يبدأ
+   شفته تقريباً. السبب: بدء الشفت يأتي مع أوّل «متاح» في اليوم، والجلسة المحفوظة غالباً
+   من الأمس (> ١٢ ساعة، عمرها في Code.gs ENT_SESS_TTL_MS): فتحُ التطبيق يجدّدها في الخلفية
+   **بلا انتظار** (fbAuth)، وأندرويد يوقف مؤقّت الخمسين دقيقة حين يبقى التطبيق في الخلفية.
+   فالخادم يمرّرها اليوم (وضع الرصد) — ولا يمكن إلزام الجلسات قبل إصلاح هذا.
+   الآن: جلسةٌ غائبة أو أقدم من ١٠ ساعات ⇒ تُجدَّد أوّلاً (٦ ثوانٍ على الأكثر، مرّةً في
+   اليوم تقريباً)، ثم يبدأ الشفت. فإن فشل التجديد يمضي كما كان — لا يُحجب أحد.
+   والحدث stoken_stale_refresh يقيس عمر الجلسة القديمة فيُثبت التشخيص بالأرقام.
+   ═══════════════════════════════════════════════════════════════════════════ */
+async function ensureFreshStoken() {
+ let ts = 0;
+ try { ts = Number(localStorage.getItem("suf_stoken_ts") || 0); } catch (_) {}
+ const st = getStoken();
+ const age = ts ? Date.now() - ts : Infinity;
+ if (st && age < 10 * 36e5) return true;
+ track("stoken_stale_refresh", { ms: isFinite(age) ? Math.round(age / 60000) : -1, why: st ? (ts ? "old" : "no_ts") : "none" });
+ const work = (async () => {
+  if (_reauthInFlight) return await _reauthInFlight;
+  if (st && await refreshTok()) return true;
+  return await healAuth();
+ })();
+ try {
+  return await Promise.race([work, new Promise(r => setTimeout(() => r(false), 6000))]);
+ } catch (_) { return false; }
 }
 
 async function reAuth() {
@@ -2593,7 +2628,7 @@ async function hardReauth() {
    await signInWithCustomToken(auth, pre.firebase_token);
    if (pre.session_token) {
     try {
-     localStorage.setItem("suf_stoken", String(pre.session_token));
+     setStoken(pre.session_token);
     } catch (_) {
      track("stoken_store_fail");
     }
@@ -3200,6 +3235,7 @@ window.logout = function() {
  clearPass();
  try {
   localStorage.removeItem("suf_stoken");
+  localStorage.removeItem("suf_stoken_ts");
  } catch (e) {}
  cancelDisconnect();
  (async () => {
@@ -3838,6 +3874,7 @@ window.toggleOnline = async function() {
   const _freeDone = drv.freeShiftDay === _bizDay;
   if (!_freeDone && (!drv.shiftEnd || new Date(drv.shiftEnd) <= new Date)) {
    try {
+    await ensureFreshStoken();   /* [V32.11] لا جلسة الأمس مع بدء الشفت */
     const d = await gasRetry(() => gasJson(`${API_URL}?action=START_SHIFT&phone=${drv.phone}&token=${API_TOKEN}&stoken=${encodeURIComponent(getStoken())}`, null, 8e3), 2, 600);
     if (d.success) {
      drv.shiftEnd = d.shift_end;
