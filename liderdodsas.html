@@ -3002,7 +3002,7 @@ function _ccPassFilter(c){
 
 function _ccStChip(c){
   const me=nP(EMP_PHONE);
-  if(c.status==='claimed')return nP(c.claimed_by)===me?'<span class="cc-st me">✅ معي</span>':`<span class="cc-st oth">مع ${esc(c.claimed_by_name||'ليدر')}</span>`;
+  if(c.status==='claimed')return nP(c.claimed_by)===me?'<span class="cc-st me">✅ معي</span>':`<span class="cc-st oth">مع ${c.claimed_by==='ai_leader'?'🐋 ':''}${esc(c.claimed_by_name||'ليدر')}</span>`;
   if(c.status==='closed')return '<span class="cc-st cl">مغلقة</span>';
   return '<span class="cc-st w">🔔 بانتظار ليدر</span>';
 }
@@ -3479,11 +3479,11 @@ function renderThread(force){
     /* 🛡️ محادثة ليدر آخر = مراقبة فقط.
        كان الحقل مفتوحاً فيردّ ليدران على الكابتن نفسه — وهذا بالضبط ما
        يمنعه نظام الاستلام. الآن: قفل صريح وزرّ استحواذ واعٍ. */
-    zone.innerHTML=`<div class="ct-note">👁 مراقبة فقط — المحادثة مع الليدر <b>${esc(c.claimed_by_name||'')}</b>.
+    zone.innerHTML=`<div class="ct-note">👁 مراقبة فقط — المحادثة مع الليدر <b>${c.claimed_by==='ai_leader'?'🐋 ':''}${esc(c.claimed_by_name||'')}</b>.
       <button onclick="ccTakeOver()" style="margin-inline-start:8px;border:0;background:#b45309;color:#fff;
         border-radius:8px;padding:4px 11px;font-size:.7rem;font-weight:900;cursor:pointer;font-family:inherit">
         استحواذ</button></div>`;
-    _ccSetComposer(false,`المحادثة مع ${c.claimed_by_name||'ليدر آخر'} — اضغط «استحواذ» للردّ`);
+    _ccSetComposer(false,`المحادثة مع ${c.claimed_by==='ai_leader'?'🐋 ':''}${c.claimed_by_name||'ليدر آخر'} — اضغط «استحواذ» للردّ`);
   }else if(c.status==='closed'){
     zone.innerHTML=`<div class="ct-note">المحادثة مغلقة — ردّك يعيد فتحها باسمك.</div>`;
     _ccSetComposer(true);
@@ -3546,7 +3546,9 @@ function renderThread(force){
       const remaining=keys.filter(x=>x>=k&&mm[x]&&mm[x].from==='driver').length;
       if(remaining===_ccUnreadAt){buf+=`<div class="ct-unread-sep"><span>${_ccUnreadAt} رسالة لم تُقرأ</span></div>`;_ccUnreadAt=0;}
     }
-    buf+=`<div class="cbb ${mine?'cbb-me':'cbb-dr'}">${mine?'':`<div class="cbb-nm">${esc(m.name||'كابتن')}</div>`}<div>${esc(m.text)}</div><div class="cbb-tm">${fmtHM(m.ts||Date.now())}</div></div>`;
+    /* 🐋 [V33.2] رسائل الليدر تُعرض بلا اسم (كلّها «منّي»)، فكان ردّ الموظّف الآليّ لا يُميَّز
+       من ردّ الزميل. ai:true يكتبه الموظّف وحده، ويتجاهله تطبيق الكابتن. */
+    buf+=`<div class="cbb ${mine?'cbb-me':'cbb-dr'}">${mine?(m.ai?`<div class="cbb-nm">🐋 ${esc(m.name||'')}</div>`:''):`<div class="cbb-nm">${esc(m.name||'كابتن')}</div>`}<div>${esc(m.text)}</div><div class="cbb-tm">${fmtHM(m.ts||Date.now())}</div></div>`;
     added=true;
   });
   if(_ccHiddenOlder>0&&!msgs.querySelector('.ct-older')){
@@ -3585,7 +3587,7 @@ function _ccSetComposer(enabled,hint){
 window.ccTakeOver=function(){
   if(!_ccActive)return;
   const c=_ccChats[_ccActive]||{};
-  if(!confirm(`المحادثة الآن مع ${c.claimed_by_name||'ليدر آخر'}.\n\nالاستحواذ ينقلها إليك ويُسجَّل باسمك. متأكد؟`))return;
+  if(!confirm(`المحادثة الآن مع ${c.claimed_by==='ai_leader'?'🐋 الموظّف الآليّ ':''}${c.claimed_by_name||'ليدر آخر'}.\n\nالاستحواذ ينقلها إليك ويُسجَّل باسمك${c.claimed_by==='ai_leader'?' — ويصمت الموظّف فيها':''}. متأكد؟`))return;
   db.ref(`driver_chats/${_ccActive}`).update({
     status:'claimed',claimed_by:EMP_PHONE,claimed_by_name:EMP_NAME,claimed_at:new Date().toISOString()
   }).then(()=>toast("انتقلت المحادثة إليك ✅")).catch(()=>toast("تعذّر الاستحواذ","e"));
