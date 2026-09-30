@@ -507,6 +507,14 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
 .tl-ev-t{font-size:.84rem;font-weight:900;color:var(--ink);}
 .tl-ev-time{font-size:.78rem;font-weight:800;color:var(--ink3);font-variant-numeric:tabular-nums;}
 .tl-ev-sub{font-size:.7rem;font-weight:700;color:var(--ink4);margin-top:2px;}
+.tl-stages{display:flex;flex-direction:column;gap:6px;margin-bottom:14px;}
+.tl-stg{display:flex;justify-content:space-between;align-items:center;background:var(--surface3);border:1px solid var(--line);border-radius:10px;padding:8px 11px;font-size:.78rem;font-weight:800;color:var(--ink2);}
+.tl-stg b{font-variant-numeric:tabular-nums;color:var(--ink);}
+.tl-stg.warn{background:var(--amber-l);border-color:#f6e2c0;color:var(--amber-d);}
+.tl-offers{background:var(--surface3);border:1px solid var(--line);border-radius:11px;padding:9px 11px;margin-bottom:14px;}
+.tl-offers-h{font-size:.74rem;font-weight:900;color:var(--ink3);margin-bottom:6px;}
+.tl-off{display:flex;justify-content:space-between;gap:8px;font-size:.74rem;font-weight:700;color:var(--ink2);padding:3px 0;}
+.tl-chat{width:100%;margin-top:14px;border:none;border-radius:12px;padding:12px;font-weight:900;font-family:inherit;background:#e7f9ef;color:#048a48;cursor:pointer;}
 .tl-note{background:var(--blue-l);border:1px solid #d8e5fb;border-radius:11px;padding:10px 12px;
   font-size:.72rem;font-weight:700;color:var(--blue-d);margin-top:16px;line-height:1.6;}
 
@@ -759,6 +767,17 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
 .cbb-me{margin-inline-start:auto;margin-inline-end:0;color:#fff;
   background:#1d4ed8;border-start-end-radius:6px;}
 .cbb-nm{font-size:.62rem;font-weight:900;color:#ea580c;margin-bottom:3px;}
+/* [V33.8] رسالة زميلٍ أو موظّفٍ آليّ: جهة الفريق نفسها، بتلوينٍ أهدأ واسمٍ واضح */
+.cbb-me.cbb-peer{opacity:.93;filter:saturate(.75);}
+/* 📦 [V33.8] ربط الرسائل بالطلبات */
+.ct-oidsep{display:flex;justify-content:center;margin:10px 0 4px;}
+.ct-oidsep span{background:#eef4ff;border:1px solid #d8e5fb;color:#1e3a8a;border-radius:99px;padding:4px 12px;font-size:.66rem;font-weight:900;max-width:92%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.ct-ord{display:flex;gap:6px;overflow-x:auto;padding:6px 10px 0;}
+.ct-ord.dn{display:none;}
+.ct-oc{flex:0 0 auto;border:1px solid var(--line);background:var(--surface);border-radius:99px;padding:5px 11px;font-family:inherit;font-size:.68rem;font-weight:800;color:var(--ink3);cursor:pointer;white-space:nowrap;}
+.ct-oc.on{background:#eef4ff;border-color:#1e3a8a;color:#1e3a8a;}
+.ct-ol{flex:0 0 auto;font-size:.64rem;font-weight:800;color:var(--ink4);align-self:center;}
+.cbb-me.cbb-peer .cbb-nm{color:inherit;opacity:.85;}
 .cbb-tm{font-size:.58rem;font-weight:700;opacity:.6;margin-top:4px;text-align:end;}
 .cbb.sending{opacity:.55;}
 .cbb.failed{background:#fef2f2!important;color:#7f1d1d!important;border:1.5px solid #fca5a5;}
@@ -1156,6 +1175,7 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
           <div class="ct-qr-list" id="ctQrList"></div>
         </div>
         <!-- 🎖️ [V29 ← نحلة] المُعرّف لازمٌ لإخفاء شريط الكتابة على من لا يملك «message» -->
+        <div class="ct-ord dn" id="ctOrd"></div>
         <div class="ct-bar" id="ctBar">
           <textarea class="ct-in" id="ctInput" rows="1" placeholder="اكتب ردّك للكابتن..." oninput="ccDraftSave(this.value);this.style.height='auto';this.style.height=Math.min(this.scrollHeight,96)+'px'" onkeydown="ccKeydown(event)"></textarea>
           <button class="ct-send" id="ctSend" onclick="sendLeaderMsg()" title="إرسال (Enter)">➤</button>
@@ -2283,10 +2303,11 @@ function needPerm(p,what){
   return false;
 }
 
-window.msgCaptain=function(phone,name,prefill){
+let _msgOrder="";   /* [V33.8] الطلب الذي فُتحت منه المراسلة — يُربط بالرسالة */
+window.msgCaptain=function(phone,name,prefill,orderId){
   if(!needPerm("message","المراسلة"))return;
-  _msgPhone=nP(phone);_msgName=name||"—";
-  document.getElementById("msgCapName").textContent=_msgName;
+  _msgPhone=nP(phone);_msgName=name||"—";_msgOrder=String(orderId||"");
+  document.getElementById("msgCapName").textContent=_msgName+(_msgOrder?" · 📦 "+_msgOrder.slice(-8):"");
   document.getElementById("msgText").value=prefill||"";
   opSheet("msgModal");
 };
@@ -2297,11 +2318,27 @@ window.doSendMsg=async function(){
   if(!text)return toast("اكتب رسالة أولاً","e");
   if(!_msgPhone)return toast("لا يوجد كابتن محدد","e");
   const btn=document.getElementById("msgSendBtn");btn.disabled=true;btn.classList.add("loading");
+  /* 💬 [V33.8] كان يرسل عبر STAFF_MESSAGE وحده ⇒ driver_messages/<رقم> (خانةٌ واحدة تمحوها التالية)،
+     فلا تظهر في سجلّ المحادثة: لا يراها الزملاء ولا الموظّف الآليّ (بلاغ المالك 30-09).
+     الآن: تُكتب **في المحادثة نفسها** مربوطةً بطلبها (oid)، ثم التنبيه الفوريّ كما كان.
+     ولا تمسّ حالة المحادثة ولا مستلِمها — فلا تنتزع محادثةً من زميل. */
+  let inChat=false;
+  try{
+    const key=`${Date.now()}_${Math.random().toString(36).slice(2,7)}`,base=`driver_chats/${_msgPhone}`,u={};
+    const msg={from:'leader',name:EMP_NAME||'الليدر',by:nP(EMP_PHONE),text:text.slice(0,1000),ts:Date.now(),cid:key,via:'card'};
+    if(_msgOrder){msg.oid=_msgOrder.slice(0,80);const _ro=rawOrders[_msgOrder]||{};const _t=(String(_ro.restaurant||"").trim()+(_ro.area&&_ro.area!=="غير محدد"?" · "+String(_ro.area).trim():"")).slice(0,60);if(_t)msg.otag=_t;}
+    u[`${base}/messages/${key}`]=msg;
+    u[`${base}/last_msg`]=text.slice(0,60);u[`${base}/last_msg_at`]=Date.now();u[`${base}/last_from`]='leader';
+    u[`${base}/last_name`]=EMP_NAME||'الليدر';u[`${base}/last_by`]=nP(EMP_PHONE);u[`${base}/last_ai`]=null;
+    u[`${base}/unread_driver`]=firebase.database.ServerValue.increment(1);
+    if(_msgName&&_msgName!=='—')u[`${base}/driver_name`]=String(_msgName).slice(0,60);
+    await db.ref().update(u);inChat=true;
+  }catch(e){console.warn("card→chat:",e&&e.message);}
   try{
     const d=await staffAction({action:"STAFF_MESSAGE",driverPhone:_msgPhone,msg:text});
-    if(d&&d.success){toast("📨 أُرسلت الرسالة للكابتن");clSheet("msgModal");}
+    if(d&&d.success||inChat){toast(inChat?"📨 أُرسلت — وهي في محادثة الكابتن":"📨 أُرسلت الرسالة للكابتن");clSheet("msgModal");}
     else toast(d&&d.msg||"تعذّر الإرسال","e");
-  }catch(e){toast("خطأ في الإرسال","e");}
+  }catch(e){ if(inChat){toast("📨 أُرسلت في محادثة الكابتن (التنبيه الفوريّ تعذّر)");clSheet("msgModal");} else toast("خطأ في الإرسال","e"); }
   finally{btn.disabled=false;btn.classList.remove("loading");}
 };
 
@@ -2325,7 +2362,7 @@ function statusLabel(st){
   return m[st]||st||"—";
 }
 
-window.openTimeline=function(oId){
+function _tlFallback(oId){
   const o=rawOrders[oId];
   if(!o)return toast("لم يُعثر على بيانات الطلب","e");
   document.getElementById("tlOrderId").textContent="#"+(o.id||oId);
@@ -2376,7 +2413,102 @@ window.openTimeline=function(oId){
   document.getElementById("tlBody").innerHTML=
     (flags?`<div class="tl-flags">${flags}</div>`:"")+meta+`<div class="tl-list">${evHtml}</div>`+note;
   opSheet("tlModal");
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   🧵 [V33.8] سجلّ الطلب الحقيقيّ — طلب المالك (30-09)
+   ───────────────────────────────────────────────────────────────────────────
+   كان «السجلّ» يُركَّب من حقول الطلب **الحالية** (خمس نقاطٍ على الأكثر، و«الكابتن الحالي»
+   بوقت آخر تحديثٍ لا وقت القبول). والسجلّ الحقيقيّ موجودٌ في order_timeline بالثانية ولا يُقرأ:
+   أُنشئ · عُرض · وصل لجوال الكابتن · ظهر · قَبِل · وصل المطعم · استلم · سُلّم · سحبه/أسنده (باسم الليدر) · أُلغي.
+   الآن يُقرأ مرّةً عند الفتح، وتُحسب مدّة كلّ مرحلة (المتجاوز يُعلَّم ⚠️)، وقائمة العروض بنتيجة كلٍّ منها.
+   وطلبٌ بلا خطّ زمن (أقدم من أسبوع) ⇒ العرض القديم كما كان (_tlFallback).
+   ═══════════════════════════════════════════════════════════════════════════ */
+function _tlMs(v){ if(v==null||v==="")return NaN; if(typeof v==="number")return v<1e11?v*1000:v; const x=String(v).trim(); if(/^\d{10}$/.test(x))return Number(x)*1000; if(/^\d{12,13}$/.test(x))return Number(x); return Date.parse(x); }
+function _tlHM(ms){ return isFinite(ms)?fmtHM(new Date(ms).toISOString()):"—"; }
+function _tlDur(ms){ if(!isFinite(ms)||ms<0)return "—"; const m=Math.round(ms/60000); return m<1?"أقلّ من دقيقة":(m<60?m+" د":Math.floor(m/60)+" س "+(m%60)+" د"); }
+const _TL_LIMITS={wait:5,go:15,atres:10,drive:30};   /* دقائق — ما فوقها يُعلَّم ⚠️ */
+
+window.openTimeline=async function(oId){
+  const o=rawOrders[oId];
+  if(!o)return toast("لم يُعثر على بيانات الطلب","e");
+  let raw=null;
+  try{ raw=(await db.ref("order_timeline/"+String(oId).slice(0,80)).once("value")).val(); }catch(e){ raw=null; }
+  const evs=Object.values(raw||{}).map(v=>Object.assign({},v,{_t:_tlMs(v&&v.ts)})).filter(v=>v&&v.ev&&isFinite(v._t)).sort((x,y)=>x._t-y._t);
+  if(!evs.length)return _tlFallback(oId);
+
+  document.getElementById("tlOrderId").textContent="#"+(o.id||oId);
+  const nowMs=Date.now();
+  const first=(names)=>evs.find(e=>names.includes(e.ev));
+  const last=(names)=>[...evs].reverse().find(e=>names.includes(e.ev));
+  const tCreated=(first(["created"])||{})._t||_tlMs(o.timestamp);
+  const acc=last(["accepted","accept"]), arr=last(["arrived"]), pick=last(["picked"]), done=last(["delivered","staff_done"]), cancel=last(["cancel"]);
+
+  /* ① المراحل ومددها — آخر قبولٍ هو المعتبر (بعد سحبٍ وإعادة إسناد) */
+  const stages=[];
+  const stage=(key,label,from,to)=>{ if(!isFinite(from))return; const end=isFinite(to)?to:(done||cancel?NaN:nowMs); if(!isFinite(end))return;
+    const mins=(end-from)/60000; stages.push({label,dur:_tlDur(end-from),live:!isFinite(to),warn:mins>_TL_LIMITS[key]}); };
+  stage("wait","⏳ انتظار كابتن",tCreated,acc?acc._t:NaN);
+  if(acc)stage("go","🛵 الذهاب للمطعم",acc._t,arr?arr._t:(pick?pick._t:NaN));
+  if(arr)stage("atres","🏪 الانتظار في المطعم",arr._t,pick?pick._t:NaN);
+  if(pick)stage("drive","📦 التوصيل",pick._t,done?done._t:NaN);
+  const stagesHtml=stages.length?`<div class="tl-stages">${stages.map(x=>`<div class="tl-stg ${x.warn?'warn':''}"><span>${x.label}</span><b>${x.dur}${x.live?' ⏱️':''}${x.warn?' ⚠️':''}</b></div>`).join("")}</div>`:"";
+
+  /* ② العروض: لكلّ كابتن — وصل؟ ظهر؟ قَبِل؟ */
+  const offers=[];
+  evs.forEach(e=>{
+    if(e.ev==="offered"||e.ev==="assign"){ offers.push({to:nP(e.to||""),t:e._t,by:e.ev==="assign"?(e.staff||"ليدر"):"",recv:false,shown:false,acc:false,gone:false}); return; }
+    const cur=offers[offers.length-1]; if(!cur)return;
+    const who=nP(e.by||"");
+    if(e.ev==="recv"&&who===cur.to)cur.recv=true;
+    if(e.ev==="shown"&&who===cur.to)cur.shown=true;
+    if((e.ev==="accepted"||e.ev==="accept")&&who===cur.to)cur.acc=true;
+    if(e.ev==="withdraw")cur.gone=true;
+  });
+  const offersHtml=offers.length>1||(offers[0]&&!offers[0].acc)?`<div class="tl-offers"><div class="tl-offers-h">📡 العروض (${offers.length})</div>${offers.map((f,i)=>{
+      const res=f.acc?(f.gone?'✅ قَبِل ثم سُحب':'✅ قَبِل'):(i<offers.length-1?'✖ لم يقبل':'⏳ بانتظاره');
+      return `<div class="tl-off"><span>${_tlHM(f.t)} · ${esc(f.to?dN(f.to):'—')}${f.by?' · 👤 '+esc(f.by):''}</span><span>${f.recv?'📲':''}${f.shown?'👁️':''} ${res}</span></div>`;
+    }).join("")}</div>`:"";
+
+  /* ③ الأحداث بكلماتٍ مفهومة (recv/shown/fcm تُطوى في قائمة العروض) */
+  const LBL={
+    created:e=>["أُنشئ الطلب","المطعم: "+(o.restaurant||"—")+(e.src?" · "+({manual:"يدوي",quick:"سريع",voice:"صوتي",receipt:"وصل"}[e.src]||e.src):"")],
+    offered:e=>["عُرض على كابتن",e.to?dN(e.to):""],
+    accepted:e=>["قَبِل الكابتن الطلب",e.by?"🛵 "+dN(e.by):""], accept:e=>["قَبِل الكابتن الطلب",e.by?"🛵 "+dN(e.by):""],
+    arrived:e=>["وصل الكابتن المطعم",e.by?"🛵 "+dN(e.by):""],
+    picked:e=>["استلم الطلب — في الطريق للزبون",e.by?"🛵 "+dN(e.by):""],
+    delivered:e=>["سُلّم الطلب ✅",e.by?"🛵 "+dN(e.by):""],
+    withdraw:e=>["سُحب الطلب من الكابتن","👤 "+(e.staff||"ليدر")+(e.from?" · من "+dN(e.from):"")],
+    assign:e=>["أُسند يدوياً","👤 "+(e.staff||"ليدر")+(e.to?" ← "+dN(e.to):"")],
+    staff_done:e=>["أتمّه الليدر","👤 "+(e.staff||"ليدر")],
+    cancel:e=>["أُلغي الطلب",(e.by==="restaurant"?"ألغاه المطعم":e.by==="system_dup"?"ألغاه النظام (مكرّر)":(e.by?"ألغاه: "+e.by:""))+(e.why?" · "+e.why:"")]
+  };
+  let evHtml="";
+  const shown=evs.filter(e=>LBL[e.ev]);
+  if(o.ready_ts){ const rt=_tlMs(o.ready_ts); if(isFinite(rt)){ shown.push({ev:"_ready",_t:rt}); shown.sort((x,y)=>x._t-y._t); } }
+  shown.forEach((e,i)=>{
+    const [label,sub]=e.ev==="_ready"?["أبلغ المطعم: الطلب جاهز",""]:LBL[e.ev](e);
+    const isNow=i===shown.length-1;
+    evHtml+=`<div class="tl-ev"><div class="tl-dot ${isNow?'now':''}"></div>
+      <div class="tl-ev-h"><div class="tl-ev-t">${esc(label)}</div><div class="tl-ev-time">${_tlHM(e._t)}</div></div>
+      ${sub?`<div class="tl-ev-sub">${esc(sub)}</div>`:""}</div>`;
+  });
+
+  const price=Number(o.price)||0;
+  const meta=`<div class="tl-meta">
+    <div class="tl-meta-c"><div class="tl-meta-v">${Math.round((nowMs-tCreated)/60000)}</div><div class="tl-meta-l">دقيقة منذ الإنشاء</div></div>
+    <div class="tl-meta-c"><div class="tl-meta-v" style="font-size:.95rem">${esc(statusLabel(o.status))}</div><div class="tl-meta-l">الحالة الآن</div></div>
+    <div class="tl-meta-c"><div class="tl-meta-v" style="font-size:.95rem;color:#048a48">${price}</div><div class="tl-meta-l">${/طلب سريع/.test(String(o.details||""))?"أجرة التوصيل (د.ع)":"مبلغ الطلب (د.ع)"}</div></div>
+  </div>`;
+
+  const chatBtn=(o.driverPhone&&!["pending_driver","system_routing","manual_pending"].includes(o.driverPhone))
+    ?`<button class="tl-chat" onclick="clSheet('tlModal');if(window.openCaptainChat)openCaptainChat('${ej(nP(o.driverPhone))}')">💬 محادثة الكابتن</button>`:"";
+
+  document.getElementById("tlBody").innerHTML=stagesHtml+meta+offersHtml+`<div class="tl-list">${evHtml}</div>`+chatBtn;
+  opSheet("tlModal");
 };
+
+
 
 /* ════ RADAR ════ */
 window.doFilt=function(f,btn){
@@ -2500,7 +2632,7 @@ function renderRadar(){
     const trackBtn = hD ? `<button class="ob" style="width:auto;padding:0 8px;background:var(--blue-l);color:var(--blue-d);font-size:.68rem;font-weight:800;border:1px solid #c8dbfb;" onclick="trackDriver('${jDP}','${jRN}')">📍 مسار</button>` : '';
     /* 💬 زر الرسالة المباشرة — يظهر فقط عند وجود كابتن مُعيّن
        🎖️ [V29 ← نحلة] وبصلاحية «message» — الافتراض مفتوح (canDo). */
-    const msgBtn = (hD&&canDo("message")) ? `<button class="ob b-msg" onclick="msgCaptain('${jDP}','${ej(dn)}')" title="رسالة مباشرة">💬</button>` : '';
+    const msgBtn = (hD&&canDo("message")) ? `<button class="ob b-msg" onclick="msgCaptain('${jDP}','${ej(dn)}','','${jOId}')" title="رسالة مباشرة">💬</button>` : '';
     /* ↩ زر السحب — يظهر الآن حتى للطلبات السيادية (بنص مميّز)
        🎖️ [V29 ← نحلة] وبصلاحية «withdraw». */
     const wdBtn = (hD&&canDo("withdraw")) ? `<button class="ob b-del" style="width:auto;padding:0 8px;font-size:.68rem;font-weight:800;height:32px" onclick="wdOrder('${jOId}','${jDP}',this)">${isSov?'👑↩ سحب سيادي':'↩ سحب'}</button>` : '';
@@ -3007,6 +3139,44 @@ function _ccStChip(c){
   return '<span class="cc-st w">🔔 بانتظار ليدر</span>';
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   📦 [V33.8] ربط رسائل الليدر بطلبها — طلب المالك (30-09)
+   طلبٌ واحد مع الكابتن ⇒ تلقائياً · أكثر ⇒ صفّ «عن أيّ طلب؟» (الأحدث مختار) · بلا طلب ⇒ بلا ربط.
+   oid + otag («المطعم · المنطقة» نصّاً) — فيُعرض الفاصل ولو انتهى الطلب وغادر active_orders.
+   ═══════════════════════════════════════════════════════════════════════════ */
+let _ccOrdSel="";
+function _ccOrdList(p){ return (_ccDriverOrders(p)||[]).slice().sort((a,b)=>String(b[O.CREATED]||b[O.TIME]||"").localeCompare(String(a[O.CREATED]||a[O.TIME]||""))); }
+function _ccOrdTag(o){ return (String(o[O.RES]||"").trim()+(o[O.AREA]&&o[O.AREA]!=="غير محدد"?" · "+String(o[O.AREA]).trim():"")).slice(0,60); }
+function renderCcOrders(){
+  const box=document.getElementById("ctOrd");if(!box)return;
+  const list=_ccActive?_ccOrdList(_ccActive):[];
+  if(!list.some(o=>String(o[O.ID])===_ccOrdSel))_ccOrdSel=list.length?String(list[0][O.ID]):"";
+  if(list.length<2){box.classList.add("dn");box.innerHTML="";return;}
+  box.classList.remove("dn");
+  box.innerHTML='<span class="ct-ol">عن أيّ طلب؟</span>'+list.map(o=>{const id=String(o[O.ID]);
+    return `<button type="button" class="ct-oc ${id===_ccOrdSel?'on':''}" onclick="_ccOrdSel='${ej(id)}';renderCcOrders()">📦 ${esc(_ccOrdTag(o)||id.slice(-6))}</button>`;}).join("");
+}
+function _ccOrdRef(p){
+  const list=_ccOrdList(p);const o=list.find(x=>String(x[O.ID])===_ccOrdSel)||list[0];
+  return o?{oid:String(o[O.ID]).slice(0,80),otag:_ccOrdTag(o)}:null;
+}
+/* 👤 [V33.8] هل الرسالة منّي؟ بالرقم إن وُجد (الجديدة)، وإلّا بالاسم (القديمة). رسالة الموظّف الآليّ ليست منّي أبداً. */
+function _ccIsMe(m){
+  if(!m||m.from!=='leader'||m.ai)return false;
+  if(m.by)return nP(m.by)===nP(EMP_PHONE);
+  return String(m.name||'').trim()!==''&&String(m.name||'').trim()===String(EMP_NAME||'').trim();
+}
+/* بادئة آخر رسالة في القائمة: أنت · اسم الزميل · 🐋 اسم الموظّف · «ليدر» للقديم بلا اسم */
+function _ccLastWho(c){
+  if(!c||c.last_from!=='leader')return '';
+  if(c.last_by&&nP(c.last_by)===nP(EMP_PHONE))return 'أنت: ';
+  if(c.last_name){
+    if(!c.last_by&&!c.last_ai&&String(c.last_name).trim()===String(EMP_NAME||'').trim())return 'أنت: ';
+    return (c.last_ai?'🐋 ':'')+esc(String(c.last_name).slice(0,24))+': ';
+  }
+  return 'ليدر: ';
+}
+
 function renderChatList(){
   const el=document.getElementById("ccList");if(!el)return;
   const me=nP(EMP_PHONE);
@@ -3054,7 +3224,7 @@ function renderChatList(){
         <div class="cc-av" style="${on?'box-shadow:0 0 0 2.5px #86efac':''}">${drvAvatar(c.phone)||"🛵"}</div>
         <div style="min-width:0">
           <div class="cc-nm">${esc(c.driver_name||'كابتن')}</div>
-          <div class="cc-lm">${c.last_from==='leader'?'أنت: ':''}${esc(c.last_msg||'...')}</div>
+          <div class="cc-lm">${_ccLastWho(c)}${esc(c.last_msg||'...')}</div>
           ${_ccStChip(c)}${_ccSlaChip(c)}
         </div>
         <div class="cc-meta"><div class="cc-tm">${t}</div>${ub>0?`<div class="cc-ub">${ub}</div>`:''}</div>
@@ -3100,7 +3270,7 @@ window.ccLoadOlder=function(){
   _ccOlderShown=true;_ccWinStart=null;
   const msgs=document.getElementById("ctMsgs");
   const keep=msgs.scrollHeight;
-  _ccRenderedKeys=new Set();msgs.innerHTML="";msgs.dataset.lastDay="";
+  _ccRenderedKeys=new Set();msgs.innerHTML="";msgs.dataset.lastDay="";msgs.dataset.lastOid="";
   renderThread(true);
   msgs.scrollTop=msgs.scrollHeight-keep;   /* حافظ على موضع القراءة */
 };
@@ -3416,6 +3586,12 @@ window.closeChatCenter=function(){
   else _navBack();
 };
 window.backToList=function(){_navBack();};
+/* 💬 [V33.8] فتح محادثة كابتنٍ بعينه من خارج المركز (سجلّ الطلب، بطاقة الطلب) — تُنشأ إن لم توجد عند أوّل رسالة */
+window.openCaptainChat=function(phone){
+  const p=nP(phone);if(!p)return;
+  openChatCenter();
+  setTimeout(()=>{try{openThread(p);}catch(_){ /* المركز مفتوحٌ على القائمة */ }},60);
+};
 window.openThread=function(phone){
   _ccActive=phone;_ccCtxSig="";_ccRenderedKeys=new Set();
   _navPush("thread");
@@ -3438,7 +3614,7 @@ window.openThread=function(phone){
   /* ثم السياق والردود في الإطار التالي: لا تجميد عند الفتح */
   requestAnimationFrame(()=>{
     if(_ccActive!==phone)return;
-    renderCtx();renderQuickReplies();
+    renderCtx();renderQuickReplies();try{_ccOrdSel="";renderCcOrders();}catch(_){ /* صفّ الطلبات تكميليّ */ }
     const m=document.getElementById("ctMsgs");if(m)m.scrollTop=m.scrollHeight;
   });
 };
@@ -3511,9 +3687,10 @@ function renderThread(force){
   }
   const atBottom=msgs.scrollHeight-msgs.scrollTop-msgs.clientHeight<80;
 
-  if(force){msgs.innerHTML="";_ccRenderedKeys=new Set();msgs.dataset.lastDay="";}
+  if(force){msgs.innerHTML="";_ccRenderedKeys=new Set();msgs.dataset.lastDay="";msgs.dataset.lastOid="";}
 
   let lastDay=msgs.dataset.lastDay||"";
+  let lastOid=msgs.dataset.lastOid||"";   /* [V33.8] */
   let added=false;
   /* ⚡ [أداء] تجميع الدفعة في نصّ واحد ثم إدراجها مرة واحدة.
      كان كل رسالة insertAdjacentHTML مستقلة → 60 إعادة تخطيط متتالية
@@ -3541,21 +3718,26 @@ function renderThread(force){
       let label="";try{label=_FMT_DAY.format(d);}catch(e){label="";}
       buf+=`<div class="ct-day"><span>${esc(label)}</span></div>`;
     }
-    const mine=m.from==='leader';
+    /* 📦 [V33.8] فاصلٌ حين تنتقل المحادثة إلى طلبٍ آخر */
+    if(m.oid&&String(m.oid)!==lastOid){lastOid=String(m.oid);buf+=`<div class="ct-oidsep"><span>📦 …${esc(String(m.oid).slice(-6))}${m.otag?' · '+esc(String(m.otag)):''}</span></div>`;}
+    const mine=m.from==='leader';               /* جهة الفريق (يمين) — كما كانت */
+    const byMe=mine&&_ccIsMe(m);               /* [V33.8] رسالتي أنا — بلا اسم */
     if(force&&_ccUnreadAt>0&&!mine){
       const remaining=keys.filter(x=>x>=k&&mm[x]&&mm[x].from==='driver').length;
       if(remaining===_ccUnreadAt){buf+=`<div class="ct-unread-sep"><span>${_ccUnreadAt} رسالة لم تُقرأ</span></div>`;_ccUnreadAt=0;}
     }
     /* 🐋 [V33.2] رسائل الليدر تُعرض بلا اسم (كلّها «منّي»)، فكان ردّ الموظّف الآليّ لا يُميَّز
        من ردّ الزميل. ai:true يكتبه الموظّف وحده، ويتجاهله تطبيق الكابتن. */
-    buf+=`<div class="cbb ${mine?'cbb-me':'cbb-dr'}">${mine?(m.ai?`<div class="cbb-nm">🐋 ${esc(m.name||'')}</div>`:''):`<div class="cbb-nm">${esc(m.name||'كابتن')}</div>`}<div>${esc(m.text)}</div><div class="cbb-tm">${fmtHM(m.ts||Date.now())}</div></div>`;
+    /* 👤 [V33.8] كانت رسائل الزملاء بلا اسم (كلّها «منّي») — فلا يُعرف من وعد الكابتن بماذا.
+       الآن: كلّ رسالةٍ ليست منك تحمل اسم كاتبها: 🐋 للموظّف الآليّ، 👤 للزميل. رسالتك بلا اسم. */
+    buf+=`<div class="cbb ${mine?'cbb-me':'cbb-dr'}${mine&&!byMe?' cbb-peer':''}">${mine?(byMe?'':`<div class="cbb-nm">${m.ai?'🐋':'👤'} ${esc(m.name||'ليدر')}</div>`):`<div class="cbb-nm">${esc(m.name||'كابتن')}</div>`}<div>${esc(m.text)}</div><div class="cbb-tm">${fmtHM(m.ts||Date.now())}</div></div>`;
     added=true;
   });
   if(_ccHiddenOlder>0&&!msgs.querySelector('.ct-older')){
     buf=`<div class="ct-day ct-older"><span style="cursor:pointer" onclick="ccLoadOlder()">⬆ عرض ${_ccHiddenOlder} رسالة أقدم</span></div>`+buf;
   }
   if(buf)msgs.insertAdjacentHTML('beforeend',buf);
-  msgs.dataset.lastDay=lastDay;
+  msgs.dataset.lastDay=lastDay;msgs.dataset.lastOid=lastOid;
 
   if(!keys.length&&!Object.keys(_ccPending).length&&!msgs.children.length){
     msgs.innerHTML='<div class="cc-empty" style="padding:30px">لا رسائل بعد</div>';
@@ -3629,10 +3811,14 @@ window.sendLeaderMsg=async function(){
 
   const base=`driver_chats/${target}`;
   const u={};
-  u[`${base}/messages/${key}`]={from:'leader',name:EMP_NAME||'الليدر',text:txt,ts:Date.now(),cid:pk};
+  /* 👤 [V33.8] by = رقم الليدر: «هل هذه رسالتي؟» يُحسم بالرقم لا بالاسم (قد يتشابه اسمان).
+     وlast_name/last_by: القائمة تكتب «أمير:» لا «أنت:» حين يكون آخر ردٍّ لزميل (طلب المالك 30-09). */
+  u[`${base}/messages/${key}`]={from:'leader',name:EMP_NAME||'الليدر',by:nP(EMP_PHONE),text:txt,ts:Date.now(),cid:pk};
+  try{const _r=_ccOrdRef(target);if(_r){u[`${base}/messages/${key}`].oid=_r.oid;if(_r.otag)u[`${base}/messages/${key}`].otag=_r.otag;}}catch(_){ /* الربط تكميليّ */ }
   u[`${base}/last_msg`]=txt.slice(0,60);
   u[`${base}/last_msg_at`]=Date.now();
   u[`${base}/last_from`]='leader';
+  u[`${base}/last_name`]=EMP_NAME||'الليدر';u[`${base}/last_by`]=nP(EMP_PHONE);u[`${base}/last_ai`]=null;
   u[`${base}/unread_driver`]=firebase.database.ServerValue.increment(1);
   if(!(c.status==='claimed'&&nP(c.claimed_by)===nP(EMP_PHONE))){
     u[`${base}/status`]='claimed';u[`${base}/claimed_by`]=EMP_PHONE;
