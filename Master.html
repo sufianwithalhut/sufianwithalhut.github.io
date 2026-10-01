@@ -2873,12 +2873,16 @@ window.clearShift=async function(){
   if(!confirm("إزالة موعد "+shNm+"؟ يعود إلى يوم العمل العاديّ بسقف الشيت.")) return;
   await shWrite(shPh,{shift_h:null,shift_len:null,shift_next:null},"إزالة الموعد","أُزيل الموعد");
 };
-window.rstDebt=function(type,id,el){
+window.rstDebt=function(type,id,el,got){
   const n=nP(id);const lM=type==="RES"?liveLed.restaurants:liveLed.drivers;
-  const debt=lM?.[n]?.debt||0;
+  const full=lM?.[n]?.debt||0;
+  /* 🐋 [V34.0] طلبٌ من «كنوز الحوت» يحمل المبلغ المقبوض (received): يُطرح **هو** لا الدين كلّه.
+     فما تراكم بعد الاستلام، وما لم يُدفع في استلامٍ جزئي، يبقى ديناً على المطعم. */
+  const part=(got!==undefined&&got!==null&&isFinite(Number(got))&&Number(got)>=0&&Number(got)<full);
+  const debt=part?Number(got):full;
   const list=type==="RES"?gD?.restaurants:gD?.drivers;
   const nm=list?.find(i=>nP(i[2])===n)?.[1]||id;
-  if(!confirm(`تصفير ديون ${nm} (${debt.toLocaleString("ar-EG")} د.ع)؟`))return;
+  if(!confirm(part?`خصم ${debt.toLocaleString("ar-EG")} د.ع (المقبوض) من دين ${nm}؟\nالدين الآن ${full.toLocaleString("ar-EG")} — يبقى ${Math.max(0,Math.round(full-debt)).toLocaleString("ar-EG")} د.ع.`:`تصفير ديون ${nm} (${debt.toLocaleString("ar-EG")} د.ع)؟`))return;
   if(el){el.disabled=true;}
   const apiType=type==="RES"?"RESTAURANT":"DRIVER";
   /* 💰 [V33.5] seen = الدين الذي رآه المدير ووافق عليه. الخادم يطرحه وحده، فما أرشفه
@@ -4670,7 +4674,11 @@ function renderClearing() {
         status: r.status || "pending",
         debt: Number((led[p] || {}).debt) || 0,               /* حيٌّ من الدفتر */
         orders: Number((led[p] || {}).completed_orders) || 0,
-        claimed: Number(r.debt_at_request) || 0               /* لقطة الليدر */
+        claimed: Number(r.debt_at_request) || 0,              /* لقطة الليدر */
+        /* 🐋 [V34.0] من «كنوز الحوت»: ما قبضه فعلاً، وبُعده عن المطعم لحظة التسجيل (دليلٌ لا ادّعاء) */
+        got: (r.received !== undefined && r.received !== null && isFinite(Number(r.received))) ? Number(r.received) : null,
+        dist: (r.dist_m !== undefined && r.dist_m !== null && isFinite(Number(r.dist_m))) ? Number(r.dist_m) : null,
+        kanz: r.src === "kanz"
       };
     })
     .sort(function (a, b) {
@@ -4695,6 +4703,14 @@ function renderClearing() {
 
     /* تنبيهٌ صريح حين ينحرف الدين الحيّ عمّا رآه الليدر: قد يكون المطعم أرسل
        طلبات بعد رفع الطلب، فتصفيرك يمحو أكثر ممّا استُلم. */
+    const gotLine = r.got !== null
+      ? '<div style="margin-top:8px;font-size:.8rem;font-weight:800;color:var(--jade,#059669)">🤝 قبض الليدر: ' + Math.round(r.got).toLocaleString("ar-EG") + ' د.ع' +
+        (r.got < r.claimed ? ' <span style="color:var(--fire-d,#ea580c)">(جزئي من ' + Math.round(r.claimed).toLocaleString("ar-EG") + ')</span>' : '') + '</div>'
+      : '';
+    const distLine = r.kanz
+      ? '<div style="margin-top:4px;font-size:.74rem;font-weight:700;color:' + (r.dist === null ? 'var(--ink3,#4a6fa5)' : (r.dist <= 150 ? 'var(--jade,#059669)' : 'var(--fire-d,#ea580c)')) + '">📍 ' +
+        (r.dist === null ? 'سُجّل بلا موقع' : (r.dist <= 150 ? 'سُجّل عند المطعم (' + Math.round(r.dist) + ' م)' : 'سُجّل على بعد ' + (r.dist < 1000 ? Math.round(r.dist) + ' م' : (Math.round(r.dist / 100) / 10) + ' كم') + ' من المطعم')) + '</div>'
+      : '';
     const drift = (r.claimed && r.debt !== r.claimed)
       ? '<div style="margin-top:8px;font-size:.74rem;color:var(--fire-d,#ea580c);font-weight:700">' +
         '⚠️ تغيّر الدين منذ الطلب: ' + r.claimed.toLocaleString("ar-EG") +
@@ -4721,7 +4737,7 @@ function renderClearing() {
         '</div>' +
       '</div>' +
       (r.note ? '<div style="margin-top:9px;padding:9px 11px;background:var(--base3,#f1f5f9);border-radius:8px;font-size:.79rem;color:var(--ink2,#1e3a5f);line-height:1.7">' + esc(r.note) + '</div>' : '') +
-      drift +
+      gotLine + distLine + drift +
       '<div style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
         badge +
         '<div style="flex:1"></div>' +
@@ -4733,7 +4749,8 @@ function renderClearing() {
           /* 🔴 الفعل المالي الوحيد في هذه اللوحة — فليكن أبرز ما فيها.
              وكان يختفي تماماً: رمزُ لونه لم يكن معرَّفاً في هذه اللوحة
              فالخلفية تسقط والنصّ أبيض ⇒ زرٌّ خفيّ ظنّه المدير معطّلاً. */
-          ? '<button onclick="rstDebt(\'RES\',\'' + ej(r.phone) + '\',this)" style="background:var(--rose,#ef4444);color:#fff;border:none;border-radius:10px;padding:12px 22px;font-size:.85rem;font-weight:900;cursor:pointer;min-height:46px;min-width:130px;box-shadow:0 4px 14px rgba(239,68,68,.3)">💵 صفّر الدين الآن</button>'
+          ? '<button onclick="rstDebt(\'RES\',\'' + ej(r.phone) + '\',this' + (r.got !== null ? ',' + r.got : '') + ')" style="background:var(--rose,#ef4444);color:#fff;border:none;border-radius:10px;padding:12px 22px;font-size:.85rem;font-weight:900;cursor:pointer;min-height:46px;min-width:130px;box-shadow:0 4px 14px rgba(239,68,68,.3)">' +
+            (r.got !== null && r.got < r.debt ? '💵 اخصم المقبوض (' + Math.round(r.got).toLocaleString("ar-EG") + ')' : '💵 صفّر الدين الآن') + '</button>'
           : '') +
       '</div>' +
     '</div>';
