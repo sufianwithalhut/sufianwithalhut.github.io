@@ -78,7 +78,7 @@
            ولا reload — **إلى الأبد**. أي تحديث يُنشر لا يصل كاشيراً واحداً.
            ⚠️ ارفعه مع كل تسليم. وهذه القاعدة مكتوبة في DEPLOY.md:162
            وكانت منتهكة في التسليم الذي كتبها. */
-        const CURRENT_APP_VERSION = "43.0.Mirror";   /* [V33.6] الإقلاع آخر الوحدة (كانت الإحصاءات والطلبات تختفي) */   /* [V33.5] فحص تطبيق المطاعم — الطابور والمستمعات والتسجيل والأسعار */
+        const CURRENT_APP_VERSION = "43.1.Cid";   /* [V33.6] الإقلاع آخر الوحدة (كانت الإحصاءات والطلبات تختفي) */   /* [V33.5] فحص تطبيق المطاعم — الطابور والمستمعات والتسجيل والأسعار */
         const RES_VERSION_KEY = 'hut_res_app_version';
         /* ═══════════════════════════════════════════════════════════════════
            🔴 [إصلاح عاجل] كان: caches.delete() و r.update() **وعدان غير
@@ -1533,6 +1533,12 @@
     function aiPendingCount() { return aiReadQ().length + _aiMem.length; }
 
     function queueAI(payload, opts) {
+        /* 🔑 [V34.4] مفتاح النيّة (cid) يُثبَّت **هنا، قبل الحفظ**.
+           منذ V33.5 صار الوصل يُحفظ قبل الإرسال، والمفتاح كان يُولَّد داخل sendToAI — أي بعد الحفظ،
+           على نسخةٍ في الذاكرة لا تُكتب. فكلّ إعادة إرسال قرأت المحفوظ بلا مفتاح وولّدت مفتاحاً جديداً،
+           والخادم رآها نيّةً جديدة ⇒ طلبٌ توأم لكلّ إعادة. رُصد 02-10-2026: وصلٌ واحد عند أربعة كباتن.
+           (التحذير نفسه مكتوبٌ عند sendToAI منذ V41: «يبقى ملتصقاً بالحمولة داخل الطابور».) */
+        if (payload && !payload.cid) payload = Object.assign({}, payload, { cid: aiNewId() });
         const item = { payload, ts: Date.now(), tries: 0, id: (opts && opts.id) || aiNewId() };
         /* [V41-ب] holdUntil لمهلة التراجع (الصوت): الحمولة محفوظة فوراً، فلو أُغلق التطبيق
            أثناء الثواني الستّ لا يضيع الطلب — يخرج عند أوّل تفريغٍ بعد انقضاء المهلة. */
@@ -1587,16 +1593,36 @@
     /* نتيجةٌ ناجحة من الخادم — تنبيهٌ للحالات التي لا يراها الكاشير وحده */
     function aiNoteResult(item, data) {
         try {
+            /* 🧬 [V34.4] الخادم تعرّف على الملف نفسه (لا على مفتاحنا): لم يُنشأ طلبٌ ثانٍ. يُقال للكاشير
+               مرّةً — فإن أعاد إرسال الوصل نفسه عمداً يعلم أنّ طلبه الأوّل قائم. */
+            if (data && data.same_file && data.dedup && !data.empty) {
+                showToastMsg('🧾 هذا الوصل أُرسل قبل قليل وطلبه قائم — لم يُنشأ طلبٌ ثانٍ.', 9000);
+            }
             if (data && data.empty && item && item.payload && item.payload.kind === 'voice') {
                 showToastMsg('🎙️ التسجيل الصوتي الأخير كان فارغاً — لم يُنشأ طلب. إن كنت تقصد طلباً فسجّله من جديد.', 12000);
             }
         } catch (e) {}
     }
 
+    /* 🔑 [V34.4] عنصرٌ حُفظ بنسخةٍ سابقة بلا مفتاح: يُعطى مفتاحاً **ويُكتب في المحفوظ** قبل أوّل إرسال،
+       فتحمله كلّ الإعادات. إن تعذّرت الكتابة بقي في نسخة الذاكرة لهذه المحاولة (كما كان). */
+    function aiEnsureCid(item) {
+        if (!item || !item.payload || item.payload.cid) return;
+        const cid = aiNewId();
+        item.payload.cid = cid;
+        const m = _aiMem.find(it => it.id === item.id);
+        if (m && m.payload && !m.payload.cid) m.payload.cid = cid;
+        try {
+            const q = aiReadQ(); const it = q.find(x => x.id === item.id);
+            if (it && it.payload) { if (it.payload.cid) item.payload.cid = it.payload.cid; else { it.payload.cid = cid; aiWriteQ(q); } }
+        } catch (e) { resTrack('ai_cid_persist_fail', {}); }
+    }
+
     /* إرسال عنصرٍ واحد محفوظ: ينجح ⇒ يُحذف · يفشل عابراً ⇒ يبقى (+محاولة) · يُرفض نهائياً ⇒ يُحذف ويُبلَّغ */
     async function aiSendItem(item) {
         if (!item || _aiInFlight.has(item.id)) return;
         _aiInFlight.add(item.id);
+        aiEnsureCid(item);
         try {
             const data = await sendToAI(item.payload, { queueOnFail: false });
             aiRemoveItem(item.id);
