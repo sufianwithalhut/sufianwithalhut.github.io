@@ -78,7 +78,7 @@
            ولا reload — **إلى الأبد**. أي تحديث يُنشر لا يصل كاشيراً واحداً.
            ⚠️ ارفعه مع كل تسليم. وهذه القاعدة مكتوبة في DEPLOY.md:162
            وكانت منتهكة في التسليم الذي كتبها. */
-        const CURRENT_APP_VERSION = "42.9.Boot";   /* [V33.6] الإقلاع آخر الوحدة (كانت الإحصاءات والطلبات تختفي) */   /* [V33.5] فحص تطبيق المطاعم — الطابور والمستمعات والتسجيل والأسعار */
+        const CURRENT_APP_VERSION = "43.0.Mirror";   /* [V33.6] الإقلاع آخر الوحدة (كانت الإحصاءات والطلبات تختفي) */   /* [V33.5] فحص تطبيق المطاعم — الطابور والمستمعات والتسجيل والأسعار */
         const RES_VERSION_KEY = 'hut_res_app_version';
         /* ═══════════════════════════════════════════════════════════════════
            🔴 [إصلاح عاجل] كان: caches.delete() و r.update() **وعدان غير
@@ -3344,6 +3344,19 @@
 
     let lastOrdersSnapshot = {};
     let mirrorToday = {};   // 🪞 [V41] ledgers/restaurants/{هاتف}/today/{يوم}/{طلب}
+    /* 🪞 [V34.2] المرآة تنتقل إلى res_today/{هاتف}/{يوم}/{طلب} (خارج الدفتر — كان يثقّل كلّ من يقرأ الدفاتر).
+       مرحلة الانتقال: الخادم يكتب المكانين، ونحن نقرأ الاثنين وندمج بالمفتاح — فلا يفرغ «مكتملة اليوم»
+       لا قبل أن يبدأ الخادم بالجديد ولا بعد أن يتوقّف عن القديم. */
+    let mirrorOld = {}, mirrorNew = {};
+    function mergeMirror() {
+        const out = {};
+        [mirrorOld, mirrorNew].forEach(src => {
+            Object.keys(src || {}).forEach(day => {
+                if (src[day] && typeof src[day] === 'object') out[day] = Object.assign(out[day] || {}, src[day]);
+            });
+        });
+        mirrorToday = out;
+    }
 
     /* ═══════════════════════════════════════════════════════════════════════
        🔁 [V33.5] المستمعات كانت تموت بعد دخولٍ جديد ولا تعود
@@ -3405,6 +3418,20 @@
         if (!had) resTrack('listen_before_auth', {});   /* نربط رغم ذلك — فالرفض يُعالَج بإعادة الربط */
         attachOrdersListener(myPhone, 0);
         attachLedgerListener(myPhone, 0);
+        attachMirrorListener(myPhone, 0);
+    }
+
+    /* 🪞 [V34.2] المكان الجديد للمرآة. رفضُه أو تعثّره **لا يُزعج**: المصدر القديم يكفي ما دام الخادم
+       يكتبه — فلا رسالة ولا إعادة دخول، بل إعادة ربطٍ هادئة كلّ دقيقة خمس مرّات. */
+    function attachMirrorListener(myPhone, attempt) {
+        onValue(ref(db, `res_today/${myPhone}`), (snapshot) => {
+            const v = snapshot.val();
+            mirrorNew = (v && typeof v === 'object') ? v : {};
+            mergeMirror();
+            rebuildOrderLists();
+        }, (_) => {
+            if ((attempt || 0) < 5) setTimeout(() => attachMirrorListener(myPhone, (attempt || 0) + 1), 60000);
+        });
     }
 
     function attachLedgerListener(myPhone, attempt) {
@@ -3417,7 +3444,8 @@
                يقرأ منجزاته من active_orders لأنها تحمل اليوم كلّه حتى
                الفجر. ومع terminalOrderSweeper تغادرها خلال ٤٥ دقيقة.
                السيرفر يكتب نسخة نحيفة هنا في نفس التحديث الذرّي للنقل. */
-            mirrorToday = (ledger.today && typeof ledger.today === 'object') ? ledger.today : {};
+            mirrorOld = (ledger.today && typeof ledger.today === 'object') ? ledger.today : {};
+            mergeMirror();
             rebuildOrderLists();
 
             const s = localStorage.getItem('hut_res_session');
