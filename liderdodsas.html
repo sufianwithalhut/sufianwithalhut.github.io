@@ -1351,7 +1351,7 @@ function scheduleStaffTokenRefresh(phone,pass){
   if(_staffTokenTimer)clearTimeout(_staffTokenTimer);
   _staffTokenTimer=setTimeout(async()=>{
     try{
-      const d=await apiGet({action:"STAFF_LOGIN",phone,password:pass});
+      const d=await staffApi({action:"STAFF_LOGIN",phone,password:pass});
       if(d&&d.success){
         if(d.token)updateStoken(d.token);
         if(d.firebase_token){await auth.signInWithCustomToken(d.firebase_token);}
@@ -1494,6 +1494,29 @@ window.closeWelcome = function() {
     document.getElementById('welcomeOverlay').style.display = 'none';
 };
 
+/* ═════════════════════════════════════════════════════════════════════
+   👥 [V34.7] أوامر الليدر عبر فايربيس أولاً (staffCommand) — Apps Script احتياط
+   ─────────────────────────────────────────────────────────────────────
+   كانت كلّها عبر Apps Script بـGET (وكلمة المرور في الرابط عند الدخول): بطيءٌ
+   وبحصّة يوميّة. staffCommand نقلٌ حرفيّ لدوالّ Code.gs بالردود نفسها، والجلسة
+   (STOKEN) مشتركة بين الطبقتين — فالعودة إلى Apps Script لا تحتاج دخولاً جديداً.
+   يعود إلى Apps Script عند: الشبكة · ردٍّ غير 200 · «غير مُرآة» (حسابٌ أو دليل
+   كباتن لم تنسخه Code.gs بعد). وردّ 200 غير ذلك هو الحكم — لا يُعاد الأمر مرّتين. */
+const STAFF_CF_URL="https://europe-west1-sufyan-delivery.cloudfunctions.net/staffCommand";
+async function staffApi(params){
+  try{
+    const ctrl=new AbortController();const tm=setTimeout(()=>ctrl.abort(),12000);
+    let r;
+    try{ r=await fetch(STAFF_CF_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(params),signal:ctrl.signal}); }
+    finally{ clearTimeout(tm); }
+    if(r.status===200){
+      const d=await r.json();
+      if(!(d&&(d.status==="not_mirrored"||d.status==="no_pepper"))) return d;
+    }
+  }catch(e){ /* شبكة أو مهلة ⇒ Apps Script */ }
+  return await apiGet(params);
+}
+
 /* GET helper */
 async function apiGet(params){
   const qs=Object.entries(params).map(([k,v])=>`${k}=${encodeURIComponent(v)}`).join("&");
@@ -1514,7 +1537,7 @@ async function reAuthStaff(){
     const saved=JSON.parse(sessionStorage.getItem("staff_session")||"{}");
     if(!saved.p||!saved.phone)return false;
     const pass=decodeURIComponent(escape(atob(saved.p)));
-    const d=await apiGet({action:"STAFF_LOGIN",phone:saved.phone,password:pass});
+    const d=await staffApi({action:"STAFF_LOGIN",phone:saved.phone,password:pass});
     if(d&&d.success&&d.token){
       updateStoken(d.token);
       if(d.firebase_token){try{await auth.signInWithCustomToken(d.firebase_token);}catch(e){}}
@@ -1538,10 +1561,10 @@ function healAuth(){
 
 /* 🛡️ غلاف أفعال الموظف: يُعيد المصادقة ويُعيد المحاولة مرة واحدة إذا انتهت الجلسة */
 async function staffAction(params){
-  let d=await apiGet(Object.assign({},params,{stoken:STOKEN}));
+  let d=await staffApi(Object.assign({},params,{stoken:STOKEN}));
   if(d && d.success===false && /الجلسة/.test(d.msg||"")){
     const ok=await reAuthStaff();
-    if(ok) d=await apiGet(Object.assign({},params,{stoken:STOKEN}));
+    if(ok) d=await staffApi(Object.assign({},params,{stoken:STOKEN}));
   }
   return d;
 }
@@ -1553,7 +1576,7 @@ window.addEventListener("DOMContentLoaded",()=>{
     const s=JSON.parse(saved);STOKEN=s.token;EMP_NAME=s.name;EMP_PHONE=s.phone;
     enterApp();
     if(s.p){const pass=decodeURIComponent(escape(atob(s.p)));
-      apiGet({action:"STAFF_LOGIN",phone:EMP_PHONE,password:pass}).then(d=>{
+      staffApi({action:"STAFF_LOGIN",phone:EMP_PHONE,password:pass}).then(d=>{
         if(d&&d.success){
           if(d.token)updateStoken(d.token);
           if(d.firebase_token)consumeStaffToken(d.firebase_token,EMP_PHONE,pass);
@@ -1568,7 +1591,7 @@ window.doLogin=async function(){
   if(!phone||!pass)return toast("أدخل الهاتف وكلمة المرور","e");
   const btn=document.getElementById("loginBtn");btn.classList.add("loading");btn.disabled=true;
   try{
-    const d=await apiGet({action:"STAFF_LOGIN",phone,password:pass});
+    const d=await staffApi({action:"STAFF_LOGIN",phone,password:pass});
     if(d.success){
       STOKEN=d.token;EMP_NAME=d.name;EMP_PHONE=d.phone;
       sessionStorage.setItem("staff_session",JSON.stringify({token:STOKEN,name:EMP_NAME,phone:EMP_PHONE,p:btoa(unescape(encodeURIComponent(pass)))}));
@@ -1634,7 +1657,7 @@ function applyPermsToUi(){
 }
 window.doLogout=async function(){
   if(!confirm("تأكيد تسجيل الخروج؟"))return;
-  try{await apiGet({action:"STAFF_LOGOUT",stoken:STOKEN});}catch(e){}
+  try{await staffApi({action:"STAFF_LOGOUT",stoken:STOKEN});}catch(e){}
   if(_staffTokenTimer)clearTimeout(_staffTokenTimer);
   if(_hofTimer)clearInterval(_hofTimer);
   try{await auth.signOut();}catch(e){}
