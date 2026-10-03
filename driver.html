@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://*.firebasedatabase.app https://*.firebaseio.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app https://www.gstatic.com; object-src 'none'; base-uri 'none'; form-action 'self';">
 
 <script>
-const CURRENT_APP_VERSION = "32.12-OrderChat";
+const CURRENT_APP_VERSION = "32.13-CloudActions";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -413,7 +413,7 @@ select.inp-clay{appearance:none;-webkit-appearance:none;cursor:pointer;
 .cs-w{background:rgba(255,146,43,.12);color:var(--warn-dp);}
 .cs-l{background:rgba(18,184,134,.12);color:var(--ok-dp);}
 #chBody{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:11px;}
-/* 📦 [V32.12] «عن أيّ طلب؟» — يظهر حين يحمل الكابتن أكثر من طلب */
+
 #chOrd{display:flex;gap:7px;overflow-x:auto;padding:9px 15px 0;background:#fff;border-top:1px solid var(--line);}
 #chOrd.dn{display:none;}
 .ch-oc{flex:0 0 auto;border:1px solid var(--line);background:#fff;border-radius:99px;padding:6px 12px;font-family:'Cairo',sans-serif;font-size:.72rem;font-weight:800;color:var(--muted);cursor:pointer;white-space:nowrap;}
@@ -2068,10 +2068,11 @@ function getStoken() {
  }
 }
 
-/* 🔑 [V32.11-FreshSession] الجلسة تُحفظ مع وقتها — ليعرف التطبيق عمرها قبل بدء الشفت. */
 function setStoken(v) {
  localStorage.setItem("suf_stoken", String(v));
- try { localStorage.setItem("suf_stoken_ts", String(Date.now())); } catch (_) {}
+ try {
+  localStorage.setItem("suf_stoken_ts", String(Date.now()));
+ } catch (_) {}
 }
 
 let __devMem = null;
@@ -2409,33 +2410,28 @@ function healAuth() {
  return _reauthInFlight;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   🔑 [V32.11-FreshSession] جلسةٌ طازجة قبل بدء الشفت
-   ───────────────────────────────────────────────────────────────────────────
-   legacy_usage/gate: 32–87 «START_SHIFT_bad_token» يومياً (22→29-09) — بعدد من يبدأ
-   شفته تقريباً. السبب: بدء الشفت يأتي مع أوّل «متاح» في اليوم، والجلسة المحفوظة غالباً
-   من الأمس (> ١٢ ساعة، عمرها في Code.gs ENT_SESS_TTL_MS): فتحُ التطبيق يجدّدها في الخلفية
-   **بلا انتظار** (fbAuth)، وأندرويد يوقف مؤقّت الخمسين دقيقة حين يبقى التطبيق في الخلفية.
-   فالخادم يمرّرها اليوم (وضع الرصد) — ولا يمكن إلزام الجلسات قبل إصلاح هذا.
-   الآن: جلسةٌ غائبة أو أقدم من ١٠ ساعات ⇒ تُجدَّد أوّلاً (٦ ثوانٍ على الأكثر، مرّةً في
-   اليوم تقريباً)، ثم يبدأ الشفت. فإن فشل التجديد يمضي كما كان — لا يُحجب أحد.
-   والحدث stoken_stale_refresh يقيس عمر الجلسة القديمة فيُثبت التشخيص بالأرقام.
-   ═══════════════════════════════════════════════════════════════════════════ */
 async function ensureFreshStoken() {
  let ts = 0;
- try { ts = Number(localStorage.getItem("suf_stoken_ts") || 0); } catch (_) {}
+ try {
+  ts = Number(localStorage.getItem("suf_stoken_ts") || 0);
+ } catch (_) {}
  const st = getStoken();
  const age = ts ? Date.now() - ts : Infinity;
  if (st && age < 10 * 36e5) return true;
- track("stoken_stale_refresh", { ms: isFinite(age) ? Math.round(age / 60000) : -1, why: st ? (ts ? "old" : "no_ts") : "none" });
+ track("stoken_stale_refresh", {
+  ms: isFinite(age) ? Math.round(age / 6e4) : -1,
+  why: st ? ts ? "old" : "no_ts" : "none"
+ });
  const work = (async () => {
   if (_reauthInFlight) return await _reauthInFlight;
   if (st && await refreshTok()) return true;
   return await healAuth();
  })();
  try {
-  return await Promise.race([work, new Promise(r => setTimeout(() => r(false), 6000))]);
- } catch (_) { return false; }
+  return await Promise.race([ work, new Promise(r => setTimeout(() => r(false), 6e3)) ]);
+ } catch (_) {
+  return false;
+ }
 }
 
 async function reAuth() {
@@ -2815,6 +2811,39 @@ function withTimeout(promise, ms = NET_TIMEOUT_MS, label = "timeout") {
  return Promise.race([ promise, timer ]).finally(() => clearTimeout(t));
 }
 
+const DRV_ACTION_URL = "https://europe-west1-sufyan-delivery.cloudfunctions.net/driverAction";
+
+async function drvAction(action, orderId, why, ms) {
+ const h = {
+  "Content-Type": "application/json"
+ };
+ try {
+  const u = auth.currentUser;
+  if (u) {
+   const tk = await withTimeout(u.getIdToken(), 4e3, "idtok");
+   if (tk) h.Authorization = "Bearer " + tk;
+  }
+ } catch (_) {}
+ const r = await gasFetch(DRV_ACTION_URL, {
+  method: "POST",
+  headers: h,
+  body: JSON.stringify({
+   action: action,
+   orderId: String(orderId),
+   phone: drv.phone,
+   stoken: getStoken(),
+   why: why || ""
+  })
+ }, ms || 1e4);
+ if (r.status !== 200) throw new Error("cf_" + r.status);
+ const d = await r.json();
+ track("drv_action", {
+  a: action,
+  ok: !!(d && d.success)
+ });
+ return d;
+}
+
 async function guaranteedWrite(updates, vPath, vVal) {
  let lastErr = null;
  for (let i = 1; i <= RETRIES; i++) {
@@ -2875,8 +2904,17 @@ async function guaranteeAccept(id) {
  }
  if (!ok) {
   try {
-   const rr = await gasFetch(`${API_URL}?action=ACCEPT_ORDER&orderId=${encodeURIComponent(id)}&driverPhone=${drv.phone}&token=${API_TOKEN}&stoken=${encodeURIComponent(getStoken())}`);
-   const dd = await rr.json().catch(() => ({}));
+   let dd = null;
+   try {
+    dd = await drvAction("ACCEPT", id);
+   } catch (e1) {
+    track("drv_action_gas", {
+     a: "ACCEPT",
+     r: String(e1 && e1.message || e1).slice(0, 30)
+    });
+    const rr = await gasFetch(`${API_URL}?action=ACCEPT_ORDER&orderId=${encodeURIComponent(id)}&driverPhone=${drv.phone}&token=${API_TOKEN}&stoken=${encodeURIComponent(getStoken())}`);
+    dd = await rr.json().catch(() => ({}));
+   }
    if (dd && dd.success) ok = true; else if (dd && dd.msg) why.push("الخادم: " + String(dd.msg).slice(0, 60));
   } catch (e) {
    why.push("الخادم البديل: " + String(e && e.message || e).slice(0, 60));
@@ -3242,6 +3280,8 @@ window.logout = function() {
  clearPass();
  try {
   localStorage.removeItem("suf_stoken");
+ } catch (e) {}
+ try {
   localStorage.removeItem("suf_stoken_ts");
  } catch (e) {}
  cancelDisconnect();
@@ -3881,7 +3921,7 @@ window.toggleOnline = async function() {
   const _freeDone = drv.freeShiftDay === _bizDay;
   if (!_freeDone && (!drv.shiftEnd || new Date(drv.shiftEnd) <= new Date)) {
    try {
-    await ensureFreshStoken();   /* [V32.11] لا جلسة الأمس مع بدء الشفت */
+    await ensureFreshStoken();
     const d = await gasRetry(() => gasJson(`${API_URL}?action=START_SHIFT&phone=${drv.phone}&token=${API_TOKEN}&stoken=${encodeURIComponent(getStoken())}`, null, 8e3), 2, 600);
     if (d.success) {
      drv.shiftEnd = d.shift_end;
@@ -5518,7 +5558,13 @@ window.declineOrder = function(auto) {
   reason: why
  });
  shadowCommand("EXPIRE", id);
- gasRetry(() => gasJson(`${API_URL}?action=DECLINE_ORDER&orderId=${encodeURIComponent(id)}&driverPhone=${drv.phone}&why=${why}&token=${API_TOKEN}&stoken=${encodeURIComponent(getStoken())}`), 3, 700).catch(() => {});
+ drvAction("DECLINE", id, why).catch(e => {
+  track("drv_action_gas", {
+   a: "DECLINE",
+   r: String(e && e.message || e).slice(0, 30)
+  });
+  return gasRetry(() => gasJson(`${API_URL}?action=DECLINE_ORDER&orderId=${encodeURIComponent(id)}&driverPhone=${drv.phone}&why=${why}&token=${API_TOKEN}&stoken=${encodeURIComponent(getStoken())}`), 3, 700);
+ }).catch(() => {});
  curOrder = null;
 };
 
@@ -6126,8 +6172,17 @@ window.orderAction = function(id, act, btn) {
    let ok = await guaranteedWrite(uA, `active_orders/${id}/status`, "completed");
    if (!ok) {
     try {
-     const rr = await withTimeout(fetch(`${API_URL}?action=COMPLETE_ORDER&orderId=${encodeURIComponent(id)}&driverPhone=${drv.phone}&token=${API_TOKEN}&stoken=${encodeURIComponent(getStoken())}`), 12e3, "gas_timeout");
-     const dd = await rr.json();
+     let dd = null;
+     try {
+      dd = await drvAction("COMPLETE", id, "", 12e3);
+     } catch (e1) {
+      track("drv_action_gas", {
+       a: "COMPLETE",
+       r: String(e1 && e1.message || e1).slice(0, 30)
+      });
+      const rr = await withTimeout(fetch(`${API_URL}?action=COMPLETE_ORDER&orderId=${encodeURIComponent(id)}&driverPhone=${drv.phone}&token=${API_TOKEN}&stoken=${encodeURIComponent(getStoken())}`), 12e3, "gas_timeout");
+      dd = await rr.json();
+     }
      if (dd && dd.success) {
       ok = true;
       toast("✅ سُجّل التسليم عبر الخادم البديل.", "ok");
@@ -6212,48 +6267,64 @@ function cPath() {
  return `driver_chats/${drv.phone}`;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   📦 [V32.12] ربط رسالة الكابتن بطلبها — طلب المالك (30-09)
-   ───────────────────────────────────────────────────────────────────────────
-   كانت الرسالة {from,name,text,ts} بلا طلب، والمحادثة سيلٌ واحدٌ عبر الأيام والطلبات،
-   فلا يعرف الليدر لأيّ طلبٍ كُتبت (خاصّةً بعد انتهائه أو سحبه). الآن تحمل oid وotag:
-   طلبٌ واحد ⇒ تلقائياً بلا أيّ خطوة · أكثر ⇒ صفّ أزرارٍ «عن أيّ طلب؟» والأحدث مختارٌ افتراضياً ·
-   بلا طلب ⇒ بلا ربط كما كان. otag = «المطعم · المنطقة» نصّاً (يُعرض في اللوحة ولو انتهى الطلب).
-   ═══════════════════════════════════════════════════════════════════════════ */
 let _chOrdSel = "";
+
 function _chOrders() {
- try { return (Array.isArray(active) ? active : []).filter(o => o && o.id).slice().sort((a, b) => (Number(b.acceptedTime) || 0) - (Number(a.acceptedTime) || 0)); }
- catch (e) { return []; }
+ try {
+  return (Array.isArray(active) ? active : []).filter(o => o && o.id).slice().sort((a, b) => (Number(b.acceptedTime) || 0) - (Number(a.acceptedTime) || 0));
+ } catch (e) {
+  return [];
+ }
 }
-function _chOrdTag(o) { return (String(o.resName || "").trim() + (o.area && o.area !== "غير محدد" ? " · " + String(o.area).trim() : "")).slice(0, 60); }
+
+function _chOrdTag(o) {
+ return (String(o.resName || "").trim() + (o.area && o.area !== "غير محدد" ? " · " + String(o.area).trim() : "")).slice(0, 60);
+}
+
 function renderChatOrders() {
  const box = document.getElementById("chOrd");
  if (!box) return;
  const list = _chOrders();
  if (!list.some(o => o.id === _chOrdSel)) _chOrdSel = list.length ? list[0].id : "";
  box.textContent = "";
- if (list.length < 2) { box.classList.add("dn"); return; }
+ if (list.length < 2) {
+  box.classList.add("dn");
+  return;
+ }
  box.classList.remove("dn");
- const lb = document.createElement("span"); lb.className = "ch-ol"; lb.textContent = "عن أيّ طلب؟"; box.appendChild(lb);
+ const lb = document.createElement("span");
+ lb.className = "ch-ol";
+ lb.textContent = "عن أيّ طلب؟";
+ box.appendChild(lb);
  list.forEach(o => {
   const b = document.createElement("button");
-  b.type = "button"; b.className = "ch-oc" + (o.id === _chOrdSel ? " on" : "");
+  b.type = "button";
+  b.className = "ch-oc" + (o.id === _chOrdSel ? " on" : "");
   b.textContent = "📦 " + (_chOrdTag(o) || String(o.id).slice(-6));
-  b.onclick = () => { _chOrdSel = o.id; renderChatOrders(); };
+  b.onclick = () => {
+   _chOrdSel = o.id;
+   renderChatOrders();
+  };
   box.appendChild(b);
  });
 }
+
 function _chOrdRef() {
  const list = _chOrders();
  const o = list.find(x => x.id === _chOrdSel) || list[0];
- return o ? { oid: String(o.id).slice(0, 80), otag: _chOrdTag(o) } : null;
+ return o ? {
+  oid: String(o.id).slice(0, 80),
+  otag: _chOrdTag(o)
+ } : null;
 }
 
 window.openChat = async function() {
  if (!drv || !drv.phone) return;
  document.getElementById("chat").classList.remove("dn");
  chatOpen = true;
- try { renderChatOrders(); } catch (e) {}
+ try {
+  renderChatOrders();
+ } catch (e) {}
  document.querySelectorAll(".sup-dot,#chatDot").forEach(d => d.classList.remove("on"));
  try {
   const s = await withTimeout(get(ref(db, cPath() + "/status")), NET_TIMEOUT_MS, "chat");
@@ -6296,7 +6367,13 @@ window.sendChat = async function() {
   text: t,
   ts: Date.now()
  };
- try { const _r = _chOrdRef(); if (_r) { u[`${cPath()}/messages/${k}`].oid = _r.oid; if (_r.otag) u[`${cPath()}/messages/${k}`].otag = _r.otag; } } catch (e) {}
+ try {
+  const _r = _chOrdRef();
+  if (_r) {
+   u[`${cPath()}/messages/${k}`].oid = _r.oid;
+   if (_r.otag) u[`${cPath()}/messages/${k}`].otag = _r.otag;
+  }
+ } catch (e) {}
  u[`${cPath()}/last_msg`] = t.slice(0, 60);
  u[`${cPath()}/last_msg_at`] = Date.now();
  u[`${cPath()}/last_from`] = "driver";
