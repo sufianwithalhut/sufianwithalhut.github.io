@@ -1537,11 +1537,32 @@ async function gasVerifyPass(pass, opt){
   }
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   🔐 [V34.8] الدخول من فايربيس أوّلاً (adminLogin) — Apps Script احتياط
+   ───────────────────────────────────────────────────────────────────────────
+   VERIFY_MASTER_PASS عبر Apps Script كان ٤–٦ ث (وأكثر من ٤٠ في الذروة). adminLogin
+   يتحقّق من مرآة الكلمة نفسها (يكتبها Code.gs V34.8) في نصف ثانية تقريباً.
+   ولا يُحسم الرفضُ هنا: أيّ ردٍّ غير النجاح (خطأ · غير مُرآة · مهلة · شبكة) ⇒ Apps Script،
+   فهو المصدر — كلمةٌ غُيّرت في الخليّة ولم تُرآ بعد تُقبل هناك وتُرآى في اللحظة نفسها.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const ADMIN_CF_URL = "https://europe-west1-sufyan-delivery.cloudfunctions.net/adminLogin";
+async function verifyAdminPass(pass, opt){
+  try{
+    const ctl = new AbortController();
+    const tm = setTimeout(()=>ctl.abort(), 8000);
+    let r;
+    try{ r = await fetch(ADMIN_CF_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pass}),signal:ctl.signal}); }
+    finally{ clearTimeout(tm); }
+    if(r.status===200){ const d = await r.json(); if(d && d.success && d.firebase_token) return d; }
+  }catch(e){ /* مهلة أو شبكة ⇒ Apps Script */ }
+  return await gasVerifyPass(pass, opt);
+}
+
 function scheduleAdminTokenRefresh(pass){
   if(_adminTokenTimer)clearTimeout(_adminTokenTimer);
   _adminTokenTimer=setTimeout(async()=>{
     try{
-      const d=await gasVerifyPass(pass);   /* [V32.4] يعمل في الخلفية ويُعيد نفسه ⇒ بلا إعادة محاولة */
+      const d=await verifyAdminPass(pass);   /* [V32.4] يعمل في الخلفية ويُعيد نفسه ⇒ بلا إعادة محاولة */
       if(d&&d.success&&d.firebase_token){await auth.signInWithCustomToken(d.firebase_token);}
       scheduleAdminTokenRefresh(pass);
     }catch(e){console.error("تعذّر تجديد توكن الإدارة:",e);scheduleAdminTokenRefresh(pass);}
@@ -1558,7 +1579,7 @@ function healAdminAuth(){
       if(MP){
         /* [V32.4] المهلة هنا ليست تحسيناً: بلاها يبقى _reauthInFlight معلّقاً
            أبداً، فيمنع كلَّ محاولةِ شفاءٍ تالية — حارسٌ ينقلب سجناً. */
-        const d=await gasVerifyPass(MP);
+        const d=await verifyAdminPass(MP);
         if(d&&d.success&&d.firebase_token){await auth.signInWithCustomToken(d.firebase_token);ok=true;}
       }
     }catch(e){}
@@ -1926,7 +1947,7 @@ window.doAuth=async function(){
     let d;
     try{
       /* محاولةٌ إضافية واحدة — هنا وحدَه ينتظر إنسان */
-      d = await gasVerifyPass(pass, { tries: 2 });
+      d = await verifyAdminPass(pass, { tries: 2 });
     }catch(err){
       MP="";
       toast(err && err.code === "timeout"
