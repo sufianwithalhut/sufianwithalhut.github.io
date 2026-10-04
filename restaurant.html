@@ -78,7 +78,7 @@
            ولا reload — **إلى الأبد**. أي تحديث يُنشر لا يصل كاشيراً واحداً.
            ⚠️ ارفعه مع كل تسليم. وهذه القاعدة مكتوبة في DEPLOY.md:162
            وكانت منتهكة في التسليم الذي كتبها. */
-        const CURRENT_APP_VERSION = "43.1.Cid";   /* [V33.6] الإقلاع آخر الوحدة (كانت الإحصاءات والطلبات تختفي) */   /* [V33.5] فحص تطبيق المطاعم — الطابور والمستمعات والتسجيل والأسعار */
+        const CURRENT_APP_VERSION = "43.2.Scan";   /* [V33.6] الإقلاع آخر الوحدة (كانت الإحصاءات والطلبات تختفي) */   /* [V33.5] فحص تطبيق المطاعم — الطابور والمستمعات والتسجيل والأسعار */
         const RES_VERSION_KEY = 'hut_res_app_version';
         /* ═══════════════════════════════════════════════════════════════════
            🔴 [إصلاح عاجل] كان: caches.delete() و r.update() **وعدان غير
@@ -542,6 +542,22 @@
             background: rgba(34, 197, 94, 0.2);
         }
 
+        /* 🖨️ [V34.12] نافذة فحص الطابعة — بنمط نافذة اللصق */
+        #posScanModal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(8px);
+            z-index: 10000; display: none; align-items: center; justify-content: center;
+        }
+        #posScanModal .paste-modal-content { max-width: 540px; text-align: right; }
+        #posScanModal ol { padding-right: 18px; margin: 0 0 10px; font-size: .8rem; font-weight: 700; color: #334155; line-height: 1.9; }
+        #posScanCmd, #posScanPaste { width: 100%; font-family: Consolas, monospace; font-size: .62rem; direction: ltr; text-align: left;
+            border: 1px solid #cbd5e1; border-radius: 10px; padding: 8px; background: #f8fafc; resize: vertical; }
+        .pos-scan-status { margin: 10px 0; padding: 10px 12px; border-radius: 12px; font-size: .8rem; font-weight: 800; background: #f1f5f9; color: #334155; }
+        .pos-scan-status.ok { background: #dcfce7; color: #166534; }
+        .pos-scan-status.err { background: #fee2e2; color: #991b1b; }
+        .pos-scan-pr { display: flex; justify-content: space-between; gap: 8px; padding: 7px 10px; border: 1px solid #e2e8f0; border-radius: 10px; margin-top: 6px; font-size: .78rem; }
+        .pos-scan-pr b { color: #0f172a; } .pos-scan-pr small { color: #64748b; }
+
         #pasteModal {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(8px);
@@ -976,6 +992,33 @@
     </div>
 </div>
 
+<!-- 🖨️ [V34.12] فحص طابعة الكاشير — المرحلة 0 من «جسر الطابعة».
+     الصفحة لا ترى طابعات ويندوز (قيدٌ أمنيّ في كلّ المتصفّحات)، فتنسخ نصّ فحصٍ للقراءة وحدها يلصقه الكاشير
+     في PowerShell. النصّ كاملاً لا «حمّل وشغّل» — فلا يحجبه مضادّ الفيروسات، ويرى الفنّي ما سيعمل. -->
+<div id="posScanModal">
+    <div class="paste-modal-content">
+        <h5 class="fw-black mb-2" style="color: var(--primary-blue-dark);">🖨️ فحص طابعة الكاشير</h5>
+        <p class="text-muted fw-bold mb-2" style="font-size: 0.75rem;">نتعرّف على طابعة هذا الكمبيوتر حتى تصل طلبات برنامج الكاشير إلى سفيان تلقائياً قريباً. الفحص <b>يقرأ فقط</b> ولا يغيّر أي إعداد.</p>
+        <p class="text-muted mb-2" style="font-size: 0.7rem; line-height: 1.7;"><b>ما يُرسَل لإدارة سفيان وحدها:</b> أسماء الطابعات وطريقة اتصالها · أسماء البرامج المفتوحة ومكانها (لا عناوين نوافذها، ولا ما بداخلها) · أسماء البرامج المثبّتة · إصدار ويندوز. <b>لا يُرسَل:</b> اسم الكمبيوتر · كلمات المرور · محتوى الملفات · المتصفّح أو واتساب.</p>
+        <ol>
+            <li>اضغط <b>«نسخ الأمر»</b> أدناه.</li>
+            <li>اضغط زرّ ويندوز ⊞ واكتب <b>PowerShell</b> ثم افتحه.</li>
+            <li>الصق الأمر (زرّ الفأرة الأيمن أو Ctrl+V) ثم اضغط <b>Enter</b>. إن سألك عن لصق عدّة أسطر اختر «الصق على أي حال».</li>
+            <li>عُد إلى هنا — تظهر النتيجة خلال ثوانٍ.</li>
+        </ol>
+        <textarea id="posScanCmd" rows="3" readonly></textarea>
+        <button class="btn fw-bold text-white w-100 mt-2" id="posScanCopy" style="border-radius: 12px; background: var(--primary-blue);" onclick="copyPosScan()">نسخ الأمر</button>
+        <div id="posScanStatus" class="pos-scan-status">⏳ جارٍ التحضير…</div>
+        <div id="posScanResult"></div>
+        <details class="mt-2" style="font-size: .75rem;">
+            <summary class="fw-bold" style="cursor: pointer; color: #475569;">ظهر في PowerShell أن النتيجة «نُسخت»؟ الصقها هنا</summary>
+            <textarea id="posScanPaste" rows="3" placeholder="الصق هنا النصّ الذي يبدأ بـ SUFSCAN1"></textarea>
+            <button class="btn btn-light fw-bold w-100 mt-1" style="border-radius: 12px;" onclick="sendPosScanPaste()">إرسال النتيجة</button>
+        </details>
+        <button class="btn btn-light fw-bold w-100 mt-3" style="border-radius: 12px;" onclick="closePosScan()">إغلاق</button>
+    </div>
+</div>
+
 <!-- 🎨 [V33.4] شاشة الدخول بزيّ تطبيق الكباتن (طلب المالك 29-09): خلفيةٌ بيضاء، شعار S،
      بطاقةٌ بإطارٍ رفيع، حقولٌ واضحة، زرٌّ ملكيّ. المعرّفات والأزرار كلّها كما كانت (البرمجة
      تعتمد عليها)، و**مواضع اسم الحوت 🐳 باقيةٌ بنصّها** — بطلب المالك صراحةً. -->
@@ -1156,6 +1199,10 @@
                  الواجهة أيضاً حين يطلب التطبيق أذوناتٍ حسّاسة (ميكروفون ·
                  كاميرا)، وغيابه سببُ رفضٍ متكرّر بصياغة «سياسة غير متاحة
                  للمستخدم». وrel=noopener شرطُ أمانٍ مع target=_blank. -->
+            <!-- 🖨️ [V34.12] فحص طابعة الكاشير — يظهر على كمبيوتر ويندوز وحده (لا في الهاتف ولا تطبيق أندرويد) -->
+            <button class="icon-btn-logout" id="posScanBtn" onclick="openPosScan()" title="فحص الطابعة" style="display:none">
+                <i data-lucide="printer" size="18"></i>
+            </button>
             <a class="icon-btn-logout" href="privacy.html" target="_blank"
                rel="noopener noreferrer" title="سياسة الخصوصية"
                style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center">
@@ -1393,7 +1440,7 @@
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
     // 🔧[خ٢٣] استيراد أدوات الاستعلام المفهرس — القراءة الكاملة صارت ممنوعة بالقواعد
-    import { getDatabase, ref, onValue, update, set, get, query, orderByChild, equalTo } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
+    import { getDatabase, ref, onValue, update, set, get, query, orderByChild, equalTo, limitToLast, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
     /* [V33.5] أُزيلت firebase-storage: كانت تُحمَّل (٤٦ ك.ب) وتُهيَّأ ولا تُستعمل — الوصل يرفعه الخادم (aiOrderIntake). */
     import { getAuth, signInWithCustomToken, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
     import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js";
@@ -2219,6 +2266,168 @@
             }
         }
     });
+
+    /* ═════════════════════════════════════════════════════════════════════
+       🖨️ [V34.12] فحص طابعة الكاشير — المرحلة 0 من «جسر الطابعة» (طلب المالك 05-10)
+       ─────────────────────────────────────────────────────────────────────
+       ① رمزٌ عشوائيّ لمرّةٍ واحدة ⇒ pos_survey_codes/<هاتف> (القواعد: المطعم لنفسه، ولا يقرؤه إلّا الخادم).
+       ② نصّ الفحص (pos-scan.ps1 — قراءةٌ فقط) يُجلب من الأصل نفسه ويُسبق بالهاتف والرمز ⇒ يُنسخ.
+       ③ الكاشير يلصقه في PowerShell ⇒ يرسل النتيجة إلى posSurvey ⇒ pos_survey/<هاتف>/<مفتاح>.
+       ④ اللوحة تستمع على pos_survey/<هاتف> وتعرض الطابعات حين تصل نتيجةٌ جديدة.
+       ⑤ احتياط: إن عجز PowerShell عن الإرسال نسخ «SUFSCAN1:…» فيُلصق هنا ويُكتب via:"paste".
+       لا يمسّ إنشاء الطلبات ولا الطوابير في شيء. */
+    const POS_SCAN_FILE = 'pos-scan.ps1';
+    const posScanIsWin = /Windows NT/i.test(navigator.userAgent) && !/Android|Mobile/i.test(navigator.userAgent);
+    let _posScanOff = null, _posScanKeys = null;
+    /* فكّ Base64 بلا atob الخام (الحارس يمنعه خارج decPass_ — أفسد كلمات مرورٍ عربيّة سابقاً) */
+    function posB64Bytes(s) {
+        const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+        const t = String(s || '').replace(/[^A-Za-z0-9+/]/g, ''), out = [];
+        let buf = 0, bits = 0;
+        for (let i = 0; i < t.length; i++) {
+            buf = ((buf << 6) | A.indexOf(t[i])) & 0xFFFFFF; bits += 6;
+            if (bits >= 8) { bits -= 8; out.push((buf >> bits) & 255); }
+        }
+        return new Uint8Array(out);
+    }
+    function posScanStatus(txt, cls) {
+        const el = document.getElementById('posScanStatus');
+        if (el) { el.textContent = txt; el.className = 'pos-scan-status' + (cls ? ' ' + cls : ''); }
+    }
+    function posScanCode() {
+        const a = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789', b = new Uint8Array(24);
+        crypto.getRandomValues(b);
+        return Array.from(b, x => a[x % a.length]).join('');
+    }
+    function posPortType(port, tcpNames) {
+        const p = String(port || '');
+        if (/^USB/i.test(p)) return 'USB';
+        if (/^COM\d/i.test(p)) return 'منفذ COM (بلوتوث غالباً)';
+        if (/^LPT/i.test(p)) return 'LPT';
+        if (/^WSD/i.test(p) || /^IP_/i.test(p) || /^\d{1,3}(\.\d{1,3}){3}/.test(p) || (tcpNames || []).indexOf(p) > -1) return 'شبكة';
+        if (/^(nul|FILE|PORTPROMPT|PDF|XPS|SHRFAX|OneNote)/i.test(p)) return 'افتراضية (ليست ورقية)';
+        return 'أخرى (' + p.slice(0, 20) + ')';
+    }
+    function posScanRender(jsonText) {
+        const box = document.getElementById('posScanResult');
+        if (!box) return;
+        box.textContent = '';
+        let d = null;
+        try { d = JSON.parse(jsonText); } catch (e) { d = null; }
+        if (!d) return;
+        const tcp = (Array.isArray(d.tcp_ports) ? d.tcp_ports : (d.tcp_ports ? [d.tcp_ports] : [])).map(x => x && x.name);
+        const prs = Array.isArray(d.printers) ? d.printers : (d.printers ? [d.printers] : []);
+        prs.forEach(p => {
+            const row = document.createElement('div'); row.className = 'pos-scan-pr';
+            const a = document.createElement('div');
+            const n = document.createElement('b'); n.textContent = (p.default ? '⭐ ' : '') + String(p.name || '؟');
+            const s = document.createElement('small'); s.textContent = ' · ' + String(p.driver || '');
+            a.appendChild(n); a.appendChild(s);
+            const t = document.createElement('span'); t.textContent = posPortType(p.port, tcp);
+            row.appendChild(a); row.appendChild(t); box.appendChild(row);
+        });
+        if (d.os && d.os.caption) {
+            const o = document.createElement('div'); o.className = 'text-muted mt-2'; o.style.fontSize = '.7rem';
+            o.textContent = String(d.os.caption) + ' · ' + String(d.os.build || '');
+            box.appendChild(o);
+        }
+    }
+    /* [مراجعة V34.12] الرمز يُعاد استعماله في الجلسة ما لم يُستعمل (وأحدث من ٥ ساعات): كان كلّ فتحٍ للنافذة
+       يكتب رمزاً جديداً فيُبطل الأمر المنسوخ قبلها، والزرّ يبقى «✅ نُسخ» ⇒ 403 والكاشير لا يعرف السبب. */
+    let _posScanSess = null;   /* {uid, code, t, used} */
+    function posScanListen(uid) {
+        if (_posScanOff) { try { _posScanOff(); } catch (_) {} _posScanOff = null; }
+        _posScanKeys = null;
+        /* آخر نتيجتين تكفيان (الخادم يُبقي ١٠، و"paste" تُعرض مباشرةً من مسارها) */
+        _posScanOff = onValue(query(ref(db, 'pos_survey/' + uid), limitToLast(3)), (snap) => {
+            const v = snap.val() || {};
+            const keys = Object.keys(v).filter(k => k !== 'paste');
+            if (_posScanKeys === null) { _posScanKeys = new Set(keys); return; }   /* ما سبق فتح النافذة لا يُحسب */
+            const fresh = keys.filter(k => !_posScanKeys.has(k));
+            if (!fresh.length) return;
+            const last = v[fresh[fresh.length - 1]] || {};
+            fresh.forEach(k => _posScanKeys.add(k));
+            if (_posScanSess) _posScanSess.used = true;   /* الرمز استُهلك عند الخادم ⇒ الفتح التالي برمزٍ جديد */
+            const n = (() => { try { const d = JSON.parse(last.data); return Array.isArray(d.printers) ? d.printers.length : (d.printers ? 1 : 0); } catch (_) { return 0; } })();
+            posScanStatus('✅ وصل الفحص إلى سفيان — شكراً. وُجدت ' + n + ' طابعة. يمكنك إغلاق PowerShell.', 'ok');
+            posScanRender(last.data);
+            resTrack('pos_scan_done', { via: String(last.via || ''), n: n });
+        }, () => posScanStatus('تعذّر الاستماع للنتيجة — أعد فتح النافذة.', 'err'));
+    }
+    window.openPosScan = async function () {
+        const m = document.getElementById('posScanModal');
+        if (!m) return;
+        m.style.display = 'flex';
+        const open = () => m.style.display === 'flex';   /* أُغلقت أثناء التحضير ⇒ لا نكمل ولا نُركّب مستمعاً */
+        document.getElementById('posScanResult').textContent = '';
+        document.getElementById('posScanCmd').value = '';
+        const pasteBox = document.getElementById('posScanPaste'); if (pasteBox) pasteBox.value = '';
+        const cb = document.getElementById('posScanCopy'); if (cb) cb.textContent = 'نسخ الأمر';
+        posScanStatus('⏳ جارٍ التحضير…');
+        if (!posScanIsWin) { posScanStatus('هذا الفحص يعمل على كمبيوتر ويندوز الذي يطبع الوصولات — افتح لوحة سفيان عليه.', 'err'); return; }
+        if (!(await requireCloudAuth()) || !auth.currentUser) { posScanStatus('تعذّر الاتصال بسفيان — أعد تسجيل الدخول ثم جرّب.', 'err'); return; }
+        if (!open()) return;
+        const uid = String(auth.currentUser.uid || '');
+        if (!/^\d{7,15}$/.test(uid)) { posScanStatus('حساب غير صالح للفحص.', 'err'); return; }
+        let script = '';
+        try {
+            const r = await fetch(POS_SCAN_FILE + '?v=' + Date.now(), { cache: 'no-store' });
+            if (!r.ok) throw new Error('http_' + r.status);
+            script = await r.text();
+        } catch (e) { posScanStatus('تعذّر تحميل أداة الفحص — تأكّد من الإنترنت ثم أعد المحاولة.', 'err'); return; }
+        if (!open()) return;
+        if (script.indexOf('Sufyan - cashier printer scan') < 0) { posScanStatus('أداة الفحص غير صالحة — راجع الإدارة.', 'err'); return; }
+        const reuse = _posScanSess && _posScanSess.uid === uid && !_posScanSess.used && (Date.now() - _posScanSess.t) < 5 * 3600000;
+        const code = reuse ? _posScanSess.code : posScanCode();
+        if (!reuse) {
+            /* وقت الرمز بساعة الخادم (القواعد: == now) — ساعة كمبيوتر الكاشير كثيراً ما تكون خاطئة */
+            try { await set(ref(db, 'pos_survey_codes/' + uid), { code: code, at: serverTimestamp() }); }
+            catch (e) { posScanStatus('تعذّر تجهيز الفحص — أعد المحاولة.', 'err'); return; }
+            _posScanSess = { uid: uid, code: code, t: Date.now(), used: false };
+        }
+        if (!open()) return;
+        /* سطرٌ فارغ في الآخر: في PowerShell لا تُنفَّذ الكتلة المتعدّدة الأسطر إلا بعد سطرٍ فارغ يليها */
+        document.getElementById('posScanCmd').value = "$sufPhone = '" + uid + "'\r\n$sufCode = '" + code + "'\r\n" + script.replace(/\r?\n/g, '\r\n').replace(/(\r\n)*$/, '') + "\r\n\r\n";
+        posScanListen(uid);
+        posScanStatus('⏳ بانتظار نتيجة الفحص من PowerShell… (الرمز صالح ست ساعات ولمرّةٍ واحدة)');
+        resTrack('pos_scan_open', { reuse: !!reuse });
+    };
+    window.copyPosScan = async function () {
+        const ta = document.getElementById('posScanCmd');
+        if (!ta || !ta.value) return;
+        let ok = false;
+        try { await navigator.clipboard.writeText(ta.value); ok = true; }
+        catch (e) { try { ta.focus(); ta.select(); ok = document.execCommand('copy'); } catch (_) { ok = false; } }
+        const b = document.getElementById('posScanCopy');
+        if (b) b.textContent = ok ? '✅ نُسخ — الصقه في PowerShell' : 'حدّد النصّ أعلاه وانسخه يدوياً (Ctrl+C)';
+    };
+    window.sendPosScanPaste = async function () {
+        const raw = String((document.getElementById('posScanPaste') || {}).value || '').trim();
+        const m = raw.match(/^SUFSCAN1:([A-Za-z0-9+/=\s]+)$/);
+        if (!m) { posScanStatus('النصّ الملصوق غير صحيح — يجب أن يبدأ بـ SUFSCAN1', 'err'); return; }
+        let json = '';
+        try {
+            json = new TextDecoder('utf-8').decode(posB64Bytes(m[1]));
+            const d = JSON.parse(json);
+            if (!d || d.v !== 1) throw new Error('v');
+        } catch (e) { posScanStatus('تعذّرت قراءة النصّ الملصوق — انسخه كاملاً من PowerShell.', 'err'); return; }
+        if (json.length > 100000) { posScanStatus('النتيجة أكبر من المسموح — راجع الإدارة.', 'err'); return; }
+        if (!(await requireCloudAuth()) || !auth.currentUser) { posScanStatus('تعذّر الاتصال بسفيان — أعد تسجيل الدخول.', 'err'); return; }
+        const uid = String(auth.currentUser.uid || '');
+        /* خانةٌ واحدة "paste" تُستبدل (القواعد) — والعرض هنا مباشرةً لا عبر المستمع */
+        try { await set(ref(db, 'pos_survey/' + uid + '/paste'), { at: serverTimestamp(), via: 'paste', data: json }); }
+        catch (e) { posScanStatus('تعذّر إرسال النتيجة — أعد المحاولة.', 'err'); return; }
+        let n = 0; try { const d = JSON.parse(json); n = Array.isArray(d.printers) ? d.printers.length : (d.printers ? 1 : 0); } catch (_) {}
+        posScanStatus('✅ وصل الفحص إلى سفيان — شكراً. وُجدت ' + n + ' طابعة.', 'ok');
+        posScanRender(json);
+        resTrack('pos_scan_done', { via: 'paste', n: n });
+    };
+    window.closePosScan = function () {
+        const m = document.getElementById('posScanModal');
+        if (m) m.style.display = 'none';
+        if (_posScanOff) { try { _posScanOff(); } catch (_) {} _posScanOff = null; }
+    };
+    try { if (posScanIsWin) { const b = document.getElementById('posScanBtn'); if (b) b.style.display = 'inline-flex'; } } catch (_) {}
 
     window.switchCommissionType = function(type) {
         currentCommissionType = type;
