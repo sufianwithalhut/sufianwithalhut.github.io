@@ -1097,6 +1097,7 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
     <button class="nb" id="nb-aiops" onclick="goTab('aiops',this)"><div class="ni">⚡</div> مركز القيادة</button>
     <button class="nb" id="nb-audit" onclick="goTab('audit',this)"><div class="ni">📋</div> سجل التدقيق</button>
     <button class="nb" id="nb-clearing" onclick="goTab('clearing',this)"><div class="ni">🧾</div> طلبات التصفير<span id="nbClrDot" style="display:none;width:7px;height:7px;border-radius:50%;background:var(--rose);margin-right:auto;flex-shrink:0"></span></button>
+    <button class="nb" id="nb-insurance" onclick="goTab('insurance',this)"><div class="ni">🛡</div> التأمينات<span id="nbInsDot" style="display:none;width:7px;height:7px;border-radius:50%;background:var(--rose);margin-right:auto;flex-shrink:0"></span></button>
     <div class="sidebar-foot"><button class="sidebar-out" onclick="doLogout()">🚪 تسجيل الخروج</button></div>
   </aside>
   <main class="main">
@@ -1283,6 +1284,32 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
     </div>
 
     
+    <div id="pg-insurance" class="pg tab-p">
+      <div class="pg-ttl">التأمينات</div>
+      <div class="arch-alert" style="margin-bottom:12px" id="insHead">🛡️ جاري التحميل…</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        <button class="abt" id="insTogBtn" onclick="insToggle()">…</button>
+        <button class="abt" style="background:var(--base2);color:var(--ink);box-shadow:none;border:1px solid var(--line2)" onclick="insRecalc()">🔄 إعادة الحساب الآن</button>
+      </div>
+      <div class="arch-kpi" style="margin-bottom:12px">
+        <div class="ak akr"><div class="ak-ic r">🔴</div><div class="ak-n" id="insKBlocked">0</div><div class="ak-l">متأخّرون (موقوفون)</div></div>
+        <div class="ak aka"><div class="ak-ic a">⚠️</div><div class="ak-n" id="insKToday">0</div><div class="ak-l">قسطهم اليوم</div></div>
+        <div class="ak akg"><div class="ak-ic g">✅</div><div class="ak-n" id="insKOk">0</div><div class="ak-l">دفعوا هذا الأسبوع</div></div>
+        <div class="ak akb"><div class="ak-ic b">💰</div><div class="ak-n" id="insKSum">0</div><div class="ak-l">المجموع المستلم (د.ع)</div></div>
+      </div>
+      <div class="srch-w"><span class="si">🔍</span><input type="text" id="insSch" class="srch" placeholder="بحث بالاسم أو الهاتف..." oninput="insRender()"></div>
+      <div class="fbar" id="insFbar">
+        <button class="fp on" onclick="insSetF('due',this)">المطلوبون الآن</button>
+        <button class="fp" onclick="insSetF('today',this)">وجبة اليوم</button>
+        <button class="fp fr" onclick="insSetF('blocked',this)">متأخّرون</button>
+        <button class="fp fg" onclick="insSetF('ok',this)">دفعوا</button>
+        <button class="fp" onclick="insSetF('notice',this)">أبلغوا بالترك</button>
+        <button class="fp" onclick="insSetF('all',this)">الكل</button>
+      </div>
+      <div class="eg" id="insList"></div>
+    </div>
+
+    
     <div id="pg-clearing" class="pg tab-p">
       <div class="pg-ttl">طلبات التصفير</div>
       <div class="arch-alert" style="margin-bottom:12px">
@@ -1308,6 +1335,7 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
     <div class="bni" id="bn-staff" onclick="goTab('staff',this)"><div class="bni-ic">🧑‍💼</div><span class="bni-lb">الموظفين</span><div class="bni-dot" id="bnStaffDot"></div></div>
     <div class="bni" id="bn-aiops" onclick="goTab('aiops',this)"><div class="bni-ic">⚡</div><span class="bni-lb">القيادة</span></div>
     <div class="bni" id="bn-clearing" onclick="goTab('clearing',this)"><div class="bni-ic">🧾</div><span class="bni-lb">التصفير</span><div class="bni-dot" id="bnClrDot"></div></div>
+    <div class="bni" id="bn-insurance" onclick="goTab('insurance',this)"><div class="bni-ic">🛡</div><span class="bni-lb">التأمين</span></div>
   </nav>
 </div>
 <script>
@@ -1373,7 +1401,8 @@ const TITLES = {
  staff: "إدارة الموظفين",
  aiops: "مركز القيادة",
  audit: "سجل التدقيق",
- clearing: "طلبات التصفير"
+ clearing: "طلبات التصفير",
+ insurance: "التأمينات"
 };
 
 let MP = "", gD = null;
@@ -4036,6 +4065,284 @@ window.svEdit = async function() {
  }
 };
 
+const INS_DAYS_AR = [ "السبت", "الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس" ];
+
+let insCfg = null, insAccs = {}, insNotices = {}, insLocs = {}, insF = "due", insBound = false;
+
+function insStateA(cfgRaw, acc, nowMs) {
+ const dk = ms => new Date(Number(ms) + 3 * 36e5).toISOString().slice(0, 10);
+ const add = (k, n) => new Date(Date.parse(k + "T00:00:00Z") + n * 864e5).toISOString().slice(0, 10);
+ const ws = k => add(k, -((new Date(k + "T00:00:00Z").getUTCDay() + 1) % 7));
+ const c = Object.assign({
+  enabled: false,
+  target: 1e5,
+  weekly: 1e4,
+  start: "2026-10-10",
+  refund_days: 30,
+  notice_days: 15
+ }, cfgRaw || {});
+ c.enabled = c.enabled === true;
+ c.target = Math.max(0, Math.round(Number(c.target) || 0));
+ c.weekly = Math.max(1, Math.round(Number(c.weekly) || 1));
+ c.start = /^\d{4}-\d{2}-\d{2}$/.test(String(c.start)) ? ws(String(c.start)) : ws("2026-10-10");
+ if (!c.enabled) return {
+  state: "off"
+ };
+ if (!acc) return {
+  state: "none"
+ };
+ let paid = 0;
+ Object.values(acc && acc.payments || {}).forEach(p => {
+  const a = Number(p && p.amount);
+  if (isFinite(a) && a > 0) paid += Math.round(a);
+ });
+ const target = c.target, base = {
+  paid: paid,
+  target: target,
+  weekly: c.weekly,
+  day: Math.min(5, Math.max(0, Math.round(Number(acc.day) || 0)))
+ };
+ if (acc.exempt === true) return Object.assign(base, {
+  state: "exempt"
+ });
+ if (acc.left_at) return Object.assign(base, {
+  state: "left"
+ });
+ if (paid >= target) return Object.assign(base, {
+  state: "complete"
+ });
+ const today = dk(nowMs);
+ let startW = c.start;
+ if (/^\d{4}-\d{2}-\d{2}$/.test(String(acc.start || "")) && String(acc.start) > startW) startW = ws(String(acc.start));
+ const curW = ws(today);
+ if (startW > curW) return Object.assign(base, {
+  state: "not_started",
+  starts: add(startW, base.day)
+ });
+ let weeksPast = 0;
+ for (let w = startW; w <= curW; w = add(w, 7)) {
+  if (add(w, base.day) < today) weeksPast++;
+ }
+ const expectedPast = Math.min(target, weeksPast * c.weekly);
+ const dueThis = add(curW, base.day);
+ const expectedNow = Math.min(target, (weeksPast + (dueThis >= today ? 1 : 0)) * c.weekly);
+ base.expected = expectedPast;
+ base.due_date = dueThis;
+ if (paid < expectedPast) return Object.assign(base, {
+  state: "blocked",
+  owed: expectedPast - paid
+ });
+ if (paid < expectedNow) return Object.assign(base, {
+  state: dueThis === today ? "due_today" : "upcoming",
+  owed: expectedNow - paid
+ });
+ return Object.assign(base, {
+  state: "ok"
+ });
+}
+
+const insFmt = n => Number(n || 0).toLocaleString("en-US");
+
+const insDK = () => new Date(Date.now() + 3 * 36e5).toISOString().slice(0, 10);
+
+function insName(p) {
+ try {
+  if (gD && gD.drivers) {
+   const r = gD.drivers.find(d => nP(d[D.PHONE]) === p);
+   if (r && r[D.NAME]) return String(r[D.NAME]);
+  }
+ } catch (_) {}
+ return insLocs[p] && insLocs[p].name || "";
+}
+
+window.insStart = function() {
+ if (insBound) {
+  insRender();
+  return;
+ }
+ insBound = true;
+ listen(() => db.ref("insurance/config"), s => {
+  insCfg = s.val();
+  insRender();
+ });
+ listen(() => db.ref("insurance/accounts"), s => {
+  insAccs = s.val() || {};
+  insRender();
+ });
+ listen(() => db.ref("insurance/notices"), s => {
+  insNotices = s.val() || {};
+  insRender();
+ });
+ db.ref("drivers_locations").once("value").then(s => {
+  insLocs = s.val() || {};
+  insRender();
+ }).catch(e => console.warn("insLocs:", e && e.message));
+};
+
+window.insSetF = function(f, btn) {
+ insF = f;
+ document.querySelectorAll("#insFbar .fp").forEach(b => b.classList.toggle("on", b === btn));
+ insRender();
+};
+
+function insRender() {
+ const el = document.getElementById("insList");
+ if (!el) return;
+ const cfg = insCfg || {}, on = cfg.enabled === true, now = Date.now(), todayIdx = (new Date(now + 3 * 36e5).getUTCDay() + 1) % 7;
+ const tb = document.getElementById("insTogBtn");
+ if (tb) {
+  tb.textContent = on ? "⏸ إيقاف نظام التأمينات" : "▶ تفعيل نظام التأمينات";
+  tb.style.background = on ? "var(--rose)" : "var(--jade)";
+ }
+ const start = cfg.start || "2026-10-10";
+ document.getElementById("insHead").innerHTML = on ? `🛡️ <b>مفعّل</b> — ${insFmt(cfg.target || 1e5)} د.ع على كلّ كابتن، ${insFmt(cfg.weekly || 1e4)} كلّ أسبوع في يومه (السبت…الخميس). بدء التحصيل: <b>${esc(start)}</b>. اليوم: <b>${todayIdx < 6 ? esc(INS_DAYS_AR[todayIdx]) : "الجمعة (بلا تحصيل)"}</b>. الكابتن يُنذر في يومه، ويتوقّف عن استلام الطلبات من اليوم التالي حتى تؤكّد الاستلام هنا — ثم يعود تلقائياً خلال دقائق.` : `🛡️ <b>غير مفعّل</b> — حين تفعّله يبدأ التحصيل يوم <b>${esc(start)}</b>، ويُوزَّع الكباتن النشطون على ٦ وجبات (السبت…الخميس) تلقائياً.`;
+ const q = (document.getElementById("insSch") || {}).value || "";
+ const rows = [];
+ let kB = 0, kT = 0, kO = 0, kS = 0;
+ Object.keys(insAccs).forEach(p => {
+  if (!/^7\d{9}$/.test(p)) return;
+  const a = insAccs[p] || {}, s = insStateA(cfg, a, now), name = insName(p), notice = a.notice_at || (insNotices[p] && insNotices[p].at ? new Date(Number(insNotices[p].at)).toISOString() : null);
+  kS += s.paid || 0;
+  if (s.state === "blocked") kB++; else if (s.state === "due_today") kT++; else if (s.state === "ok" || s.state === "complete") kO++;
+  if (q && !(name.includes(q) || p.includes(q.replace(/^0/, "")))) return;
+  const f = insF;
+  if (f === "due" && ![ "blocked", "due_today" ].includes(s.state)) return;
+  if (f === "today" && s.day !== todayIdx) return;
+  if (f === "blocked" && s.state !== "blocked") return;
+  if (f === "ok" && ![ "ok", "complete" ].includes(s.state)) return;
+  if (f === "notice" && !notice && !a.left_at) return;
+  rows.push({
+   p: p,
+   a: a,
+   s: s,
+   name: name,
+   notice: notice
+  });
+ });
+ [ [ "insKBlocked", kB ], [ "insKToday", kT ], [ "insKOk", kO ], [ "insKSum", insFmt(kS) ] ].forEach(([id, v]) => {
+  const e = document.getElementById(id);
+  if (e) e.textContent = v;
+ });
+ const dot = document.getElementById("nbInsDot");
+ if (dot) dot.style.display = kB ? "" : "none";
+ const ST = {
+  blocked: [ "🔴 متأخّر", "eb" ],
+  due_today: [ "⚠️ قسطه اليوم", "ei" ],
+  upcoming: [ "🗓 قادم", "ep" ],
+  ok: [ "✅ دفع هذا الأسبوع", "ea" ],
+  complete: [ "🎉 مكتمل", "ea" ],
+  exempt: [ "معفى", "ep" ],
+  left: [ "ترك العمل", "ep" ],
+  not_started: [ "لم يبدأ", "ep" ],
+  off: [ "—", "ep" ]
+ };
+ rows.sort((x, y) => ([ "blocked", "due_today" ].indexOf(x.s.state) + 1 || 9) - ([ "blocked", "due_today" ].indexOf(y.s.state) + 1 || 9) || (y.s.owed || 0) - (x.s.owed || 0));
+ el.innerHTML = rows.length ? rows.map(({p: p, a: a, s: s, name: name, notice: notice}) => {
+  const st = ST[s.state] || [ s.state, "ep" ], pct = s.target ? Math.min(100, Math.round((s.paid || 0) * 100 / s.target)) : 0;
+  const refundDue = a.left_at ? new Date(Date.parse(a.left_at) + (Number(cfg.refund_days) || 30) * 864e5).toISOString().slice(0, 10) : null;
+  const days = INS_DAYS_AR.map((d, i) => `<option value="${i}" ${i === s.day ? "selected" : ""}>${d}</option>`).join("");
+  return `<div class="ec ${st[1]}">\n      <div class="ec-top"><div><div class="ec-n">${esc(name || "كابتن")}</div><div class="ec-ph">0${esc(p)}</div></div><div style="font-size:.72rem;font-weight:900">${st[0]}</div></div>\n      <div style="height:8px;background:var(--base2);border-radius:9px;overflow:hidden;margin-bottom:6px"><div style="height:100%;width:${pct}%;background:var(--jade)"></div></div>\n      <div style="font-size:.74rem;font-weight:800;margin-bottom:6px">${insFmt(s.paid)} / ${insFmt(s.target)} د.ع ${s.owed ? `· <span style="color:var(--rose)">المطلوب ${insFmt(s.owed)}</span>` : ""}</div>\n      <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;font-size:.72rem;font-weight:800">يومه: <select onchange="insSetDay('${p}',this.value)" style="font:inherit;padding:3px 6px;border-radius:7px;border:1px solid var(--line2)">${days}</select></div>\n      ${notice ? `<div style="font-size:.72rem;font-weight:800;color:var(--amber);margin-bottom:6px">📝 أبلغ بالترك: ${esc(String(notice).slice(0, 10))}</div>` : ""}\n      ${a.left_at ? `<div style="font-size:.72rem;font-weight:800;margin-bottom:6px">🚪 ترك: ${esc(String(a.left_at).slice(0, 10))} · الإعادة مستحقّة: <b>${esc(refundDue)}</b>${a.refunded_at ? ` · ✅ أُعيدت ${esc(String(a.refunded_at).slice(0, 10))}` : ""}</div>` : ""}\n      <div style="display:flex;gap:6px;flex-wrap:wrap">\n        ${!a.left_at && s.state !== "complete" && s.state !== "exempt" ? `<button class="abt" style="background:var(--jade)" onclick="insPay('${p}')">✅ استلام ${insFmt(s.weekly || 1e4)}</button>` : ""}\n        <button class="abt" style="background:var(--base2);color:var(--ink);box-shadow:none;border:1px solid var(--line2)" onclick="insHist('${p}')">📋 السجلّ</button>\n        <button class="abt" style="background:var(--base2);color:var(--ink);box-shadow:none;border:1px solid var(--line2)" onclick="insMore('${p}')">⋯</button>\n      </div></div>`;
+ }).join("") : `<div class="empty-s" style="grid-column:1/-1">لا كباتن في هذا التصنيف.</div>`;
+}
+
+window.insToggle = async function() {
+ const on = (insCfg || {}).enabled === true;
+ if (!confirm(on ? "إيقاف نظام التأمينات؟ يُرفع المنع عن كلّ الكباتن فوراً." : "تفعيل نظام التأمينات؟\n١٠٠ ألف على كلّ كابتن، ١٠ آلاف كلّ أسبوع في يومه، والبدء " + ((insCfg || {}).start || "2026-10-10") + ".")) return;
+ try {
+  const base = {
+   target: 1e5,
+   weekly: 1e4,
+   start: "2026-10-10",
+   refund_days: 30,
+   notice_days: 15
+  };
+  await db.ref("insurance/config").update(Object.assign({}, base, insCfg || {}, {
+   enabled: !on
+  }));
+  toast(on ? "أُوقف نظام التأمينات" : "فُعّل نظام التأمينات — جاري توزيع الكباتن على الوجبات");
+ } catch (e) {
+  toast("تعذّر الحفظ: " + esc(e.message || e), "e");
+ }
+};
+
+window.insRecalc = async function() {
+ try {
+  await db.ref("insurance/config").update({
+   recalc_at: firebase.database.ServerValue.TIMESTAMP
+  });
+  toast("أُعيد الحساب");
+ } catch (e) {
+  toast("تعذّر: " + esc(e.message || e), "e");
+ }
+};
+
+window.insPay = async function(p) {
+ const a = insAccs[p] || {}, s = insStateA(insCfg, a, Date.now()), def = String(s.weekly || 1e4);
+ const v = prompt("المبلغ المستلم من " + (insName(p) || "0" + p) + " (د.ع):", def);
+ if (v == null) return;
+ const amt = Math.round(Number(String(v).replace(/[^\d]/g, "")));
+ if (!(amt > 0 && amt <= 1e6)) {
+  toast("مبلغ غير صالح", "e");
+  return;
+ }
+ try {
+  const add = (k, n) => new Date(Date.parse(k + "T00:00:00Z") + n * 864e5).toISOString().slice(0, 10);
+  const t = insDK(), week = add(t, -((new Date(t + "T00:00:00Z").getUTCDay() + 1) % 7));
+  await db.ref("insurance/accounts/" + p + "/payments").push({
+   amount: amt,
+   at: firebase.database.ServerValue.TIMESTAMP,
+   week: week,
+   by: "admin"
+  });
+  toast("سُجّل استلام " + insFmt(amt) + " د.ع — يعود الكابتن للعمل تلقائياً إن كان موقوفاً");
+ } catch (e) {
+  toast("تعذّر التسجيل: " + esc(e.message || e), "e");
+ }
+};
+
+window.insSetDay = async function(p, d) {
+ try {
+  await db.ref("insurance/accounts/" + p).update({
+   day: Number(d)
+  });
+  toast("تغيّر يوم القسط إلى " + INS_DAYS_AR[Number(d)]);
+ } catch (e) {
+  toast("تعذّر: " + esc(e.message || e), "e");
+ }
+};
+
+window.insHist = function(p) {
+ const a = insAccs[p] || {}, pays = Object.entries(a.payments || {}).sort((x, y) => Number(y[1].at || 0) - Number(x[1].at || 0));
+ const txt = pays.length ? pays.map(([k, v], i) => i + 1 + ") " + insFmt(v.amount) + " د.ع — " + new Date(Number(v.at) + 3 * 36e5).toISOString().slice(0, 16).replace("T", " ")).join("\n") : "لا دفعات.";
+ const del = prompt("سجلّ دفعات " + (insName(p) || "0" + p) + ":\n" + txt + "\n\nلحذف دفعة سُجّلت بالخطأ اكتب رقمها، أو اضغط إلغاء:", "");
+ if (!del) return;
+ const i = Number(del) - 1;
+ if (!(i >= 0 && i < pays.length)) return;
+ if (!confirm("حذف الدفعة " + del + " (" + insFmt(pays[i][1].amount) + " د.ع)؟")) return;
+ db.ref("insurance/accounts/" + p + "/payments/" + pays[i][0]).remove().then(() => toast("حُذفت الدفعة")).catch(e => toast("تعذّر: " + esc(e.message || e), "e"));
+};
+
+window.insMore = async function(p) {
+ const a = insAccs[p] || {};
+ const c = prompt("اختر لـ " + (insName(p) || "0" + p) + ":\n1) " + (a.exempt ? "إلغاء الإعفاء" : "إعفاء من التأمين") + "\n2) " + (a.left_at ? "إلغاء تسجيل الترك" : "تسجيل ترك العمل اليوم") + "\n3) تسجيل إعادة التأمينات له (تمت الإعادة)", "");
+ if (!c) return;
+ try {
+  if (c.trim() === "1") await db.ref("insurance/accounts/" + p).update({
+   exempt: a.exempt ? null : true
+  }); else if (c.trim() === "2") await db.ref("insurance/accounts/" + p).update({
+   left_at: a.left_at ? null : (new Date).toISOString()
+  }); else if (c.trim() === "3") {
+   if (!confirm("تأكيد إعادة " + insFmt(insStateA(insCfg, a, Date.now()).paid || 0) + " د.ع للكابتن؟")) return;
+   await db.ref("insurance/accounts/" + p).update({
+    refunded_at: (new Date).toISOString()
+   });
+  } else return;
+  toast("تمّ");
+ } catch (e) {
+  toast("تعذّر: " + esc(e.message || e), "e");
+ }
+};
+
 window.goTab = function(name) {
  document.querySelectorAll(".pg").forEach(t => t.classList.remove("on"));
  const panel = document.getElementById("pg-" + name);
@@ -4062,6 +4369,7 @@ window.goTab = function(name) {
     }
     if (name === "restaurants" && gD) filtEnt("RES");
     if (name === "drivers" && gD) filtEnt("DRV");
+    if (name === "insurance") insStart();
     if (name === "staff") {
      loadStaffRoster();
      renderStaffOnline();

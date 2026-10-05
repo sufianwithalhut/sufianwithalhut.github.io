@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://*.firebasedatabase.app https://*.firebaseio.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app https://www.gstatic.com; object-src 'none'; base-uri 'none'; form-action 'self';">
 
 <script>
-const CURRENT_APP_VERSION = "32.13-CloudActions";
+const CURRENT_APP_VERSION = "32.14-Insurance";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -797,6 +797,24 @@ window.__SND = {
   <div class="sheet">
     <div class="grab"></div>
     <div class="sheet-t">⚙️ الإعدادات</div>
+
+    
+    <div class="set" id="insCard" style="display:none">
+      <div class="set-l">🛡️ التأمين</div>
+      <div class="set-h" id="insSub">—</div>
+      <div style="height:10px;background:var(--bg2);border-radius:var(--r-pill);overflow:hidden;margin:10px 0 4px"><div id="insBar" style="height:100%;width:0;background:var(--ok);transition:width .4s var(--ease)"></div></div>
+      <div class="sg">
+        <div class="sb"><div class="sb-v" id="insPaid" style="color:var(--ok-dp)">0</div><div class="sb-l">المدفوع (د.ع)</div></div>
+        <div class="sb"><div class="sb-v" id="insLeft">0</div><div class="sb-l">المتبقي (د.ع)</div></div>
+        <div class="sb"><div class="sb-v" id="insCnt">0</div><div class="sb-l">الدفعات</div></div>
+        <div class="sb"><div class="sb-v" id="insDay">—</div><div class="sb-l">يوم قسطك</div></div>
+      </div>
+      <div class="set-h" id="insState" style="font-weight:800;margin-top:10px"></div>
+      <details style="margin-top:8px"><summary class="set-h" style="cursor:pointer;font-weight:700">📋 سجلّ الدفعات</summary><div id="insHist" class="set-h" style="line-height:1.9"></div></details>
+      <div class="set-h" id="insPolicy" style="margin-top:8px;line-height:1.8"></div>
+      <button class="stp-b" id="insNoticeBtn" style="width:100%;margin-top:10px;font-size:.85rem" onclick="insNotice()">📝 إبلاغ الإدارة بترك العمل</button>
+      <div class="set-h" id="insNoticeTxt" style="display:none;margin-top:8px;font-weight:700;color:var(--warn-dp)"></div>
+    </div>
 
     <div class="set">
       <div class="set-l">🎯 الهدف اليومي</div>
@@ -3608,7 +3626,8 @@ const EFF_TXT = {
  shift_over: "⏰ غير مرئيّ: انتهى شفتك",
  off_by_admin: "⛔ أوقفك المدير",
  off_by_break: "☕ في استراحة (من الإشعار)",
- off_by_captain: "⚪ في استراحة"
+ off_by_captain: "⚪ في استراحة",
+ insurance_due: "🛡️ غير مرئيّ: قسط التأمين متأخّر — سلّمه للإدارة وترجع تلقائياً"
 };
 
 function setDesired(online, by) {
@@ -3707,10 +3726,204 @@ function paintToggle(on) {
 
 let _myStatusBound = false;
 
+const INS_DAYS_AR = [ "السبت", "الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس" ];
+
+let _insCfg = null, _insAcc = null, _insNotice = null, _insBound = false;
+
+function insFmt(n) {
+ try {
+  return Number(n || 0).toLocaleString("en-US");
+ } catch (e) {
+  return String(n);
+ }
+}
+
+function insState(cfgRaw, acc, nowMs) {
+ const dk = ms => new Date(Number(ms) + 3 * 36e5).toISOString().slice(0, 10);
+ const add = (k, n) => new Date(Date.parse(k + "T00:00:00Z") + n * 864e5).toISOString().slice(0, 10);
+ const ws = k => add(k, -((new Date(k + "T00:00:00Z").getUTCDay() + 1) % 7));
+ const c = Object.assign({
+  enabled: false,
+  target: 1e5,
+  weekly: 1e4,
+  start: "2026-10-10",
+  refund_days: 30,
+  notice_days: 15
+ }, cfgRaw || {});
+ c.enabled = c.enabled === true;
+ c.target = Math.max(0, Math.round(Number(c.target) || 0));
+ c.weekly = Math.max(1, Math.round(Number(c.weekly) || 1));
+ c.start = /^\d{4}-\d{2}-\d{2}$/.test(String(c.start)) ? ws(String(c.start)) : ws("2026-10-10");
+ if (!c.enabled) return {
+  state: "off"
+ };
+ if (!acc) return {
+  state: "none"
+ };
+ let paid = 0;
+ Object.values(acc && acc.payments || {}).forEach(p => {
+  const a = Number(p && p.amount);
+  if (isFinite(a) && a > 0) paid += Math.round(a);
+ });
+ const target = c.target, base = {
+  paid: paid,
+  target: target,
+  weekly: c.weekly,
+  day: Math.min(5, Math.max(0, Math.round(Number(acc.day) || 0)))
+ };
+ if (acc.exempt === true) return Object.assign(base, {
+  state: "exempt"
+ });
+ if (acc.left_at) return Object.assign(base, {
+  state: "left"
+ });
+ if (paid >= target) return Object.assign(base, {
+  state: "complete"
+ });
+ const today = dk(nowMs);
+ let startW = c.start;
+ if (/^\d{4}-\d{2}-\d{2}$/.test(String(acc.start || "")) && String(acc.start) > startW) startW = ws(String(acc.start));
+ const curW = ws(today);
+ if (startW > curW) return Object.assign(base, {
+  state: "not_started",
+  starts: add(startW, base.day)
+ });
+ let weeksPast = 0;
+ for (let w = startW; w <= curW; w = add(w, 7)) {
+  if (add(w, base.day) < today) weeksPast++;
+ }
+ const expectedPast = Math.min(target, weeksPast * c.weekly);
+ const dueThis = add(curW, base.day);
+ const expectedNow = Math.min(target, (weeksPast + (dueThis >= today ? 1 : 0)) * c.weekly);
+ base.expected = expectedPast;
+ base.due_date = dueThis;
+ if (paid < expectedPast) return Object.assign(base, {
+  state: "blocked",
+  owed: expectedPast - paid
+ });
+ if (paid < expectedNow) return Object.assign(base, {
+  state: dueThis === today ? "due_today" : "upcoming",
+  owed: expectedNow - paid
+ });
+ return Object.assign(base, {
+  state: "ok"
+ });
+}
+
+function insDateAr(k) {
+ try {
+  const d = new Date(k + "T00:00:00Z");
+  return [ "الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت" ][d.getUTCDay()] + " " + k.slice(8, 10) + "/" + k.slice(5, 7);
+ } catch (e) {
+  return k;
+ }
+}
+
+function paintInsurance() {
+ try {
+  const card = document.getElementById("insCard");
+  if (!card) return;
+  const cfg = _insCfg || {}, s = insState(cfg, _insAcc, srvNow());
+  if (s.state === "off" || s.state === "none") {
+   card.style.display = "none";
+   return;
+  }
+  card.style.display = "";
+  const target = s.target || 0, paid = s.paid || 0, pct = target ? Math.min(100, Math.round(paid * 100 / target)) : 0;
+  document.getElementById("insBar").style.width = pct + "%";
+  document.getElementById("insPaid").innerText = insFmt(paid);
+  document.getElementById("insLeft").innerText = insFmt(Math.max(0, target - paid));
+  const pays = Object.values(_insAcc && _insAcc.payments || {}).filter(p => p && Number(p.amount) > 0).sort((a, b) => Number(b.at || 0) - Number(a.at || 0));
+  document.getElementById("insCnt").innerText = pays.length;
+  document.getElementById("insDay").innerText = INS_DAYS_AR[s.day] || "—";
+  document.getElementById("insSub").innerText = "التأمين " + insFmt(target) + " د.ع — يُدفع " + insFmt(s.weekly) + " كلّ أسبوع يوم " + (INS_DAYS_AR[s.day] || "") + " حتى يكتمل (" + pct + "٪).";
+  const ST = {
+   ok: "✅ قسط هذا الأسبوع مدفوع — شكراً لك.",
+   upcoming: "🗓️ قسط هذا الأسبوع (" + insFmt(s.owed) + " د.ع) يوم " + (s.due_date ? insDateAr(s.due_date) : ""),
+   due_today: "⚠️ اليوم يوم قسطك (" + insFmt(s.owed) + " د.ع) — سلّمه للإدارة اليوم حتى لا يتوقّف استلامك للطلبات من باچر.",
+   blocked: "🔴 قسط التأمين متأخّر (" + insFmt(s.owed) + " د.ع) — أنت غير مرئيّ للطلبات حتى تؤكّد الإدارة الاستلام.",
+   complete: "🎉 اكتمل تأمينك بالكامل — لا أقساط بعد اليوم.",
+   exempt: "ℹ️ أنت معفى من التأمين.",
+   left: "ℹ️ مسجَّلٌ أنك تركت العمل — تُعاد تأميناتك بعد " + (Number(cfg.refund_days) || 30) + " يوماً من تركك.",
+   not_started: "🗓️ يبدأ تحصيل التأمين معك يوم " + (s.starts ? insDateAr(s.starts) : "") + "."
+  };
+  const se = document.getElementById("insState");
+  se.innerText = ST[s.state] || "";
+  se.style.color = s.state === "blocked" ? "var(--bad-dp)" : s.state === "due_today" ? "var(--warn-dp)" : "var(--ink2)";
+  document.getElementById("insHist").innerHTML = pays.length ? pays.map(p => "• " + insFmt(p.amount) + " د.ع — " + (p.at ? new Date(Number(p.at) + 3 * 36e5).toISOString().slice(0, 10) : "")).join("<br>") : "لا دفعات بعد.";
+  const nd = Number(cfg.notice_days) || 15, rd = Number(cfg.refund_days) || 30;
+  document.getElementById("insPolicy").innerText = "التأمين لتنظيم العمل وتجهيزك بالزيّ والمستلزمات المناسبة. وإذا قرّرت ترك العمل يجب أن تُبلغ الإدارة قبل " + nd + " يوماً، وتُعاد لك تأميناتك بعد " + rd + " يوماً من تركك العمل.";
+  const noticeAt = _insAcc && _insAcc.notice_at || (_insNotice && _insNotice.at ? new Date(Number(_insNotice.at)).toISOString() : null);
+  const nb = document.getElementById("insNoticeBtn"), nt = document.getElementById("insNoticeTxt");
+  if (noticeAt || s.state === "left") {
+   nb.style.display = "none";
+   nt.style.display = "";
+   nt.innerText = noticeAt ? "📝 أبلغتَ بترك العمل يوم " + String(noticeAt).slice(0, 10) + " — آخر يوم عمل بعد " + nd + " يوماً من الإبلاغ." : "";
+  } else {
+   nb.style.display = s.state === "exempt" ? "none" : "";
+   nt.style.display = "none";
+  }
+  if (s.state === "due_today") {
+   const k = "suf_ins_warn_" + (s.due_date || "");
+   try {
+    if (!localStorage.getItem(k)) {
+     localStorage.setItem(k, "1");
+     toast("⚠️ اليوم يوم قسط التأمين (" + insFmt(s.owed) + " د.ع) — سلّمه للإدارة", "warn");
+     track("ins_due_today");
+    }
+   } catch (_) {}
+  }
+ } catch (e) {
+  track("ins_paint_fail", {
+   reason: String(e && e.message || e).slice(0, 60)
+  });
+ }
+}
+
+window.insNotice = async function() {
+ if (!drv || !drv.phone) return;
+ const nd = Number((_insCfg || {}).notice_days) || 15;
+ if (!confirm("هل تريد إبلاغ الإدارة أنك ستترك العمل؟\nيجب أن يكون الإبلاغ قبل " + nd + " يوماً من آخر يوم عمل.")) return;
+ try {
+  await set(ref(db, `insurance/notices/${drv.phone}`), {
+   at: serverTimestamp()
+  });
+  toast("📝 وصل إبلاغك للإدارة", "ok");
+  track("ins_notice");
+ } catch (e) {
+  toast("تعذّر الإرسال — حاول مرّة ثانية", "warn");
+  track("ins_notice_fail", {
+   reason: String(e && e.code || e && e.message || e).slice(0, 60)
+  });
+ }
+};
+
+function listenInsurance() {
+ if (!drv || !drv.phone || _insBound) return;
+ _insBound = true;
+ listen(() => ref(db, "insurance/config"), snap => {
+  _insCfg = snap.val();
+  paintInsurance();
+ });
+ listen(() => ref(db, `insurance/accounts/${drv.phone}`), snap => {
+  _insAcc = snap.val();
+  paintInsurance();
+ });
+ listen(() => ref(db, `insurance/notices/${drv.phone}`), snap => {
+  _insNotice = snap.val();
+  paintInsurance();
+ });
+}
+
 function listenMyStatus() {
  if (!drv || !drv.phone) return;
  if (_myStatusBound) return;
  _myStatusBound = true;
+ try {
+  listenInsurance();
+ } catch (e) {
+  track("ins_bind_fail");
+ }
  listen(() => ref(db, `drivers_locations/${drv.phone}/vehicle`), snap => {
   const v = snap.val() === "car" ? "car" : "bike";
   drv.vehicle = v;
@@ -4804,6 +5017,9 @@ function paintShiftInfo() {
 }
 
 window.openSettings = function() {
+ try {
+  paintInsurance();
+ } catch (_) {}
  try {
   const v = document.getElementById("appVerLbl");
   let nat = "";
