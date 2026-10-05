@@ -4247,7 +4247,20 @@ function insRender() {
 
 window.insToggle = async function() {
  const on = (insCfg || {}).enabled === true;
- if (!confirm(on ? "إيقاف نظام التأمينات؟ يُرفع المنع عن كلّ الكباتن فوراً." : "تفعيل نظام التأمينات؟\n١٠٠ ألف على كلّ كابتن، ١٠ آلاف كلّ أسبوع في يومه، والبدء " + ((insCfg || {}).start || "2026-10-10") + ".")) return;
+ let start = null;
+ if (!on) {
+  const today = insDK(), add = (k, n) => new Date(Date.parse(k + "T00:00:00Z") + n * 864e5).toISOString().slice(0, 10);
+  const nextSat = add(today, (6 - new Date(today + "T00:00:00Z").getUTCDay() + 7) % 7 || 7);
+  const cur = (insCfg || {}).start, def = cur && cur > today && new Date(cur + "T00:00:00Z").getUTCDay() === 6 ? cur : nextSat;
+  const v = prompt("يوم بدء التحصيل (يجب أن يكون يوم سبت قادم، بصيغة سنة-شهر-يوم):", def);
+  if (v == null) return;
+  start = String(v).trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || isNaN(Date.parse(start + "T00:00:00Z")) || new Date(start + "T00:00:00Z").getUTCDay() !== 6 || start <= today) {
+   toast("التاريخ يجب أن يكون يوم سبت قادماً (بعد اليوم)", "e");
+   return;
+  }
+ }
+ if (!confirm(on ? "إيقاف نظام التأمينات؟ يُرفع المنع عن كلّ الكباتن فوراً." : "تفعيل نظام التأمينات؟\n١٠٠ ألف على كلّ كابتن، ١٠ آلاف كلّ أسبوع في يومه، والبدء السبت " + start + ".")) return;
  try {
   const base = {
    target: 1e5,
@@ -4258,8 +4271,10 @@ window.insToggle = async function() {
   };
   await db.ref("insurance/config").update(Object.assign({}, base, insCfg || {}, {
    enabled: !on
-  }));
-  toast(on ? "أُوقف نظام التأمينات" : "فُعّل نظام التأمينات — جاري توزيع الكباتن على الوجبات");
+  }, start ? {
+   start: start
+  } : {}));
+  toast(on ? "أُوقف نظام التأمينات" : "فُعّل نظام التأمينات — البدء " + esc(start) + " — جاري توزيع الكباتن على الوجبات");
  } catch (e) {
   toast("تعذّر الحفظ: " + esc(e.message || e), "e");
  }
