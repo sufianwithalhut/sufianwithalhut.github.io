@@ -1856,6 +1856,18 @@ function listen(path, cb) {
 }
 
 function attachDataListeners() {
+ if (EMP_PHONE) listen("staff_perms/" + EMP_PHONE, snap => {
+  const v = snap.val();
+  if (v && typeof v === "object") {
+   EMP_PERMS = [ "assign", "withdraw", "delete", "complete", "message" ].filter(k => v[k] === true);
+   EMP_PERMS_ALL = false;
+   _permsLoaded = true;
+   applyPermsToUi();
+  } else if (_permsLoaded && !EMP_PERMS_ALL) {
+   _permsLoaded = false;
+   loadStaffPerms();
+  }
+ });
  startChatCenter();
  listen("active_orders", snap => {
   const obj = snap.val();
@@ -3607,7 +3619,7 @@ window.ccWithdraw = async function(oId, dPhone) {
 };
 
 window.ccNoteSave = function(v) {
- if (!_ccActive) return;
+ if (!_ccActive || !canDo("message")) return;
  clearTimeout(_ccNoteTimer);
  const target = _ccActive, val = String(v || "").slice(0, 400);
  _ccNoteTimer = setTimeout(() => {
@@ -3919,7 +3931,7 @@ function _ccSetComposer(enabled, hint) {
 }
 
 window.ccTakeOver = function() {
- if (!_ccActive) return;
+ if (!_ccActive || !needPerm("message", "التواصل مع الكباتن")) return;
  const c = _ccChats[_ccActive] || {};
  if (!confirm(`المحادثة الآن مع ${c.claimed_by === "ai_leader" ? "🐋 الموظّف الآليّ " : ""}${c.claimed_by_name || "ليدر آخر"}.\n\nالاستحواذ ينقلها إليك ويُسجَّل باسمك${c.claimed_by === "ai_leader" ? " — ويصمت الموظّف فيها" : ""}. متأكد؟`)) return;
  db.ref(`driver_chats/${_ccActive}`).update({
@@ -3931,7 +3943,7 @@ window.ccTakeOver = function() {
 };
 
 window.claimChat = function() {
- if (!_ccActive) return;
+ if (!_ccActive || !needPerm("message", "التواصل مع الكباتن")) return;
  db.ref(`driver_chats/${_ccActive}`).update({
   status: "claimed",
   claimed_by: EMP_PHONE,
@@ -3941,7 +3953,8 @@ window.claimChat = function() {
 };
 
 window.closeConversation = function() {
- if (!_ccActive || !confirm("إغلاق هذه المحادثة؟ (رسالة جديدة من الكابتن تعيد فتحها)")) return;
+ if (!_ccActive || !needPerm("message", "التواصل مع الكباتن")) return;
+ if (!confirm("إغلاق هذه المحادثة؟ (رسالة جديدة من الكابتن تعيد فتحها)")) return;
  db.ref(`driver_chats/${_ccActive}`).update({
   status: "closed"
  }).then(() => {

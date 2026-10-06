@@ -1481,6 +1481,58 @@ let _auInit = false, _alInit = false;
 
 let staffSessions = {}, staffLog = [], staffRoster = [], _stInit = false, stEditMode = false, _stIdleTimer = null;
 
+let staffPerms = {};
+
+const ST_PERMS = [ [ "assign", "👑 التعيين السياديّ" ], [ "withdraw", "↩️ سحب الطلبات" ], [ "delete", "🗑 حذف الطلبات" ], [ "message", "💬 التواصل مع الكباتن" ], [ "complete", "✅ الإتمام القسريّ" ] ];
+
+function stPermsEff(e) {
+ const rec = staffPerms[nP(e.phone)];
+ if (rec && typeof rec === "object") {
+  const o = {};
+  ST_PERMS.forEach(([k]) => o[k] = rec[k] === true);
+  return {
+   o: o,
+   legacy: false
+  };
+ }
+ const raw = Array.isArray(e.perms) ? e.perms.map(x => String(x).toLowerCase()) : [];
+ const all = !raw.length || raw.indexOf("*") > -1;
+ const o = {};
+ ST_PERMS.forEach(([k]) => o[k] = all || raw.indexOf(k) > -1);
+ return {
+  o: o,
+  legacy: true
+ };
+}
+
+function stPermsHtml(e) {
+ const {o: o, legacy: legacy} = stPermsEff(e), pj = ej(e.phone);
+ return `<div style="margin:8px 0 6px;padding:8px;border-radius:10px;background:var(--base2)">\n    <div style="font-size:.68rem;font-weight:900;margin-bottom:6px">🔑 الصلاحيات ${legacy ? '<span style="font-weight:700;opacity:.7">— كلّ ما كان له سابقاً، حتى تغيّر أحدها</span>' : ""}</div>\n    <div style="display:flex;flex-wrap:wrap;gap:5px">${ST_PERMS.map(([k, l]) => `<button onclick="stPermTog('${pj}','${k}',this)" title="${o[k] ? "مفعّلة — اضغط للإيقاف" : "موقوفة — اضغط للتفعيل"}"\n      style="font:inherit;font-size:.66rem;font-weight:800;padding:5px 8px;border-radius:8px;cursor:pointer;border:1px solid ${o[k] ? "var(--jade)" : "var(--line2)"};background:${o[k] ? "var(--jade)" : "transparent"};color:${o[k] ? "#fff" : "var(--ink)"};opacity:${o[k] ? 1 : .75}">${o[k] ? "✓" : "✕"} ${l}</button>`).join("")}</div></div>`;
+}
+
+window.stPermTog = async function(phone, k, el) {
+ const e = staffRoster.find(x => nP(x.phone) === nP(phone)) || {
+  phone: phone
+ };
+ const {o: o} = stPermsEff(e), lbl = (ST_PERMS.find(p => p[0] === k) || [ k, k ])[1];
+ const next = Object.assign({}, o, {
+  [k]: !o[k]
+ });
+ if (!confirm((next[k] ? "منح" : "إيقاف") + " صلاحية «" + lbl + "» لـ " + (e.name || phone) + "؟\nيسري فوراً على لوحته.")) return;
+ if (el) el.disabled = true;
+ try {
+  await db.ref("staff_perms/" + nP(phone)).set(Object.assign(next, {
+   updated_at: (new Date).toISOString(),
+   updated_by: "admin"
+  }));
+  logAudit("staff_perm", (e.name || phone) + ": " + k + " ⇒ " + (next[k] ? "on" : "off"));
+  toast((next[k] ? "مُنحت" : "أُوقفت") + " «" + lbl + "» — تسري الآن");
+ } catch (err) {
+  toast("تعذّر الحفظ: " + esc(err.message || err), "e");
+  if (el) el.disabled = false;
+ }
+};
+
 try {
  firebase.initializeApp({
   apiKey: "AIzaSyAo1rmqUzieYZU3RIwXOAN87GkpNrp-_Hc",
@@ -5509,6 +5561,10 @@ function setupStaffFB() {
   }
  };
  listen(() => db.ref("staff_activity_log").limitToLast(200), lCb);
+ listen(() => db.ref("staff_perms"), snap => {
+  staffPerms = snap.val() || {};
+  if (document.getElementById("pg-staff").classList.contains("on")) renderStaffList();
+ });
 }
 
 async function loadStaffRoster() {
@@ -5683,7 +5739,7 @@ function renderStaffList() {
   const spLbl = active ? isOnline ? "متصل" : "غير متصل" : "موقوف";
   const lastSeen = sess.last_activity ? fmtDateTime(sess.last_activity) : sess.logout_time ? fmtDateTime(sess.logout_time) : "—";
   const pj = ej(e.phone);
-  html += `<div class="ec ${active ? "ec-active" : "ec-banned"}">\n      <div class="dr-rt ${rt.cls}" style="margin-bottom:6px">${rt.ic} ${rt.lbl}</div>\n      <div class="ec-top">\n        <div class="ec-av" style="background:var(--sky-l);color:var(--sky)">🧑‍💼</div>\n        <span class="sp ${spCls}">${spLbl}</span>\n      </div>\n      <div class="ec-n">${esc(e.name)}</div>\n      <div class="ec-ph">${esc(e.phone)}</div>\n      <div class="dm-row">\n        <div class="dm-it">📅 آخر ظهور</div>\n        <div class="dm-it" style="font-size:.6rem">${esc(lastSeen)}</div>\n      </div>\n      <div class="ls">\n        <div class="lm"><div class="lv b">${st.counts.ASSIGN}</div><div class="ll">تعيين</div></div>\n        <div class="lm"><div class="lv g">${st.counts.COMPLETE}</div><div class="ll">إكمال</div></div>\n        <div class="lm"><div class="lv" style="color:var(--amber)">${st.counts.WITHDRAW}</div><div class="ll">سحب</div></div>\n        <div class="lm"><div class="lv r">${st.counts.DELETE}</div><div class="ll">حذف</div></div>\n      </div>\n      <div class="ec-acts">\n        <div style="display:flex;gap:4px">\n          <button class="ea ea-e" title="تقرير الأداء" onclick="opStaffPerf('${pj}')">📊</button>\n          <button class="ea ea-a" title="إعادة كلمة المرور" onclick="opStaffReset('${pj}','${ej(e.name)}')">🔑</button>\n          ${active ? `<button class="ea ea-p" title="إيقاف" onclick="stSetStatus('${pj}','suspended',this)">⏸</button>` : `<button class="ea ea-a" title="تفعيل" onclick="stSetStatus('${pj}','active',this)">✓</button>`}\n          <button class="ea ea-d" title="حذف" onclick="stDelete('${pj}','${ej(e.name)}',this)">🗑</button>\n        </div>\n        <button class="ea ea-c" title="اتصال" onclick="window.open('tel:${pj}')">📞</button>\n      </div>\n    </div>`;
+  html += `<div class="ec ${active ? "ec-active" : "ec-banned"}">\n      <div class="dr-rt ${rt.cls}" style="margin-bottom:6px">${rt.ic} ${rt.lbl}</div>\n      <div class="ec-top">\n        <div class="ec-av" style="background:var(--sky-l);color:var(--sky)">🧑‍💼</div>\n        <span class="sp ${spCls}">${spLbl}</span>\n      </div>\n      <div class="ec-n">${esc(e.name)}</div>\n      <div class="ec-ph">${esc(e.phone)}</div>\n      <div class="dm-row">\n        <div class="dm-it">📅 آخر ظهور</div>\n        <div class="dm-it" style="font-size:.6rem">${esc(lastSeen)}</div>\n      </div>\n      <div class="ls">\n        <div class="lm"><div class="lv b">${st.counts.ASSIGN}</div><div class="ll">تعيين</div></div>\n        <div class="lm"><div class="lv g">${st.counts.COMPLETE}</div><div class="ll">إكمال</div></div>\n        <div class="lm"><div class="lv" style="color:var(--amber)">${st.counts.WITHDRAW}</div><div class="ll">سحب</div></div>\n        <div class="lm"><div class="lv r">${st.counts.DELETE}</div><div class="ll">حذف</div></div>\n      </div>\n      ${stPermsHtml(e)}\n      <div class="ec-acts">\n        <div style="display:flex;gap:4px">\n          <button class="ea ea-e" title="تقرير الأداء" onclick="opStaffPerf('${pj}')">📊</button>\n          <button class="ea ea-a" title="إعادة كلمة المرور" onclick="opStaffReset('${pj}','${ej(e.name)}')">🔑</button>\n          ${active ? `<button class="ea ea-p" title="إيقاف" onclick="stSetStatus('${pj}','suspended',this)">⏸</button>` : `<button class="ea ea-a" title="تفعيل" onclick="stSetStatus('${pj}','active',this)">✓</button>`}\n          <button class="ea ea-d" title="حذف" onclick="stDelete('${pj}','${ej(e.name)}',this)">🗑</button>\n        </div>\n        <button class="ea ea-c" title="اتصال" onclick="window.open('tel:${pj}')">📞</button>\n      </div>\n    </div>`;
  });
  c.innerHTML = html;
 }
@@ -5823,8 +5879,23 @@ window.svStaff = async function() {
    })
   });
   const d = await r.json();
+  if (d && d.success && !stEditMode) {
+   try {
+    await db.ref("staff_perms/" + nP(phone)).set({
+     assign: false,
+     withdraw: false,
+     delete: false,
+     complete: false,
+     message: false,
+     updated_at: (new Date).toISOString(),
+     updated_by: "admin"
+    });
+   } catch (e) {
+    toast("أُضيف الموظف لكن تعذّر ضبط صلاحياته — اضبطها من كارته", "e");
+   }
+  }
   if (d && d.success) {
-   toast(stEditMode ? "تم تحديث كلمة المرور ✅" : "تمت إضافة الموظف ✅");
+   toast(stEditMode ? "تم تحديث كلمة المرور ✅" : "تمت إضافة الموظف — بلا صلاحيات حتى تفعّلها من كارته ✅");
    logAudit("manageStaff", (stEditMode ? "إعادة كلمة مرور: " : "إضافة موظف: ") + (name || phone));
    clStaffMod();
    loadStaffRoster();
@@ -5896,6 +5967,7 @@ window.stDelete = async function(phone, name, el) {
   if (d && d.success) {
    toast("تم حذف الموظف");
    logAudit("manageStaff", `حذف موظف: ${name}`);
+   db.ref("staff_perms/" + nP(phone)).remove().catch(() => {});
    loadStaffRoster();
   } else toast(d && d.msg || "فشل", "e");
  } catch (e) {
