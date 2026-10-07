@@ -1323,6 +1323,7 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
         <button class="abt" id="pbForceBtn" onclick="pbFlag('pos_force_auto')">…</button>
         <button class="abt" id="pbPauseBtn" onclick="pbFlag('pos_auto_pause')">…</button>
         <button class="abt" id="pbOffBtn" onclick="pbFlag('pos_bridge_off')">…</button>
+        <button class="abt" style="background:var(--base2);color:var(--ink);box-shadow:none;border:1px solid var(--line2)" onclick="pbUpdateAll()">⬆️ حدّث كلّ الأجهزة الآن</button>
       </div>
       <div class="arch-kpi" style="margin-bottom:12px">
         <div class="ak akg"><div class="ak-ic g">🟢</div><div class="ak-n" id="pbKLive">0</div><div class="ak-l">أجهزة متّصلة الآن</div></div>
@@ -4319,6 +4320,34 @@ window.pbCmd = async function(p, dev, cmd) {
   });
   logAudit("pos_bridge_cmd", p + "/" + dev + ": " + cmd);
   toast("أُرسل الأمر — يصل للجهاز خلال دقيقة");
+ } catch (e) {
+  toast("تعذّر: " + esc(e.message || e), "e");
+ }
+};
+
+window.pbUpdateAll = async function() {
+ const u = {};
+ let n = 0;
+ const id = Date.now();
+ Object.keys(pbStat || {}).forEach(p => Object.entries(pbStat[p] || {}).forEach(([dev, d]) => {
+  if (d && d.svc) {
+   u["pos_bridge/" + p + "/cmd/" + dev] = {
+    cmd: "update",
+    id: id,
+    by: "admin"
+   };
+   n++;
+  }
+ }));
+ if (!n) {
+  toast("لا أجهزة بالنسخة الجديدة بعد", "e");
+  return;
+ }
+ if (!confirm("تحديث البرنامج الآن على " + n + " جهاز؟\nيُعاد تشغيل البرنامج ثوانٍ في كلّ مطعم — الأفضل خارج وقت الذروة.")) return;
+ try {
+  await db.ref().update(u);
+  logAudit("pos_bridge_update_all", n + " جهاز");
+  toast("أُرسل أمر التحديث إلى " + n + " جهاز — يصل خلال دقيقة");
  } catch (e) {
   toast("تعذّر: " + esc(e.message || e), "e");
  }
