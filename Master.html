@@ -1235,13 +1235,6 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
         <button class="fp fa" onclick="setSF('DRV','inactive',this)">استراحة <span class="fc" id="bd-inactive">0</span></button>
         <button class="fp fr" onclick="setSF('DRV','banned',this)">موقوف <span class="fc" id="bd-banned">0</span></button>
       </div>
-      
-      <div class="fbar" id="ldrHrsBar" style="align-items:center">
-        <span style="font-size:.74rem;font-weight:900;margin-left:6px">👑 نافذة الليدرز في التوزيع:</span>
-        <button class="fp" data-h="6" onclick="setLeaderHours(6)">6 ساعات</button>
-        <button class="fp" data-h="8" onclick="setLeaderHours(8)">8 ساعات</button>
-        <button class="fp" data-h="12" onclick="setLeaderHours(12)">12 ساعة</button>
-      </div>
       <div class="eg" id="drvList"></div>
     </div>
     <div id="pg-staff" class="pg tab-p">
@@ -2735,55 +2728,21 @@ function filtEnt(type) {
  });
 }
 
-let ldrBound = false;
-
-function ldrHoursStart() {
- if (ldrBound) return;
- ldrBound = true;
- listen(() => db.ref("system_settings/tunables/LEADER_WINDOW_HOURS"), s => {
-  const v = Number(s.val());
-  ldrDefH = [ 6, 8, 12 ].includes(v) ? v : 6;
-  ldrHoursUi();
-  if (typeof filtEnt === "function" && gD) try {
-   filtEnt("DRV");
-  } catch (_) {}
- });
-}
-
-function ldrHoursUi() {
- document.querySelectorAll("#ldrHrsBar .fp").forEach(b => b.classList.toggle("on", Number(b.dataset.h) === ldrDefH));
-}
-
-window.setLeaderHours = async function(h) {
- h = Number(h);
- if (![ 6, 8, 12 ].includes(h)) return;
- if (h === ldrDefH) return;
- if (!confirm("نافذة كلّ الليدرز " + h + " ساعات من أول تسليم؟\n(بإيقاع 2–2.5 طلب/ساعة، ثم يتوقّف التوزيع عنه حتى الغد)\nيسري خلال دقيقة، وعلى النوافذ الجارية أيضاً. الليدر الذي خُصّصت له مدّةٌ تبقى مدّته.")) return;
- try {
-  await db.ref("system_settings/tunables/LEADER_WINDOW_HOURS").set(h);
-  logAudit("leader_hours_default", h + "س");
-  toast("👑 نافذة الليدرز: " + h + " ساعات ✅");
- } catch (e) {
-  toast("تعذّر: " + esc(e.message || e), "e");
- }
-};
-
 window.pickLeaderHours = async function(pj) {
  const phone = nP(String(pj || ""));
  if (!phone) return;
  const cur = ldrHrs[phone];
- const v = prompt("مدّة نافذة هذا الليدر بالساعات: 6 أو 8 أو 12\n(اتركه فارغاً ليتبع المدّة العامّة: " + ldrDefH + " ساعات)", cur ? String(cur) : "");
+ const v = prompt("مدّة نافذة هذا الليدر في التوزيع بالساعات: 6 أو 8 أو 12\n(من أول تسليم، بإيقاع 2–2.5 طلب/ساعة، ثم يتوقّف التوزيع عنه حتى الغد)", cur ? String(cur) : "6");
  if (v === null) return;
- const t = String(v).trim();
- const h = t === "" ? null : Number(t);
- if (h !== null && ![ 6, 8, 12 ].includes(h)) {
+ const h = Number(String(v).trim());
+ if (![ 6, 8, 12 ].includes(h)) {
   toast("اكتب 6 أو 8 أو 12 فقط", "e");
   return;
  }
  try {
   await db.ref("drivers_locations/" + phone + "/leader_hours").set(h);
-  logAudit("leader_hours", phone + ": " + (h || "عامّ"));
-  toast(h ? "👑 نافذته " + h + " ساعات ✅" : "يتبع المدّة العامّة ✅");
+  logAudit("leader_hours", phone + ": " + h + "س");
+  toast("👑 نافذته " + h + " ساعات ✅ — تسري خلال دقيقة");
  } catch (e) {
   toast("تعذّر: " + esc(e.message || e), "e");
  }
@@ -2796,7 +2755,7 @@ window.toggleLeader = function(pj, on, btn) {
   return;
  }
  const isOn = String(on) === "true";
- if (!confirm(isOn ? "جعل " + phone + " ليدراً؟\n\nسيتلقّى 2–2.5 طلب/ساعة لمدة " + ldrDefH + " ساعات من أول تسليم، ثم يتوقّف عنه التوزيع." : "إلغاء صفة الليدر عن " + phone + "؟\n\nسيعود كابتناً عادياً فوراً.")) return;
+ if (!confirm(isOn ? "جعل " + phone + " ليدراً؟\n\nسيتلقّى 2–2.5 طلب/ساعة لمدة 6 ساعات من أول تسليم، ثم يتوقّف عنه التوزيع.\n(غيّر مدّته بعدها من زرّ ⏱ على كارته: 6 أو 8 أو 12)" : "إلغاء صفة الليدر عن " + phone + "؟\n\nسيعود كابتناً عادياً فوراً.")) return;
  if (btn) btn.disabled = true;
  const upd = {};
  upd["drivers_locations/" + phone + "/is_leader"] = isOn ? true : null;
@@ -4807,10 +4766,7 @@ window.goTab = function(name) {
      arcStat("");
     }
     if (name === "restaurants" && gD) filtEnt("RES");
-    if (name === "drivers") {
-     ldrHoursStart();
-     if (gD) filtEnt("DRV");
-    }
+    if (name === "drivers" && gD) filtEnt("DRV");
     if (name === "insurance") insStart();
     if (name === "posbridge") pbStart();
     if (name === "staff") {
