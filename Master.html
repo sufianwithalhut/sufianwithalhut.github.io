@@ -4225,7 +4225,7 @@ function pbRender() {
    id: id
   }, d || {}));
   devs.forEach(d => {
-   const live = now - Number(d.last_seen || 0) < 3 * 6e4;
+   const live = now - Number(d.last_seen || 0) < PB_LIVE_MS;
    if (live) kL++; else kD++;
    if (d.day === today) {
     kS += Number(d.sent) || 0;
@@ -4253,9 +4253,9 @@ function pbRender() {
   const eff = pbEff(fl, m), mm = m === "off" || m === "manual" || m === "auto" ? m : "manual";
   const opts = [ "off", "manual", "auto" ].map(k => `<option value="${k}" ${k === mm ? "selected" : ""}>${PB_MODE_AR[k]}</option>`).join("");
   const devHtml = devs.length ? devs.map(d => {
-   const age = now - Number(d.last_seen || 0), live = age < 3 * 6e4;
+   const age = now - Number(d.last_seen || 0), live = age < PB_LIVE_MS;
    const ago = d.last_seen ? age < 12e4 ? "الآن" : age < 36e5 ? Math.round(age / 6e4) + " د" : age < 864e5 ? Math.round(age / 36e5) + " س" : Math.round(age / 864e5) + " يوم" : "—";
-   return `<div style="font-size:.72rem;font-weight:800;padding:6px 8px;border-radius:8px;background:var(--base2);margin-bottom:5px">\n        ${live ? "🟢" : "🔴"} ${esc(d.id)} · آخر نبض: ${ago} · الإصدار ${esc(d.ver || "?")}<br>\n        🖨 ${esc(d.printers || "—")}<br>\n        ${d.day === today ? `اليوم: التُقط ${Number(d.captured) || 0} · أُرسل ${Number(d.sent) || 0} · ليس توصيلاً ${Number(d.dismissed) || 0} · ينتظر ${Number(d.pending) || 0}` : "لا نشاط اليوم"}\n        ${Number(d.errors) ? ` · <span style="color:var(--rose)">أخطاء ${Number(d.errors)}</span>` : ""}\n        ${d.last_error ? `<div style="color:var(--rose);margin-top:3px;direction:ltr;text-align:right">${esc(d.last_error)}</div>` : ""}\n        ${pbDiagHtml(d)}</div>`;
+   return `<div style="font-size:.72rem;font-weight:800;padding:6px 8px;border-radius:8px;background:var(--base2);margin-bottom:5px">\n        ${live ? "🟢" : "🔴"} ${esc(d.id)} · آخر نبض: ${ago} · الإصدار ${esc(d.ver || "?")}<br>\n        🖨 ${esc(d.printers || "—")}<br>\n        ${d.day === today ? `اليوم: التُقط ${Number(d.captured) || 0} · أُرسل ${Number(d.sent) || 0} · ليس توصيلاً ${Number(d.dismissed) || 0} · ينتظر ${Number(d.pending) || 0}` : "لا نشاط اليوم"}\n        ${Number(d.errors) ? ` · <span style="color:var(--rose)">أخطاء ${Number(d.errors)}</span>` : ""}\n        ${d.last_error ? `<div style="color:var(--rose);margin-top:3px;direction:ltr;text-align:right">${esc(d.last_error)}</div>` : ""}\n        ${pbDiagHtml(d)}${pbCmdHtml(p, d)}</div>`;
   }).join("") : `<div style="font-size:.72rem;font-weight:800;opacity:.6;margin-bottom:6px">البرنامج غير مثبَّت على أيّ جهاز بعد.</div>`;
   const cls = eff === "auto" ? "ea" : eff === "off" ? "ep" : "ei";
   return `<div class="ec ${cls}">\n      <div class="ec-top"><div><div class="ec-n">${esc(name || "مطعم")}</div><div class="ec-ph">0${esc(p)}</div></div><div style="font-size:.72rem;font-weight:900">يعمل الآن: ${PB_MODE_AR[eff]}</div></div>\n      <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;font-size:.74rem;font-weight:800">وضع المطعم:\n        <select onchange="pbSetMode('${p}',this.value,this)" style="font:inherit;padding:3px 6px;border-radius:7px;border:1px solid var(--line2)">${opts}</select>\n        ${eff !== mm ? `<span style="color:var(--amber)">(زرٌّ عامّ يغيّره)</span>` : ""}</div>\n      ${devHtml}\n      ${devs.length ? `<button class="abt" style="background:var(--base2);color:var(--ink);box-shadow:none;border:1px solid var(--line2);font-size:.7rem" onclick="pbRelearn('${p}')">🔄 انسَ ما تعلّمته (ابدأ التعرّف من جديد)</button>` : ""}</div>`;
@@ -4291,6 +4291,61 @@ function pbDiagHtml(d) {
  const sec = (t, body) => `<details style="margin-top:5px"><summary style="cursor:pointer">${t}</summary><div style="font-weight:700;margin-top:3px">${body}</div></details>`;
  return `<div style="margin-top:4px">${d.svc === "service" ? "⚙️ يعمل خدمةً دائمة" : d.svc === "user" ? '<span style="color:var(--amber)">⚠️ يعمل من نافذة الكاشير (الخدمة متوقّفة)</span>' : ""}</div>` + (d.all_printers ? sec("🖨 طابعات الجهاز", esc(d.all_printers).replace(/\n/g, "<br>").replace(/ \+ /g, " ✅ ").replace(/ − /g, " ⛔ ")) : "") + (d.sources ? sec("🧠 ما تعلّمه (توصيل/أوراق)", esc(d.sources).replace(/\n/g, "<br>")) : "") + (rec.length ? sec("📄 آخر الأوراق", rec.map(r => `${esc(r.t)} · ${esc(r.p)} · «${esc(r.d)}» ⇐ ${actAr(r.a)}`).join("<br>")) : "") + (d.net ? sec("🌐 الطباعة المباشرة عبر الشبكة", esc(d.net).replace(/\n/g, "<br>")) : "");
 }
+
+const PB_LIVE_MS = 12 * 6e4;
+
+const PB_CMD_AR = {
+ restart: "🔄 أعد تشغيل البرنامج",
+ log: "📜 أرسل لي السجلّ",
+ update: "⬆️ حدّث الآن",
+ keep: "🖨 أعد تفعيل الطابعات"
+};
+
+function pbCmdHtml(p, d) {
+ if (!d.svc) return "";
+ const done = String(d.cmd_done || ""), k = done.indexOf("|");
+ const pend = ((pbModes[p] || {}).cmd || {})[d.id];
+ const waiting = pend && (!done || String(pend.id) !== done.slice(0, k));
+ return `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">${Object.keys(PB_CMD_AR).map(c => `<button class="abt" style="background:var(--base2);color:var(--ink);box-shadow:none;border:1px solid var(--line2);font-size:.66rem;padding:4px 7px" onclick="pbCmd('${p}','${esc(d.id)}','${c}')">${PB_CMD_AR[c]}</button>`).join("")}\n    <button class="abt" style="background:var(--base2);color:var(--ink);box-shadow:none;border:1px solid var(--line2);font-size:.66rem;padding:4px 7px" onclick="pbShowLog('${p}','${esc(d.id)}')">👁 عرض السجلّ</button></div>\n    ${waiting ? `<div style="margin-top:4px;color:var(--amber)">⏳ أُرسل «${esc(PB_CMD_AR[pend.cmd] || pend.cmd)}» — يصل للجهاز خلال دقيقة، والنتيجة مع النبض التالي (حتى ٥ دقائق)</div>` : ""}\n    ${done && k > 0 ? `<div style="margin-top:4px;opacity:.8">آخر أمر: ${esc(done.slice(k + 1))}</div>` : ""}`;
+}
+
+window.pbCmd = async function(p, dev, cmd) {
+ if (cmd === "restart" && !confirm("إعادة تشغيل البرنامج على هذا الكمبيوتر؟ (ثوانٍ قليلة)")) return;
+ try {
+  await db.ref("pos_bridge/" + p + "/cmd/" + dev).set({
+   cmd: cmd,
+   id: Date.now(),
+   by: "admin"
+  });
+  logAudit("pos_bridge_cmd", p + "/" + dev + ": " + cmd);
+  toast("أُرسل الأمر — يصل للجهاز خلال دقيقة");
+ } catch (e) {
+  toast("تعذّر: " + esc(e.message || e), "e");
+ }
+};
+
+window.pbShowLog = async function(p, dev) {
+ let v = null;
+ try {
+  v = (await db.ref("pos_bridge_log/" + p + "/" + dev).once("value")).val();
+ } catch (e) {
+  toast("تعذّر: " + esc(e.message || e), "e");
+  return;
+ }
+ if (!v || !v.text) {
+  toast("لا سجلّ بعد — اضغط «📜 أرسل لي السجلّ» وانتظر دقيقة", "e");
+  return;
+ }
+ const ov = document.createElement("div");
+ ov.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:14px";
+ ov.innerHTML = `<div style="background:var(--base,#fff);border-radius:14px;max-width:900px;width:100%;max-height:85vh;display:flex;flex-direction:column">\n    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;font-weight:900">📜 سجلّ ${esc(dev)} · ${esc(new Date(Number(v.at)).toLocaleString("ar-IQ"))} · ${esc(v.ver || "")}<button class="abt" onclick="this.closest('div[style*=fixed]').remove()">إغلاق</button></div>\n    <pre style="margin:0;padding:10px 14px;overflow:auto;direction:ltr;text-align:left;font-size:.7rem;white-space:pre-wrap;border-top:1px solid var(--line2)">${esc(v.text)}</pre></div>`;
+ ov.addEventListener("click", e => {
+  if (e.target === ov) ov.remove();
+ });
+ document.body.appendChild(ov);
+ const pre = ov.querySelector("pre");
+ pre.scrollTop = pre.scrollHeight;
+};
 
 window.pbRelearn = async function(p) {
  if (!confirm("ينسى البرنامج ما تعلّمه عند هذا المطعم ويبدأ التعرّف من جديد (يفحص كلّ الأوراق أيّاماً).\nمتابعة؟")) return;
