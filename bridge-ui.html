@@ -73,23 +73,56 @@ body { background: #f8fafc; font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif
 .ov { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(15,23,42,.85); display: none; text-align: center; padding: 10px; overflow: auto; }
 .ov img { max-width: 100%; background: #fff; }
 .ov .c { color: #fff; font-weight: 900; font-size: 14px; padding: 8px; cursor: pointer; }
+/* [2.2] الشريط الصغير — الوضع العاديّ؛ النافذة الكاملة لا تُفتح إلا لقرارٍ أو بضغطة */
+#mini { display: none; height: 56px; padding: 0 10px 0 6px; align-items: center; background: #fff; border: 1px solid #e2e8f0; border-radius: 28px; cursor: pointer; overflow: hidden; }
+body.mini #mini { display: flex; }
+body.mini #full { display: none; }
+body.mini { background: transparent; overflow: hidden; }
+#mini .ic { width: 42px; height: 42px; border-radius: 50%; background: #eff6ff; color: #3b82f6; font-size: 20px; text-align: center; line-height: 42px; margin-left: 8px; }
+#mini .ic.hot { background: #16a34a; color: #fff; }
+#mini .tx { -ms-flex: 1; flex: 1; min-width: 0; }
+#mini .t1 { font-weight: 900; font-size: 13px; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#mini .t2 { font-weight: 700; font-size: 11px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#mini .t2.ev { color: #16a34a; font-weight: 800; }
+#mini .mx { border: none; background: transparent; color: #94a3b8; font-size: 16px; font-weight: 900; width: 26px; height: 26px; cursor: pointer; }
+.hdr { cursor: move; }
 .off { background: #fef2f2; color: #991b1b; font-weight: 800; font-size: 12px; padding: 6px 12px; text-align: center; }
 </style>
 </head>
 <body>
-<div class="hdr">
+<div id="mini" onmousedown="dragMaybe(event)" onclick="if(!window.__dragged) call('expand')">
+  <div class="ic" id="mic">🛵</div>
+  <div class="tx"><div class="t1" id="mt1">…</div><div class="t2" id="mt2"></div></div>
+  <button class="mx" title="إخفاء حتى يأتي جديد" onclick="event.cancelBubble=true; if(event.stopPropagation) event.stopPropagation(); hideWin(); return false;">×</button>
+</div>
+<div id="full">
+<div class="hdr" onmousedown="dragMaybe(event)">
   <div><div class="nm" id="nm">جسر سفيان للطابعة</div><div class="br">سفيان <span class="chip" id="mode">…</span></div></div>
-  <button class="xbtn" onclick="hideWin()" title="إخفاء">−</button>
+  <div><button class="xbtn" onclick="call('collapse')" title="تصغير">−</button> <button class="xbtn" onclick="hideWin()" title="إخفاء حتى يأتي جديد">×</button></div>
 </div>
 <div id="net" class="off" style="display:none">⚠️ لا اتصال بسفيان — تتحدّث الحالة حين يعود الإنترنت</div>
 <div id="root"></div>
+</div>
 <div class="ov" id="ov" onclick="this.style.display='none'"><div class="c">✕ إغلاق</div><img id="ovimg" alt=""></div>
 <script>
-var X = window.external, last = "", VER_PAGE = "2.1";
+var X = window.external, last = "", VER_PAGE = "2.2";
 function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
 function hm(ms) { var d = new Date(ms); var h = d.getHours(), m = d.getMinutes(); return (h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m; }
 function call(fn, a) { try { return a === undefined ? X[fn]() : X[fn](a); } catch (e) { return ""; } }
 function hideWin() { call("hide"); }
+/* السحب: الضغط على الشريط أو رأس النافذة (لا الأزرار) يحرّك النافذة — والبرنامج يتذكّر مكانها */
+function dragMaybe(e) { var t = e.target || e.srcElement; if (t && (t.tagName === "BUTTON")) return; window.__dragged = false; var x0 = e.screenX, y0 = e.screenY;
+  document.onmousemove = function (m) { m = m || window.event; if (Math.abs(m.screenX - x0) + Math.abs(m.screenY - y0) > 4) { window.__dragged = true; document.onmousemove = null; call("drag"); } };
+  document.onmouseup = function () { document.onmousemove = null; setTimeout(function () { window.__dragged = false; }, 50); }; }
+function miniView(d) {
+  var nt = d.tickets ? d.tickets.length : 0, no = d.orders ? d.orders.length : 0, act = 0, i;
+  for (i = 0; i < no; i++) if (!d.orders[i].done) act++;
+  var ic = document.getElementById("mic"), t1 = document.getElementById("mt1"), t2 = document.getElementById("mt2");
+  ic.className = "ic" + (nt ? " hot" : ""); ic.innerHTML = nt ? "🧾" : "🛵";
+  t1.innerHTML = nt ? (nt === 1 ? "🔔 وصل توصيل جديد" : "🔔 " + nt + " وصولات توصيل") : (act ? (act === 1 ? "طلبٌ جارٍ واحد" : act + " طلبات جارية") : "سُلّمت الطلبات ✅");
+  if (!nt && d.event && d.event.text) { t2.className = "t2 ev"; t2.innerHTML = esc(d.event.text); }
+  else { t2.className = "t2"; t2.innerHTML = nt ? "اضغط للإرسال إلى سفيان" : (act ? "اضغط لمتابعة الكباتن" : ""); }
+}
 function showImg(src) { if (!src) return; document.getElementById("ovimg").src = src; document.getElementById("ov").style.display = "block"; }
 function tkImg(cid) { showImg(call("image", cid)); }
 function send(cid, el) { el.disabled = true; el.innerHTML = "✓ استُلم — جارٍ الإرسال"; call("send", cid); }
@@ -149,6 +182,8 @@ function ticketCard(t) {
 function render() {
   var s = call("state"); if (!s || s === last) return; last = s;
   var d; try { d = JSON.parse(s); } catch (e) { return; }
+  document.body.className = d.view === "mini" ? "mini" : "";
+  if (d.view === "mini") { miniView(d); return; }
   document.getElementById("nm").innerHTML = esc(d.name || "جسر سفيان للطابعة");
   var m = document.getElementById("mode");
   m.className = "chip " + (d.mode === "auto" ? "auto" : d.mode === "off" ? "off" : "");
