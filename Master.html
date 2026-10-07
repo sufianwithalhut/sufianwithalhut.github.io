@@ -1235,6 +1235,13 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
         <button class="fp fa" onclick="setSF('DRV','inactive',this)">استراحة <span class="fc" id="bd-inactive">0</span></button>
         <button class="fp fr" onclick="setSF('DRV','banned',this)">موقوف <span class="fc" id="bd-banned">0</span></button>
       </div>
+      
+      <div class="fbar" id="ldrHrsBar" style="align-items:center">
+        <span style="font-size:.74rem;font-weight:900;margin-left:6px">👑 نافذة الليدرز في التوزيع:</span>
+        <button class="fp" data-h="6" onclick="setLeaderHours(6)">6 ساعات</button>
+        <button class="fp" data-h="8" onclick="setLeaderHours(8)">8 ساعات</button>
+        <button class="fp" data-h="12" onclick="setLeaderHours(12)">12 ساعة</button>
+      </div>
       <div class="eg" id="drvList"></div>
     </div>
     <div id="pg-staff" class="pg tab-p">
@@ -1448,7 +1455,7 @@ let liveLed = {
 
 let actDrv = new Set;
 
-let ldrSet = new Set, ldrWin = {};
+let ldrSet = new Set, ldrWin = {}, ldrHrs = {}, ldrDefH = 6;
 
 let prefCount = {};
 
@@ -2412,6 +2419,7 @@ function setupFB() {
    } else delete drvShift[_n];
    if (d.is_leader === true) ldrSet.add(nP(phone)); else ldrSet.delete(nP(phone));
    if (d.leader_window_start) ldrWin[nP(phone)] = d.leader_window_start; else delete ldrWin[nP(phone)];
+   if ([ 6, 8, 12 ].includes(Number(d.leader_hours))) ldrHrs[nP(phone)] = Number(d.leader_hours); else delete ldrHrs[nP(phone)];
   });
   document.querySelectorAll(".v-drv").forEach(e => e.textContent = actDrv.size);
   if (gD) {
@@ -2679,19 +2687,19 @@ function filtEnt(type) {
     rL = "برونزي";
    }
    if (ldrSet.has(n)) {
-    const ws = ldrWin[n];
-    let lt = "👑 ليدر", lc = "#7c3aed";
+    const ws = ldrWin[n], H = ldrHrs[n] || ldrDefH;
+    let lt = "👑 ليدر · " + H + "س", lc = "#7c3aed";
     if (ws) {
      const el = (Date.now() - new Date(ws).getTime()) / 36e5;
-     if (el >= 6) {
-      lt = "👑 انتهت نافذته";
+     if (el >= H) {
+      lt = "👑 انتهت نافذته (" + H + "س)";
       lc = "#64748b";
      } else {
-      const rem = 6 - el, tgt = 2.25 * el;
+      const rem = H - el, tgt = 2.25 * el;
       lt = `👑 ${dc}/${tgt.toFixed(1)} · باقٍ ${rem.toFixed(1)}س`;
       lc = dc < 2 * el ? "#16a34a" : dc >= 2.5 * el ? "#f59e0b" : "#7c3aed";
      }
-    } else lt = "👑 ليدر — لم يبدأ";
+    } else lt = "👑 ليدر · " + H + "س — لم يبدأ";
     extra = `<div class="dr-rt" style="background:${lc};color:#fff">${esc(lt)}</div>`;
    } else extra = `<div class="dr-rt ${rC}">${rI} ${rL}</div>` + `<div class="dm-row"><div class="dm-it ${avg > 0 && avg <= 15 ? "dm-g" : avg > 25 ? "dm-r" : ""}">⚡ ${avg > 0 ? avg + "د/ط" : "---"}</div><div class="dm-it ${rj > 2 ? "dm-r" : rj > 0 ? "dm-w" : ""}">✖ رفض:${rj}</div></div>`;
   }
@@ -2712,7 +2720,7 @@ function filtEnt(type) {
    return;
   }
   const pj = ej(phone);
-  const html = `<div id="${cid}" class="ec ec-${status}">\n      ${extra}\n      <div class="ec-top">\n        <div class="ec-av">${type === "DRV" && drvPhoto[n] ? `<img src="${esc(drvPhoto[n])}" alt="" loading="lazy" style="width:100%;height:100%;border-radius:inherit;object-fit:cover">` : type === "RES" ? "🍽" : "🛵"}</div>\n        <span class="sp ${spC}">${esc(spL)}</span>\n      </div>\n      <div class="ec-n">${esc(name)}</div>\n      <div class="ec-ph">${esc(phone)}</div>\n      ${type === "DRV" ? `<div class="ec-ph sh-click" style="color:#0369a1;font-weight:700" title="تعديل الشفت — ساعة البدء والمدّة" onclick="opShift('${pj}')">🕐 ${drvShift[n] ? esc(drvShift[n]) : "بلا موعد — اضغط للتحديد"}</div>` : ""}\n      <div class="ls">\n        <div class="lm"><div class="lv b ls-ord">${orders.toLocaleString("ar-EG")}</div><div class="ll">طلبات منجزة</div></div>\n        <div class="lm"><div class="lv r ls-debt">${debt.toLocaleString("ar-EG")} د.ع</div><div class="ll">عمولة مستحقة</div></div>\n      </div>\n      <div class="ec-acts">\n        <div style="display:flex;gap:4px">\n          <button class="ea ea-a" title="تفعيل"   onclick="doAct('ACCEPT','${type}','${pj}',this)">✓</button>\n          <button class="ea ea-p" title="استراحة" onclick="doAct('PAUSE','${type}','${pj}',this)">⏸</button>\n          <button class="ea ea-b" title="حظر"      onclick="doAct('BAN','${type}','${pj}',this)">🚫</button>\n          ${type === "DRV" ? `<button class="ea" title="${ldrSet.has(n) ? "إلغاء صفة الليدر" : "جعله ليدر"}" style="background:${ldrSet.has(n) ? "#7c3aed" : "#e2e8f0"};color:${ldrSet.has(n) ? "#fff" : "#64748b"}" onclick="toggleLeader('${pj}',${ldrSet.has(n) ? "false" : "true"},this)">&#128081;</button>` : ""}\n          ${type === "RES" ? `<button class="ea ea-pref" title="كباتن المطعم الثابتون" style="background:${prefCount[n] ? "#0ea5e9" : "#e2e8f0"};color:${prefCount[n] ? "#fff" : "#64748b"}" onclick="opPref('${pj}')">&#127869;</button>` : ""}\n          <button class="ea ea-d" title="حذف"      onclick="doAct('DEL','${type}','${pj}',this)">🗑</button>\n          <button class="ea ea-e" title="تعديل"   onclick="opEdit('${type}','${pj}')">✏️</button>\n        </div>\n        <div style="display:flex;gap:4px">\n          <button class="ea ea-money" title="تصفير"  onclick="rstDebt('${type}','${pj}',this)">💵</button>\n          ${type === "DRV" ? `<button class="ea" title="فتح الشفت — يبدأ شفتاً جديداً اليوم" style="background:#f59e0b;color:#fff" onclick="rstShift('${pj}',this)">🔓</button><button class="ea" title="تعديل الشفت — ساعة البدء والمدّة" style="background:var(--sky);color:#fff" onclick="opShift('${pj}')">🕐</button><button class="ea" title="${_lastLocs && _lastLocs[n] && _lastLocs[n].vehicle === "car" ? "كابتن سيارة — اضغط لإعادته دراجة" : "اجعله كابتن سيارة (لا تصله إلا طلبات السيارة)"}" style="background:${_lastLocs && _lastLocs[n] && _lastLocs[n].vehicle === "car" ? "#0ea5e9" : "#cbd5e1"};color:#fff" onclick="setVehicle('${pj}',this)">🚗</button>` : ``}\n          <button class="ea ea-c" title="اتصال"   onclick="window.open('tel:${pj}')">📞</button>\n        </div>\n      </div>\n    </div>`;
+  const html = `<div id="${cid}" class="ec ec-${status}">\n      ${extra}\n      <div class="ec-top">\n        <div class="ec-av">${type === "DRV" && drvPhoto[n] ? `<img src="${esc(drvPhoto[n])}" alt="" loading="lazy" style="width:100%;height:100%;border-radius:inherit;object-fit:cover">` : type === "RES" ? "🍽" : "🛵"}</div>\n        <span class="sp ${spC}">${esc(spL)}</span>\n      </div>\n      <div class="ec-n">${esc(name)}</div>\n      <div class="ec-ph">${esc(phone)}</div>\n      ${type === "DRV" ? `<div class="ec-ph sh-click" style="color:#0369a1;font-weight:700" title="تعديل الشفت — ساعة البدء والمدّة" onclick="opShift('${pj}')">🕐 ${drvShift[n] ? esc(drvShift[n]) : "بلا موعد — اضغط للتحديد"}</div>` : ""}\n      <div class="ls">\n        <div class="lm"><div class="lv b ls-ord">${orders.toLocaleString("ar-EG")}</div><div class="ll">طلبات منجزة</div></div>\n        <div class="lm"><div class="lv r ls-debt">${debt.toLocaleString("ar-EG")} د.ع</div><div class="ll">عمولة مستحقة</div></div>\n      </div>\n      <div class="ec-acts">\n        <div style="display:flex;gap:4px">\n          <button class="ea ea-a" title="تفعيل"   onclick="doAct('ACCEPT','${type}','${pj}',this)">✓</button>\n          <button class="ea ea-p" title="استراحة" onclick="doAct('PAUSE','${type}','${pj}',this)">⏸</button>\n          <button class="ea ea-b" title="حظر"      onclick="doAct('BAN','${type}','${pj}',this)">🚫</button>\n          ${type === "DRV" ? `<button class="ea" title="${ldrSet.has(n) ? "إلغاء صفة الليدر" : "جعله ليدر"}" style="background:${ldrSet.has(n) ? "#7c3aed" : "#e2e8f0"};color:${ldrSet.has(n) ? "#fff" : "#64748b"}" onclick="toggleLeader('${pj}',${ldrSet.has(n) ? "false" : "true"},this)">&#128081;</button>${ldrSet.has(n) ? `<button class="ea" title="مدّة نافذة هذا الليدر" style="background:#ede9fe;color:#7c3aed" onclick="pickLeaderHours('${pj}')">⏱</button>` : ""}` : ""}\n          ${type === "RES" ? `<button class="ea ea-pref" title="كباتن المطعم الثابتون" style="background:${prefCount[n] ? "#0ea5e9" : "#e2e8f0"};color:${prefCount[n] ? "#fff" : "#64748b"}" onclick="opPref('${pj}')">&#127869;</button>` : ""}\n          <button class="ea ea-d" title="حذف"      onclick="doAct('DEL','${type}','${pj}',this)">🗑</button>\n          <button class="ea ea-e" title="تعديل"   onclick="opEdit('${type}','${pj}')">✏️</button>\n        </div>\n        <div style="display:flex;gap:4px">\n          <button class="ea ea-money" title="تصفير"  onclick="rstDebt('${type}','${pj}',this)">💵</button>\n          ${type === "DRV" ? `<button class="ea" title="فتح الشفت — يبدأ شفتاً جديداً اليوم" style="background:#f59e0b;color:#fff" onclick="rstShift('${pj}',this)">🔓</button><button class="ea" title="تعديل الشفت — ساعة البدء والمدّة" style="background:var(--sky);color:#fff" onclick="opShift('${pj}')">🕐</button><button class="ea" title="${_lastLocs && _lastLocs[n] && _lastLocs[n].vehicle === "car" ? "كابتن سيارة — اضغط لإعادته دراجة" : "اجعله كابتن سيارة (لا تصله إلا طلبات السيارة)"}" style="background:${_lastLocs && _lastLocs[n] && _lastLocs[n].vehicle === "car" ? "#0ea5e9" : "#cbd5e1"};color:#fff" onclick="setVehicle('${pj}',this)">🚗</button>` : ``}\n          <button class="ea ea-c" title="اتصال"   onclick="window.open('tel:${pj}')">📞</button>\n        </div>\n      </div>\n    </div>`;
   cont.insertAdjacentHTML("beforeend", html);
  });
  rendered.forEach(id => {
@@ -2727,6 +2735,60 @@ function filtEnt(type) {
  });
 }
 
+let ldrBound = false;
+
+function ldrHoursStart() {
+ if (ldrBound) return;
+ ldrBound = true;
+ listen(() => db.ref("system_settings/tunables/LEADER_WINDOW_HOURS"), s => {
+  const v = Number(s.val());
+  ldrDefH = [ 6, 8, 12 ].includes(v) ? v : 6;
+  ldrHoursUi();
+  if (typeof filtEnt === "function" && gD) try {
+   filtEnt("DRV");
+  } catch (_) {}
+ });
+}
+
+function ldrHoursUi() {
+ document.querySelectorAll("#ldrHrsBar .fp").forEach(b => b.classList.toggle("on", Number(b.dataset.h) === ldrDefH));
+}
+
+window.setLeaderHours = async function(h) {
+ h = Number(h);
+ if (![ 6, 8, 12 ].includes(h)) return;
+ if (h === ldrDefH) return;
+ if (!confirm("نافذة كلّ الليدرز " + h + " ساعات من أول تسليم؟\n(بإيقاع 2–2.5 طلب/ساعة، ثم يتوقّف التوزيع عنه حتى الغد)\nيسري خلال دقيقة، وعلى النوافذ الجارية أيضاً. الليدر الذي خُصّصت له مدّةٌ تبقى مدّته.")) return;
+ try {
+  await db.ref("system_settings/tunables/LEADER_WINDOW_HOURS").set(h);
+  logAudit("leader_hours_default", h + "س");
+  toast("👑 نافذة الليدرز: " + h + " ساعات ✅");
+ } catch (e) {
+  toast("تعذّر: " + esc(e.message || e), "e");
+ }
+};
+
+window.pickLeaderHours = async function(pj) {
+ const phone = nP(String(pj || ""));
+ if (!phone) return;
+ const cur = ldrHrs[phone];
+ const v = prompt("مدّة نافذة هذا الليدر بالساعات: 6 أو 8 أو 12\n(اتركه فارغاً ليتبع المدّة العامّة: " + ldrDefH + " ساعات)", cur ? String(cur) : "");
+ if (v === null) return;
+ const t = String(v).trim();
+ const h = t === "" ? null : Number(t);
+ if (h !== null && ![ 6, 8, 12 ].includes(h)) {
+  toast("اكتب 6 أو 8 أو 12 فقط", "e");
+  return;
+ }
+ try {
+  await db.ref("drivers_locations/" + phone + "/leader_hours").set(h);
+  logAudit("leader_hours", phone + ": " + (h || "عامّ"));
+  toast(h ? "👑 نافذته " + h + " ساعات ✅" : "يتبع المدّة العامّة ✅");
+ } catch (e) {
+  toast("تعذّر: " + esc(e.message || e), "e");
+ }
+};
+
 window.toggleLeader = function(pj, on, btn) {
  const phone = nP(String(pj || ""));
  if (!phone) {
@@ -2734,11 +2796,14 @@ window.toggleLeader = function(pj, on, btn) {
   return;
  }
  const isOn = String(on) === "true";
- if (!confirm(isOn ? "جعل " + phone + " ليدراً؟\n\nسيتلقّى 2–2.5 طلب/ساعة لمدة 6 ساعات من أول تسليم، ثم يتوقّف عنه التوزيع." : "إلغاء صفة الليدر عن " + phone + "؟\n\nسيعود كابتناً عادياً فوراً.")) return;
+ if (!confirm(isOn ? "جعل " + phone + " ليدراً؟\n\nسيتلقّى 2–2.5 طلب/ساعة لمدة " + ldrDefH + " ساعات من أول تسليم، ثم يتوقّف عنه التوزيع." : "إلغاء صفة الليدر عن " + phone + "؟\n\nسيعود كابتناً عادياً فوراً.")) return;
  if (btn) btn.disabled = true;
  const upd = {};
  upd["drivers_locations/" + phone + "/is_leader"] = isOn ? true : null;
- if (!isOn) upd["drivers_locations/" + phone + "/leader_window_start"] = null;
+ if (!isOn) {
+  upd["drivers_locations/" + phone + "/leader_window_start"] = null;
+  upd["drivers_locations/" + phone + "/leader_hours"] = null;
+ }
  db.ref().update(upd).then(function() {
   toast(isOn ? "👑 صار ليدراً ✅" : "عاد كابتناً عادياً ✅");
  }).catch(function(e) {
@@ -4742,7 +4807,10 @@ window.goTab = function(name) {
      arcStat("");
     }
     if (name === "restaurants" && gD) filtEnt("RES");
-    if (name === "drivers" && gD) filtEnt("DRV");
+    if (name === "drivers") {
+     ldrHoursStart();
+     if (gD) filtEnt("DRV");
+    }
     if (name === "insurance") insStart();
     if (name === "posbridge") pbStart();
     if (name === "staff") {
