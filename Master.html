@@ -4255,12 +4255,53 @@ function pbRender() {
   const devHtml = devs.length ? devs.map(d => {
    const age = now - Number(d.last_seen || 0), live = age < 3 * 6e4;
    const ago = d.last_seen ? age < 12e4 ? "الآن" : age < 36e5 ? Math.round(age / 6e4) + " د" : age < 864e5 ? Math.round(age / 36e5) + " س" : Math.round(age / 864e5) + " يوم" : "—";
-   return `<div style="font-size:.72rem;font-weight:800;padding:6px 8px;border-radius:8px;background:var(--base2);margin-bottom:5px">\n        ${live ? "🟢" : "🔴"} ${esc(d.id)} · آخر نبض: ${ago} · الإصدار ${esc(d.ver || "?")}<br>\n        🖨 ${esc(d.printers || "—")}<br>\n        ${d.day === today ? `اليوم: التُقط ${Number(d.captured) || 0} · أُرسل ${Number(d.sent) || 0} · ليس توصيلاً ${Number(d.dismissed) || 0} · ينتظر ${Number(d.pending) || 0}` : "لا نشاط اليوم"}\n        ${Number(d.errors) ? ` · <span style="color:var(--rose)">أخطاء ${Number(d.errors)}</span>` : ""}\n        ${d.last_error ? `<div style="color:var(--rose);margin-top:3px;direction:ltr;text-align:right">${esc(d.last_error)}</div>` : ""}</div>`;
+   return `<div style="font-size:.72rem;font-weight:800;padding:6px 8px;border-radius:8px;background:var(--base2);margin-bottom:5px">\n        ${live ? "🟢" : "🔴"} ${esc(d.id)} · آخر نبض: ${ago} · الإصدار ${esc(d.ver || "?")}<br>\n        🖨 ${esc(d.printers || "—")}<br>\n        ${d.day === today ? `اليوم: التُقط ${Number(d.captured) || 0} · أُرسل ${Number(d.sent) || 0} · ليس توصيلاً ${Number(d.dismissed) || 0} · ينتظر ${Number(d.pending) || 0}` : "لا نشاط اليوم"}\n        ${Number(d.errors) ? ` · <span style="color:var(--rose)">أخطاء ${Number(d.errors)}</span>` : ""}\n        ${d.last_error ? `<div style="color:var(--rose);margin-top:3px;direction:ltr;text-align:right">${esc(d.last_error)}</div>` : ""}\n        ${pbDiagHtml(d)}</div>`;
   }).join("") : `<div style="font-size:.72rem;font-weight:800;opacity:.6;margin-bottom:6px">البرنامج غير مثبَّت على أيّ جهاز بعد.</div>`;
   const cls = eff === "auto" ? "ea" : eff === "off" ? "ep" : "ei";
-  return `<div class="ec ${cls}">\n      <div class="ec-top"><div><div class="ec-n">${esc(name || "مطعم")}</div><div class="ec-ph">0${esc(p)}</div></div><div style="font-size:.72rem;font-weight:900">يعمل الآن: ${PB_MODE_AR[eff]}</div></div>\n      <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;font-size:.74rem;font-weight:800">وضع المطعم:\n        <select onchange="pbSetMode('${p}',this.value,this)" style="font:inherit;padding:3px 6px;border-radius:7px;border:1px solid var(--line2)">${opts}</select>\n        ${eff !== mm ? `<span style="color:var(--amber)">(زرٌّ عامّ يغيّره)</span>` : ""}</div>\n      ${devHtml}</div>`;
+  return `<div class="ec ${cls}">\n      <div class="ec-top"><div><div class="ec-n">${esc(name || "مطعم")}</div><div class="ec-ph">0${esc(p)}</div></div><div style="font-size:.72rem;font-weight:900">يعمل الآن: ${PB_MODE_AR[eff]}</div></div>\n      <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;font-size:.74rem;font-weight:800">وضع المطعم:\n        <select onchange="pbSetMode('${p}',this.value,this)" style="font:inherit;padding:3px 6px;border-radius:7px;border:1px solid var(--line2)">${opts}</select>\n        ${eff !== mm ? `<span style="color:var(--amber)">(زرٌّ عامّ يغيّره)</span>` : ""}</div>\n      ${devHtml}\n      ${devs.length ? `<button class="abt" style="background:var(--base2);color:var(--ink);box-shadow:none;border:1px solid var(--line2);font-size:.7rem" onclick="pbRelearn('${p}')">🔄 انسَ ما تعلّمته (ابدأ التعرّف من جديد)</button>` : ""}</div>`;
  }).join("") : `<div class="empty-s" style="grid-column:1/-1">${pbF === "inst" ? "لم يُثبَّت البرنامج عند أيّ مطعم بعد — اختر «كلّ المطاعم» لتضبط الوضع مسبقاً." : "لا مطاعم."}</div>`;
 }
+
+const PB_ACT_AR = {
+ card: "بطاقة للكاشير",
+ queued: "أُرسل تلقائياً",
+ error: "تعذّرت قراءته",
+ not_delivery: "ليس توصيلاً",
+ ignored: "تُجوهل (تعلّم)",
+ copy: "نسخة مكرّرة",
+ unknown_skip: "غير مؤكَّد — تُجوهل",
+ already_sent: "أُرسل سابقاً",
+ tiny: "صغير جداً",
+ test: "صفحة اختبار",
+ off: "الوضع متوقّف"
+};
+
+function pbDiagHtml(d) {
+ if (!d.svc && !d.recent && !d.all_printers) return "";
+ let rec = [];
+ try {
+  rec = JSON.parse(d.recent || "[]") || [];
+ } catch (_) {
+  rec = [];
+ }
+ const actAr = a => {
+  const [k, via] = String(a || "").split("·");
+  return (PB_ACT_AR[k] || k) + (via ? ` <span style="opacity:.6">(${via === "local" ? "قُرئ محلّياً" : via === "probe" ? "فحص الخادم" : esc(via)})</span>` : "");
+ };
+ const sec = (t, body) => `<details style="margin-top:5px"><summary style="cursor:pointer">${t}</summary><div style="font-weight:700;margin-top:3px">${body}</div></details>`;
+ return `<div style="margin-top:4px">${d.svc === "service" ? "⚙️ يعمل خدمةً دائمة" : d.svc === "user" ? '<span style="color:var(--amber)">⚠️ يعمل من نافذة الكاشير (الخدمة متوقّفة)</span>' : ""}</div>` + (d.all_printers ? sec("🖨 طابعات الجهاز", esc(d.all_printers).replace(/\n/g, "<br>").replace(/ \+ /g, " ✅ ").replace(/ − /g, " ⛔ ")) : "") + (d.sources ? sec("🧠 ما تعلّمه (توصيل/أوراق)", esc(d.sources).replace(/\n/g, "<br>")) : "") + (rec.length ? sec("📄 آخر الأوراق", rec.map(r => `${esc(r.t)} · ${esc(r.p)} · «${esc(r.d)}» ⇐ ${actAr(r.a)}`).join("<br>")) : "") + (d.net ? sec("🌐 الطباعة المباشرة عبر الشبكة", esc(d.net).replace(/\n/g, "<br>")) : "");
+}
+
+window.pbRelearn = async function(p) {
+ if (!confirm("ينسى البرنامج ما تعلّمه عند هذا المطعم ويبدأ التعرّف من جديد (يفحص كلّ الأوراق أيّاماً).\nمتابعة؟")) return;
+ try {
+  await db.ref("pos_bridge/" + p + "/relearn").set(Date.now());
+  logAudit("pos_bridge_relearn", p);
+  toast("سيبدأ البرنامج التعرّف من جديد خلال ١٥ ثانية");
+ } catch (e) {
+  toast("تعذّر: " + esc(e.message || e), "e");
+ }
+};
 
 window.pbSetMode = async function(p, mode, sel) {
  const prev = (pbModes[p] || {}).mode || "manual";
@@ -4269,7 +4310,7 @@ window.pbSetMode = async function(p, mode, sel) {
   return;
  }
  try {
-  await db.ref("pos_bridge/" + p).set({
+  await db.ref("pos_bridge/" + p).update({
    mode: mode,
    updated_at: (new Date).toISOString(),
    updated_by: "admin"
