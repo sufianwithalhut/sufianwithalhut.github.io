@@ -1743,6 +1743,9 @@ window.toggleMap = function() {
   mc.classList.remove("open");
   mt.classList.add("dn");
  }
+ try {
+  _flSync();
+ } catch (_) {}
 };
 
 window.toggleBusyFilter = function(btn) {
@@ -1965,6 +1968,9 @@ function authBanner(show, msg) {
 }
 
 function listen(path, cb) {
+ try {
+  if (_flTake(cb)) return;
+ } catch (_) {}
  const ref = db.ref(path);
  const cancel = async err => {
   console.warn("🔒 رُفضت قراءة " + path + ":", err && err.message);
@@ -2063,6 +2069,11 @@ function attachDataListeners() {
  };
  listen("drivers_presence", _presCb);
  _visPaths = [ [ "drivers_locations", _locCb ], [ "drivers_presence", _presCb ] ];
+ try {
+  _flBoot(_locCb, _presCb);
+ } catch (e) {
+  console.warn("🛰️ fleet boot:", e && e.message);
+ }
  loadDriverNames();
 }
 
@@ -3627,6 +3638,14 @@ window.ccShowMap = function(phone) {
  wrap.innerHTML = '<div class="ctx-map" id="ctxMap"></div>';
  const orders = _ccDriverOrders(phone);
  _ccDrawMap(nP(phone), orders);
+ try {
+  _flFresh(phone, () => {
+   const b = document.getElementById("ctxMap");
+   if (!b || nP(_ccActive) !== nP(phone)) return;
+   if (b.className === "ctx-mapnote") b.textContent = "";
+   _ccDrawMap(nP(phone), _ccDriverOrders(phone));
+  });
+ } catch (_) {}
 };
 
 function _ccDrawMap(phone, orders) {
@@ -4238,6 +4257,11 @@ window.openThread = function(phone) {
  try {
   ntWatch(phone);
  } catch (e) {}
+ try {
+  _flFresh(phone, () => {
+   if (_ccActive === phone) renderCtx();
+  });
+ } catch (_) {}
  const inp = document.getElementById("ctInput");
  inp.value = _ccDrafts[phone] || "";
  inp.style.height = "auto";
@@ -4757,6 +4781,299 @@ document.addEventListener("visibilitychange", () => {
    });
   }
  }
+});
+
+const FL_FULL_MS = 9e5, FL_STALE_MS = 3e5, FL_DENY_MS = 6e5, FL_ONE_MAX = 20, FL_GONE_MS = 42e4;
+
+let _flOn = false, _flLocCb = null, _flPresCb = null, _flTickT = null;
+
+let _flFullAt = 0, _flFullP = null, _flFullFail = 0, _flVisAcc = 0, _flVisSince = 0, _flHidAt = 0;
+
+let _flAtSrv = 0, _flLastAt = 0, _flStale = false, _flDenied = 0, _flAttAt = 0, _flSrvOff = 0, _flConnAt = 0;
+
+let _flMiss = {};
+
+const _flNeed = new Set, _flOneP = new Map;
+
+const _flCb = snap => {
+ if (!_flOn) return;
+ const v = snap.val(), now = Date.now();
+ _flDenied = 0;
+ const at = v && v.v === 1 && Number(v.at) > 0 ? Number(v.at) : 0;
+ if (at) _flAtSrv = at;
+ const stale = !at || now + _flSrvOff - at > FL_STALE_MS;
+ if (stale !== _flStale) {
+  _flStale = stale;
+  _flSync();
+ }
+ if (stale) return;
+ const fresh = at !== _flLastAt;
+ _flLastAt = at;
+ if (fbL.some(l => l.cb === _flLocCb)) return;
+ _flMerge(v.d && typeof v.d === "object" ? v.d : {}, fresh, now);
+ _flLocCb({
+  val: () => drvLocs
+ });
+ _flDrain();
+};
+
+function _flBoot(locCb, presCb) {
+ if (_flLocCb) return;
+ _flLocCb = locCb;
+ _flPresCb = presCb;
+ try {
+  db.ref(".info/serverTimeOffset").on("value", s => {
+   _flSrvOff = Number(s.val()) || 0;
+  });
+ } catch (_) {}
+ try {
+  db.ref(".info/connected").on("value", s => {
+   _flConnAt = s.val() === true ? Date.now() : 0;
+  });
+ } catch (_) {}
+ _flFlag();
+}
+
+function _flFlag() {
+ const ref = db.ref("system_settings/flags/fleet_live_panels"), ent = {
+  ref: ref,
+  cb: null,
+  fl: true
+ };
+ ent.cb = s => {
+  try {
+   _flMode(s.val() === true);
+  } catch (e) {
+   console.warn("🛰️ fleet mode:", e && e.message);
+  }
+ };
+ fbL.push(ent);
+ ref.on("value", ent.cb, err => {
+  console.warn("🛰️ fleet_live_panels:", err && err.message);
+  fbL = fbL.filter(l => l !== ent);
+  setTimeout(_flFlag, 12e4);
+ });
+}
+
+function _flMode(on) {
+ if (!_flLocCb || on === _flOn) return;
+ const now = Date.now(), vis = document.visibilityState !== "hidden";
+ if (on) {
+  const live = !_visPaused && _locLastEvAt > 0 && now - _locLastEvAt < VIS_LIVE_MS && fbL.some(l => l.cb === _flLocCb);
+  _flOn = true;
+  if (_visHideT) {
+   clearTimeout(_visHideT);
+   _visHideT = null;
+  }
+  _visPaused = false;
+  _visPaths = [];
+  _flStale = false;
+  _flDenied = 0;
+  _flLastAt = 0;
+  _flAtSrv = 0;
+  _flMiss = {};
+  _flNeed.clear();
+  _flHidAt = vis ? 0 : now;
+  _flVisSince = vis ? now : 0;
+  _flVisAcc = 0;
+  if (live) _flFullAt = now; else {
+   _flFullAt = 0;
+   _flFull();
+  }
+  _visOff(_flLocCb);
+  _visOff(_flPresCb);
+  _flSync();
+  if (!_flTickT) _flTickT = setInterval(_flTick, 6e4);
+ } else {
+  _flOn = false;
+  if (_flTickT) {
+   clearInterval(_flTickT);
+   _flTickT = null;
+  }
+  _visOff(_flCb);
+  _visOff(_flLocCb);
+  _visOff(_flPresCb);
+  _visPaths = [ [ "drivers_locations", _flLocCb ], [ "drivers_presence", _flPresCb ] ];
+  if (vis) {
+   listen("drivers_locations", _flLocCb);
+   listen("drivers_presence", _flPresCb);
+  } else _visPaused = true;
+ }
+}
+
+function _flWant(p, cb, on) {
+ const has = fbL.some(l => l.cb === cb);
+ if (on && !has) {
+  const ref = db.ref(p), ent = {
+   ref: ref,
+   cb: cb,
+   fl: true
+  };
+  fbL.push(ent);
+  if (cb === _flCb) _flAttAt = Date.now();
+  ref.on("value", cb, err => {
+   console.warn("🛰️ رُفضت قراءة " + p + ":", err && err.message);
+   fbL = fbL.filter(l => l !== ent);
+   if (cb === _flCb && _flOn) {
+    _flDenied = Date.now();
+    _flStale = true;
+    _flSync();
+   }
+  });
+ } else if (!on && has) _visOff(cb);
+}
+
+function _flSync() {
+ if (!_flOn) return;
+ const vis = document.visibilityState !== "hidden";
+ _flWant("fleet_live", _flCb, vis && (!_flDenied || Date.now() - _flDenied > FL_DENY_MS));
+ _flWant("drivers_locations", _flLocCb, vis && (isMapOpen || _flStale));
+ _flWant("drivers_presence", _flPresCb, vis);
+}
+
+function _flTake(cb) {
+ if (!_flOn || !cb || cb !== _flLocCb && cb !== _flPresCb) return false;
+ _flSync();
+ return true;
+}
+
+function _flMerge(d, fresh, now) {
+ const seen = new Set;
+ Object.keys(d).forEach(ph => {
+  const a = d[ph];
+  if (!a || typeof a !== "object") return;
+  seen.add(ph);
+  delete _flMiss[ph];
+  let o = drvLocs[ph];
+  const was = !!(o && o.status === "active");
+  if (!o || typeof o !== "object") o = drvLocs[ph] = {};
+  const lu = Number(a[3]), luOk = lu > 0 && lu < 864e13;
+  const mine = o.last_update ? new Date(o.last_update).getTime() : 0;
+  if (luOk && !(lu <= mine)) {
+   o.lat = Number(a[0]) || 0;
+   o.lng = Number(a[1]) || 0;
+   if (a[2]) o.status = String(a[2]);
+   o.last_update = new Date(lu).toISOString();
+   o.daily_count = Number(a[4]) || 0;
+  }
+  if (!was && !_flFullP) _flNeed.add(ph);
+ });
+ if (!fresh) return;
+ Object.keys(drvLocs).forEach(ph => {
+  if (seen.has(ph)) return;
+  const o = drvLocs[ph];
+  if (!o || o.status !== "active") {
+   delete _flMiss[ph];
+   return;
+  }
+  const lu = o.last_update ? new Date(o.last_update).getTime() : 0, n = (_flMiss[ph] || 0) + 1;
+  if (n >= 2 || !(lu > 0) || now - lu > FL_GONE_MS) {
+   o.status = "inactive";
+   delete _flMiss[ph];
+  } else _flMiss[ph] = n;
+ });
+}
+
+function _flDrain() {
+ if (!_flOn || _flFullP || !_flNeed.size || document.visibilityState === "hidden") return;
+ let k = 0;
+ for (const ph of Array.from(_flNeed)) {
+  if (k++ >= FL_ONE_MAX) break;
+  _flNeed.delete(ph);
+  _flOne(ph);
+ }
+}
+
+function _flOne(ph) {
+ if (_flOneP.has(ph)) return _flOneP.get(ph);
+ const pr = db.ref("drivers_locations/" + ph).once("value").then(s => {
+  _flOneP.delete(ph);
+  if (!_flOn) return false;
+  const v = s.val();
+  if (v === null) delete drvLocs[ph]; else if (typeof v === "object") drvLocs[ph] = v; else return false;
+  delete _flMiss[ph];
+  _flLocCb({
+   val: () => drvLocs
+  });
+  return true;
+ }, e => {
+  _flOneP.delete(ph);
+  console.warn("🛰️ fleet one:", e && e.message);
+  return false;
+ });
+ _flOneP.set(ph, pr);
+ return pr;
+}
+
+function _flFresh(phone, after) {
+ if (!_flOn || fbL.some(l => l.cb === _flLocCb)) return;
+ const p = nP(phone);
+ if (!p) return;
+ _flOne(p).then(ch => {
+  if (ch) {
+   try {
+    after();
+   } catch (_) {}
+  }
+ });
+}
+
+function _flFull() {
+ if (_flFullP || document.visibilityState === "hidden") return _flFullP;
+ _flFullP = db.ref("drivers_locations").once("value").then(s => {
+  _flFullP = null;
+  if (!_flOn) return;
+  const now = Date.now();
+  _flFullAt = now;
+  _flVisAcc = 0;
+  _flVisSince = document.visibilityState !== "hidden" ? now : 0;
+  _flMiss = {};
+  _flNeed.clear();
+  _flLocCb(s);
+ }, e => {
+  _flFullP = null;
+  _flFullFail = Date.now();
+  console.warn("🛰️ fleet full:", e && e.message);
+ });
+ return _flFullP;
+}
+
+function _flTick() {
+ if (!_flOn || document.visibilityState === "hidden") return;
+ const now = Date.now();
+ if (fbL.some(l => l.cb === _flLocCb)) {
+  _flFullAt = now;
+  _flVisAcc = 0;
+  _flVisSince = now;
+ } else if (!_flFullP && now - _flFullFail > 12e4 && (!_flFullAt || _flVisAcc + (_flVisSince ? now - _flVisSince : 0) >= FL_FULL_MS)) _flFull();
+ if (!_flStale && _flAtSrv && _flConnAt && now - Math.max(_flConnAt, _flAttAt) > 6e4 && now + _flSrvOff - _flAtSrv > FL_STALE_MS) _flStale = true;
+ _flSync();
+ _flDrain();
+}
+
+document.addEventListener("visibilitychange", () => {
+ if (!_flOn) return;
+ const now = Date.now();
+ if (document.visibilityState === "hidden") {
+  if (!_flHidAt) _flHidAt = now;
+  if (_flVisSince) {
+   _flVisAcc += now - _flVisSince;
+   _flVisSince = 0;
+  }
+ } else {
+  const away = _flHidAt ? now - _flHidAt : 0;
+  _flHidAt = 0;
+  _flVisSince = now;
+  if (!_flDenied || now - _flDenied > FL_DENY_MS) _flStale = false;
+  if (away > 6e4) {
+   try {
+    const el = document.getElementById("vDrv");
+    if (el) el.textContent = "…";
+   } catch (_) {}
+  }
+  if (!_flFullAt || away >= FL_FULL_MS || _flVisAcc >= FL_FULL_MS) _flFull();
+ }
+ _flSync();
 });
 </script>
 </html>
