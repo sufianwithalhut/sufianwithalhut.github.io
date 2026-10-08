@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://*.firebasedatabase.app https://*.firebaseio.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app https://www.gstatic.com; object-src 'none'; base-uri 'none'; form-action 'self';">
 
 <script>
-const CURRENT_APP_VERSION = "32.16-ChatImg";
+const CURRENT_APP_VERSION = "32.17-Lean";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -1200,7 +1200,7 @@ window.addEventListener("popstate", () => {
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 
-import { serverTimestamp, getDatabase, ref, onValue, update, set, get, increment, onDisconnect, query, orderByChild, equalTo, goOffline, goOnline } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
+import { serverTimestamp, getDatabase, ref, onValue, update, set, get, increment, onDisconnect, query, orderByChild, equalTo, startAfter, goOffline, goOnline } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
 
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js";
 
@@ -1240,17 +1240,34 @@ let drv = null, curOrder = null, active = [], isOnline = false, isReg = false;
 
 let FB_CONNECTED = null, _fbConnSince = 0;
 
+if (document.visibilityState !== "visible") window._hidAt = Date.now();
+
+function _discWhy() {
+ try {
+  const vis = document.visibilityState !== "visible" ? "h" + Math.round((Date.now() - (window._hidAt || Date.now())) / 6e4) : "v";
+  const net = navigator.onLine === false ? "off" : "on";
+  const selfAt = Math.max(Number(window._rewireAt || 0), Number(window._purgeAt || 0));
+  return vis + " " + net + (Date.now() - selfAt < 3e3 ? " self" : "");
+ } catch (_) {
+  return "";
+ }
+}
+
 try {
  onValue(ref(db, ".info/connected"), s => {
   const c = s.val() === true;
   if (c !== FB_CONNECTED) {
+   const _upMs = _fbConnSince ? Date.now() - _fbConnSince : 0;
    FB_CONNECTED = c;
    _fbConnSince = Date.now();
    setTimeout(function() {
     try {
      if (c === false && drv) {
       bb("disconnect", "");
-      track("fb_disconnected");
+      track("fb_disconnected", {
+       ms: _upMs,
+       reason: _discWhy()
+      });
      }
      if (c === true && drv && drv.phone) setTimeout(bbFlush, 2500);
      if (c === true && drv && drv.phone) {
@@ -1273,7 +1290,10 @@ const _pageBorn = Date.now();
 
 document.addEventListener("visibilitychange", function() {
  try {
-  if (document.visibilityState !== "visible") return;
+  if (document.visibilityState !== "visible") {
+   window._hidAt = Date.now();
+   return;
+  }
   if (FB_CONNECTED === false && navigator.onLine !== false) {
    try {
     goOffline(db);
@@ -1315,23 +1335,34 @@ function bb(tag, meta) {
   a.push({
    t: (new Date).toISOString().slice(11, 19),
    k: String(tag).slice(0, 24),
-   m: String(meta == null ? "" : meta).slice(0, 60)
+   m: String(meta == null ? "" : meta).slice(0, 60),
+   i: _bbInst()
   });
   while (a.length > 40) a.shift();
   localStorage.setItem("suf_bb", JSON.stringify(a));
  } catch (_) {}
 }
 
+function _bbInst() {
+ try {
+  return window._bbI || (window._bbI = Date.now().toString(36).slice(-6));
+ } catch (_) {
+  return "";
+ }
+}
+
 function bbFlush() {
  try {
   const raw = localStorage.getItem("suf_bb");
   if (!raw) return;
-  const a = JSON.parse(raw) || [];
-  if (!a.length) {
-   localStorage.removeItem("suf_bb");
-   return;
-  }
+  const me = _bbInst(), TW = {
+   disconnect: 1,
+   native_offer: 1,
+   rest_write: 1
+  };
+  const a = (JSON.parse(raw) || []).filter(x => x && !(x.i === me && TW[x.k]));
   localStorage.removeItem("suf_bb");
+  if (!a.length) return;
   for (let i = 0; i < a.length; i += 8) {
    const chunk = a.slice(i, i + 8).map(x => x.t + " " + x.k + (x.m ? "=" + x.m : "")).join(" | ");
    track("blackbox", {
@@ -2111,10 +2142,19 @@ function getStoken() {
 }
 
 function setStoken(v) {
- localStorage.setItem("suf_stoken", String(v));
+ const s = String(v);
+ let same = false;
  try {
-  localStorage.setItem("suf_stoken_ts", String(Date.now()));
- } catch (_) {}
+  same = localStorage.getItem("suf_stoken") === s && !!localStorage.getItem("suf_stoken_ts");
+ } catch (_) {
+  same = false;
+ }
+ localStorage.setItem("suf_stoken", s);
+ if (!same) {
+  try {
+   localStorage.setItem("suf_stoken_ts", String(Date.now()));
+  } catch (_) {}
+ }
 }
 
 let __devMem = null;
@@ -2182,7 +2222,8 @@ async function cloudLogin(ph, pass, claim) {
    phone: ph,
    password: String(pass || ""),
    dev: devId(),
-   claim: claim ? "1" : "0"
+   claim: claim ? "1" : "0",
+   stoken: getStoken()
   }), new Promise((_, rej) => setTimeout(() => rej(new Error("cloud_timeout")), CLOUD_RACE_MS)) ]);
   const d = r && r.data;
   if (!d || !d.status) return null;
@@ -2235,13 +2276,13 @@ async function checkDriverReq(phone, pass, claim) {
  } catch (e) {
   d = null;
  }
- if (!d || !d.status && /غير معروف/.test(String(d.msg || ""))) {
-  track("login_get_fallback");
-  const r = await gasFetch(`${API_URL}?action=checkDriver&phone=${ph}&password=${encodeURIComponent(pass || "")}&token=${API_TOKEN}&stoken=${encodeURIComponent(getStoken())}&dev=${encodeURIComponent(devId())}&claim=${claim ? "1" : "0"}`);
-  d = await r.json();
+ if (!d) {
+  track("login_post_fail");
+  throw new Error("login_net");
  }
+ if (!d.status && /غير معروف/.test(String(d.msg || ""))) track("login_post_unknown");
  try {
-  if (d && d.session_token) setStoken(d.session_token);
+  if (d.session_token) setStoken(d.session_token);
  } catch (e) {
   track("stoken_store_fail");
  }
@@ -2732,6 +2773,8 @@ let NET_TIMEOUT_MS = 6e3;
 
 let TAP_TIMEOUT_MS = 18e3, HB_BUSY_MS = 1e4, HB_IDLE_MS = 2e4;
 
+let HB_THIN = 0, HB_NATIVE_MS = 6e4;
+
 let RESLOC_MS = 18e5, _resLocAt = 0, _resLocTimer = null;
 
 const TUNE_LIMITS = {
@@ -2740,7 +2783,9 @@ const TUNE_LIMITS = {
  HB_BUSY_MS: [ 5e3, 6e4 ],
  HB_IDLE_MS: [ 1e4, 12e4 ],
  RESLOC_MS: [ 3e5, 216e5 ],
- CLOUD_RACE_MS: [ 2e3, 12e3 ]
+ CLOUD_RACE_MS: [ 2e3, 12e3 ],
+ HB_THIN: [ 0, 1 ],
+ HB_NATIVE_MS: [ 2e4, 6e4 ]
 };
 
 const _rtt = [];
@@ -2763,15 +2808,17 @@ function netTimeout(base) {
  return Math.min(lim, Math.max(base, Math.round(p * 3)));
 }
 
+function _tuneSet(k, v) {
+ const lim = TUNE_LIMITS[k];
+ v = Number(v);
+ if (!lim || !isFinite(v)) return;
+ v = Math.min(lim[1], Math.max(lim[0], v));
+ if (k === "NET_TIMEOUT_MS") NET_TIMEOUT_MS = v; else if (k === "TAP_TIMEOUT_MS") TAP_TIMEOUT_MS = v; else if (k === "HB_BUSY_MS") HB_BUSY_MS = v; else if (k === "HB_IDLE_MS") HB_IDLE_MS = v; else if (k === "RESLOC_MS") RESLOC_MS = v; else if (k === "CLOUD_RACE_MS") CLOUD_RACE_MS = v; else if (k === "HB_THIN") HB_THIN = v >= .5 ? 1 : 0; else if (k === "HB_NATIVE_MS") HB_NATIVE_MS = v;
+}
+
 function applyTunables(t) {
  if (!t || typeof t !== "object") return;
- const set = (k, v) => {
-  const lim = TUNE_LIMITS[k];
-  v = Number(v);
-  if (!lim || !isFinite(v)) return;
-  v = Math.min(lim[1], Math.max(lim[0], v));
-  if (k === "NET_TIMEOUT_MS") NET_TIMEOUT_MS = v; else if (k === "TAP_TIMEOUT_MS") TAP_TIMEOUT_MS = v; else if (k === "HB_BUSY_MS") HB_BUSY_MS = v; else if (k === "HB_IDLE_MS") HB_IDLE_MS = v; else if (k === "RESLOC_MS") RESLOC_MS = v; else if (k === "CLOUD_RACE_MS") CLOUD_RACE_MS = v;
- };
+ const set = _tuneSet;
  Object.keys(t).forEach(k => set(k, t[k]));
  try {
   if (t.RESLOC_MS !== undefined && typeof scheduleResLocs === "function") scheduleResLocs();
@@ -2856,32 +2903,49 @@ function withTimeout(promise, ms = NET_TIMEOUT_MS, label = "timeout") {
 const DRV_ACTION_URL = "https://europe-west1-sufyan-delivery.cloudfunctions.net/driverAction";
 
 async function drvAction(action, orderId, why, ms) {
- const h = {
-  "Content-Type": "application/json"
+ const send = async () => {
+  const h = {
+   "Content-Type": "application/json"
+  };
+  try {
+   const u = auth.currentUser;
+   if (u) {
+    const tk = await withTimeout(u.getIdToken(), 4e3, "idtok");
+    if (tk) h.Authorization = "Bearer " + tk;
+   }
+  } catch (_) {}
+  return await gasFetch(DRV_ACTION_URL, {
+   method: "POST",
+   headers: h,
+   body: JSON.stringify({
+    action: action,
+    orderId: String(orderId),
+    phone: drv.phone,
+    stoken: getStoken(),
+    why: why || ""
+   })
+  }, ms || 1e4);
  };
- try {
-  const u = auth.currentUser;
-  if (u) {
-   const tk = await withTimeout(u.getIdToken(), 4e3, "idtok");
-   if (tk) h.Authorization = "Bearer " + tk;
+ let r = await send();
+ if (r.status === 401 && action !== "ACCEPT") {
+  track("drv_action_heal", {
+   cmd: action,
+   st: getStoken() ? 1 : 0,
+   uid: auth.currentUser ? 1 : 0
+  });
+  let ok = false;
+  try {
+   ok = await Promise.race([ healAuth(), new Promise(res => setTimeout(() => res(false), 8e3)) ]);
+  } catch (_) {
+   ok = false;
   }
- } catch (_) {}
- const r = await gasFetch(DRV_ACTION_URL, {
-  method: "POST",
-  headers: h,
-  body: JSON.stringify({
-   action: action,
-   orderId: String(orderId),
-   phone: drv.phone,
-   stoken: getStoken(),
-   why: why || ""
-  })
- }, ms || 1e4);
+  if (ok) r = await send();
+ }
  if (r.status !== 200) throw new Error("cf_" + r.status);
  const d = await r.json();
  track("drv_action", {
-  a: action,
-  ok: !!(d && d.success)
+  cmd: action,
+  why: d && d.success ? "ok" : "no"
  });
  return d;
 }
@@ -2951,8 +3015,8 @@ async function guaranteeAccept(id) {
     dd = await drvAction("ACCEPT", id);
    } catch (e1) {
     track("drv_action_gas", {
-     a: "ACCEPT",
-     r: String(e1 && e1.message || e1).slice(0, 30)
+     cmd: "ACCEPT",
+     why: String(e1 && e1.message || e1).slice(0, 30)
     });
     const rr = await gasFetch(`${API_URL}?action=ACCEPT_ORDER&orderId=${encodeURIComponent(id)}&driverPhone=${drv.phone}&token=${API_TOKEN}&stoken=${encodeURIComponent(getStoken())}`);
     dd = await rr.json().catch(() => ({}));
@@ -3661,7 +3725,7 @@ function setDesired(online, by) {
    try {
     AndroidRadar.nativeSetDesired(!!online, by || "captain");
     _lastDesired = !!online;
-    track("desired_via_native", {
+    if (!online || Math.random() < .1) track("desired_via_native", {
      reason: online ? "on" : "off"
     });
     return;
@@ -4159,7 +4223,18 @@ window.toggleOnline = async function() {
   if (!_freeDone && (!drv.shiftEnd || new Date(drv.shiftEnd) <= new Date)) {
    try {
     await ensureFreshStoken();
-    const d = await gasRetry(() => gasJson(`${API_URL}?action=START_SHIFT&phone=${drv.phone}&token=${API_TOKEN}&stoken=${encodeURIComponent(getStoken())}`, null, 8e3), 2, 600);
+    const _ss = () => gasRetry(() => gasJson(`${API_URL}?action=START_SHIFT&phone=${drv.phone}&token=${API_TOKEN}&stoken=${encodeURIComponent(getStoken())}`, null, 8e3), 2, 600);
+    let d = await _ss();
+    if (d && d.success === false && /جلسة غير صالحة/.test(String(d.msg || ""))) {
+     track("shift_session_heal");
+     let _h = false;
+     try {
+      _h = await Promise.race([ healAuth(), new Promise(r => setTimeout(() => r(false), 6e3)) ]);
+     } catch (_) {
+      _h = false;
+     }
+     if (_h) d = await _ss();
+    }
     if (d.success) {
      drv.shiftEnd = d.shift_end;
      if (d.shifts_disabled === true || d.shift_end === null) drv.freeShiftDay = _bizDay;
@@ -4346,7 +4421,61 @@ function heartbeat() {
 
 let availEpoch = 0;
 
+let _natLuMs = 0, _luListening = false;
+
+const _myLUs = [];
+
+function _stampLU() {
+ const s = (new Date).toISOString();
+ _myLUs.push(s);
+ if (_myLUs.length > 4) _myLUs.shift();
+ return s;
+}
+
+function _noteNodeLU(lu) {
+ if (typeof lu !== "string" || !lu || _myLUs.indexOf(lu) > -1) return;
+ const t = Date.parse(lu);
+ if (!isFinite(t)) return;
+ if (Math.abs(Date.now() - t) > 12e4) return;
+ if (t > _natLuMs) _natLuMs = t;
+}
+
+function _ensureLuListen() {
+ try {
+  if (_luListening || HB_THIN !== 1 || !window.AndroidRadar || !_ready || !drv || !drv.phone) return;
+  _luListening = true;
+  listen(() => ref(db, `drivers_locations/${drv.phone}/last_update`), s => _noteNodeLU(s.val()));
+ } catch (_) {
+  _luListening = false;
+ }
+}
+
+function _natCovers() {
+ try {
+  if (HB_THIN !== 1 || !_reconciled || !window.AndroidRadar) return false;
+  _ensureLuListen();
+  const now = Date.now();
+  if (now - (window._natLocAt || 0) > 45e3) return false;
+  if (now - _natLuMs > 45e3) return false;
+  if (now - (lastAckTs || 0) >= HB_NATIVE_MS) return false;
+  if (now - (_diagLast || 0) > 3e5) return false;
+  _crumb("hb_native_skip");
+  return true;
+ } catch (_) {
+  return false;
+ }
+}
+
+function _geoWriteDue(nowMs) {
+ try {
+  return HB_THIN !== 1 || nowMs - (lastAckTs || 0) >= (active && active.length ? HB_BUSY_MS : HB_IDLE_MS);
+ } catch (_) {
+  return true;
+ }
+}
+
 async function fbStatus(st, epoch, waitGeo) {
+ if (st === "active" && !waitGeo && _natCovers()) return true;
  if (window._statusBusy === true && !waitGeo && st === "active") {
   try {
    _crumb("hb_coalesced");
@@ -4408,6 +4537,9 @@ function _pushDiag(p) {
   if (!due) return;
   _diagLast = Date.now();
   _diagSkew = sk;
+  update(ref(db, `drivers_locations/${p}`), {
+   web_at: new Date(srvNow()).toISOString()
+  }).catch(() => {});
   _jsErrFlush();
   if (isOnline && _reconciled) {
    update(ref(db, `drivers_desired/${p}`), {
@@ -4417,8 +4549,7 @@ function _pushDiag(p) {
   update(ref(db, `drivers_locations/${p}`), {
    ver: String(CURRENT_APP_VERSION).slice(0, 40),
    skew: sk,
-   src: _buildSrc(),
-   web_at: new Date(srvNow()).toISOString()
+   src: _buildSrc()
   }).catch(e => {
    track("diag_write_fail", {
     reason: String(e && e.code || e && e.message || e).slice(0, 60)
@@ -4447,6 +4578,7 @@ async function _safeUpdate(u, tmo) {
   try {
    const raw = String(e && (e.code || e.message) || "").toLowerCase();
    if (raw.indexOf("timeout") > -1 && !curOrder && !(active && active.length)) {
+    window._purgeAt = Date.now();
     goOffline(db);
     setTimeout(function() {
      try {
@@ -4530,12 +4662,12 @@ async function _fbStatusRaw(st, waitGeo) {
   showLocBanner(false);
  }
  const p = drv.phone, u = {};
- if (lastLat && lastLng && locFresh()) {
+ if (!goingOff && lastLat && lastLng && locFresh()) {
   u[`drivers_locations/${p}/lat`] = Number(lastLat);
   u[`drivers_locations/${p}/lng`] = Number(lastLng);
  }
  if (!_reconciled) u[`drivers_locations/${p}/status`] = st;
- u[`drivers_locations/${p}/last_update`] = (new Date).toISOString();
+ u[`drivers_locations/${p}/last_update`] = _stampLU();
  const _wStart = Date.now();
  try {
   await _safeUpdate(u, _tmo);
@@ -4608,9 +4740,15 @@ async function _fbStatusRaw(st, waitGeo) {
      lastAckTs = Date.now();
      window._statusErr = "";
      updateLinkPill();
-     track("write_via_rest", {
-      reason: st
-     });
+     window._wvrN = (window._wvrN || 0) + 1;
+     if (Date.now() - (window._wvrAt || 0) > 6e5) {
+      window._wvrAt = Date.now();
+      track("write_via_rest", {
+       reason: st,
+       n: window._wvrN
+      });
+      window._wvrN = 0;
+     }
      bb("rest_write", "ok");
      if (Date.now() - (window._rewireAt || 0) > 6e4) {
       window._rewireAt = Date.now();
@@ -4695,7 +4833,8 @@ window.__nativeEvent = function(ev) {
 window.__nativeLocation = function(lat, lng, acc) {
  markFix(lat, lng, acc);
  showLocBanner(false);
- if (isOnline) fbStatus("active", availEpoch);
+ window._natLocAt = Date.now();
+ if (isOnline && _geoWriteDue(Date.now())) fbStatus("active", availEpoch);
  document.getElementById("permOv").classList.add("dn");
 };
 
@@ -4712,9 +4851,14 @@ window.startGeoWatch = function() {
   } catch (e) {}
   markFix(p.coords.latitude, p.coords.longitude, p.coords.accuracy);
   const nowMs = Date.now();
-  if (nowMs - (window._lastGeoWrite || 0) >= 1e4) {
+  if (isOnline) {
+   if (nowMs - (window._lastGeoWrite || 0) >= 1e4 && _geoWriteDue(nowMs)) {
+    window._lastGeoWrite = nowMs;
+    fbStatus("active");
+   }
+  } else if (nowMs - (window._lastGeoWrite || 0) >= 12e4) {
    window._lastGeoWrite = nowMs;
-   fbStatus(isOnline ? "active" : "inactive");
+   fbStatus("inactive");
   }
  };
  const bad = () => {
@@ -5239,12 +5383,18 @@ function startListeners() {
    location.reload();
   }
  });
- listen(() => ref(db, `drivers_locations/${drv.phone}`), s => {
-  const v = s.val() || {};
-  drv.photo = v.photo || null;
-  drv.shift_h = v.shift_h === undefined ? null : v.shift_h;
-  drv.shift_len = v.shift_len || null;
-  drv.shift_next = v.shift_next || null;
+ const _SELF_KEYS = [ "photo", "shift_h", "shift_len", "shift_next" ], _selfPend = {}, _selfSeen = {};
+ let _selfT = null;
+ const _selfCommit = () => {
+  if (!_SELF_KEYS.every(k => _selfSeen[k])) return;
+  const v = _selfPend;
+  if ("photo" in v) drv.photo = v.photo || null;
+  if ("shift_h" in v) drv.shift_h = v.shift_h === undefined || v.shift_h === null ? null : v.shift_h;
+  if ("shift_len" in v) drv.shift_len = v.shift_len || null;
+  if ("shift_next" in v) drv.shift_next = v.shift_next || null;
+  _SELF_KEYS.forEach(k => {
+   delete _selfPend[k];
+  });
   try {
    localStorage.setItem("suf_session", JSON.stringify(drv));
   } catch (_) {}
@@ -5257,7 +5407,13 @@ function startListeners() {
     if (!profileComplete()) openOnboarding(true);
    }, 1200);
   }
- });
+ };
+ _SELF_KEYS.forEach(k => listen(() => ref(db, `drivers_locations/${drv.phone}/${k}`), s => {
+  _selfPend[k] = s.val();
+  _selfSeen[k] = 1;
+  clearTimeout(_selfT);
+  _selfT = setTimeout(_selfCommit, 60);
+ }));
  listen(() => ref(db, `ledgers/drivers/${drv.phone}`), s => {
   const l = s.val() || {};
   lifetime = Number(l.completed_orders || 0);
@@ -5290,6 +5446,11 @@ function startListeners() {
  });
  listen(() => ref(db, "system_settings/shifts_enabled"), s => {
   window._shiftsOff = s.val() === false;
+  try {
+   paintShiftInfo();
+  } catch (e) {
+   _crumb("shift_paint_fail");
+  }
  });
  listen(() => ref(db, "system_settings/tunables"), s => {
   applyTunables(s.val());
@@ -5332,6 +5493,7 @@ function startListeners() {
  listen(() => ref(db, "system_settings/flags"), s => {
   const v = s.val();
   window._flags = v && typeof v === "object" ? v : {};
+  _lsSet("suf_f_resloc_delta", window._flags.resloc_delta === true ? "1" : "0");
  });
  listen(() => ref(db, "system_settings"), s => {
   try {
@@ -5430,13 +5592,62 @@ try {
  resByPhone = {};
 }
 
-async function pullResLocs(why) {
+const RESLOC_FULL_MS = 72 * 36e5, RESLOC_SETTLE_MS = 12e4;
+
+function _lsSet(k, v) {
  try {
-  const s = await withTimeout(get(ref(db, "restaurants_locations")), netTimeout(NET_TIMEOUT_MS), "resloc_all");
+  localStorage.setItem(k, String(v));
+  return true;
+ } catch (_) {
+  return false;
+ }
+}
+
+function _rlDelta() {
+ try {
+  const f = window._flags;
+  if (f && typeof f.resloc_delta === "boolean") return f.resloc_delta;
+  return localStorage.getItem("suf_f_resloc_delta") === "1";
+ } catch (_) {
+  return false;
+ }
+}
+
+let _rlInflight = null, _rlBooted = false;
+
+async function pullResLocs(why) {
+ if (why !== "boot" && FB_CONNECTED === false) return false;
+ if (_rlInflight) return _rlInflight;
+ if (why === "boot" && _resLocAt && Date.now() - _resLocAt < 6e4) return true;
+ const p = _pullResLocsOnce(why);
+ _rlInflight = p;
+ try {
+  return await p;
+ } finally {
+  _rlInflight = null;
+ }
+}
+
+async function _pullResLocsOnce(why) {
+ let cur = "", fullAt = 0;
+ try {
+  cur = String(localStorage.getItem("suf_resloc_cur") || "");
+  fullAt = Number(localStorage.getItem("suf_resloc_full_at") || 0);
+ } catch (_) {
+  cur = "";
+  fullAt = 0;
+ }
+ const delta = _rlDelta() && cur.length >= 20 && cur.charAt(10) === "T" && Date.now() - fullAt < RESLOC_FULL_MS && Object.keys(resByPhone).length > 0;
+ try {
+  const q = delta ? query(ref(db, "restaurants_locations"), orderByChild("updated_at"), startAfter(cur)) : ref(db, "restaurants_locations");
+  const s = await withTimeout(get(q), netTimeout(NET_TIMEOUT_MS), delta ? "resloc_delta" : "resloc_all");
   const v = s.val() || {};
+  const settled = new Date(srvNow() - RESLOC_SETTLE_MS).toISOString();
+  let mx = delta ? cur : "", n = 0;
   Object.keys(v).forEach(ph => {
    const L = v[ph];
    if (!L) return;
+   n++;
    const nm = String(L.name || "").trim();
    if (nm) {
     resCache[nm] = Object.assign({}, resCache[nm] || {}, {
@@ -5452,21 +5663,35 @@ async function pullResLocs(why) {
     area: L.area,
     name: nm
    };
+   const u = String(L.updated_at || "");
+   if (u > mx && u <= settled) mx = u;
   });
-  try {
-   localStorage.setItem("suf_res_cache", JSON.stringify(resCache));
-  } catch (e) {}
-  try {
-   localStorage.setItem("suf_res_by_phone", JSON.stringify(resByPhone));
-  } catch (e) {}
+  if (n) {
+   try {
+    localStorage.setItem("suf_res_cache", JSON.stringify(resCache));
+   } catch (e) {}
+   try {
+    localStorage.setItem("suf_res_by_phone", JSON.stringify(resByPhone));
+   } catch (e) {}
+  }
+  if (mx) _lsSet("suf_resloc_cur", mx);
+  if (!delta) _lsSet("suf_resloc_full_at", Date.now());
   _resLocAt = Date.now();
-  active.forEach(enrichOrder);
-  lastHtml = "";
-  renderOrders();
+  const _first = !_rlBooted;
+  _rlBooted = true;
+  if (_first && (!delta || Math.random() < .1)) track("resloc_boot", {
+   ln: n,
+   reason: delta ? "delta" : "full"
+  });
+  if (n) {
+   active.forEach(enrichOrder);
+   lastHtml = "";
+   renderOrders();
+  }
   return true;
  } catch (e) {
   track("resloc_pull_fail", {
-   reason: String(e && e.code || e && e.message || e).slice(0, 40),
+   reason: (delta ? "d:" : "") + String(e && e.code || e && e.message || e).slice(0, 38),
    why: String(why || "").slice(0, 16)
   });
   return false;
@@ -5800,8 +6025,8 @@ window.declineOrder = function(auto) {
  shadowCommand("EXPIRE", id);
  drvAction("DECLINE", id, why).catch(e => {
   track("drv_action_gas", {
-   a: "DECLINE",
-   r: String(e && e.message || e).slice(0, 30)
+   cmd: "DECLINE",
+   why: String(e && e.message || e).slice(0, 30)
   });
   return gasRetry(() => gasJson(`${API_URL}?action=DECLINE_ORDER&orderId=${encodeURIComponent(id)}&driverPhone=${drv.phone}&why=${why}&token=${API_TOKEN}&stoken=${encodeURIComponent(getStoken())}`), 3, 700);
  }).catch(() => {});
@@ -6429,8 +6654,8 @@ window.orderAction = function(id, act, btn) {
       dd = await drvAction("COMPLETE", id, "", 12e3);
      } catch (e1) {
       track("drv_action_gas", {
-       a: "COMPLETE",
-       r: String(e1 && e1.message || e1).slice(0, 30)
+       cmd: "COMPLETE",
+       why: String(e1 && e1.message || e1).slice(0, 30)
       });
       const rr = await withTimeout(fetch(`${API_URL}?action=COMPLETE_ORDER&orderId=${encodeURIComponent(id)}&driverPhone=${drv.phone}&token=${API_TOKEN}&stoken=${encodeURIComponent(getStoken())}`), 12e3, "gas_timeout");
       dd = await rr.json();

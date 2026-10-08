@@ -1229,6 +1229,8 @@ let liveOrd = [], actDrv = new Set, gDrivers = [], liveLed = {
 
 let drvLocs = {}, rfilt = "all", pendCnt = 0, fbConn = true, fbL = [];
 
+let _visPaths = [], _visHideT = null, _visPaused = false, _locLastEvAt = 0;
+
 let radarHtml = "";
 
 let rawOrders = {};
@@ -1301,7 +1303,8 @@ function scheduleStaffTokenRefresh(phone, pass) {
    const d = await staffApi({
     action: "STAFF_LOGIN",
     phone: phone,
-    password: pass
+    password: pass,
+    stoken: STOKEN
    });
    if (d && d.success) {
     if (d.token) updateStoken(d.token);
@@ -1483,6 +1486,28 @@ async function staffApi(params) {
    if (!(d && (d.status === "not_mirrored" || d.status === "no_pepper"))) return d;
   }
  } catch (e) {}
+ if (params && params.action === "STAFF_LOGIN") return await apiPostLogin(params);
+ return await apiGet(params);
+}
+
+let _gasLoginPost = true;
+
+async function apiPostLogin(params) {
+ if (_gasLoginPost) {
+  const r = await fetch(API, {
+   method: "POST",
+   headers: {
+    "Content-Type": "text/plain"
+   },
+   body: JSON.stringify(Object.assign({}, params, {
+    token: TOK
+   }))
+  });
+  const d = await r.json();
+  if (!(d && d.success === false && /إجراء غير معروف/.test(String(d.msg || "")))) return d;
+  _gasLoginPost = false;
+  console.warn("🔐 [V34.37] STAFF_LOGIN عبر POST غير مدعوم في Code.gs المنشور (قبل V34.37) ⇒ GET لهذه الجلسة");
+ }
  return await apiGet(params);
 }
 
@@ -1510,7 +1535,8 @@ async function reAuthStaff() {
   const d = await staffApi({
    action: "STAFF_LOGIN",
    phone: saved.phone,
-   password: pass
+   password: pass,
+   stoken: STOKEN
   });
   if (d && d.success && d.token) {
    updateStoken(d.token);
@@ -1564,7 +1590,8 @@ window.addEventListener("DOMContentLoaded", () => {
     staffApi({
      action: "STAFF_LOGIN",
      phone: EMP_PHONE,
-     password: pass
+     password: pass,
+     stoken: STOKEN
     }).then(d => {
      if (d && d.success) {
       if (d.token) updateStoken(d.token);
@@ -2002,7 +2029,8 @@ function attachDataListeners() {
   scheduleMap();
   scheduleHof();
  });
- listen("drivers_locations", snap => {
+ const _locCb = snap => {
+  _locLastEvAt = Date.now();
   const locs = snap.val() || {};
   drvLocs = locs;
   dnInvalidate();
@@ -2019,7 +2047,8 @@ function attachDataListeners() {
   scheduleRadar();
   scheduleHof();
   scheduleMap();
- });
+ };
+ listen("drivers_locations", _locCb);
  listen("ledgers/drivers", snap => {
   liveLed.drivers = snap.val() || {};
   scheduleHof();
@@ -2028,10 +2057,12 @@ function attachDataListeners() {
   dailyMetrics = snap.val() || {};
   scheduleHof();
  });
- listen("drivers_presence", snap => {
+ const _presCb = snap => {
   drvPresence = snap.val() || {};
   scheduleHof();
- });
+ };
+ listen("drivers_presence", _presCb);
+ _visPaths = [ [ "drivers_locations", _locCb ], [ "drivers_presence", _presCb ] ];
  loadDriverNames();
 }
 
@@ -4682,6 +4713,49 @@ document.addEventListener("visibilitychange", () => {
    _stopTitleFlash();
    _requestWake();
   } catch (e) {}
+ }
+});
+
+const VIS_PAUSE_MS = 6e5, VIS_LIVE_MS = 12e4;
+
+function _visOff(cb) {
+ fbL = fbL.filter(l => {
+  if (l.cb !== cb) return true;
+  try {
+   l.ref.off("value", cb);
+  } catch (e) {
+   console.warn("visPause:", e && e.message);
+  }
+  return false;
+ });
+}
+
+document.addEventListener("visibilitychange", () => {
+ if (!_visPaths.length) return;
+ if (document.visibilityState === "hidden") {
+  if (_visHideT || _visPaused) return;
+  _visHideT = setTimeout(() => {
+   _visHideT = null;
+   if (document.visibilityState !== "hidden" || _visPaused) return;
+   if (Date.now() - _locLastEvAt > VIS_LIVE_MS) return;
+   _visPaused = true;
+   _visPaths.forEach(([p, cb]) => _visOff(cb));
+  }, VIS_PAUSE_MS);
+ } else {
+  if (_visHideT) {
+   clearTimeout(_visHideT);
+   _visHideT = null;
+  }
+  if (_visPaused) {
+   _visPaused = false;
+   try {
+    const v = document.getElementById("vDrv");
+    if (v) v.textContent = "…";
+   } catch (_) {}
+   _visPaths.forEach(([p, cb]) => {
+    if (!fbL.some(l => l.cb === cb)) listen(p, cb);
+   });
+  }
  }
 });
 </script>

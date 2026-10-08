@@ -1448,6 +1448,8 @@ let liveLed = {
 
 let actDrv = new Set;
 
+let _locCbRef = null, _visHideT = null, _visPaused = false, _locLastEvAt = 0;
+
 let ldrSet = new Set, ldrWin = {}, ldrHrs = {}, ldrDefH = 6;
 
 let prefCount = {};
@@ -2040,15 +2042,20 @@ function cDisp(cs) {
 }
 
 function _coalesce(fn, ms) {
- let t = null, last = null;
+ let t = null, last = null, seq = 0, ran = 0;
  return function(v) {
   last = v;
   if (t) return;
   t = setTimeout(() => {
    t = null;
-   const v2 = last;
+   const v2 = last, my = ++seq;
    last = null;
-   if (window.requestAnimationFrame) requestAnimationFrame(() => fn(v2)); else fn(v2);
+   const run = () => {
+    if (my <= ran) return;
+    ran = my;
+    fn(v2);
+   };
+   if (window.requestAnimationFrame && !document.hidden) requestAnimationFrame(run); else run();
   }, ms);
  };
 }
@@ -2422,7 +2429,11 @@ function setupFB() {
   if (gD && document.getElementById("pg-drivers").classList.contains("on")) _drvListDebounced();
  };
  const lCb = _coalesce(_lCbRun, 400);
- listen(() => db.ref("drivers_locations"), lCb);
+ _locCbRef = snap => {
+  _locLastEvAt = Date.now();
+  lCb(snap);
+ };
+ listen(() => db.ref("drivers_locations"), _locCbRef);
  const ledCb = () => {
   if (gD) {
    updBadges("RES", gD.restaurants);
@@ -2480,13 +2491,14 @@ function setupFB() {
  };
  listen(() => db.ref("system_settings/health_check"), hcCb);
  const _days = [];
- for (let i = 0; i < 3; i++) {
+ for (let i = 0; i < 1; i++) {
   const d = new Date;
   d.setDate(d.getDate() - i);
   _days.push(d.toISOString().split("T")[0]);
  }
  compArch = [];
  compByDay = {};
+ arcLoaded = 1;
  _days.forEach(day => {
   const cCb = snap => {
    const obj = snap.val();
@@ -2548,6 +2560,40 @@ function setupFB() {
  updRadarCnts();
  updTicker();
 }
+
+const VIS_PAUSE_MS = 6e5, VIS_LIVE_MS = 12e4;
+
+document.addEventListener("visibilitychange", () => {
+ if (!_locCbRef) return;
+ if (document.visibilityState === "hidden") {
+  if (_visHideT || _visPaused) return;
+  _visHideT = setTimeout(() => {
+   _visHideT = null;
+   if (document.visibilityState !== "hidden" || _visPaused) return;
+   if (Date.now() - _locLastEvAt > VIS_LIVE_MS) return;
+   _visPaused = true;
+   fbL = fbL.filter(l => {
+    if (l.cb !== _locCbRef) return true;
+    try {
+     l.ref.off("value", _locCbRef);
+    } catch (e) {
+     console.warn("visPause:", e && e.message);
+    }
+    return false;
+   });
+  }, VIS_PAUSE_MS);
+ } else {
+  if (_visHideT) {
+   clearTimeout(_visHideT);
+   _visHideT = null;
+  }
+  if (_visPaused) {
+   _visPaused = false;
+   document.querySelectorAll(".v-drv").forEach(e => e.textContent = "…");
+   if (!fbL.some(l => l.cb === _locCbRef)) listen(() => db.ref("drivers_locations"), _locCbRef);
+  }
+ }
+});
 
 function updBadges(type, list) {
  if (!list) return;
@@ -4763,7 +4809,7 @@ window.goTab = function(name) {
     if (name === "aiops") renderAlerts();
     if (name === "orders") {
      renderArch();
-     arcStat("");
+     if (arcLoaded < 3) arcLoadDays(3); else arcStat("");
     }
     if (name === "restaurants" && gD) filtEnt("RES");
     if (name === "drivers" && gD) filtEnt("DRV");
@@ -5343,7 +5389,7 @@ window.arcReset = function() {
  renderArch();
 };
 
-let arcLoaded = 3;
+let arcLoaded = 1;
 
 let arcLoading = false;
 
@@ -5368,14 +5414,18 @@ function arcBtns(busy) {
 }
 
 function arcDaysWord(n) {
- return n >= 3 && n <= 10 ? "أيام" : "يوماً";
+ return n >= 3 && n <= 10 ? "أيام" : n < 3 ? "يوم" : "يوماً";
+}
+
+function arcDaysPhrase(n) {
+ return n === 1 ? "يوم واحد" : n === 2 ? "يومان" : n.toLocaleString("ar-EG") + " " + arcDaysWord(n);
 }
 
 function arcStat(txt) {
  const el = document.getElementById("arcRangeSt");
  if (el) el.textContent = txt || "";
  const n = document.getElementById("arcDaysN");
- if (n) n.textContent = arcLoaded.toLocaleString("ar-EG") + " " + arcDaysWord(arcLoaded);
+ if (n) n.textContent = arcDaysPhrase(arcLoaded);
  arcBtns(arcLoading);
 }
 
@@ -5388,6 +5438,7 @@ window.arcLoadDays = async function(target) {
  }
  arcLoading = true;
  arcBtns(true);
+ const from = arcLoaded;
  let got = 0, failed = 0, stopped = null;
  for (let i = arcLoaded; i < target; i++) {
   const day = arcDayKey(i);
@@ -5395,7 +5446,7 @@ window.arcLoadDays = async function(target) {
    arcLoaded = i + 1;
    continue;
   }
-  arcStat("جارٍ تحميل " + day + " … (" + (i - 2) + " من " + (target - 3) + ")");
+  arcStat("جارٍ تحميل " + day + " … (" + (i - from + 1) + " من " + (target - from) + ")");
   try {
    const snap = await db.ref("completed_orders/" + day).once("value");
    const obj = snap.val();
@@ -5508,7 +5559,7 @@ function updTicker() {
   const totD = Object.values(liveLed.drivers || {}).reduce((s, d) => s + (d.debt || 0), 0);
   const seen = new Set;
   let done = 0;
-  [].concat(archOrd, compArch).forEach(o => {
+  [].concat(archOrd, compByDay[(new Date).toISOString().split("T")[0]] || []).forEach(o => {
    const k = String(o[O.ID]);
    if (k && seen.has(k)) return;
    if (k) seen.add(k);
