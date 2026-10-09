@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://*.firebasedatabase.app https://*.firebaseio.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app https://www.gstatic.com; object-src 'none'; base-uri 'none'; form-action 'self';">
 
 <script>
-const CURRENT_APP_VERSION = "32.18-Steady";
+const CURRENT_APP_VERSION = "32.19-OneKick";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -2167,11 +2167,19 @@ function devIdTrusted() {
  }
 }
 
+function _devPfx() {
+ try {
+  return location.protocol === "file:" ? "f" : window.AndroidRadar ? "" : "w";
+ } catch (_) {
+  return "";
+ }
+}
+
 function devId() {
  try {
   let d = localStorage.getItem("suf_dev");
   if (!d) {
-   d = Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+   d = _devPfx() + Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
    localStorage.setItem("suf_dev", d);
   }
   return d;
@@ -2184,6 +2192,56 @@ function devId() {
   } catch (_) {}
   return __devMem;
  }
+}
+
+function kickedGet_() {
+ try {
+  const s = localStorage.getItem("suf_kicked");
+  if (!s) return null;
+  try {
+   return JSON.parse(s) || {};
+  } catch (_) {
+   return {};
+  }
+ } catch (_) {
+  return null;
+ }
+}
+
+function kickedMark_(by, ph) {
+ try {
+  localStorage.setItem("suf_kicked", JSON.stringify({
+   by: String(by || "").slice(0, 20),
+   ph: String(ph || ""),
+   at: Date.now()
+  }));
+  return !!localStorage.getItem("suf_kicked");
+ } catch (_) {
+  return false;
+ }
+}
+
+function kickedClear_() {
+ try {
+  window._sufKicked = false;
+ } catch (_) {}
+ try {
+  localStorage.removeItem("suf_kicked");
+ } catch (_) {}
+}
+
+function showKickedNote_() {
+ try {
+  if (document.getElementById("kickNote")) return;
+  const box = document.getElementById("authBox");
+  if (!box) return;
+  const n = document.createElement("div");
+  n.id = "kickNote";
+  n.setAttribute("dir", "rtl");
+  n.style.cssText = "background:#fff7ed;border:1.5px solid #fdba74;color:#9a3412;border-radius:14px;padding:10px 12px;" + "margin-bottom:10px;font-weight:700;font-size:.86rem;line-height:1.8;text-align:center";
+  n.innerHTML = "📱 <b>دخل رقمك من جهازٍ آخر، فخرج هذا الجهاز.</b><br>" + "إن كان هذا جهازك فاكتب كلمة المرور وسجّل الدخول هنا مرّةً واحدة — وسيخرج الجهاز الآخر.";
+  box.insertBefore(n, box.firstChild);
+ } catch (_) {}
 }
 
 let CLOUD_RACE_MS = 8e3;
@@ -3124,6 +3182,7 @@ function onLogin(d, phone, pass) {
  if (d.status === "rate_limited") return alert("🛡️ حُظرت المحاولات. انتظر 15 دقيقة.");
  if (d.status === "no_password_set") return alert("🔒 " + (d.msg || "حسابك بلا كلمة مرور — راجع الإدارة لضبطها."));
  if (d.status === "active" || d.status === "inactive") {
+  kickedClear_();
   drv = {
    phone: phone,
    name: d.name,
@@ -3234,6 +3293,7 @@ window.checkWait = function(manual) {
    _waitStartedAt = 0;
    localStorage.removeItem("suf_pending");
    sessionStorage.removeItem("suf_pend_pass");
+   kickedClear_();
    drv = {
     phone: phone,
     name: d.name,
@@ -3263,6 +3323,27 @@ window.checkWait = function(manual) {
 
 function checkSession() {
  const s = localStorage.getItem("suf_session"), p = localStorage.getItem("suf_pending");
+ const _k = kickedGet_();
+ if (_k && (s || !p)) {
+  if (s) {
+   try {
+    localStorage.removeItem("suf_session");
+   } catch (_) {}
+   try {
+    const _d = JSON.parse(s) || {};
+    const _ph = nP(_d.phone || "") || String(_d.phone || "");
+    if (_ph) {
+     document.getElementById("phone").value = _ph;
+     try {
+      localStorage.setItem("suf_phone", _ph);
+     } catch (_) {}
+    }
+   } catch (_) {}
+  }
+  showKickedNote_();
+  _crumb("kick_gate");
+  return false;
+ }
  if (s) {
   try {
    const d = JSON.parse(s);
@@ -4236,7 +4317,7 @@ window.toggleOnline = async function() {
     if (d.success) {
      drv.shiftEnd = d.shift_end;
      if (d.shifts_disabled === true || d.shift_end === null) drv.freeShiftDay = _bizDay;
-     localStorage.setItem("suf_session", JSON.stringify(drv));
+     if (!window._sufKicked) localStorage.setItem("suf_session", JSON.stringify(drv));
     } else if (d.code === "shift_over" || /انتهى وقت شفتك/.test(String(d.msg || ""))) {
      track("shift_over_blocked");
      const _nx = d.next_at ? new Date(d.next_at) : null;
@@ -5114,7 +5195,7 @@ window.obSave = async function() {
   if (!pL) drv.photo = url;
   if (patch.shift_next) drv.shift_next = patch.shift_next;
   try {
-   localStorage.setItem("suf_session", JSON.stringify(drv));
+   if (!window._sufKicked) localStorage.setItem("suf_session", JSON.stringify(drv));
   } catch (_) {}
   _obPhoto = null;
   document.getElementById("obOv").classList.add("dn");
@@ -5334,8 +5415,16 @@ function startListeners() {
    });
    return;
   }
+  if (window._sufKicked) return;
+  window._sufKicked = true;
+  const _marked = kickedMark_(v.dev, drv.phone);
+  let _why = String(v.dev).slice(0, 20);
+  try {
+   const _sa = v.at ? Math.round((srvNow() - Date.parse(v.at)) / 1e3) : -1;
+   _why += " me=" + String(devId()).slice(0, 8) + " s=" + String(_buildSrc()).charAt(0) + " b=" + Math.round((Date.now() - _bootTs) / 1e3) + " a=" + (isFinite(_sa) ? _sa : -1) + (_marked ? "" : " k=0");
+  } catch (_) {}
   track("session_superseded", {
-   reason: String(v.dev).slice(0, 20)
+   reason: _why
   });
   try {
    if (window.AndroidRadar) {
@@ -5351,6 +5440,13 @@ function startListeners() {
   } catch (e) {
    track("supersede_clear_fail");
   }
+  let _gone = false;
+  try {
+   localStorage.removeItem("suf_session");
+   _gone = !localStorage.getItem("suf_session");
+  } catch (_) {}
+  if (!_marked && _gone) kickedMark_(v.dev, drv.phone);
+  const _reloadOk = _marked || _gone;
   try {
    fbStatus("inactive");
   } catch (e) {
@@ -5362,8 +5458,23 @@ function startListeners() {
    b.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(15,23,42,.96);color:#fff;" + "display:flex;align-items:center;justify-content:center;text-align:center;padding:28px;" + "font-weight:800;font-size:1rem;line-height:2";
    b.innerHTML = "📱 <b>تم تسجيل الدخول من جهازٍ آخر بهذا الرقم.</b><br>" + '<span style="font-weight:600;font-size:.88rem;opacity:.9">هذا الجهاز خرج تلقائياً كي لا يرنّ جهازان ' + "ويتعارض الموقع.<br>إن كان هذا جهازك الأساسيّ فسجّل الدخول عليه.</span>";
    document.body.appendChild(b);
+   if (!_reloadOk) {
+    const bt = document.createElement("button");
+    bt.textContent = "تسجيل الدخول";
+    bt.style.cssText = "display:block;margin:16px auto 0;padding:10px 22px;border-radius:12px;border:0;font-weight:800";
+    bt.addEventListener("click", () => {
+     try {
+      localStorage.removeItem("suf_session");
+     } catch (_) {}
+     try {
+      location.reload();
+     } catch (_) {}
+    });
+    b.style.flexDirection = "column";
+    b.appendChild(bt);
+   }
   } catch (_) {}
-  setTimeout(() => {
+  if (_reloadOk) setTimeout(() => {
    try {
     location.reload();
    } catch (_) {}
@@ -5394,7 +5505,7 @@ function startListeners() {
    delete _selfPend[k];
   });
   try {
-   localStorage.setItem("suf_session", JSON.stringify(drv));
+   if (!window._sufKicked) localStorage.setItem("suf_session", JSON.stringify(drv));
   } catch (_) {}
   try {
    paintShiftInfo();
