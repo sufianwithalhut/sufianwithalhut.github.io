@@ -21,7 +21,7 @@
       build.js يرفض البناء عند الاختلاف، وtest_gate يحرسه. فتغيير الإصدار
       يُنشئ كاشاً جديداً ويُسقط القديم عند التفعيل — لا نسختين معاً.
    ═══════════════════════════════════════════════════════════════════════════ */
-const VER   = '32.17-Lean';
+const VER   = '32.18-Steady';
 const CACHE = 'suf-' + VER;
 const SHELL = ['./driver.html'];
 const NET_TIMEOUT_MS = 8000;
@@ -68,7 +68,13 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(req.url);
   if (BYPASS.some((r) => r.test(url.host + url.pathname))) return;   /* بيانات — لا تُلمس */
 
-  const isShell = req.mode === 'navigate' || /\/driver\.html$/.test(url.pathname);
+  /* 🔴 [V34.39] كان: isShell = req.mode==='navigate' || …driver.html — فأيُّ تنقّلٍ على الأصل
+     (Master · liderdodsas · restaurant · bridge-ui في المتصفّح نفسه، والنطاق «/») يُحفظ
+     **باسم driver.html**، ثم يُقدَّم بدلَ تطبيق الكابتن عند ضعف الشبكة (تدقيق 09-10، OT-09).
+     الآن: القشرة هي driver.html على هذا الأصل وحدها، وأيّ تنقّلٍ آخر لا يُلمس إطلاقاً
+     (المتصفّح يجلبه كأنّه لا عامل خدمة). */
+  const isShell = url.origin === self.location.origin && /\/driver\.html$/.test(url.pathname);
+  if (!isShell && req.mode === 'navigate') return;
   if (isShell) {
     e.respondWith(
       withTimeout(fetch(req), NET_TIMEOUT_MS)
@@ -99,6 +105,21 @@ self.addEventListener('fetch', (e) => {
   }
   /* غير ذلك (شعارات · manifest): تمريرٌ مع احتياطي الكاش */
   e.respondWith(fetch(req).catch(() => caches.match(req)));
+});
+
+/* 🔔 [V34.39] الإشعار صار يُعرض من هنا (registration.showNotification — كروم أندرويد يرفض
+   new Notification بـ«Illegal constructor»). لمسُه يفتح تطبيق الكابتن أو يُبرزه إن كان مفتوحاً. */
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  e.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+      .then((cs) => {
+        const c = cs.find((x) => /\/driver\.html(\?|#|$)/.test(x.url));
+        if (c && c.focus) return c.focus();
+        if (self.clients.openWindow) return self.clients.openWindow('./driver.html');
+      })
+      .catch(() => {})
+  );
 });
 
 self.addEventListener('message', (e) => {

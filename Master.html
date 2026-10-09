@@ -1266,7 +1266,7 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
       <div class="pg-ttl">مركز القيادة</div>
       <div class="ticker-w">⚡<div class="ticker-in" id="tickTx">🟢 جاري الاتصال بالرادار...</div></div>
       <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:11px;margin-bottom:18px">
-        <div class="st-card"><div class="st-ic" style="background:var(--sky-l)">📡</div><div><div class="st-v" style="color:var(--jade);font-size:1rem" id="hcSt">مستقر</div><div class="st-l">حالة السيرفر</div></div></div>
+        <div class="st-card"><div class="st-ic" style="background:var(--sky-l)">📡</div><div><div class="st-v" style="color:var(--ink4);font-size:1rem" id="hcSt" title="لا نبض مسجَّل بعد">—</div><div class="st-l">نبض الخادم · فحص كل ١٥ د</div></div></div>
         <div class="st-card"><div class="st-ic" style="background:var(--jade-l)">🛡</div><div><div class="st-v" id="wdT">---</div><div class="st-l">إجمالي الطلبات</div></div></div>
         <div class="st-card"><div class="st-ic" style="background:var(--amber-l)">👁</div><div><div class="st-v" style="font-size:1rem">نشط</div><div class="st-l">Watchdog</div></div></div>
         <div class="st-card"><div class="st-ic" style="background:var(--violet-l)">🗄</div><div><div class="st-v" style="font-size:.9rem" id="fbCS">🟢</div><div class="st-l">Firebase</div></div></div>
@@ -1481,6 +1481,8 @@ let archHtml = "", drvSelOpts = "";
 let archSig = "", arcPage = 1;
 
 let _auInit = false, _alInit = false;
+
+let _hbLast = null, _hbTimer = null;
 
 let staffSessions = {}, staffLog = [], staffRoster = [], _stInit = false, stEditMode = false, _stIdleTimer = null;
 
@@ -2096,15 +2098,6 @@ function getCommVal(o) {
  return rD ? pComm(String(rD[R.COMM] || "0"), String(rD[R.PAY] || "")).res || 0 : 0;
 }
 
-function rCoords(r) {
- if (!r) return null;
- const n = nP(r[R.PHONE]);
- const lv = liveResLoc?.[n];
- if (lv?.lat && lv?.lng) return [ parseFloat(lv.lat), parseFloat(lv.lng) ];
- if (r[R.LAT] && r[R.LNG]) return [ parseFloat(r[R.LAT]), parseFloat(r[R.LNG]) ];
- return null;
-}
-
 window.doAuth = async function() {
  const pass = document.getElementById("mPW").value.trim();
  if (!pass) return toast("أدخل رمز المرور", "e");
@@ -2485,16 +2478,45 @@ function setupFB() {
   updShiftsUI();
  };
  listen(() => db.ref("system_settings/shifts_enabled"), shCb);
- const hcCb = snap => {
-  const hc = snap.val();
+ const HB_STALE_MS = 45 * 6e4;
+ const hbPaint = () => {
   const el = document.getElementById("hcSt");
-  if (el && hc != null) {
-   const age = Date.now() - (typeof hc === "number" ? hc : new Date(hc).getTime());
-   el.textContent = age < 3e5 ? "مستقر" : "متأخر";
-   el.style.color = age < 3e5 ? "var(--jade)" : "var(--amber)";
+  if (!el) return;
+  const v = _hbLast, ts = Number(v && v.ts) || 0;
+  if (!ts) {
+   el.textContent = "—";
+   el.style.color = "var(--ink4)";
+   el.title = "لا نبض مسجَّل بعد";
+   return;
   }
+  const age = Date.now() - ts, n = (Number(v.stale) || 0) + (Number(v.never_ran) || 0);
+  let tx = "مستقر", col = "var(--jade)";
+  if (!(age < HB_STALE_MS)) {
+   tx = "متأخر";
+   col = "var(--amber)";
+  } else if (v.chain_ok === false) {
+   tx = "عطل القاعدة";
+   col = "var(--rose)";
+  } else if (n > 0) {
+   tx = n + " دالّة صامتة";
+   col = "var(--amber)";
+  }
+  el.textContent = tx;
+  el.style.color = col;
+  el.title = "آخر فحص: " + new Date(ts).toLocaleTimeString("ar-EG", {
+   hour: "2-digit",
+   minute: "2-digit"
+  }) + " · يتكرّر كل ١٥ دقيقة";
  };
- listen(() => db.ref("system_settings/health_check"), hcCb);
+ const hcCb = snap => {
+  _hbLast = snap.val();
+  hbPaint();
+  clearTimeout(_hbTimer);
+  _hbTimer = null;
+  const left = (Number(_hbLast && _hbLast.ts) || 0) + HB_STALE_MS - Date.now();
+  if (left > 0) _hbTimer = setTimeout(hbPaint, left + 1e3);
+ };
+ listen(() => db.ref("system_health/canaryPulse"), hcCb);
  const _days = [];
  for (let i = 0; i < 1; i++) {
   const d = new Date;
@@ -5445,40 +5467,6 @@ function updRadarCnts() {
  }));
 }
 
-const SHADOW_ON_ADMIN = true;
-
-function _shOpId() {
- try {
-  if (crypto && crypto.randomUUID) return crypto.randomUUID();
- } catch (e) {}
- return "sh-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 12);
-}
-
-function shadowCmd(command, orderId, targetDriver) {
- if (!SHADOW_ON_ADMIN || !orderId) return;
- try {
-  const payload = {
-   opId: _shOpId(),
-   orderId: String(orderId),
-   command: String(command),
-   shadow: true
-  };
-  if (targetDriver) payload.targetDriver = String(targetDriver);
-  fnCall("orderCommand", payload).then(r => {
-   const v = r && r.data && r.data.verdict || "?";
-   if (v !== "allow") {
-    console.warn("🕯️ [ظلّ] رفض السيرفر " + command + " للطلب " + orderId + " : " + v);
-    try {
-     logAudit("shadow_reject", command + " #" + orderId + " → " + v);
-    } catch (e) {}
-   }
-  }).catch(e => {
-   const c = String(e && (e.code || e.message) || "").slice(0, 50);
-   if (c.indexOf("not-found") === -1) console.warn("🕯️ [ظلّ] تعذّر النداء: " + c);
-  });
- } catch (e) {}
-}
-
 window.forceComplete = function(oId, el) {
  if (!MP) return toast("انتهت الجلسة", "e");
  if (!confirm("تأكيد إكمال الطلب؟ ستُحتسب المحاسبة تلقائياً في التقرير الليلي.")) return;
@@ -5489,7 +5477,6 @@ window.forceComplete = function(oId, el) {
  const upd = {};
  upd[`active_orders/${oId}/status`] = "completed";
  upd[`active_orders/${oId}/completed_at`] = (new Date).toISOString();
- shadowCmd("FORCE_DELIVER", oId);
  db.ref().update(upd).then(() => {
   toast("✅ تم إكمال الطلب");
   logAudit("forceComplete", "إكمال يدوي #" + oId);
@@ -5512,7 +5499,6 @@ window.delOrder = function(oId, el) {
   el.disabled = true;
   el.classList.add("loading");
  }
- shadowCmd("CANCEL", oId);
  db.ref(`active_orders/${oId}`).update({
   status: "deleted"
  }).then(() => {
@@ -5577,7 +5563,6 @@ window.asgnDrv = async function(oId, dPhone, el, force) {
     dp: dPhone,
     ts: Date.now()
    };
-   shadowCmd("OFFER", oId, dPhone);
    toast(d.forced ? "تم التعيين **القسري** 👑" : "تم التعيين السيادي 👑");
    logAudit("assignDriver", `طلب #${oId} ← ${dN(dPhone)}${d.forced ? " (قسريّ)" : ""}`);
   } else {
@@ -5604,7 +5589,6 @@ window.wdOrder = function(oId, dPhone, el) {
   dp: "system_routing",
   ts: Date.now()
  };
- shadowCmd("REVOKE", oId);
  db.ref(`active_orders/${oId}`).update({
   status: "pending_driver",
   driverPhone: "system_routing",

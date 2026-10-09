@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://*.firebasedatabase.app https://*.firebaseio.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app https://www.gstatic.com; object-src 'none'; base-uri 'none'; form-action 'self';">
 
 <script>
-const CURRENT_APP_VERSION = "32.17-Lean";
+const CURRENT_APP_VERSION = "32.18-Steady";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -1405,7 +1405,7 @@ window.onNativeOffer = function(o) {
    const b1 = document.getElementById("btnAccept");
    if (o.ok) {
     try {
-     if (window._closeOffer) window._closeOffer();
+     if (window._closeOffer) window._closeOffer(o.id);
     } catch (_) {}
     if (typeof refreshOrdersNow === "function") refreshOrdersNow();
    } else {
@@ -3464,9 +3464,7 @@ function startShift() {
    window._warned = true;
    play("ready");
    toast("⏰ باقي 30 دقيقة على نهاية شفتك — أنهِ طلباتك", "warn");
-   if ("Notification" in window && Notification.permission === "granted") new Notification("⏰ تنبيه الشفت", {
-    body: "باقي 30 دقيقة"
-   });
+   _sufNotify("⏰ تنبيه الشفت", "باقي 30 دقيقة");
   }
   const h = Math.floor(rem / 36e5), m = Math.floor(rem % 36e5 / 6e4), pct = Math.round(rem / total * 100);
   document.getElementById("shLeft").innerText = `متبقي: ${h}س ${m}د`;
@@ -3667,7 +3665,7 @@ window.addEventListener("unhandledrejection", e => {
  _jsErr("rej", r && (r.message || (typeof r === "string" ? r : "")) || "rejection", 0, r && r.stack);
 });
 
-const SHADOW_ON = true;
+const SHADOW_ON = false;
 
 function newOpId() {
  try {
@@ -5470,6 +5468,7 @@ function startListeners() {
    let target = null;
    if (inCanary && b.canary_url && b.canary_url !== here) target = b.canary_url; else if (!inCanary && b.canary_url && here === b.canary_url && b.stable_url) target = b.stable_url;
    if (!target || !/^https:\/\//.test(target)) return;
+   if (String(target).split("#")[0].split("?")[0] === here) return;
    if (active.length || curOrder) {
     track("bundle_defer", {
      reason: "busy"
@@ -5744,6 +5743,176 @@ async function fetchResLoc(phone) {
  return null;
 }
 
+function _sufNotify(title, body) {
+ try {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const opt = {
+   body: String(body || "")
+  };
+  const r = window._SW;
+  if (r && typeof r.showNotification === "function") {
+   Promise.resolve(r.showNotification(title, opt)).catch(() => {});
+   return;
+  }
+  const sw = navigator.serviceWorker;
+  if (sw && typeof sw.getRegistration === "function") sw.getRegistration().then(x => {
+   if (x && typeof x.showNotification === "function") return x.showNotification(title, opt);
+  }).catch(() => {});
+ } catch (_) {}
+}
+
+const _offerAcked = new Set, _offerShown = new Set, _offerDone = new Set;
+
+let _ordLast = null, _ordLastFb = null, _ordBusy = false, _ordAgain = false;
+
+function _offerKey(f) {
+ return String(f && f.id) + "|" + String(f && f.last_offered_time || "");
+}
+
+function _offerMine(f, myId) {
+ return !!(f && nP(f.driverPhone) === myId && (f.status === "pending_driver" || f.status === "manual_pending"));
+}
+
+function _offerSweep(fb, myId) {
+ const live = new Set;
+ Object.values(fb || {}).forEach(f => {
+  if (_offerMine(f, myId)) live.add(String(f.id));
+ });
+ [ _offerAcked, _offerShown, _offerDone ].forEach(S => S.forEach(k => {
+  if (!live.has(k.slice(0, k.lastIndexOf("|")))) S.delete(k);
+ }));
+}
+
+function _offerLive(fb, myId) {
+ if (!curOrder) return false;
+ let up = false;
+ try {
+  up = !document.getElementById("alertOv").classList.contains("dn");
+ } catch (_) {}
+ if (!up) return false;
+ const id = String(curOrder.id);
+ if (active.some(o => String(o.id) === id)) return true;
+ return _offerMine(fb && (fb[id] || Object.values(fb).find(x => x && String(x.id) === id)), myId);
+}
+
+function _offerPump() {
+ setTimeout(() => {
+  try {
+   if (_ordBusy || !_ordLastFb || !drv || !drv.phone || !(isOnline || wantOnline)) return;
+   _offerScan(_ordLastFb, nP(drv.phone), true);
+  } catch (e) {
+   track("offer_pump_fail", {
+    reason: String(e && e.message || e).slice(0, 40)
+   });
+  }
+ }, 0);
+}
+
+function _offerClosed(o) {
+ if (!o) return;
+ _offerDone.add(o.okey || _offerKey(o));
+ const fb = _ordLastFb, id = String(o.id);
+ const f = fb && (fb[id] || Object.values(fb).find(x => x && String(x.id) === id));
+ if (f) _offerDone.add(_offerKey(f));
+}
+
+function _offerScan(fb, myId, pump) {
+ const cands = [];
+ Object.values(fb).forEach(f => {
+  if (!f || !f.restaurant || f.restaurant.trim() === "" || f.restaurant === "undefined") return;
+  if (!_offerMine(f, myId)) return;
+  if (active.find(o => String(o.id) === String(f.id))) {
+   if (!pump) {
+    guaranteeAccept(f.id);
+    stopAlarm();
+   }
+   return;
+  }
+  if (curOrder && String(curOrder.id) === String(f.id)) return;
+  const k = _offerKey(f);
+  if (_offerDone.has(k)) return;
+  if (!_offerAcked.has(k)) {
+   _offerAcked.add(k);
+   slo("recv", {
+    oid: f.id
+   });
+   update(ref(db, `active_orders/${f.id}/offer_ack`), {
+    phone: String(drv.phone),
+    at: serverTimestamp()
+   }).catch(e => track("ack_write_fail", {
+    reason: String(e && e.code || e && e.message || e).slice(0, 60)
+   }));
+  }
+  cands.push(f);
+ });
+ if (!cands.length) return;
+ let pool = cands;
+ if (_offerLive(fb, myId)) {
+  if (curOrder.is_sovereign) return;
+  pool = cands.filter(c => !!c.is_sovereign);
+  if (!pool.length) return;
+ }
+ pool.sort((a, b) => (b.is_sovereign ? 1 : 0) - (a.is_sovereign ? 1 : 0) || String(a.last_offered_time || "").localeCompare(String(b.last_offered_time || "")) || String(a.id).localeCompare(String(b.id)));
+ const f = pool[0];
+ curOrder = {
+  id: f.id,
+  resName: f.restaurant,
+  area: f.area || "غير محدد",
+  price: f.price || 0,
+  details: f.details || "",
+  photoUrl: f.photoUrl || "",
+  resLat: f.resLat,
+  resLng: f.resLng,
+  resPhone: f.resPhone,
+  resArea: f.resArea || null,
+  comm: f.comm || 0,
+  payType: f.payType || "المطعم يدفع",
+  is_sovereign: f.is_sovereign || false
+ };
+ curOrder.okey = _offerKey(f);
+ const _stamp = f.last_update ? new Date(f.last_update).getTime() : 0;
+ let _wLegacy = 6e4, _wServer = 6e4;
+ if (_stamp && isFinite(_stamp)) {
+  const _ageDev = Date.now() - _stamp;
+  const _ageSrv = srvNow() - _stamp;
+  if (isFinite(_ageDev)) _wLegacy = 6e4 - Math.max(0, _ageDev);
+  if (isFinite(_ageSrv)) _wServer = 6e4 - Math.max(0, _ageSrv);
+ }
+ curOrder.expire = Date.now() + Math.max(1e4, _wLegacy, _wServer);
+ document.getElementById("alTitle").innerText = active.length ? "طلب إضافي! 🔥" : "طلب جديد!";
+ document.getElementById("alSov").innerText = curOrder.is_sovereign ? "⚠️ تعيين إداري مباشر — لا يمكن تجاهله" : "";
+ document.getElementById("alRes").innerText = (f.vehicle === "car" ? "🚗 سيارة · " : "") + f.restaurant;
+ document.getElementById("alArea").innerText = f.area || "غير محدد";
+ (function() {
+  const _pEl = document.getElementById("alPrice");
+  _pEl.textContent = (Number(f.price) || 0).toLocaleString("ar-EG") + " ";
+  const _u = document.createElement("small");
+  _u.style.cssText = "font-size:.8rem;color:var(--muted);";
+  _u.textContent = "د.ع";
+  _pEl.appendChild(_u);
+ })();
+ document.getElementById("alertOv").classList.remove("dn");
+ if (!_offerShown.has(curOrder.okey)) {
+  _offerShown.add(curOrder.okey);
+  slo("shown", {
+   oid: f.id,
+   ms: Math.round(curOrder.expire - Date.now())
+  });
+ }
+ try {
+  if (window.AndroidRadar) window.AndroidRadar.triggerOrderAlarm(); else startAlarm(active.length ? "double" : "alert");
+ } catch (e) {
+  track("alarm_fail", {
+   reason: String(e && e.message || e).slice(0, 40)
+  });
+  try {
+   startAlarm(active.length ? "double" : "alert");
+  } catch (_) {}
+ }
+ if (navigator.vibrate) navigator.vibrate([ 300, 100, 300, 100, 300 ]);
+ countdown();
+}
+
 function listenOrders() {
  window.refreshOrdersNow = async function() {
   try {
@@ -5796,8 +5965,9 @@ function listenOrders() {
    return false;
   }
  };
- listen(() => query(ref(db, "active_orders"), orderByChild("driverPhone"), equalTo(drv.phone)), _ordersCb = s => {
+ const _ordersSnap = s => {
   const fb = s.val() || {}, myId = nP(drv.phone);
+  _ordLastFb = fb;
   const rm = [];
   for (let i = active.length - 1; i >= 0; i--) {
    const mo = active[i], f = fb[mo.id];
@@ -5890,9 +6060,7 @@ function listenOrders() {
     localStorage.setItem("suf_orders", JSON.stringify(active));
     play("ready");
     toast(`🍽️ طلبيتك جاهزة في <b>${esc(mo.resName)}</b>!<br>توجّه للاستلام فوراً`, "warn");
-    if ("Notification" in window && Notification.permission === "granted") new Notification("🍽️ الطلبية جاهزة!", {
-     body: `في ${mo.resName}`
-    });
+    _sufNotify("🍽️ الطلبية جاهزة!", `في ${mo.resName}`);
     renderOrders();
    }
    if (f.ready_for_pickup === false && readySet.has(oid)) {
@@ -5902,72 +6070,41 @@ function listenOrders() {
     renderOrders();
    }
   });
+  _offerSweep(fb, myId);
   if (isOnline || wantOnline) {
-   Object.values(fb).forEach(f => {
-    if (!f.restaurant || f.restaurant.trim() === "" || f.restaurant === "undefined") return;
-    const fp = nP(f.driverPhone);
-    const mine = fp === myId && (f.status === "pending_driver" || f.status === "manual_pending");
-    if (!mine) return;
-    if (active.find(o => String(o.id) === String(f.id))) {
-     guaranteeAccept(f.id);
-     stopAlarm();
-     return;
+   _offerScan(fb, myId, false);
+  }
+ };
+ listen(() => query(ref(db, "active_orders"), orderByChild("driverPhone"), equalTo(drv.phone)), _ordersCb = s => {
+  _ordLast = s;
+  if (_ordBusy) {
+   _ordAgain = true;
+   return;
+  }
+  _ordBusy = true;
+  try {
+   for (let n = 0; ;n++) {
+    _ordAgain = false;
+    try {
+     _ordersSnap(_ordLast);
+    } catch (e) {
+     try {
+      _jsErr("orders", e && e.message || "orders_cb", 0, e && e.stack);
+     } catch (_) {}
     }
-    if (curOrder && String(curOrder.id) === String(f.id)) return;
-    curOrder = {
-     id: f.id,
-     resName: f.restaurant,
-     area: f.area || "غير محدد",
-     price: f.price || 0,
-     details: f.details || "",
-     photoUrl: f.photoUrl || "",
-     resLat: f.resLat,
-     resLng: f.resLng,
-     resPhone: f.resPhone,
-     resArea: f.resArea || null,
-     comm: f.comm || 0,
-     payType: f.payType || "المطعم يدفع",
-     is_sovereign: f.is_sovereign || false
-    };
-    slo("recv", {
-     oid: f.id
-    });
-    update(ref(db, `active_orders/${f.id}/offer_ack`), {
-     phone: String(drv.phone),
-     at: serverTimestamp()
-    }).catch(e => track("ack_write_fail", {
-     reason: String(e && e.code || e && e.message || e).slice(0, 60)
-    }));
-    const _stamp = f.last_update ? new Date(f.last_update).getTime() : 0;
-    let _wLegacy = 6e4, _wServer = 6e4;
-    if (_stamp && isFinite(_stamp)) {
-     const _ageDev = Date.now() - _stamp;
-     const _ageSrv = srvNow() - _stamp;
-     if (isFinite(_ageDev)) _wLegacy = 6e4 - Math.max(0, _ageDev);
-     if (isFinite(_ageSrv)) _wServer = 6e4 - Math.max(0, _ageSrv);
+    if (!_ordAgain) break;
+    if (n >= 4) {
+     track("orders_reenter_cap");
+     setTimeout(() => {
+      try {
+       if (_ordLast && _ordersCb) _ordersCb(_ordLast);
+      } catch (_) {}
+     }, 300);
+     break;
     }
-    curOrder.expire = Date.now() + Math.max(1e4, _wLegacy, _wServer);
-    document.getElementById("alTitle").innerText = active.length ? "طلب إضافي! 🔥" : "طلب جديد!";
-    document.getElementById("alSov").innerText = curOrder.is_sovereign ? "⚠️ تعيين إداري مباشر — لا يمكن تجاهله" : "";
-    document.getElementById("alRes").innerText = (f.vehicle === "car" ? "🚗 سيارة · " : "") + f.restaurant;
-    document.getElementById("alArea").innerText = f.area || "غير محدد";
-    (function() {
-     const _pEl = document.getElementById("alPrice");
-     _pEl.textContent = (Number(f.price) || 0).toLocaleString("ar-EG") + " ";
-     const _u = document.createElement("small");
-     _u.style.cssText = "font-size:.8rem;color:var(--muted);";
-     _u.textContent = "د.ع";
-     _pEl.appendChild(_u);
-    })();
-    document.getElementById("alertOv").classList.remove("dn");
-    slo("shown", {
-     oid: f.id,
-     ms: Math.round(curOrder.expire - Date.now())
-    });
-    if (window.AndroidRadar) window.AndroidRadar.triggerOrderAlarm(); else startAlarm(active.length ? "double" : "alert");
-    if (navigator.vibrate) navigator.vibrate([ 300, 100, 300, 100, 300 ]);
-    countdown();
-   });
+   }
+  } finally {
+   _ordBusy = false;
   }
  });
 }
@@ -5987,7 +6124,7 @@ function countdown() {
  }, 1e3);
 }
 
-window._closeOffer = function() {
+window._closeOffer = function(id) {
  try {
   clearInterval(cdTimer);
  } catch (_) {}
@@ -5996,6 +6133,11 @@ window._closeOffer = function() {
  } catch (_) {}
  try {
   stopAlarm();
+ } catch (_) {}
+ try {
+  _offerClosed(id != null && !(curOrder && String(curOrder.id) === String(id)) ? {
+   id: id
+  } : curOrder);
  } catch (_) {}
  try {
   curOrder = null;
@@ -6007,6 +6149,9 @@ window._closeOffer = function() {
    b.disabled = false;
   }
  } catch (_) {}
+ try {
+  _offerPump();
+ } catch (_) {}
 };
 
 window.declineOrder = function(auto) {
@@ -6016,6 +6161,9 @@ window.declineOrder = function(auto) {
  stopAlarm();
  if (!curOrder) return;
  const id = curOrder.id;
+ try {
+  _offerClosed(curOrder);
+ } catch (_) {}
  const why = auto ? "expired" : "manual";
  if (!auto) rejToday++;
  track("decline", {
@@ -6031,6 +6179,7 @@ window.declineOrder = function(auto) {
   return gasRetry(() => gasJson(`${API_URL}?action=DECLINE_ORDER&orderId=${encodeURIComponent(id)}&driverPhone=${drv.phone}&why=${why}&token=${API_TOKEN}&stoken=${encodeURIComponent(getStoken())}`), 3, 700);
  }).catch(() => {});
  curOrder = null;
+ _offerPump();
 };
 
 window.acceptOrder = async function() {
@@ -6078,7 +6227,7 @@ window.acceptOrder = async function() {
       oid: _id
      });
      try {
-      if (window._closeOffer) window._closeOffer();
+      if (window._closeOffer) window._closeOffer(_id);
      } catch (_) {}
      return;
     }
@@ -6186,6 +6335,7 @@ function finalizeAccept() {
  const b = document.getElementById("btnAccept");
  b.innerHTML = '<svg class="si si-l" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>قبول الطلب فوراً';
  b.disabled = false;
+ _offerPump();
 }
 
 function maybeEndShift() {
