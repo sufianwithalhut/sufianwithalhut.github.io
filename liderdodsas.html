@@ -6222,6 +6222,7 @@ window.avAct = function(kind) {
   sub = "إغلاق الدَّين المؤقّت لهذا الطلب";
   f = _avFld("avfOid", "رقم الطلب", oid, "text", "") + _avSel("avfSt", "النتيجة", {
    returned: "✅ سلّم الكابتن المبلغ",
+   unpaid: "⛔ لم يُرجِعه بعد الموعد (المطعم أكّد) — يُوقَف",
    escalated: "⬆️ تصعيد للإدارة",
    cancelled: "✖ إلغاء الدَّين"
   }, "returned");
@@ -6295,6 +6296,10 @@ window.avActGo = async function(kind) {
  } else if (kind === "cashx") {
   args.status = v("avfSt") || "returned";
   okMsg = "✅ أُغلق الدَّين";
+  if (args.status === "unpaid") {
+   if (!confirm("⛔ تأكيد: المطعم أكّد أنّ الكابتن لم يُرجع المبلغ بعد الموعد؟\nسيُوقَف الكابتن عن استلام الطلبات حتى يراجع الإدارة في مكتبها بشارع المحافظة (بعد أن يُكمل طلبه الحاليّ).")) return;
+   okMsg = "⛔ سُجّل «لم يُرجِع» وطُلب إيقاف الكابتن — الإدارة ترفعه";
+  }
  } else if (kind === "price") {
   const prop = {};
   let bad = false;
@@ -6344,6 +6349,18 @@ window.avActGo = async function(kind) {
   let m = r.msg || okMsg;
   const nid = r.orderId || r.rid || r.newId || r.id;
   if (kind === "replace" && nid) m += " #" + String(nid).slice(-8);
+  if (r.block) {
+   const BT = {
+    applied: "⛔ أُوقف الكابتن عن استلام الطلبات",
+    pending: "⏳ سيُوقَف بعد أن يُكمل طلبه الحاليّ",
+    shadow: "👻 أيّام التجربة: سُجّل «كان سيُوقَف» بلا إيقاف",
+    protected: "🛡 حسابٌ محميّ — أُرسل اقتراحٌ للمدير",
+    capped: "📊 بلغ حدّ إيقافات اليوم — أُرسل اقتراحٌ للمدير",
+    already: "الكابتن موقوفٌ أصلاً",
+    off: "الإيقاف مُطفأ — أُغلق الدَّين فقط"
+   };
+   m = "✅ أُغلق الدَّين · " + (BT[r.block] || r.block);
+  }
   toast(m);
   const sh = document.getElementById("avSheet");
   if (sh && sh.classList.contains("open")) _navBack();
