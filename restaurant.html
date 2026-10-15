@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://unpkg.com https://cdn.jsdelivr.net https://*.firebasedatabase.app https://*.firebaseio.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com https://cdn.jsdelivr.net; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app https://nominatim.openstreetmap.org; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
 
     <script>
-const CURRENT_APP_VERSION = "43.12.AdvisorTeam";
+const CURRENT_APP_VERSION = "43.13.AdvisorNoNum";
 
 const RES_VERSION_KEY = "hut_res_app_version";
 
@@ -5087,6 +5087,7 @@ let advFlow = {
  oid: "",
  otag: "",
  drv: "",
+ area: "",
  pendingTopic: null
 };
 
@@ -5135,6 +5136,13 @@ function advNewKey() {
 function advTail(id) {
  const s = String(id || "");
  return s ? "#…" + s.slice(-4) : "";
+}
+
+function advClaimDay(c) {
+ const t = advMs(c && c.created_at);
+ if (!t) return "طلب";
+ const d = new Date(t + 3 * 36e5);
+ return "طلب يوم " + d.getUTCDate() + "/" + (d.getUTCMonth() + 1);
 }
 
 function advArea(a) {
@@ -5734,7 +5742,7 @@ async function advLoadClaims() {
     company: "على الشركة"
    }[String(c.resp || "")] || "";
    const sub = [ resp, c.why ? advWhyLbl(c.why) : "", c.note ? String(c.note) : "" ].filter(Boolean).join(" · ").slice(0, 160);
-   h += '<div class="adv-claim"><span>🧾</span><div class="cm">' + escapeHtml(advTail(c.oid) || "طلب") + " · " + advN(Number(c.food) || 0) + " د.ع" + (st === "approved" && c.amount_ok != null ? " (اعتُمد " + advN(c.amount_ok) + ")" : "") + (sub ? "<small>" + escapeHtml(sub) + "</small>" : "") + "</div>" + pill + "</div>";
+   h += '<div class="adv-claim"><span>🧾</span><div class="cm">' + escapeHtml(advClaimDay(c)) + " · " + advN(Number(c.food) || 0) + " د.ع" + (st === "approved" && c.amount_ok != null ? " (اعتُمد " + advN(c.amount_ok) + ")" : "") + (sub ? "<small>" + escapeHtml(sub) + "</small>" : "") + "</div>" + pill + "</div>";
   });
   if (ok > 0) h = '<div style="font-weight:900;font-size:.8rem;padding:4px 0 8px;color:#166534">✅ المعتمد لك هذا الشهر: ' + advN(ok) + " د.ع</div>" + h;
   box.innerHTML = h;
@@ -5751,6 +5759,7 @@ function advStartCat(cat) {
   oid: "",
   otag: "",
   drv: "",
+  area: "",
   pendingTopic: null
  };
  if (cat === "order" || cat === "damaged" || cat === "captain") {
@@ -5829,7 +5838,7 @@ function advRenderPick() {
  const row = (o, i) => {
   const nm = advIsDrv(o.drv) ? String(driverNameCache[o.drv] || "").trim() : "";
   const sub = [ advTimeOf(o.ts), nm ? "الكابتن " + nm : o.live ? "بلا كابتن بعد" : "" ].filter(Boolean).join(" · ");
-  return '<button type="button" class="adv-ord" data-adv="pick" data-i="' + i + '"><span class="oi">' + (o.live ? "🛵" : "✅") + "</span>" + '<span class="om"><b>' + escapeHtml(advTail(o.id) + (o.area ? " · " + o.area : "")) + "</b><small>" + escapeHtml(sub) + "</small></span>" + advStatusPill(o) + "</button>";
+  return '<button type="button" class="adv-ord" data-adv="pick" data-i="' + i + '"><span class="oi">' + (o.live ? "🛵" : "✅") + "</span>" + '<span class="om"><b>' + escapeHtml(o.area || "طلب") + "</b><small>" + escapeHtml(sub) + "</small></span>" + advStatusPill(o) + "</button>";
  };
  if (act.length) {
   h += '<div class="adv-sec-t">🛵 النشطة الآن</div>';
@@ -5852,7 +5861,8 @@ function advPickOrder(i) {
  if (i !== null && !o) return;
  advFlow.oid = o ? o.id.slice(0, 80) : "";
  advFlow.drv = o && advIsDrv(o.drv) ? String(driverNameCache[o.drv] || "").trim() : "";
- advFlow.otag = o ? (advTail(o.id) + (o.area ? " · " + o.area : "") + (o.ts ? " · " + advTimeOf(o.ts) : "")).slice(0, 60) : "";
+ advFlow.area = o ? String(o.area || "") : "";
+ advFlow.otag = o ? ((o.area || "طلب") + (advFlow.drv ? " · الكابتن " + advFlow.drv : "") + (o.ts ? " · " + advTimeOf(o.ts) : "")).slice(0, 60) : "";
  advRenderWhy();
  advShow("why");
 }
@@ -5903,9 +5913,9 @@ function advPickWhy(w, btn) {
   }
   return;
  }
- const tag = advFlow.oid ? advTail(advFlow.oid) : "";
+ const desc = advFlow.oid ? ("طلب " + (advFlow.area || "") + (advFlow.drv ? " ويا الكابتن " + advFlow.drv : "")).replace(/\s+/g, " ").trim() : "";
  let text;
- if (cat === "order") text = "📦 شكوى على الطلب " + tag + " — " + W[3]; else if (cat === "damaged") text = "🍔 طلب تالف " + tag + " — " + W[3] + " — أرجو إعادة إرساله"; else text = "🛵 شكوى على الكابتن" + (advFlow.drv ? " " + advFlow.drv : "") + (tag ? " (الطلب " + tag + ")" : "") + " — " + W[3];
+ if (cat === "order") text = "📦 شكوى على " + (desc || "طلب") + " — " + W[3]; else if (cat === "damaged") text = "🍔 طلب تالف" + (desc ? " (" + desc + ")" : "") + " — " + W[3] + " — أرجو إعادة إرساله"; else text = "🛵 شكوى على الكابتن" + (advFlow.drv ? " " + advFlow.drv : "") + (advFlow.area ? " (طلب " + advFlow.area + ")" : "") + " — " + W[3];
  advSendTopic(text.replace(/\s+/g, " ").trim(), null, "text");
 }
 
