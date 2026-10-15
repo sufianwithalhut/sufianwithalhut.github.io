@@ -5127,7 +5127,7 @@ function _avOpenSt(c) {
 }
 
 function _avPass(c, f) {
- if (f === "inbox") return Number(c.unread_leader || 0) > 0 || _avOpenSt(c);
+ if (f === "inbox") return Number(c.unread_leader || 0) > 0 || _avOpenSt(c) || !!(_avAI[c.p] && _avAI[c.p].sent);
  if (f === "open") return _avOpenSt(c);
  if (f === "mine") return c.status !== "closed" && !!c.claimed_by && nP(c.claimed_by) === nP(EMP_PHONE);
  if (f === "closed") return c.status === "closed";
@@ -5736,6 +5736,10 @@ function avRenderDraft() {
  if (ed) {
   const newer = d && d.msg_id && ed.msg_id && String(d.msg_id) !== String(ed.msg_id);
   h = `<div class="av-editbar"><span>✏️ تعدّل مسوّدة <b>🐳 ${esc(ed.persona || "المستشار")}</b> — الإرسال من الحقل أدناه يُسجَّل «معدّلة»${newer ? "<br>🐳 وصلت مسوّدةٌ أحدث — ألغِ التعديل لعرضها" : ""}</span><button onclick="avEditCancel()">إلغاء التعديل</button></div>`;
+ } else if (d && typeof d === "object" && d.sent) {
+  const act = String(d.action || ""), kind = AV_D2A[act], args = _avArgsTxt(d.args), dc = AV_CATS[d.cat];
+  const okAct = kind && canDo("message");
+  h = `<div class="av-draft" style="border-color:#a7f3d0;background:#f0fdf4">\n      <div class="av-dh">🐳 ${esc(d.persona || "المستشار")} ردّ على المطعم ✓${dc ? ` · ${dc.i} ${esc(dc.t)}` : ""}<small>${d.at ? esc(fmtHM(d.at)) : ""}</small></div>\n      ${d.text ? `<div class="av-dtx" style="opacity:.8">${esc(d.text)}</div>` : ""}\n      <div class="av-ds" style="font-size:.8rem"><b>${kind ? "⚡ القرار لكم — الخطوة المقترحة:" : "🙋 يحتاج ليدراً:"}</b> ${kind ? esc(AV_DLBL[act] || act) + (args ? " — " + esc(args) : "") : ""}</div>\n      ${d.summary ? `<div class="av-ds"><b>الملخّص:</b> ${esc(String(d.summary).slice(0, 300))}</div>` : ""}\n      ${d.tr ? `<div class="av-ds"><b>🎙️ التفريغ:</b> ${esc(String(d.tr).slice(0, 600))}</div>` : ""}\n      ${okAct ? `<button class="av-go" onclick="avAct('${kind}')">⚡ نفّذ: ${esc(AV_ACTS[kind].t)}</button>` : ""}\n      <div class="av-dbtns"><button class="av-ig" onclick="avSugDone()">✔ تمّ — ارفع البطاقة</button></div>\n    </div>`;
  } else if (d && typeof d === "object" && (d.text || d.summary)) {
   const can = _avCanReply(p);
   const cf = Number(d.conf), confT = isFinite(cf) && cf > 0 ? ` · ثقة ${Math.round(cf <= 1 ? cf * 100 : cf)}٪` : "";
@@ -5795,6 +5799,17 @@ window.avEditCancel = function() {
  }
  _avDraftSig = "";
  avRenderDraft();
+};
+
+window.avSugDone = async function() {
+ const p = _avActive, d = p && _avAI[p];
+ if (!d) return;
+ try {
+  await db.ref("res_leader/drafts/" + p).remove();
+  toast("✔ رُفعت البطاقة");
+ } catch (e) {
+  toast("تعذّر — تحقّق من الاتصال أو الصلاحيّة", "e");
+ }
 };
 
 window.avDraftIgnore = async function() {
@@ -6362,6 +6377,7 @@ window.avActGo = async function(kind) {
    m = "✅ أُغلق الدَّين · " + (BT[r.block] || r.block);
   }
   toast(m);
+  if (_avAI[p] && _avAI[p].sent) db.ref("res_leader/drafts/" + p).remove().catch(() => {});
   const sh = document.getElementById("avSheet");
   if (sh && sh.classList.contains("open")) _navBack();
  } else toast(r && (r.msg || r.err) || "تعذّر التنفيذ", "e");
