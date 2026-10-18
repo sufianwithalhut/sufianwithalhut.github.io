@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://unpkg.com https://cdn.jsdelivr.net https://*.firebasedatabase.app https://*.firebaseio.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com https://cdn.jsdelivr.net; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app https://nominatim.openstreetmap.org; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
 
     <script>
-const CURRENT_APP_VERSION = "43.14.AdvisorClock";
+const CURRENT_APP_VERSION = "43.15.AdvisorAsk";
 
 const RES_VERSION_KEY = "hut_res_app_version";
 
@@ -826,6 +826,19 @@ window.sufyanOpen = window.sufyanOpen || function(what, id) {
                    box-shadow: 0 10px 28px rgba(30, 58, 138, .35), 0 0 0 3px rgba(255, 255, 255, .75);
                    transition: transform .15s ease, opacity .2s ease; -webkit-tap-highlight-color: transparent; }
         .adv-fab:active { transform: scale(.94); }
+        
+        .adv-askbar { position: fixed; top: calc(8px + env(safe-area-inset-top)); left: 10px; right: 10px; z-index: 2600; cursor: pointer;
+                      display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 16px; color: #fff;
+                      font-family: 'Cairo', sans-serif; background: linear-gradient(135deg, #b45309 0%, #ea580c 100%);
+                      box-shadow: 0 12px 30px rgba(234, 88, 12, .45), 0 0 0 3px rgba(255, 255, 255, .85); animation: advAskPulse 1.6s ease-in-out infinite; }
+        .adv-askbar[hidden] { display: none; }
+        .adv-askbar .ic { font-size: 1.6rem; line-height: 1; }
+        .adv-askbar .tx { flex: 1; min-width: 0; }
+        .adv-askbar b { display: block; font-weight: 900; font-size: .98rem; }
+        .adv-askbar span { display: block; font-weight: 700; font-size: .9rem; line-height: 1.45; }
+        .adv-askbar small { display: inline-block; margin-top: 4px; padding: 2px 10px; border-radius: 999px; background: rgba(255, 255, 255, .22); font-weight: 900; font-size: .8rem; }
+        @keyframes advAskPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.015); } }
+        @media (prefers-reduced-motion: reduce) { .adv-askbar { animation: none; } }
         .adv-fab.adv-fab-hide { opacity: 0; pointer-events: none; }
         .adv-fab-ic { font-size: 1.55rem; line-height: 1; }
         .adv-fab-badge { position: absolute; top: -6px; left: -4px; min-width: 23px; height: 23px; padding: 0 6px;
@@ -1519,6 +1532,10 @@ window.sufyanOpen = window.sufyanOpen || function(what, id) {
     </div>
 
     
+    <div id="advAskBar" class="adv-askbar" role="alert" hidden>
+        <span class="ic" aria-hidden="true">🏪</span>
+        <div class="tx"><b>فريق الدعم يسألكم — كابتن ينتظر</b><span id="advAskTxt"></span><small>اضغط هنا للردّ</small></div>
+    </div>
     <button type="button" id="advFab" class="adv-fab" aria-label="مستشارك — الدعم وأرقام مطعمك">
         <span class="adv-fab-ic" aria-hidden="true">🐳</span><span>مستشارك</span>
         <span class="adv-fab-badge" id="advFabBadge" hidden>0</span>
@@ -5253,6 +5270,72 @@ function advFabHide(on) {
  if (f) f.classList.toggle("adv-fab-hide", !!on);
 }
 
+let advAskAt = 0, advAskRing = null, advAskEnd = null;
+
+function playAskChime() {
+ try {
+  const ctx = audioCtx || new (window.AudioContext || window.webkitAudioContext);
+  if (ctx.state === "suspended" && ctx.resume) ctx.resume().catch(() => {});
+  const t0 = ctx.currentTime + .02;
+  [ [ 988, 0 ], [ 988, .22 ], [ 1319, .44 ] ].forEach(([f, dt]) => {
+   const o = ctx.createOscillator(), g = ctx.createGain();
+   o.type = "triangle";
+   o.frequency.value = f;
+   g.gain.setValueAtTime(1e-4, t0 + dt);
+   g.gain.exponentialRampToValueAtTime(.35, t0 + dt + .02);
+   g.gain.exponentialRampToValueAtTime(1e-4, t0 + dt + .18);
+   o.connect(g);
+   g.connect(ctx.destination);
+   o.start(t0 + dt);
+   o.stop(t0 + dt + .2);
+  });
+ } catch (e) {}
+}
+
+function advAskStop() {
+ if (advAskRing) {
+  clearInterval(advAskRing);
+  advAskRing = null;
+ }
+}
+
+function advAskSync() {
+ const bar = advEl("advAskBar");
+ if (!bar) return;
+ const a = advMeta && advMeta.ask, at = Number(a && a.at) || 0;
+ const left = at ? 15 * 6e4 - (advNow() - at) : 0;
+ const show = !!(a && a.text && left > 0) && !advOpen;
+ bar.hidden = !show;
+ if (!show) {
+  advAskStop();
+  if (!(a && left > 0)) advAskAt = 0;
+  return;
+ }
+ const t = advEl("advAskTxt");
+ if (t) t.textContent = String(a.text).replace(/^🏪\s*/, "");
+ if (advAskEnd) clearTimeout(advAskEnd);
+ advAskEnd = setTimeout(advAskSync, left + 1e3);
+ if (at === advAskAt) return;
+ advAskAt = at;
+ advAskStop();
+ let n = 0;
+ const ring = () => {
+  if (advOpen || !(advMeta.ask && Number(advMeta.ask.at) === advAskAt)) {
+   advAskStop();
+   return;
+  }
+  playAskChime();
+  if (navigator.vibrate) {
+   try {
+    navigator.vibrate([ 120, 60, 120 ]);
+   } catch (_) {}
+  }
+  if (++n >= 4) advAskStop();
+ };
+ ring();
+ advAskRing = setInterval(ring, 6e4);
+}
+
 function attachAdvisorMetaListener(myPhone, attempt) {
  advPhone = myPhone;
  if (advMetaOff) {
@@ -5299,6 +5382,7 @@ function advOnMeta(prevUnread) {
   showToastMsg("🐳 وصلك ردٌّ من مستشارك — اضغط زرّ «مستشارك» لقراءته.", 7e3);
  }
  advMetaSeen = true;
+ advAskSync();
  if (!advOpen) return;
  advMarkRead();
  advRenderHead();
@@ -7168,6 +7252,11 @@ function advInit() {
  } catch (_) {}
  const fab = advEl("advFab");
  if (fab) fab.addEventListener("click", () => openAdvisor());
+ const askBar = advEl("advAskBar");
+ if (askBar) askBar.addEventListener("click", () => {
+  advAskStop();
+  openAdvisor();
+ });
  const view = advEl("advisorView");
  if (view) view.addEventListener("click", advOnClick);
  const ta = advEl("advText");
