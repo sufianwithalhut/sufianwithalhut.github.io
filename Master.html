@@ -1264,6 +1264,7 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
         <button class="fp fg" onclick="setSF('RES','active',this)">مفعّل <span class="fc" id="br-active">0</span></button>
         <button class="fp fa" onclick="setSF('RES','inactive',this)">استراحة <span class="fc" id="br-inactive">0</span></button>
         <button class="fp fr" onclick="setSF('RES','banned',this)">موقوف <span class="fc" id="br-banned">0</span></button>
+        <button class="fp" onclick="setSF('RES','deleted',this)" title="المحذوفة — ✓ يعيد تفعيلها">🗑 محذوف <span class="fc" id="br-deleted">0</span></button>
       </div>
       <div class="eg" id="resList"></div>
     </div>
@@ -1300,6 +1301,7 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
         <button class="fp fg" onclick="setSF('DRV','active',this)">بالميدان <span class="fc" id="bd-active">0</span></button>
         <button class="fp fa" onclick="setSF('DRV','inactive',this)">استراحة <span class="fc" id="bd-inactive">0</span></button>
         <button class="fp fr" onclick="setSF('DRV','banned',this)">موقوف <span class="fc" id="bd-banned">0</span></button>
+        <button class="fp" onclick="setSF('DRV','deleted',this)" title="المحذوفون — ✓ يعيد تفعيلهم">🗑 محذوف <span class="fc" id="bd-deleted">0</span></button>
       </div>
       <div class="eg" id="drvList"></div>
     </div>
@@ -2367,6 +2369,9 @@ async function loadData(attempt) {
   gdBanner(false);
   applyGD(data);
   gdCacheWrite(data);
+  try {
+   syncDriverAccounts();
+  } catch (_) {}
  } catch (e) {
   const aborted = e && e.name === "AbortError";
   if (attempt < 3) {
@@ -3084,11 +3089,15 @@ function updBadges(type, list) {
   pending: 0,
   active: 0,
   inactive: 0,
-  banned: 0
+  banned: 0,
+  deleted: 0
  };
  list.slice(1).forEach(i => {
   const st = i[type === "RES" ? R.STATUS : D.STATUS];
-  if (st === "deleted") return;
+  if (st === "deleted") {
+   cnt.deleted++;
+   return;
+  }
   cnt.all++;
   if (st === "pending" || st === "waiting") cnt.pending++;
   if (st === "active") {
@@ -3109,7 +3118,7 @@ function updBadges(type, list) {
  });
  const mdEl = document.getElementById(p + "-mostDebt");
  if (mdEl) mdEl.textContent = dc;
- [ "pending", "active", "inactive", "banned" ].forEach(k => {
+ [ "pending", "active", "inactive", "banned", "deleted" ].forEach(k => {
   const el = document.getElementById(p + "-" + k);
   if (el) el.textContent = cnt[k];
  });
@@ -3149,7 +3158,7 @@ function filtEnt(type) {
  const filter = type === "RES" ? resSF : drvSF;
  const q = document.getElementById(type === "RES" ? "sRes" : "sDrv")?.value.trim().toLowerCase() || "";
  const cont = document.getElementById(type === "RES" ? "resList" : "drvList");
- let list = (type === "RES" ? gD.restaurants : gD.drivers).slice(1).filter(i => (type === "RES" ? i[R.STATUS] : i[D.STATUS]) !== "deleted");
+ let list = (type === "RES" ? gD.restaurants : gD.drivers).slice(1).filter(i => (type === "RES" ? i[R.STATUS] : i[D.STATUS]) === "deleted" === (filter === "deleted"));
  if (q) list = list.filter(i => String(i[1]).toLowerCase().includes(q) || String(i[2]).toLowerCase().includes(q));
  if (filter === "mostOrders") {
   const lM = type === "RES" ? liveLed.restaurants : liveLed.drivers;
@@ -3177,8 +3186,8 @@ function filtEnt(type) {
   let spC = "sp-a";
   if (status === "inactive") spC = "sp-i";
   if (status === "pending" || status === "waiting") spC = "sp-p";
-  if (status === "banned") spC = "sp-b";
-  const spL = status === "active" ? "نشط" : status === "inactive" ? "استراحة" : status === "pending" || status === "waiting" ? "قيد الانتظار" : status === "banned" ? "موقوف" : status;
+  if (status === "banned" || status === "deleted") spC = "sp-b";
+  const spL = status === "active" ? "نشط" : status === "inactive" ? "استراحة" : status === "pending" || status === "waiting" ? "قيد الانتظار" : status === "banned" ? "موقوف" : status === "deleted" ? "محذوف — ✓ يعيده" : status;
   let extra = "";
   if (type === "RES") {
    const {text: text, cls: cls} = cDisp(String(item[R.COMM] || ""));
@@ -3414,8 +3423,8 @@ function doAct(cmd, type, id, el) {
  }
  const item = (type === "RES" ? gD?.restaurants : gD?.drivers)?.find(i => nP(i[2]) === nP(id));
  const rawPhone = item ? String(item[2]).trim() : String(id);
+ const col = type === "RES" ? R.STATUS : D.STATUS, prevSt = item ? item[col] : null;
  if (type !== "ORDER") {
-  const col = type === "RES" ? R.STATUS : D.STATUS;
   if (item) item[col] = nSt;
   ovr[type === "RES" ? "r" : "d"][String(item ? item[2] : id)] = {
    status: nSt,
@@ -3429,6 +3438,16 @@ function doAct(cmd, type, id, el) {
   return toast("انتهت الجلسة", "e");
  }
  const apiType = type === "RES" ? "RESTAURANT" : type === "DRV" ? "DRIVER" : "ORDER";
+ const nm = item ? item[1] : id;
+ const undo = why => {
+  if (item && prevSt != null) {
+   item[col] = prevSt;
+   delete ovr[type === "RES" ? "r" : "d"][String(item[2])];
+   filtEnt(type);
+   updBadges(type, type === "RES" ? gD.restaurants : gD.drivers);
+  }
+  toast("⚠️ لم يتغيّر حال " + esc(nm) + (why ? " — " + esc(why) : "") + ". أعد المحاولة.", "e");
+ };
  fetch(API, {
   method: "POST",
   headers: {
@@ -3443,13 +3462,43 @@ function doAct(cmd, type, id, el) {
    pass: MP
   })
  }).then(r => r.json()).then(d => {
-  if (d && d.success) {
-   if (type === "DRV") _flPeek(rawPhone);
-   const nm = item ? item[1] : id;
-   logAudit(cmd, `${type === "RES" ? "مطعم" : "كابتن"}: ${nm} → ${nSt}`);
+  if (!(d && d.success)) {
+   undo(d && d.msg);
+   return;
   }
- }).catch(() => {}).finally(() => {
+  logAudit(cmd, `${type === "RES" ? "مطعم" : "كابتن"}: ${nm} → ${nSt}`);
+  if (type !== "DRV") return;
+  return fnCall("adminDriverAccount", {
+   items: [ {
+    phone: rawPhone,
+    status: nSt
+   } ]
+  }).then(() => {
+   if (nSt === "deleted" || nSt === "banned") toast((nSt === "deleted" ? "🗑 حُذف " : "🚫 حُظر ") + esc(nm) + " — لا يدخل ولا تصله طلبات"); else if (prevSt === "deleted" || prevSt === "banned") toast("✅ أُعيد تفعيل " + esc(nm));
+  }).catch(e => toast("⚠️ تغيّر في الشيت لكن لم يُثبَّت في النظام: " + esc(e && e.message || e), "e")).finally(() => _flPeek(rawPhone));
+ }).catch(e => undo(e && e.message)).finally(() => {
   if (el) el.disabled = false;
+ });
+}
+
+let _acctSynced = false;
+
+function syncDriverAccounts() {
+ if (_acctSynced || !gD || !gD.drivers) return;
+ _acctSynced = true;
+ const items = gD.drivers.slice(1).filter(r => r && r[D.PHONE]).map(r => ({
+  phone: String(r[D.PHONE]),
+  status: String(r[D.STATUS] || "")
+ }));
+ if (!items.length) return;
+ fnCall("adminDriverAccount", {
+  items: items
+ }).then(r => {
+  const d = r && r.data || {};
+  if (d.off) toast("🚫 أُوقف " + d.off + " حساباً محذوفاً أو محظوراً كان ما زال يعمل");
+ }).catch(e => {
+  _acctSynced = false;
+  console.warn("syncDriverAccounts:", e && e.message);
  });
 }
 
