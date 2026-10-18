@@ -5223,7 +5223,7 @@ function insRender() {
   const st = ST[s.state] || [ s.state, "ep" ], pct = s.target ? Math.min(100, Math.round((s.paid || 0) * 100 / s.target)) : 0;
   const refundDue = a.left_at ? new Date(Date.parse(a.left_at) + (Number(cfg.refund_days) || 30) * 864e5).toISOString().slice(0, 10) : null;
   const days = INS_DAYS_AR.map((d, i) => `<option value="${i}" ${i === s.day ? "selected" : ""}>${d}</option>`).join("");
-  return `<div class="ec ${st[1]}">\n      <div class="ec-top"><div><div class="ec-n">${esc(name || "كابتن")}</div><div class="ec-ph">0${esc(p)}</div></div><div style="font-size:.72rem;font-weight:900">${st[0]}</div></div>\n      <div style="height:8px;background:var(--base2);border-radius:9px;overflow:hidden;margin-bottom:6px"><div style="height:100%;width:${pct}%;background:var(--jade)"></div></div>\n      <div style="font-size:.74rem;font-weight:800;margin-bottom:6px">${insFmt(s.paid)} / ${insFmt(s.target)} د.ع ${s.owed ? `· <span style="color:var(--rose)">المطلوب ${insFmt(s.owed)}</span>` : ""}</div>\n      <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;font-size:.72rem;font-weight:800">يومه: <select onchange="insSetDay('${p}',this.value)" style="font:inherit;padding:3px 6px;border-radius:7px;border:1px solid var(--line2)">${days}</select></div>\n      ${notice ? `<div style="font-size:.72rem;font-weight:800;color:var(--amber);margin-bottom:6px">📝 أبلغ بالترك: ${esc(String(notice).slice(0, 10))}</div>` : ""}\n      ${a.left_at ? `<div style="font-size:.72rem;font-weight:800;margin-bottom:6px">🚪 ترك: ${esc(String(a.left_at).slice(0, 10))} · الإعادة مستحقّة: <b>${esc(refundDue)}</b>${a.refunded_at ? ` · ✅ أُعيدت ${esc(String(a.refunded_at).slice(0, 10))}` : ""}</div>` : ""}\n      <div style="display:flex;gap:6px;flex-wrap:wrap">\n        ${!a.left_at && s.state !== "complete" && s.state !== "exempt" ? `<button class="abt" style="background:var(--jade)" onclick="insPay('${p}')">✅ استلام ${insFmt(s.weekly || 1e4)}</button>` : ""}\n        <button class="abt" style="background:var(--base2);color:var(--ink);box-shadow:none;border:1px solid var(--line2)" onclick="insHist('${p}')">📋 السجلّ</button>\n        <button class="abt" style="background:var(--base2);color:var(--ink);box-shadow:none;border:1px solid var(--line2)" onclick="insMore('${p}')">⋯</button>\n      </div></div>`;
+  return `<div class="ec ${st[1]}">\n      <div class="ec-top"><div><div class="ec-n">${esc(name || "كابتن")}</div><div class="ec-ph">0${esc(p)}</div></div><div style="font-size:.72rem;font-weight:900">${st[0]}</div></div>\n      <div style="height:8px;background:var(--base2);border-radius:9px;overflow:hidden;margin-bottom:6px"><div style="height:100%;width:${pct}%;background:var(--jade)"></div></div>\n      <div style="font-size:.74rem;font-weight:800;margin-bottom:6px">${insFmt(s.paid)} / ${insFmt(s.target)} د.ع ${s.owed ? `· <span style="color:var(--rose)">المطلوب ${insFmt(s.owed)}</span>` : ""}</div>\n      <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;font-size:.72rem;font-weight:800">يومه: <select onchange="insSetDay('${p}',this.value)" style="font:inherit;padding:3px 6px;border-radius:7px;border:1px solid var(--line2)">${days}</select></div>\n      ${notice ? `<div style="font-size:.72rem;font-weight:800;color:var(--amber);margin-bottom:6px">📝 أبلغ بالترك: ${esc(String(notice).slice(0, 10))}</div>` : ""}\n      ${a.left_at ? `<div style="font-size:.72rem;font-weight:800;margin-bottom:6px">🚪 ترك: ${esc(String(a.left_at).slice(0, 10))} · الإعادة مستحقّة: <b>${esc(refundDue)}</b>${a.refunded_at ? ` · ✅ أُعيدت ${esc(String(a.refunded_at).slice(0, 10))}` : ""}</div>` : ""}\n      <div style="display:flex;gap:6px;flex-wrap:wrap">\n        ${!a.left_at && s.state !== "complete" && s.state !== "exempt" ? `<button class="abt" style="background:var(--jade)" onclick="insPay('${p}')">✅ استلام ${insFmt(s.weekly || 1e4)}</button>` : ""}\n        ${(notice || a.left_at) && !a.refunded_at ? `<button class="abt" style="background:var(--amber);color:#fff" title="الكابتن تراجع: يُلغى إبلاغه فيعمل كالمعتاد" onclick="insCancelNotice('${p}')">↩️ تراجع عن الترك</button>` : ""}\n        <button class="abt" style="background:var(--base2);color:var(--ink);box-shadow:none;border:1px solid var(--line2)" onclick="insHist('${p}')">📋 السجلّ</button>\n        <button class="abt" style="background:var(--base2);color:var(--ink);box-shadow:none;border:1px solid var(--line2)" onclick="insMore('${p}')">⋯</button>\n      </div></div>`;
  }).join("") : `<div class="empty-s" style="grid-column:1/-1">لا كباتن في هذا التصنيف.</div>`;
 }
 
@@ -5317,6 +5317,23 @@ window.insHist = function(p) {
  if (!(i >= 0 && i < pays.length)) return;
  if (!confirm("حذف الدفعة " + del + " (" + insFmt(pays[i][1].amount) + " د.ع)؟")) return;
  db.ref("insurance/accounts/" + p + "/payments/" + pays[i][0]).remove().then(() => toast("حُذفت الدفعة")).catch(e => toast("تعذّر: " + esc(e.message || e), "e"));
+};
+
+window.insCancelNotice = async function(p) {
+ const a = insAccs[p] || {}, nm = insName(p) || "0" + p;
+ if (a.refunded_at) return toast("أُعيدت تأميناته — لا يُلغى تركه من هنا", "e");
+ if (!confirm("الكابتن " + nm + " تراجع عن ترك العمل؟\nيُلغى إبلاغه فيعمل كالمعتاد ويستمرّ قسط تأمينه، ويستطيع الإبلاغ من جديد لاحقاً.")) return;
+ const u = {};
+ u["insurance/notices/" + p] = null;
+ u["insurance/accounts/" + p + "/notice_at"] = null;
+ if (a.left_at) u["insurance/accounts/" + p + "/left_at"] = null;
+ try {
+  await db.ref().update(u);
+  toast("↩️ أُلغي إبلاغ " + esc(nm) + " — يعمل كالمعتاد");
+  logAudit("insNoticeCancel", nm);
+ } catch (e) {
+  toast("تعذّر: " + esc(e.message || e), "e");
+ }
 };
 
 window.insMore = async function(p) {
