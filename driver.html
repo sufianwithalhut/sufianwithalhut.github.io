@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://*.firebasedatabase.app https://*.firebaseio.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app https://www.gstatic.com; object-src 'none'; base-uri 'none'; form-action 'self';">
 
 <script>
-const CURRENT_APP_VERSION = "32.20-OfficeCall";
+const CURRENT_APP_VERSION = "32.21-InsGrace";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -3969,7 +3969,12 @@ function insState(cfgRaw, acc, nowMs) {
  const expectedNow = Math.min(target, (weeksPast + (dueThis >= today ? 1 : 0)) * c.weekly);
  base.expected = expectedPast;
  base.due_date = dueThis;
- if (paid < expectedPast) return Object.assign(base, {
+ const gu = /^\d{4}-\d{2}-\d{2}$/.test(String(c.grace_until || "")) ? String(c.grace_until) : "";
+ if (paid < expectedPast) return gu && today <= gu ? Object.assign(base, {
+  state: "overdue",
+  owed: expectedPast - paid,
+  block_from: add(gu, 1)
+ }) : Object.assign(base, {
   state: "blocked",
   owed: expectedPast - paid
  });
@@ -4014,6 +4019,7 @@ function paintInsurance() {
    upcoming: "🗓️ قسط هذا الأسبوع (" + insFmt(s.owed) + " د.ع) يوم " + (s.due_date ? insDateAr(s.due_date) : ""),
    due_today: "⚠️ اليوم يوم قسطك (" + insFmt(s.owed) + " د.ع) — سلّمه للإدارة اليوم حتى لا يتوقّف استلامك للطلبات من باچر.",
    blocked: "🔴 قسط التأمين متأخّر (" + insFmt(s.owed) + " د.ع) — أنت غير مرئيّ للطلبات حتى تؤكّد الإدارة الاستلام.",
+   overdue: "⚠️ قسط التأمين متأخّر (" + insFmt(s.owed) + " د.ع) — سلّمه للإدارة. هذا الأسبوع تنبيهٌ فقط وطلباتك مستمرّة، ومن يوم " + (s.block_from ? insDateAr(s.block_from) : "") + " يتوقّف استلامك للطلبات حتى تؤكّد الإدارة.",
    complete: "🎉 اكتمل تأمينك بالكامل — لا أقساط بعد اليوم.",
    exempt: "ℹ️ أنت معفى من التأمين.",
    left: "ℹ️ مسجَّلٌ أنك تركت العمل — تُعاد تأميناتك بعد " + (Number(cfg.refund_days) || 30) + " يوماً من تركك.",
@@ -4021,7 +4027,7 @@ function paintInsurance() {
   };
   const se = document.getElementById("insState");
   se.innerText = ST[s.state] || "";
-  se.style.color = s.state === "blocked" ? "var(--bad-dp)" : s.state === "due_today" ? "var(--warn-dp)" : "var(--ink2)";
+  se.style.color = s.state === "blocked" ? "var(--bad-dp)" : s.state === "due_today" || s.state === "overdue" ? "var(--warn-dp)" : "var(--ink2)";
   document.getElementById("insHist").innerHTML = pays.length ? pays.map(p => "• " + insFmt(p.amount) + " د.ع — " + (p.at ? new Date(Number(p.at) + 3 * 36e5).toISOString().slice(0, 10) : "")).join("<br>") : "لا دفعات بعد.";
   const nd = Number(cfg.notice_days) || 15, rd = Number(cfg.refund_days) || 30;
   document.getElementById("insPolicy").innerText = "التأمين لتنظيم العمل وتجهيزك بالزيّ والمستلزمات المناسبة. وإذا قرّرت ترك العمل يجب أن تُبلغ الإدارة قبل " + nd + " يوماً، وتُعاد لك تأميناتك بعد " + rd + " يوماً من تركك العمل.";
@@ -4034,6 +4040,16 @@ function paintInsurance() {
   } else {
    nb.style.display = s.state === "exempt" ? "none" : "";
    nt.style.display = "none";
+  }
+  if (s.state === "overdue") {
+   const k = "suf_ins_over_" + new Date(srvNow() + 3 * 36e5).toISOString().slice(0, 10);
+   try {
+    if (!localStorage.getItem(k)) {
+     localStorage.setItem(k, "1");
+     toast("⚠️ قسط التأمين متأخّر (" + insFmt(s.owed) + " د.ع) — سلّمه للإدارة قبل " + (s.block_from ? insDateAr(s.block_from) : ""), "warn");
+     track("ins_overdue_warn");
+    }
+   } catch (_) {}
   }
   if (s.state === "due_today") {
    const k = "suf_ins_warn_" + (s.due_date || "");
