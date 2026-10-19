@@ -1141,6 +1141,7 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
     <button class="nb" id="nb-clearing" onclick="goTab('clearing',this)"><div class="ni">🧾</div> طلبات التصفير<span id="nbClrDot" style="display:none;width:7px;height:7px;border-radius:50%;background:var(--rose);margin-right:auto;flex-shrink:0"></span></button>
     <button class="nb" id="nb-posbridge" onclick="goTab('posbridge',this)"><div class="ni">🖨</div> جسر الطابعة<span id="nbPbDot" style="display:none;width:7px;height:7px;border-radius:50%;background:var(--rose);margin-right:auto;flex-shrink:0"></span></button>
     <button class="nb" id="nb-insurance" onclick="goTab('insurance',this)"><div class="ni">🛡</div> التأمينات<span id="nbInsDot" style="display:none;width:7px;height:7px;border-radius:50%;background:var(--rose);margin-right:auto;flex-shrink:0"></span></button>
+    <button class="nb" id="nb-ittihad" onclick="goTab('ittihad',this)"><div class="ni">🏪</div> اتحاد المتاجر<span id="nbIttDot" style="display:none;width:7px;height:7px;border-radius:50%;background:var(--rose);margin-right:auto;flex-shrink:0"></span></button>
     <button class="nb" id="nb-opsblock" onclick="goTab('opsblock',this)"><div class="ni">⛔</div> الإيقاف<span id="nbObDot" style="display:none;width:7px;height:7px;border-radius:50%;background:var(--rose);margin-right:auto;flex-shrink:0"></span></button>
     <div class="sidebar-foot"><button class="sidebar-out" onclick="doLogout()">🚪 تسجيل الخروج</button></div>
   </aside>
@@ -1420,6 +1421,19 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
     </div>
 
     
+    
+    <div id="pg-ittihad" class="pg tab-p">
+      <div class="pg-ttl">🏪 اتحاد المتاجر</div>
+      <div class="arch-alert" style="margin-bottom:12px;display:block;line-height:1.9" id="ittHead">🏪 جاري التحميل…</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        <button class="abt" id="ittLiveBtn" onclick="ittLive()">…</button>
+        <button class="abt" style="background:var(--base2);color:var(--ink);box-shadow:none;border:1px solid var(--line2)" onclick="ittStart()">🔄 تحديث</button>
+      </div>
+      <div class="eg" style="display:block;margin-bottom:12px" id="ittCfg"></div>
+      <div class="pg-ttl" style="font-size:1rem;margin-top:6px">المتاجر</div>
+      <div class="eg" style="display:block" id="ittStores"></div>
+    </div>
+
     <div id="pg-posbridge" class="pg tab-p">
       <div class="pg-ttl">جسر الطابعة</div>
       <div class="arch-alert" style="margin-bottom:12px">
@@ -1547,7 +1561,8 @@ const TITLES = {
  clearing: "طلبات التصفير",
  insurance: "التأمينات",
  posbridge: "جسر الطابعة",
- opsblock: "الإيقاف التشغيليّ"
+ opsblock: "الإيقاف التشغيليّ",
+ ittihad: "اتحاد المتاجر"
 };
 
 let MP = "", gD = null;
@@ -2484,9 +2499,11 @@ function setupFB() {
   liveOrd = active;
   archOrd = arch;
   if (_map) _paintMapDeb();
-  const np = active.filter(o => !o[O.DRV] || [ "pending_driver", "system_routing", "manual_pending" ].includes(o[O.DRV])).length;
+  const itW = o => o[O.STATUS] === "res_pending" || o[O.STATUS] === "res_accepted";
+  const np = active.filter(o => !itW(o) && (!o[O.DRV] || [ "pending_driver", "system_routing", "manual_pending" ].includes(o[O.DRV]))).length;
   if (np > pendCnt) document.getElementById("snd").play().catch(() => {});
   const hasE = active.some(o => {
+   if (itW(o)) return false;
    const hd = o[O.DRV] && ![ "pending_driver", "system_routing", "manual_pending" ].includes(o[O.DRV]);
    return !hd && o[O.TIME] && (now - new Date(o[O.TIME]).getTime()) / 6e4 >= 3;
   });
@@ -6400,6 +6417,7 @@ window.goTab = function(name) {
     if (name === "posbridge") pbStart();
     if (name === "advisor") advStart();
     if (name === "opsblock") obStart();
+    if (name === "ittihad") ittStart();
     if (name === "staff") {
      loadStaffRoster();
      renderStaffOnline();
@@ -6415,6 +6433,131 @@ window.goTab = function(name) {
  });
  if (name !== "staff") stopStaffIdleTimer();
  _flSync();
+};
+
+const ITT_BASE_DEF = "https://ittihad-kirkuk.web.app";
+
+let ITTA = null;
+
+const ittE = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({
+ "&": "&amp;",
+ "<": "&lt;",
+ ">": "&gt;",
+ '"': "&quot;",
+ "'": "&#39;"
+}[c]));
+
+window.ittStart = async function() {
+ const h = document.getElementById("ittHead");
+ if (h) h.textContent = "🏪 جاري التحميل…";
+ try {
+  const r = await fnCall("ittihadRes", {
+   op: "admin_list"
+  });
+  ITTA = r.data;
+  ittPaint();
+ } catch (e) {
+  if (h) h.textContent = "⚠️ تعذّر التحميل: " + (e && e.message || e);
+ }
+};
+
+function ittPaint() {
+ const d = ITTA || {}, c = d.cfg || {}, base = (c.base_url || ITT_BASE_DEF).replace(/\/+$/, "");
+ const pub = (d.stores || []).filter(x => x.pub).length, open = (d.stores || []).filter(x => x.pub && x.o && !x.hidden).length;
+ document.getElementById("ittHead").innerHTML = (c.live ? "🟢 <b>الاتحاد مفتوحٌ للزبائن</b>" : "🟡 <b>الاتحاد مغلقٌ للزبائن</b> — المطاعم تجهّز متاجرها، والتجربة برابط المعاينة") + "<br>المتاجر: " + (d.stores || []).length + " بدأت · " + pub + " نشرت قائمتها · " + open + " مفتوحة الآن" + (d.live ? " · <b style='color:var(--rose)'>" + d.live + " طلب ينتظر قرار المطعم</b>" : "");
+ const lb = document.getElementById("ittLiveBtn");
+ lb.textContent = c.live ? "⏸ أغلق الاتحاد للزبائن" : "▶ افتح الاتحاد للزبائن";
+ lb.style.background = c.live ? "var(--rose)" : "var(--jade)";
+ const pv = c.pv ? base + "/?pv=" + c.pv : "";
+ const row = (lbl, inp, hint) => '<div style="display:grid;grid-template-columns:minmax(150px,220px) 1fr;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line2)"><label style="font-weight:700">' + lbl + "</label><div>" + inp + (hint ? '<div style="font-size:.78rem;color:var(--mute);margin-top:4px">' + hint + "</div>" : "") + "</div></div>";
+ const tx = (id, v, ph, dir) => '<input id="' + id + '" class="srch" style="margin:0;width:100%;' + (dir ? "direction:ltr;text-align:left" : "") + '" value="' + ittE(v) + '" placeholder="' + ittE(ph || "") + '">';
+ const ck = (id, v) => '<label style="display:inline-flex;gap:8px;align-items:center;cursor:pointer"><input type="checkbox" id="' + id + '" ' + (v ? "checked" : "") + "> مفعّل</label>";
+ document.getElementById("ittCfg").innerHTML = '<div style="font-weight:800;margin-bottom:6px">قراراتك (تسري فوراً بلا نشر)</div>' + row("رابط الموقع (النطاق)", tx("ittBase", c.base_url || "", ITT_BASE_DEF, 1), "حين تشتري النطاق: اكتبه هنا (https://…) فتتغيّر روابط المطاعم وباركوداتها كلّها. والآن: " + ittE(ITT_BASE_DEF)) + row("واتساب المساعدة", tx("ittWa", c.wa || "", "07XXXXXXXXX", 1), "يظهر للزبون في صفحة «مساعدة».") + row("سقف الطلب الأوّل (د.ع)", tx("ittCap", c.first_cap || 5e4, "50000", 1), "حمايةٌ من الطلبات الوهميّة — يرتفع بعد أوّل طلبٍ ناجح للزبون.") + row("عمولة الكابتن لكلّ طلب اتحاد (د.ع)", tx("ittDrv", c.drv_comm || 0, "0", 1), "عمولة المطعم صفرٌ دائماً. هذه حصّة الشركة من الكابتن إن قرّرتها (0 = لا شيء).") + row("طلبات نشطة للزبون", tx("ittMax", c.max_active || 2, "2", 1), "") + row("مهلة التنبيه / الإلغاء (دقائق)", '<div style="display:flex;gap:6px">' + tx("ittWarn", c.warn_min || 4, "4", 1) + tx("ittCan", c.cancel_min || 8, "8", 1) + "</div>", "بعد التنبيه يصل إنذارٌ للوحة لتتّصلوا بالمطعم، وبعد الإلغاء يُعتذر للزبون.") + row("رمز تحقّق SMS", ck("ittOtp", c.otp_required), "يحتاج تفعيل «Phone» في Firebase Authentication وكلفة الرسائل — اتركه مطفأً حتى تقرّر.") + row("كلّ المطاعم مؤهّلة", ck("ittAll", c.all), "مطفأ: المؤهّل من ضغط «سجّلني من الأوائل». مفعّل: كلّ مطاعم سفيان ترى «متجري».") + row("رابط المعاينة", pv ? '<div style="direction:ltr;text-align:left;word-break:break-all;font-size:.82rem">' + ittE(pv) + "</div>" : "—", 'يفتح الموقع قبل الإطلاق للتجربة من الفريق وحده. <button class="abt" style="padding:4px 10px;font-size:.78rem" onclick="ittSave(true)">مفتاحٌ جديد</button>') + '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="abt" onclick="ittSave(false)">💾 احفظ الإعداد</button>' + '<input id="ittUnb" class="srch" style="margin:0;max-width:200px;direction:ltr" placeholder="07… رقم زبون"><button class="abt" style="background:var(--base2);color:var(--ink);box-shadow:none;border:1px solid var(--line2)" onclick="ittUnblock()">رفع الإيقاف عن رقم</button></div>';
+ const st = (d.stores || []).slice().sort((a, b) => b.pub - a.pub || (b.last || 0) - (a.last || 0));
+ document.getElementById("ittStores").innerHTML = st.length ? st.map(x => '<div style="display:flex;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line2)"><div style="flex:1;min-width:0"><b>' + ittE(x.n || "—") + '</b> <span style="font-size:.78rem;color:var(--mute)">0' + ittE(x.res) + '</span><div style="font-size:.8rem;direction:ltr;text-align:right">' + (x.slug ? '<a href="' + ittE(base + "/" + x.slug) + (c.live ? "" : "?pv=" + ittE(c.pv || "")) + '" target="_blank" rel="noopener">' + ittE(base + "/" + x.slug) + "</a>" : "—") + '</div><div style="font-size:.78rem">' + (x.pub ? "✅ نشر القائمة" : "✏️ يجهّز") + " · " + (x.o ? "🟢 مفتوح" : "⚪ مغلق") + (x.hidden ? ' · <b style="color:var(--rose)">مخفيّ</b>' : "") + (x.last ? " · آخر طلب " + new Date(x.last).toLocaleString("ar-EG", {
+  day: "numeric",
+  month: "numeric",
+  hour: "2-digit",
+  minute: "2-digit"
+ }) : "") + '</div></div><button class="abt" style="padding:6px 12px;font-size:.8rem;' + (x.hidden ? "" : "background:var(--rose)") + '" data-res="' + ittE(x.res) + '" data-hide="' + (x.hidden ? "0" : "1") + '" onclick="ittHide(this.dataset.res,this.dataset.hide===\'1\')">' + (x.hidden ? "أظهره" : "أخفِه") + "</button></div>").join("") : '<div style="color:var(--mute);padding:10px 0">لا متجر بعد — المطاعم المسجّلة («سجّلني من الأوائل») تجهّز متاجرها من شريط «اتحاد المتاجر» في لوحتها.</div>';
+ const dot = document.getElementById("nbIttDot");
+ if (dot) dot.style.display = d.live ? "" : "none";
+}
+
+window.ittSave = async function(newPv) {
+ const v = id => (document.getElementById(id) || {}).value || "";
+ const cfg = newPv ? {
+  pv: "new"
+ } : {
+  base_url: v("ittBase").trim(),
+  wa: v("ittWa").trim(),
+  first_cap: v("ittCap"),
+  drv_comm: v("ittDrv"),
+  max_active: v("ittMax"),
+  warn_min: v("ittWarn"),
+  cancel_min: v("ittCan"),
+  otp_required: document.getElementById("ittOtp").checked,
+  all: document.getElementById("ittAll").checked
+ };
+ if (!newPv && cfg.base_url && !/^https:\/\//.test(cfg.base_url)) return toast("الرابط يبدأ بـ https://", "e");
+ if (!newPv && cfg.otp_required && !(ITTA && ITTA.cfg && ITTA.cfg.otp_required) && !confirm("تفعيل رمز SMS يحتاج تفعيل Phone في Firebase Authentication أوّلاً — وإلّا تفشل طلبات الزبائن الجدد. متابعة؟")) return;
+ try {
+  const r = await fnCall("ittihadRes", {
+   op: "admin_cfg",
+   cfg: cfg
+  });
+  ITTA.cfg = r.data.cfg;
+  ittPaint();
+  toast(newPv ? "مفتاح معاينة جديد ✓" : "حُفظ الإعداد ✓", "s");
+ } catch (e) {
+  toast("تعذّر الحفظ: " + (e && e.message || e), "e");
+ }
+};
+
+window.ittLive = async function() {
+ const on = !(ITTA && ITTA.cfg && ITTA.cfg.live);
+ if (!confirm(on ? "فتح «اتحاد المتاجر» للزبائن الآن؟ تظهر المتاجر المنشورة والمفتوحة، وتصل طلباتها للمطاعم." : "إغلاق الاتحاد للزبائن؟ لا تُستقبل طلباتٌ جديدة، والقوائم تبقى.")) return;
+ try {
+  const r = await fnCall("ittihadRes", {
+   op: "admin_cfg",
+   cfg: {
+    live: on
+   }
+  });
+  ITTA.cfg = r.data.cfg;
+  ittPaint();
+  toast(on ? "الاتحاد مفتوح ✓" : "الاتحاد مغلق", "s");
+ } catch (e) {
+  toast("تعذّر: " + (e && e.message || e), "e");
+ }
+};
+
+window.ittHide = async function(res, hide) {
+ if (!confirm(hide ? "إخفاء هذا المتجر من الاتحاد؟" : "إظهار المتجر في الاتحاد؟")) return;
+ try {
+  await fnCall("ittihadRes", {
+   op: "admin_hide",
+   res: res,
+   hidden: hide
+  });
+  await ittStart();
+ } catch (e) {
+  toast("تعذّر: " + (e && e.message || e), "e");
+ }
+};
+
+window.ittUnblock = async function() {
+ const p = (document.getElementById("ittUnb") || {}).value || "";
+ if (!p.trim()) return;
+ try {
+  await fnCall("ittihadRes", {
+   op: "admin_unblock",
+   phone: p
+  });
+  toast("رُفع الإيقاف ✓", "s");
+ } catch (e) {
+  toast("تعذّر: " + (e && e.message || e), "e");
+ }
 };
 
 window.doFilt = function(f, btn) {
@@ -6468,6 +6611,14 @@ function renderRadar() {
     clsCls = "os";
     sbCls = "stb-v";
     sbTxt = "👑 سيادي";
+   } else if (st === "res_pending") {
+    clsCls = "or";
+    sbCls = "stb-w";
+    sbTxt = "🏪 اتحاد — ينتظر قبول المطعم";
+   } else if (st === "res_accepted") {
+    clsCls = "oh";
+    sbCls = "stb-b";
+    sbTxt = "🏪 اتحاد — قبله المطعم ويُجهَّز";
    } else if (!hD || st === "pending_driver" || st === "manual_pending") {
     if (hD && (st === "manual_pending" || st === "pending_driver")) {
      clsCls = "or";
