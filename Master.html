@@ -1430,6 +1430,8 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
         <button class="abt" style="background:var(--base2);color:var(--ink);box-shadow:none;border:1px solid var(--line2)" onclick="ittStart()">🔄 تحديث</button>
       </div>
       <div class="eg" style="display:block;margin-bottom:12px" id="ittCfg"></div>
+      <div class="pg-ttl" style="font-size:1rem;margin-top:6px">💬 محادثات الزبائن <span style="font-size:.78rem;font-weight:500;color:var(--mute)">— يردّ عليها فريق الليدرز الأذكياء، والمُحالة لكم بالأحمر</span></div>
+      <div class="eg" style="display:block;margin-bottom:12px" id="ittHelp"></div>
       <div class="pg-ttl" style="font-size:1rem;margin-top:6px">المتاجر</div>
       <div class="eg" style="display:block" id="ittStores"></div>
     </div>
@@ -6456,6 +6458,7 @@ window.ittStart = async function() {
   });
   ITTA = r.data;
   ittPaint();
+  ittHelpLoad();
  } catch (e) {
   if (h) h.textContent = "⚠️ تعذّر التحميل: " + (e && e.message || e);
  }
@@ -6472,7 +6475,7 @@ function ittPaint() {
  const row = (lbl, inp, hint) => '<div style="display:grid;grid-template-columns:minmax(150px,220px) 1fr;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line2)"><label style="font-weight:700">' + lbl + "</label><div>" + inp + (hint ? '<div style="font-size:.78rem;color:var(--mute);margin-top:4px">' + hint + "</div>" : "") + "</div></div>";
  const tx = (id, v, ph, dir) => '<input id="' + id + '" class="srch" style="margin:0;width:100%;' + (dir ? "direction:ltr;text-align:left" : "") + '" value="' + ittE(v) + '" placeholder="' + ittE(ph || "") + '">';
  const ck = (id, v) => '<label style="display:inline-flex;gap:8px;align-items:center;cursor:pointer"><input type="checkbox" id="' + id + '" ' + (v ? "checked" : "") + "> مفعّل</label>";
- document.getElementById("ittCfg").innerHTML = '<div style="font-weight:800;margin-bottom:6px">قراراتك (تسري فوراً بلا نشر)</div>' + row("رابط الموقع (النطاق)", tx("ittBase", c.base_url || "", ITT_BASE_DEF, 1), "حين تشتري النطاق: اكتبه هنا (https://…) فتتغيّر روابط المطاعم وباركوداتها كلّها. والآن: " + ittE(ITT_BASE_DEF)) + row("واتساب المساعدة", tx("ittWa", c.wa || "", "07XXXXXXXXX", 1), "يظهر للزبون في صفحة «مساعدة».") + row("سقف الطلب الأوّل (د.ع)", tx("ittCap", c.first_cap || 5e4, "50000", 1), "حمايةٌ من الطلبات الوهميّة — يرتفع بعد أوّل طلبٍ ناجح للزبون.") + row("عمولة الكابتن لكلّ طلب اتحاد (د.ع)", tx("ittDrv", c.drv_comm || 0, "0", 1), "عمولة المطعم صفرٌ دائماً. هذه حصّة الشركة من الكابتن إن قرّرتها (0 = لا شيء).") + row("طلبات نشطة للزبون", tx("ittMax", c.max_active || 2, "2", 1), "") + row("مهلة التنبيه / الإلغاء (دقائق)", '<div style="display:flex;gap:6px">' + tx("ittWarn", c.warn_min || 4, "4", 1) + tx("ittCan", c.cancel_min || 8, "8", 1) + "</div>", "بعد التنبيه يصل إنذارٌ للوحة لتتّصلوا بالمطعم، وبعد الإلغاء يُعتذر للزبون.") + row("رمز تحقّق SMS", ck("ittOtp", c.otp_required), "يحتاج تفعيل «Phone» في Firebase Authentication وكلفة الرسائل — اتركه مطفأً حتى تقرّر.") + row("كلّ المطاعم مؤهّلة", ck("ittAll", c.all), "مطفأ: المؤهّل من ضغط «سجّلني من الأوائل». مفعّل: كلّ مطاعم سفيان ترى «متجري».") + row("رابط المعاينة", pv ? '<div style="direction:ltr;text-align:left;word-break:break-all;font-size:.82rem">' + ittE(pv) + "</div>" : "—", 'يفتح الموقع قبل الإطلاق للتجربة من الفريق وحده. <button class="abt" style="padding:4px 10px;font-size:.78rem" onclick="ittSave(true)">مفتاحٌ جديد</button>') + '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="abt" onclick="ittSave(false)">💾 احفظ الإعداد</button>' + '<input id="ittUnb" class="srch" style="margin:0;max-width:200px;direction:ltr" placeholder="07… رقم زبون"><button class="abt" style="background:var(--base2);color:var(--ink);box-shadow:none;border:1px solid var(--line2)" onclick="ittUnblock()">رفع الإيقاف عن رقم</button></div>';
+ document.getElementById("ittCfg").innerHTML = '<div style="font-weight:800;margin-bottom:6px">قراراتك (تسري فوراً بلا نشر)</div>' + row("رابط الموقع (النطاق)", tx("ittBase", c.base_url || "", ITT_BASE_DEF, 1), "حين تشتري النطاق: اكتبه هنا (https://…) فتتغيّر روابط المطاعم وباركوداتها كلّها. والآن: " + ittE(ITT_BASE_DEF)) + row("سقف الطلب الأوّل (د.ع)", tx("ittCap", c.first_cap || 5e4, "50000", 1), "حمايةٌ من الطلبات الوهميّة — يرتفع بعد أوّل طلبٍ ناجح للزبون.") + row("عمولة الكابتن لكلّ طلب اتحاد (د.ع)", tx("ittDrv", c.drv_comm || 0, "0", 1), "عمولة المطعم صفرٌ دائماً. هذه حصّة الشركة من الكابتن إن قرّرتها (0 = لا شيء).") + row("طلبات نشطة للزبون", tx("ittMax", c.max_active || 2, "2", 1), "") + row("مهلة التنبيه / الإلغاء (دقائق)", '<div style="display:flex;gap:6px">' + tx("ittWarn", c.warn_min || 4, "4", 1) + tx("ittCan", c.cancel_min || 8, "8", 1) + "</div>", "بعد التنبيه يصل إنذارٌ للوحة لتتّصلوا بالمطعم، وبعد الإلغاء يُعتذر للزبون.") + row("رمز تحقّق SMS", ck("ittOtp", c.otp_required), "يحتاج تفعيل «Phone» في Firebase Authentication وكلفة الرسائل — اتركه مطفأً حتى تقرّر.") + row("كلّ المطاعم مؤهّلة", ck("ittAll", c.all), "مطفأ: المؤهّل من ضغط «سجّلني من الأوائل». مفعّل: كلّ مطاعم سفيان ترى «متجري».") + row("رابط المعاينة", pv ? '<div style="direction:ltr;text-align:left;word-break:break-all;font-size:.82rem">' + ittE(pv) + "</div>" : "—", 'يفتح الموقع قبل الإطلاق للتجربة من الفريق وحده. <button class="abt" style="padding:4px 10px;font-size:.78rem" onclick="ittSave(true)">مفتاحٌ جديد</button>') + '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="abt" onclick="ittSave(false)">💾 احفظ الإعداد</button>' + '<input id="ittUnb" class="srch" style="margin:0;max-width:200px;direction:ltr" placeholder="07… رقم زبون"><button class="abt" style="background:var(--base2);color:var(--ink);box-shadow:none;border:1px solid var(--line2)" onclick="ittUnblock()">رفع الإيقاف عن رقم</button></div>';
  const st = (d.stores || []).slice().sort((a, b) => b.pub - a.pub || (b.last || 0) - (a.last || 0));
  document.getElementById("ittStores").innerHTML = st.length ? st.map(x => '<div style="display:flex;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line2)"><div style="flex:1;min-width:0"><b>' + ittE(x.n || "—") + '</b> <span style="font-size:.78rem;color:var(--mute)">0' + ittE(x.res) + '</span><div style="font-size:.8rem;direction:ltr;text-align:right">' + (x.slug ? '<a href="' + ittE(base + "/" + x.slug) + (c.live ? "" : "?pv=" + ittE(c.pv || "")) + '" target="_blank" rel="noopener">' + ittE(base + "/" + x.slug) + "</a>" : "—") + '</div><div style="font-size:.78rem">' + (x.pub ? "✅ نشر القائمة" : "✏️ يجهّز") + " · " + (x.o ? "🟢 مفتوح" : "⚪ مغلق") + (x.hidden ? ' · <b style="color:var(--rose)">مخفيّ</b>' : "") + (x.last ? " · آخر طلب " + new Date(x.last).toLocaleString("ar-EG", {
   day: "numeric",
@@ -6484,13 +6487,92 @@ function ittPaint() {
  if (dot) dot.style.display = d.live ? "" : "none";
 }
 
+let ITTH_OPEN = "";
+
+window.ittHelpLoad = async function() {
+ const box = document.getElementById("ittHelp");
+ if (!box) return;
+ try {
+  const r = await fnCall("ittihadRes", {
+   op: "help_list"
+  });
+  const rows = r.data && r.data.rows || [];
+  const esc = rows.filter(x => x.esc).length;
+  const dot = document.getElementById("nbIttDot");
+  if (dot && esc) dot.style.display = "";
+  box.innerHTML = rows.length ? rows.map(x => '<div style="border-bottom:1px solid var(--line2);padding:8px 0"><div style="display:flex;gap:8px;align-items:center;cursor:pointer" onclick="ittHelpOpen(\'' + ittE(x.sid) + '\')"><span style="width:9px;height:9px;border-radius:50%;flex:none;background:' + (x.esc ? "var(--rose)" : "var(--jade)") + '"></span><div style="flex:1;min-width:0"><b>' + (x.cust ? "زبون 0" + ittE(x.cust) : "زبون بلا طلب") + '</b> <span style="font-size:.78rem;color:var(--mute)">· ' + ittE(x.n) + " رسالة · " + new Date(x.last_at).toLocaleString("ar-EG", {
+   day: "numeric",
+   month: "numeric",
+   hour: "2-digit",
+   minute: "2-digit"
+  }) + (x.persona ? " · " + ittE(x.persona) : "") + "</span>" + (x.esc ? '<div style="font-size:.82rem;color:var(--rose);font-weight:700">مُحالة: ' + ittE(x.esc_sum) + "</div>" : "") + '</div><span style="font-size:.8rem">' + (ITTH_OPEN === x.sid ? "▲" : "▼") + '</span></div><div id="itth-' + ittE(x.sid) + '"></div></div>').join("") : '<div style="color:var(--mute);padding:8px 0">لا محادثات بعد.</div>';
+  if (ITTH_OPEN) ittHelpOpen(ITTH_OPEN, true);
+ } catch (e) {
+  box.textContent = "تعذّر تحميل المحادثات: " + (e && e.message || e);
+ }
+};
+
+window.ittHelpOpen = async function(sid, keep) {
+ const el = document.getElementById("itth-" + sid);
+ if (!el) return;
+ if (ITTH_OPEN === sid && !keep) {
+  ITTH_OPEN = "";
+  el.innerHTML = "";
+  return;
+ }
+ ITTH_OPEN = sid;
+ el.innerHTML = '<div style="color:var(--mute);font-size:.82rem;padding:6px 0">جاري التحميل…</div>';
+ try {
+  const r = await fnCall("ittihadRes", {
+   op: "help_get",
+   sid: sid
+  });
+  const ms = r.data && r.data.msgs || [], ch = r.data && r.data.ch || {};
+  el.innerHTML = '<div style="background:var(--base2);border-radius:12px;padding:8px 10px;margin-top:6px;max-height:320px;overflow:auto">' + ms.map(m => '<div style="margin:4px 0;' + (m.from === "cust" ? "" : "padding-inline-start:18px") + '"><b style="font-size:.78rem;color:' + (m.from === "cust" ? "var(--ink)" : m.from === "res" ? "#9a5b00" : "var(--jade)") + '">' + (m.from === "cust" ? "الزبون" : ittE(m.name || "الفريق")) + '</b> <span style="font-size:.72rem;color:var(--mute)">' + new Date(m.ts).toLocaleTimeString("ar-EG", {
+   hour: "2-digit",
+   minute: "2-digit"
+  }) + '</span><div style="font-size:.88rem;white-space:pre-wrap">' + ittE(m.text) + "</div></div>").join("") + "</div>" + '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><input id="itthTx-' + ittE(sid) + '" class="srch" style="margin:0;flex:1;min-width:180px" placeholder="ردّك للزبون (باسم فريق دعم الاتحاد)…"><button class="abt" onclick="ittHelpReply(\'' + ittE(sid) + "')\">أرسل</button>" + (ch.esc ? '<button class="abt" style="background:var(--base2);color:var(--ink);box-shadow:none;border:1px solid var(--line2)" onclick="ittHelpClose(\'' + ittE(sid) + "')\">✓ أغلق الإحالة</button>" : "") + "</div>";
+ } catch (e) {
+  el.textContent = "تعذّر: " + (e && e.message || e);
+ }
+};
+
+window.ittHelpReply = async function(sid) {
+ const i = document.getElementById("itthTx-" + sid);
+ const t = (i && i.value || "").trim();
+ if (!t) return;
+ try {
+  await fnCall("ittihadRes", {
+   op: "help_reply",
+   sid: sid,
+   text: t
+  });
+  toast("وصل ردّك للزبون ✓", "s");
+  ittHelpOpen(sid, true);
+ } catch (e) {
+  toast("تعذّر: " + (e && e.message || e), "e");
+ }
+};
+
+window.ittHelpClose = async function(sid) {
+ try {
+  await fnCall("ittihadRes", {
+   op: "help_close",
+   sid: sid
+  });
+  toast("أُغلقت الإحالة — المحادثة للفريق الذكيّ", "s");
+  ittHelpLoad();
+ } catch (e) {
+  toast("تعذّر: " + (e && e.message || e), "e");
+ }
+};
+
 window.ittSave = async function(newPv) {
  const v = id => (document.getElementById(id) || {}).value || "";
  const cfg = newPv ? {
   pv: "new"
  } : {
   base_url: v("ittBase").trim(),
-  wa: v("ittWa").trim(),
   first_cap: v("ittCap"),
   drv_comm: v("ittDrv"),
   max_active: v("ittMax"),
