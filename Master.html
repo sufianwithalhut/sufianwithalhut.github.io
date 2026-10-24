@@ -1013,6 +1013,8 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
         <div><label class="el" style="margin-bottom:3px">خط العرض (Lat)</label><input type="number" id="eLat" class="fc" placeholder="35.468" step="any" oninput="gPrevSoon()"></div>
         <div><label class="el" style="margin-bottom:3px">خط الطول (Lng)</label><input type="number" id="eLng" class="fc" placeholder="44.392" step="any" oninput="gPrevSoon()"></div>
       </div>
+      
+      <button type="button" class="map-b" onclick="webOpen()" style="width:100%;margin-bottom:11px">🌐 ربط موقع المطعم (طلبات موقعه وتطبيقه)</button>
     </div>
     <div id="eDF" style="display:none">
       
@@ -1088,6 +1090,39 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
       <button type="button" onclick="clMod('phoneMod')" style="flex:1;padding:12px;background:var(--base3,#f1f5f9);color:var(--ink2);border:none;border-radius:12px;font-weight:800;cursor:pointer;font-family:'Cairo'">إلغاء</button>
       <button type="button" id="pmGo" onclick="svPhone()" disabled style="flex:1.4;padding:12px;background:var(--sky);color:#fff;border:none;border-radius:12px;font-weight:900;cursor:pointer;font-family:'Cairo'">انقل الرقم</button>
     </div>
+  </div>
+</div>
+
+<div id="webMod" class="mbg" onclick="clMod('webMod')" style="z-index:25000">
+  <div class="mcard" style="max-width:460px" onclick="event.stopPropagation()">
+    <div style="width:46px;height:46px;border-radius:14px;background:var(--sky-l);display:flex;align-items:center;justify-content:center;margin:0 auto 11px;font-size:22px">🌐</div>
+    <h4 style="font-weight:900;text-align:center;color:var(--ink);margin-bottom:3px">ربط موقع المطعم</h4>
+    <p id="wbSub" style="font-size:.78rem;font-weight:700;color:var(--ink4);text-align:center;margin-bottom:12px">—</p>
+    <div style="padding:10px 12px;background:var(--sky-l);border-radius:12px;font-size:.76rem;font-weight:700;color:var(--ink2);line-height:1.9;margin-bottom:12px">
+      • نظام المطعم (موقعه أو تطبيقه) يرسل الطلب بعد موافقة موظّفه، فيدخل التوزيع فوراً كأيّ طلبٍ من لوحته.<br>
+      • عمولته وأسعار مناطقه كطلباته العاديّة، وحالة الطلب ترجع إلى نظامه.<br>
+      • أصدر المفتاح ثمّ أرسل للمطعم «رسالة الربط» ليضعها مبرمجه في خادمه.
+    </div>
+    <div id="wbSt" class="map-msg"></div>
+    <div id="wbKeyBox" style="display:none;margin-bottom:11px">
+      <div style="font-size:.76rem;font-weight:900;color:var(--rose);margin-bottom:5px">⚠️ يظهر المفتاح والسرّ هذه المرّة فقط — انسخ الرسالة الآن.</div>
+      <textarea id="wbMsg" class="fc" readonly style="height:150px;font-size:.72rem;line-height:1.7;margin-bottom:6px"></textarea>
+      <button type="button" class="map-b" onclick="webCopy()" style="width:100%">📋 انسخ رسالة الربط</button>
+    </div>
+    <label class="el">رابط إشعارات نظام المطعم <span style="color:var(--ink4);font-weight:600">(اختياريّ — يعطيه مبرمجه)</span></label>
+    <div style="display:flex;gap:6px;margin-bottom:9px">
+      <input type="url" id="wbHook" class="fc" style="flex:1;min-width:0;margin-bottom:0;direction:ltr;text-align:left" placeholder="https://…" autocomplete="off">
+      <button type="button" onclick="webSaveHook()" style="flex-shrink:0;background:var(--sky);color:#fff;border:none;border-radius:10px;padding:0 14px;font-weight:800;cursor:pointer;font-family:'Cairo'">حفظ</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
+      <button type="button" class="map-b" id="wbNew" onclick="webNewKey()">🔑 أصدر مفتاحاً</button>
+      <button type="button" class="map-b" id="wbOn" onclick="webToggle()" style="display:none">⏸ أطفئ الربط</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px">
+      <button type="button" class="map-b" onclick="window.open(WEB_DOC,'_blank','noopener')">📄 دليل المبرمج</button>
+      <button type="button" class="map-b" id="wbRev" onclick="webRevoke()" style="display:none;color:var(--rose)">⛔ ألغِ الربط</button>
+    </div>
+    <button type="button" onclick="clMod('webMod')" style="width:100%;padding:12px;background:var(--base3,#f1f5f9);color:var(--ink2);border:none;border-radius:12px;font-weight:800;cursor:pointer;font-family:'Cairo'">إغلاق</button>
   </div>
 </div>
 <div id="staffMod" class="mbg" onclick="clStaffMod()">
@@ -4736,6 +4771,152 @@ window.svPhone = async function() {
   go.disabled = false;
  } finally {
   go.textContent = "انقل الرقم";
+ }
+};
+
+const WEB_API = "https://europe-west1-sufyan-delivery.cloudfunctions.net/restaurantApi", WEB_DOC = "https://sufianwithalhut.github.io/restaurant-api.html";
+
+let WB = null;
+
+async function webAdm(body) {
+ const u = auth.currentUser;
+ if (!u) throw new Error("انتهت الجلسة — ادخل من جديد");
+ const r = await fetch(WEB_API + "/v1/admin", {
+  method: "POST",
+  headers: {
+   "Content-Type": "application/json",
+   "Authorization": "Bearer " + await u.getIdToken()
+  },
+  body: JSON.stringify(body)
+ });
+ const j = await r.json().catch(() => null);
+ if (!r.ok || !j || !j.ok) throw new Error(j && j.error && (j.error.message_ar || j.error.message) || "HTTP " + r.status);
+ return j;
+}
+
+function webDt(ms) {
+ return ms ? new Date(ms).toLocaleString("en-GB", {
+  day: "2-digit",
+  month: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit"
+ }) : "—";
+}
+
+function webPaint() {
+ const v = WB || {}, st = document.getElementById("wbSt");
+ if (!v.has_key) {
+  st.className = "map-msg wn";
+  st.textContent = "لا ربط بعد — أصدر مفتاحاً وأرسل رسالة الربط للمطعم.";
+ } else {
+  st.className = "map-msg " + (v.on ? "ok" : "er");
+  st.textContent = (v.on ? "✅ الربط يعمل" : "⏸ الربط مطفأ") + " · المفتاح ينتهي بـ " + v.last4 + " · صدر " + webDt(v.key_at) + " · الطلبات " + (v.n || 0) + (v.last_order_at ? " · آخرها " + webDt(v.last_order_at) : "") + (v.hook_last ? " · آخر إشعار " + (v.hook_last.ok ? "وصل ✓" : "لم يصل (" + v.hook_last.code + ")") : "");
+ }
+ document.getElementById("wbHook").value = v.hook_url || "";
+ document.getElementById("wbNew").textContent = v.has_key ? "🔄 مفتاحٌ جديد (يُلغي القديم)" : "🔑 أصدر مفتاحاً";
+ const on = document.getElementById("wbOn");
+ on.style.display = v.has_key ? "" : "none";
+ on.textContent = v.on ? "⏸ أطفئ الربط" : "▶ أشعل الربط";
+ document.getElementById("wbRev").style.display = v.has_key ? "" : "none";
+}
+
+window.webOpen = async function() {
+ if (!ePh) return;
+ document.getElementById("wbSub").textContent = "المطعم: " + (document.getElementById("eN").value || "");
+ document.getElementById("wbKeyBox").style.display = "none";
+ document.getElementById("wbMsg").value = "";
+ WB = null;
+ const st = document.getElementById("wbSt");
+ st.className = "map-msg";
+ st.textContent = "جارٍ التحميل…";
+ opMod("webMod");
+ try {
+  WB = (await webAdm({
+   op: "get",
+   res: nP(ePh)
+  })).view;
+  webPaint();
+ } catch (e) {
+  st.className = "map-msg er";
+  st.textContent = "تعذّر: " + e.message;
+ }
+};
+
+window.webNewKey = async function() {
+ if (WB && WB.has_key && !confirm("المفتاح الحاليّ يتوقّف فوراً، وعلى مبرمج المطعم أن يضع الجديد. أتؤكّد؟")) return;
+ const nm = document.getElementById("eN").value || "";
+ try {
+  const r = await webAdm({
+   op: "new_key",
+   res: nP(ePh)
+  });
+  WB = r.view;
+  webPaint();
+  document.getElementById("wbMsg").value = [ "ربط موقع «" + nm + "» بتوصيل سفيان", "", "دليل المبرمج: " + WEB_DOC, "الرابط: " + WEB_API, "مفتاح الربط: " + r.key, "سرّ الإشعارات: " + r.secret, "", "⚠️ ضعوهما في خادمكم لا في صفحة الموقع، ولا ترسلوهما لأحد." ].join("\n");
+  document.getElementById("wbKeyBox").style.display = "";
+  logAudit("webKey", "مفتاح ربط موقع المطعم: " + nm);
+  toast("صدر المفتاح ✓ — انسخ رسالة الربط الآن", "s");
+ } catch (e) {
+  toast("تعذّر: " + e.message, "e");
+ }
+};
+
+window.webCopy = async function() {
+ const t = document.getElementById("wbMsg");
+ try {
+  await navigator.clipboard.writeText(t.value);
+ } catch (_) {
+  t.select();
+  document.execCommand("copy");
+ }
+ toast("نُسخت رسالة الربط ✓", "s");
+};
+
+window.webSaveHook = async function() {
+ const u = document.getElementById("wbHook").value.trim();
+ try {
+  WB = (await webAdm({
+   op: "set",
+   res: nP(ePh),
+   hook_url: u
+  })).view;
+  webPaint();
+  toast(u ? "حُفظ رابط الإشعارات ✓" : "أُزيل رابط الإشعارات", "s");
+ } catch (e) {
+  toast("تعذّر: " + e.message, "e");
+ }
+};
+
+window.webToggle = async function() {
+ const nm = document.getElementById("eN").value || "";
+ try {
+  WB = (await webAdm({
+   op: "set",
+   res: nP(ePh),
+   on: !(WB && WB.on)
+  })).view;
+  webPaint();
+  toast(WB.on ? "الربط يعمل ✓" : "أُطفئ الربط", "s");
+  logAudit("webToggle", (WB.on ? "تشغيل" : "إطفاء") + " ربط موقع: " + nm);
+ } catch (e) {
+  toast("تعذّر: " + e.message, "e");
+ }
+};
+
+window.webRevoke = async function() {
+ if (!confirm("إلغاء الربط؟ يتوقّف المفتاح فوراً، ولإعادته تُصدر مفتاحاً جديداً.")) return;
+ const nm = document.getElementById("eN").value || "";
+ try {
+  WB = (await webAdm({
+   op: "revoke",
+   res: nP(ePh)
+  })).view;
+  webPaint();
+  document.getElementById("wbKeyBox").style.display = "none";
+  toast("أُلغي الربط", "s");
+  logAudit("webRevoke", "إلغاء ربط موقع: " + nm);
+ } catch (e) {
+  toast("تعذّر: " + e.message, "e");
  }
 };
 
