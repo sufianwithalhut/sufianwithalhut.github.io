@@ -1496,6 +1496,13 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
       <div class="eg" style="display:block;margin-bottom:12px" id="ittHelp"></div>
       <div class="pg-ttl" style="font-size:1rem;margin-top:6px">المتاجر</div>
       <div class="eg" style="display:block" id="ittStores"></div>
+      
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px">
+        <button class="abt" onclick="document.getElementById('ittImpFile').click()">📥 استيراد متجرٍ جاهز</button>
+        <input type="file" id="ittImpFile" accept=".json,application/json" multiple hidden onchange="ittImport(this)">
+        <span style="font-size:.78rem;color:var(--mute)">ملفّ متجرٍ جاهز (‎.itt.json) أو عدّة ملفّات معاً — يُنشر مغلقاً، والمطعم يفتحه من «متجري».</span>
+      </div>
+      <div class="eg" style="display:none;margin-top:10px;line-height:1.9" id="ittImp"></div>
     </div>
 
     <div id="pg-posbridge" class="pg tab-p">
@@ -7070,6 +7077,138 @@ window.ittHide = async function(res, hide) {
  } catch (e) {
   toast("تعذّر: " + (e && e.message || e), "e");
  }
+};
+
+let ITT_IMP = [];
+
+window.ittImport = async function(inp) {
+ const files = [ ...inp.files || [] ];
+ inp.value = "";
+ if (!files.length) return;
+ const box = document.getElementById("ittImp");
+ box.style.display = "block";
+ box.innerHTML = "🔎 جاري فحص " + files.length + " ملفّ…";
+ const base = (ITTA && ITTA.cfg && ITTA.cfg.base_url || ITT_BASE_DEF).replace(/\/+$/, ""), rows = [];
+ ITT_IMP = [];
+ for (const f of files) {
+  let P;
+  try {
+   P = JSON.parse(await f.text());
+  } catch (e) {
+   rows.push("⚠️ " + ittE(f.name) + ": ملفٌّ غير صالح");
+   continue;
+  }
+  if (!P || P.v !== 1 || !P.res || !P.store || !P.menu || !Array.isArray(P.menu.cats)) {
+   rows.push("⚠️ " + ittE(f.name) + ": ليس ملفّ متجرٍ جاهز");
+   continue;
+  }
+  const items = P.menu.cats.reduce((n, c) => n + (c.items || []).length, 0);
+  try {
+   const g = (await fnCall("ittihadRes", {
+    op: "admin_as",
+    res: P.res,
+    sub: {
+     op: "get"
+    }
+   })).data, had = g.store && g.store.slug;
+   ITT_IMP.push(P);
+   rows.push("☑️ <b>" + ittE(P.store.n) + "</b> ⇐ في شركته: " + ittE(g.res_name || "—") + " (0" + ittE(String(P.res).replace(/^[a-z]_/, "")) + ") · " + P.menu.cats.length + " قسماً · " + items + " صنفاً · " + Object.keys(P.imgs || {}).length + ' صورة · <span style="direction:ltr;display:inline-block">' + ittE(base + "/" + P.store.slug) + "</span>" + (had ? ' · <b style="color:var(--rose)">له متجرٌ سابق («' + ittE(g.store.n || "") + "») — ستُستبدل قائمته</b>" : ""));
+  } catch (e) {
+   rows.push("⚠️ <b>" + ittE(P.store.n) + "</b>: " + ittE(e && e.message || e));
+  }
+ }
+ box.innerHTML = rows.join("<br>") + (ITT_IMP.length ? '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="abt" id="ittImpGo" onclick="ittImportGo()">✅ انشرها الآن (' + ITT_IMP.length + ')</button><button class="abt" style="background:var(--base2);color:var(--ink);box-shadow:none;border:1px solid var(--line2)" onclick="ITT_IMP=[];document.getElementById(\'ittImp\').style.display=\'none\'">إلغاء</button><span style="font-size:.78rem;color:var(--mute)">تُنشر مغلقة — كلّ مطعمٍ يفتح متجره من «متجري».</span></div>' : "");
+};
+
+window.ittImportGo = async function() {
+ const list = ITT_IMP.slice();
+ ITT_IMP = [];
+ if (!list.length) return;
+ const box = document.getElementById("ittImp");
+ const log = [];
+ const say = (t, last) => {
+  if (last) log[log.length - 1] = t; else log.push(t);
+  box.innerHTML = log.join("<br>");
+ };
+ for (const P of list) {
+  const as = sub => fnCall("ittihadRes", {
+   op: "admin_as",
+   res: P.res,
+   sub: sub
+  }).then(r => r.data);
+  const keys = Object.keys(P.imgs || {});
+  say("⏳ <b>" + ittE(P.store.n) + "</b>…");
+  try {
+   say("⏳ <b>" + ittE(P.store.n) + "</b>: الملفّ والرابط…", 1);
+   await as({
+    op: "profile",
+    p: P.store
+   });
+   if (P.logo) {
+    say("⏳ <b>" + ittE(P.store.n) + "</b>: الشعار…", 1);
+    await as({
+     op: "img",
+     kind: "logo",
+     big: P.logo.big,
+     th: P.logo.th
+    });
+   }
+   if (P.cover) {
+    say("⏳ <b>" + ittE(P.store.n) + "</b>: الغلاف…", 1);
+    await as({
+     op: "img",
+     kind: "cover",
+     big: P.cover.big,
+     th: P.cover.th
+    });
+   }
+   const up = {};
+   let done = 0, bad = 0, next = 0;
+   const worker = async () => {
+    while (next < keys.length) {
+     const k = keys[next++];
+     try {
+      const r = await as({
+       op: "img",
+       kind: "item",
+       big: P.imgs[k].big,
+       th: P.imgs[k].th
+      });
+      up[k] = {
+       img: r.img,
+       th: r.th
+      };
+     } catch (e) {
+      bad++;
+     }
+     done++;
+     say("⏳ <b>" + ittE(P.store.n) + "</b>: صور الأصناف " + done + "/" + keys.length + (bad ? " (تعذّر " + bad + ")" : ""), 1);
+    }
+   };
+   await Promise.all([ worker(), worker(), worker() ]);
+   say("⏳ <b>" + ittE(P.store.n) + "</b>: نشر القائمة…", 1);
+   const menu = {
+    cats: P.menu.cats.map(c => ({
+     n: c.n,
+     items: (c.items || []).map(it => Object.assign({
+      n: it.n,
+      d: it.d || "",
+      pr: it.pr,
+      a: it.a === 0 ? 0 : 1
+     }, it.im && up[it.im] ? up[it.im] : {}))
+    }))
+   };
+   const r = await as({
+    op: "publish",
+    menu: menu
+   });
+   const url = (ITTA && ITTA.cfg && ITTA.cfg.base_url || ITT_BASE_DEF) + "/" + P.store.slug;
+   say("✅ <b>" + ittE(P.store.n) + "</b>: نُشر " + r.count + " صنفاً بـ" + Object.keys(up).length + " صورة" + (bad ? " (تعذّرت " + bad + ")" : "") + ' — <a href="' + ittE(url) + '" target="_blank" rel="noopener" style="direction:ltr">' + ittE(url) + "</a> · مغلقٌ حتى يفتحه المطعم", 1);
+  } catch (e) {
+   say("⚠️ <b>" + ittE(P.store.n) + "</b>: توقّف — " + ittE(e && e.message || e) + " (أعد الملفّ نفسه: يُكمل ويستبدل)", 1);
+  }
+ }
+ ittStart();
 };
 
 window.ittUnblock = async function() {
