@@ -7079,7 +7079,12 @@ window.ittHide = async function(res, hide) {
  }
 };
 
-let ITT_IMP = [];
+let ITT_IMP = [], ITT_PARTS = {}, ITT_ROWS = {};
+
+const ittImpPaint = () => {
+ const box = document.getElementById("ittImp"), keys = Object.keys(ITT_ROWS);
+ box.innerHTML = keys.map(k => ITT_ROWS[k]()).join("<br>") + (ITT_IMP.length ? '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="abt" id="ittImpGo" onclick="ittImportGo()">✅ انشرها الآن (' + ITT_IMP.length + ')</button><button class="abt" style="background:var(--base2);color:var(--ink);box-shadow:none;border:1px solid var(--line2)" onclick="ITT_IMP=[];ITT_PARTS={};ITT_ROWS={};document.getElementById(\'ittImp\').style.display=\'none\'">إلغاء</button><span style="font-size:.78rem;color:var(--mute)">تُنشر مغلقة — كلّ مطعمٍ يفتح متجره من «متجري». يمكنك إضافة ملفّاتٍ أخرى قبل النشر.</span></div>' : "");
+};
 
 window.ittImport = async function(inp) {
  const files = [ ...inp.files || [] ];
@@ -7087,22 +7092,25 @@ window.ittImport = async function(inp) {
  if (!files.length) return;
  const box = document.getElementById("ittImp");
  box.style.display = "block";
- box.innerHTML = "🔎 جاري فحص " + files.length + " ملفّ…";
- const base = (ITTA && ITTA.cfg && ITTA.cfg.base_url || ITT_BASE_DEF).replace(/\/+$/, ""), rows = [];
- ITT_IMP = [];
+ const base = (ITTA && ITTA.cfg && ITTA.cfg.base_url || ITT_BASE_DEF).replace(/\/+$/, "");
  for (const f of files) {
   let P;
   try {
    P = JSON.parse(await f.text());
   } catch (e) {
-   rows.push("⚠️ " + ittE(f.name) + ": ملفٌّ غير صالح");
+   ITT_ROWS["bad:" + f.name] = () => "⚠️ " + ittE(f.name) + ": ملفٌّ غير صالح";
+   continue;
+  }
+  if (P && P.v === 1 && P.res && P.part && P.imgs) {
+   ITT_PARTS[P.res] = Object.assign(ITT_PARTS[P.res] || {}, P.imgs);
+   if (!ITT_IMP.some(x => x.res === P.res)) ITT_ROWS["part:" + P.res] = () => "🖼 صورٌ إضافيّة لـ0" + ittE(String(P.res).replace(/^[a-z]_/, "")) + ": " + Object.keys(ITT_PARTS[P.res] || {}).length + " — تنتظر ملفّ متجرها";
    continue;
   }
   if (!P || P.v !== 1 || !P.res || !P.store || !P.menu || !Array.isArray(P.menu.cats)) {
-   rows.push("⚠️ " + ittE(f.name) + ": ليس ملفّ متجرٍ جاهز");
+   ITT_ROWS["bad:" + f.name] = () => "⚠️ " + ittE(f.name) + ": ليس ملفّ متجرٍ جاهز";
    continue;
   }
-  const items = P.menu.cats.reduce((n, c) => n + (c.items || []).length, 0);
+  const items = P.menu.cats.reduce((n, c) => n + (c.items || []).length, 0), opt = P.menu.cats.reduce((n, c) => n + (c.items || []).filter(it => it.v || it.x).length, 0);
   try {
    const g = (await fnCall("ittihadRes", {
     op: "admin_as",
@@ -7111,18 +7119,22 @@ window.ittImport = async function(inp) {
      op: "get"
     }
    })).data, had = g.store && g.store.slug;
+   ITT_IMP = ITT_IMP.filter(x => x.res !== P.res);
    ITT_IMP.push(P);
-   rows.push("☑️ <b>" + ittE(P.store.n) + "</b> ⇐ في شركته: " + ittE(g.res_name || "—") + " (0" + ittE(String(P.res).replace(/^[a-z]_/, "")) + ") · " + P.menu.cats.length + " قسماً · " + items + " صنفاً · " + Object.keys(P.imgs || {}).length + ' صورة · <span style="direction:ltr;display:inline-block">' + ittE(base + "/" + P.store.slug) + "</span>" + (had ? ' · <b style="color:var(--rose)">له متجرٌ سابق («' + ittE(g.store.n || "") + "») — ستُستبدل قائمته</b>" : ""));
+   delete ITT_ROWS["part:" + P.res];
+   ITT_ROWS["res:" + P.res] = () => "☑️ <b>" + ittE(P.store.n) + "</b> ⇐ في شركته: " + ittE(g.res_name || "—") + " (0" + ittE(String(P.res).replace(/^[a-z]_/, "")) + ") · " + P.menu.cats.length + " قسماً · " + items + " صنفاً" + (opt ? " (" + opt + " بأحجام أو نكهات)" : "") + " · " + (Object.keys(P.imgs || {}).length + Object.keys(ITT_PARTS[P.res] || {}).length) + (P.img_total ? " من " + P.img_total : "") + ' صورة · <span style="direction:ltr;display:inline-block">' + ittE(base + "/" + P.store.slug) + "</span>" + (had ? ' · <b style="color:var(--rose)">له متجرٌ سابق («' + ittE(g.store.n || "") + "») — ستُستبدل قائمته</b>" : "");
   } catch (e) {
-   rows.push("⚠️ <b>" + ittE(P.store.n) + "</b>: " + ittE(e && e.message || e));
+   ITT_ROWS["err:" + P.res] = () => "⚠️ <b>" + ittE(P.store.n) + "</b>: " + ittE(e && e.message || e);
   }
  }
- box.innerHTML = rows.join("<br>") + (ITT_IMP.length ? '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="abt" id="ittImpGo" onclick="ittImportGo()">✅ انشرها الآن (' + ITT_IMP.length + ')</button><button class="abt" style="background:var(--base2);color:var(--ink);box-shadow:none;border:1px solid var(--line2)" onclick="ITT_IMP=[];document.getElementById(\'ittImp\').style.display=\'none\'">إلغاء</button><span style="font-size:.78rem;color:var(--mute)">تُنشر مغلقة — كلّ مطعمٍ يفتح متجره من «متجري».</span></div>' : "");
+ ittImpPaint();
 };
 
 window.ittImportGo = async function() {
- const list = ITT_IMP.slice();
+ const list = ITT_IMP.slice(), parts = ITT_PARTS;
  ITT_IMP = [];
+ ITT_PARTS = {};
+ ITT_ROWS = {};
  if (!list.length) return;
  const box = document.getElementById("ittImp");
  const log = [];
@@ -7136,7 +7148,7 @@ window.ittImportGo = async function() {
    res: P.res,
    sub: sub
   }).then(r => r.data);
-  const keys = Object.keys(P.imgs || {});
+  const imgs = Object.assign({}, P.imgs || {}, parts[P.res] || {}), keys = Object.keys(imgs);
   say("⏳ <b>" + ittE(P.store.n) + "</b>…");
   try {
    say("⏳ <b>" + ittE(P.store.n) + "</b>: الملفّ والرابط…", 1);
@@ -7171,8 +7183,8 @@ window.ittImportGo = async function() {
       const r = await as({
        op: "img",
        kind: "item",
-       big: P.imgs[k].big,
-       th: P.imgs[k].th
+       big: imgs[k].big,
+       th: imgs[k].th
       });
       up[k] = {
        img: r.img,
@@ -7195,7 +7207,11 @@ window.ittImportGo = async function() {
       d: it.d || "",
       pr: it.pr,
       a: it.a === 0 ? 0 : 1
-     }, it.im && up[it.im] ? up[it.im] : {}))
+     }, it.v ? {
+      v: it.v
+     } : {}, it.x ? {
+      x: it.x
+     } : {}, it.im && up[it.im] ? up[it.im] : {}))
     }))
    };
    const r = await as({
