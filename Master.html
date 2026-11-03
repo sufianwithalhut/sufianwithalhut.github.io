@@ -1503,6 +1503,9 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
         <span style="font-size:.78rem;color:var(--mute)">ملفّ متجرٍ جاهز (‎.itt.json) أو عدّة ملفّات معاً — يُنشر مغلقاً، والمطعم يفتحه من «متجري».</span>
       </div>
       <div class="eg" style="display:none;margin-top:10px;line-height:1.9" id="ittImp"></div>
+      
+      <div class="pg-ttl" style="font-size:1rem;margin-top:18px">🏷 الخصومات والوجبات الخاصّة <span style="font-size:.78rem;font-weight:500;color:var(--mute)">— اختر المتجر ثمّ الطبق: نسبة الخصم تُظهره في قسم «الخصومات»، و⭐ في «الوجبات الخاصّة»</span></div>
+      <div class="eg" style="display:block" id="ittPromo"></div>
     </div>
 
     <div id="pg-posbridge" class="pg tab-p">
@@ -6830,6 +6833,7 @@ window.ittStart = async function() {
   ittPaint();
   ittHelpLoad();
   ittStatsLoad();
+  ittPromoLoad();
  } catch (e) {
   if (h) h.textContent = "⚠️ تعذّر التحميل: " + (e && e.message || e);
  }
@@ -7225,6 +7229,90 @@ window.ittImportGo = async function() {
   }
  }
  ittStart();
+};
+
+let ITTP = null, ITTP_Q = "";
+
+const ittDisc = (pr, off) => off ? Math.max(250, Math.round(pr * (100 - off) / 100 / 250) * 250) : pr;
+
+const ITT_LBTN = "height:28px;padding:0 10px;font-size:.76rem;background:var(--base2);color:var(--ink);box-shadow:none;border:1px solid var(--line2)";
+
+window.ittPromoLoad = async function() {
+ const bx = document.getElementById("ittPromo");
+ if (!bx || !ITTA) return;
+ const st = (ITTA.stores || []).filter(s => s.pub && s.slug).sort((a, b) => String(a.n).localeCompare(String(b.n), "ar"));
+ let sum = "";
+ try {
+  const L = ((await fnCall("ittihadRes", {
+   op: "admin_promo",
+   all: true
+  })).data || {}).list || [];
+  sum = L.map(x => {
+   const no = Object.keys(x.off || {}).length, ns = Object.values(x.sp || {}).filter(v => v === true).length;
+   return no || ns ? '<button class="abt" style="' + ITT_LBTN + '" onclick="ittPromoOpen(\'' + ittE(x.res) + "')\">" + ittE(x.n) + (no ? " · خصم " + no : "") + (ns ? " · ⭐ " + ns : "") + "</button>" : "";
+  }).join(" ");
+ } catch (e) {}
+ bx.innerHTML = '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><select id="ittPrSel" onchange="ittPromoOpen(this.value)" style="height:34px;border-radius:9px;border:1px solid var(--line2);background:var(--base);color:var(--ink);padding:0 10px;font:inherit;min-width:220px"><option value="">اختر المتجر…</option>' + st.map(s => '<option value="' + ittE(s.res) + '">' + ittE(s.n) + (s.co && s.co !== "sufyan" ? " — " + ittE(s.dv) : "") + "</option>").join("") + "</select>" + (sum ? '<span style="font-size:.78rem;color:var(--mute)">المعيَّنة الآن:</span> ' + sum : '<span style="font-size:.78rem;color:var(--mute)">لا خصومات ولا وجبات خاصّة بعد.</span>') + '</div><div id="ittPrList" style="margin-top:10px"></div>';
+};
+
+window.ittPromoOpen = async function(res) {
+ const bx = document.getElementById("ittPrList");
+ if (!bx) return;
+ if (!res) {
+  bx.innerHTML = "";
+  ITTP = null;
+  return;
+ }
+ const sel = document.getElementById("ittPrSel");
+ if (sel) sel.value = res;
+ bx.textContent = "جاري تحميل الأطباق…";
+ ITTP_Q = "";
+ try {
+  ITTP = Object.assign({
+   res: res
+  }, (await fnCall("ittihadRes", {
+   op: "admin_promo",
+   res: res
+  })).data);
+  ittPromoPaint();
+ } catch (e) {
+  bx.textContent = "⚠️ تعذّر: " + (e && e.message || e);
+ }
+};
+
+window.ittPromoPaint = function() {
+ const bx = document.getElementById("ittPrList");
+ if (!bx || !ITTP) return;
+ const q = ITTP_Q.trim(), its = (ITTP.items || []).filter(it => !q || String(it.n).indexOf(q) > -1);
+ const row = it => {
+  const off = Number(ITTP.off[it.i]) || 0, spv = ITTP.sp[it.i], sp = spv === true || !!it.sa && spv !== false, nx = sp ? it.sa ? "false" : "null" : it.sa ? "null" : "true", N = v => (Number(v) || 0).toLocaleString("en-US");
+  return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line2)">' + (it.th ? '<img src="' + ittE(it.th) + '" alt="" loading="lazy" style="width:46px;height:46px;border-radius:10px;object-fit:cover;flex:none">' : '<span style="width:46px;height:46px;border-radius:10px;background:var(--base2);flex:none"></span>') + '<div style="flex:1;min-width:0"><div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + ittE(it.n) + '</div><div style="font-size:.8rem;color:var(--mute)">' + (it.f ? "من " : "") + (off ? "<s>" + N(it.pr) + '</s> ← <b style="color:var(--rose)">' + N(ittDisc(it.pr, off)) + " د.ع</b> (−" + off + "%)" : N(it.pr) + " د.ع") + "</div></div>" + "<select onchange=\"ittPromoSet('" + ittE(it.i) + '\',{off:Number(this.value)})" style="height:32px;border-radius:9px;border:1px solid ' + (off ? "var(--rose)" : "var(--line2)") + ';background:var(--base);color:var(--ink);font:inherit;font-size:.8rem;padding:0 6px">' + [ 0 ].concat(ITTP.offs || [ 20, 30, 40, 50, 60 ]).map(o => '<option value="' + o + '"' + (o === off ? " selected" : "") + ">" + (o ? "خصم " + o + "%" : "بلا خصم") + "</option>").join("") + "</select>" + '<button class="abt" style="' + (sp ? "height:32px;padding:0 10px;font-size:.78rem" : ITT_LBTN + ";height:32px") + '" onclick="ittPromoSet(\'' + ittE(it.i) + "',{sp:" + nx + '})">' + (sp ? "⭐ خاصّة" : "☆ خاصّة") + (sp && it.sa && spv !== true ? ' <small style="opacity:.75">آليّ</small>' : "") + "</button></div>";
+ };
+ bx.innerHTML = '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px"><b>' + ittE(ITTP.n) + '</b><span style="font-size:.78rem;color:var(--mute)">' + (ITTP.o ? "مفتوح" : "مغلق — تظهر أطباقه وعليها «مغلق الآن»") + " · " + (ITTP.items || []).length + " طبقاً</span>" + '<input type="search" placeholder="ابحث عن طبق…" value="' + ittE(ITTP_Q) + '" oninput="ITTP_Q=this.value;ittPromoPaint();this.focus()" style="height:32px;border-radius:9px;border:1px solid var(--line2);background:var(--base);color:var(--ink);padding:0 10px;font:inherit;font-size:.82rem;margin-inline-start:auto"></div>' + (its.length ? its.map(row).join("") : '<div style="color:var(--mute)">لا أطباق بهذا الاسم.</div>');
+ const inp = bx.querySelector("input[type=search]");
+ if (inp && q) {
+  inp.focus();
+  inp.setSelectionRange(inp.value.length, inp.value.length);
+ }
+};
+
+window.ittPromoSet = async function(i, ch) {
+ if (!ITTP) return;
+ try {
+  const r = (await fnCall("ittihadRes", Object.assign({
+   op: "admin_promo",
+   res: ITTP.res,
+   i: i
+  }, ch))).data;
+  ITTP = Object.assign({
+   res: ITTP.res
+  }, r);
+  ittPromoPaint();
+  toast(ch.off !== undefined ? ch.off ? "✓ خصم " + ch.off + "% — يظهر في «الخصومات» الآن" : "✓ أُزيل الخصم" : ch.sp === false ? "أُخرج من «الوجبات الخاصّة»" : ch.sp ? "⭐ أُضيف إلى «الوجبات الخاصّة»" : "عاد للاختيار الآليّ", "s");
+ } catch (e) {
+  toast("تعذّر: " + (e && e.message || e), "e");
+  ittPromoPaint();
+ }
 };
 
 window.ittUnblock = async function() {
