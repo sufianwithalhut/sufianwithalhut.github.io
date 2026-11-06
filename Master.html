@@ -18,7 +18,7 @@ try {
 <meta charset="UTF-8">
 <meta name="robots" content="noindex, nofollow">
 <script>
-const ADMIN_APP_VERSION = "5.7-PlaceFind";
+const ADMIN_APP_VERSION = "5.8-InsAudit";
 
 try {
  if (localStorage.getItem("hut_adm_version") !== ADMIN_APP_VERSION) {
@@ -5656,11 +5656,30 @@ window.insLeadSettle = async function(lp) {
 };
 
 window.insSetDay = async function(p, d) {
+ const from = insAccs[p] && insAccs[p].day != null ? Number(insAccs[p].day) : null, to = Number(d);
+ try {
+  const cnt = {};
+  let n = 0;
+  Object.values(insAccs || {}).forEach(a => {
+   if (a && !a.left_at && a.day != null) {
+    cnt[a.day] = (cnt[a.day] || 0) + 1;
+    n++;
+   }
+  });
+  const avg = n / INS_DAYS_AR.length, after = (cnt[to] || 0) + (from === to ? 0 : 1);
+  if (n >= 14 && after > avg * 1.15 && !confirm("⚠️ يوم " + INS_DAYS_AR[to] + " فيه الآن " + (cnt[to] || 0) + " حساباً، والمتوسّط " + Math.round(avg) + ".\nتكديس الحسابات في يومٍ واحد يمنع كباتن كثيرين معاً في اليوم التالي.\n\nأتنقله إليه مع ذلك؟")) {
+   try {
+    insRender();
+   } catch (_) {}
+   return;
+  }
+ } catch (_) {}
  try {
   await db.ref("insurance/accounts/" + p).update({
-   day: Number(d)
+   day: to
   });
-  toast("تغيّر يوم القسط إلى " + INS_DAYS_AR[Number(d)]);
+  logAudit("INS_SET_DAY", "الكابتن " + p + " · من " + (from != null && INS_DAYS_AR[from] ? INS_DAYS_AR[from] : "؟") + " إلى " + INS_DAYS_AR[to]);
+  toast("تغيّر يوم القسط إلى " + INS_DAYS_AR[to]);
  } catch (e) {
   toast("تعذّر: " + esc(e.message || e), "e");
  }

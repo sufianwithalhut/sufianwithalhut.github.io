@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://*.firebasedatabase.app https://*.firebaseio.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app https://www.gstatic.com; object-src 'none'; base-uri 'none'; form-action 'self';">
 
 <script>
-const CURRENT_APP_VERSION = "32.27-WaUser";
+const CURRENT_APP_VERSION = "32.28-Rush";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -1760,6 +1760,9 @@ function markFix(lat, lng, acc) {
   drv.currentLng = lng;
   if (acc) drv.gpsAccuracy = acc;
  }
+ try {
+  if (window.dpCheck) window.dpCheck(lat, lng);
+ } catch (_) {}
 }
 
 function locFresh() {
@@ -2848,6 +2851,8 @@ let TAP_TIMEOUT_MS = 18e3, HB_BUSY_MS = 1e4, HB_IDLE_MS = 2e4;
 
 let HB_THIN = 0, HB_NATIVE_MS = 6e4;
 
+let OFFER_RING_MS = 54e3;
+
 let RESLOC_MS = 18e5, _resLocAt = 0, _resLocTimer = null;
 
 const TUNE_LIMITS = {
@@ -2858,7 +2863,8 @@ const TUNE_LIMITS = {
  RESLOC_MS: [ 3e5, 216e5 ],
  CLOUD_RACE_MS: [ 2e3, 12e3 ],
  HB_THIN: [ 0, 1 ],
- HB_NATIVE_MS: [ 2e4, 6e4 ]
+ HB_NATIVE_MS: [ 2e4, 6e4 ],
+ OFFER_RING_MS: [ 4e4, 6e4 ]
 };
 
 const _rtt = [];
@@ -2886,7 +2892,7 @@ function _tuneSet(k, v) {
  v = Number(v);
  if (!lim || !isFinite(v)) return;
  v = Math.min(lim[1], Math.max(lim[0], v));
- if (k === "NET_TIMEOUT_MS") NET_TIMEOUT_MS = v; else if (k === "TAP_TIMEOUT_MS") TAP_TIMEOUT_MS = v; else if (k === "HB_BUSY_MS") HB_BUSY_MS = v; else if (k === "HB_IDLE_MS") HB_IDLE_MS = v; else if (k === "RESLOC_MS") RESLOC_MS = v; else if (k === "CLOUD_RACE_MS") CLOUD_RACE_MS = v; else if (k === "HB_THIN") HB_THIN = v >= .5 ? 1 : 0; else if (k === "HB_NATIVE_MS") HB_NATIVE_MS = v;
+ if (k === "NET_TIMEOUT_MS") NET_TIMEOUT_MS = v; else if (k === "TAP_TIMEOUT_MS") TAP_TIMEOUT_MS = v; else if (k === "HB_BUSY_MS") HB_BUSY_MS = v; else if (k === "HB_IDLE_MS") HB_IDLE_MS = v; else if (k === "RESLOC_MS") RESLOC_MS = v; else if (k === "CLOUD_RACE_MS") CLOUD_RACE_MS = v; else if (k === "HB_THIN") HB_THIN = v >= .5 ? 1 : 0; else if (k === "HB_NATIVE_MS") HB_NATIVE_MS = v; else if (k === "OFFER_RING_MS") OFFER_RING_MS = v;
 }
 
 function applyTunables(t) {
@@ -4270,7 +4276,14 @@ window.toggleOnline = async function() {
    openOnboarding(true);
    return;
   }
-  const s = ENFORCE_SHIFT_WINDOW && window._shiftsOff !== true ? myShift() : null;
+  let _so = window._shiftsOff;
+  if (_so === undefined) {
+   try {
+    const v = localStorage.getItem("suf_shifts_off");
+    _so = v === null ? undefined : v === "1";
+   } catch (_) {}
+  }
+  const s = ENFORCE_SHIFT_WINDOW && _so === false ? myShift() : null;
   if (s) {
    const w = inWindowLocal(s.h, s.len, srvNow());
    if (!w.inside) {
@@ -5593,6 +5606,9 @@ function startListeners() {
  listen(() => ref(db, "system_settings/shifts_enabled"), s => {
   window._shiftsOff = s.val() === false;
   try {
+   localStorage.setItem("suf_shifts_off", window._shiftsOff ? "1" : "0");
+  } catch (_) {}
+  try {
    paintShiftInfo();
   } catch (e) {
    _crumb("shift_paint_fail");
@@ -6024,12 +6040,12 @@ function _offerScan(fb, myId, pump) {
  };
  curOrder.okey = _offerKey(f);
  const _stamp = f.last_update ? new Date(f.last_update).getTime() : 0;
- let _wLegacy = 6e4, _wServer = 6e4;
+ let _wLegacy = OFFER_RING_MS, _wServer = OFFER_RING_MS;
  if (_stamp && isFinite(_stamp)) {
   const _ageDev = Date.now() - _stamp;
   const _ageSrv = srvNow() - _stamp;
-  if (isFinite(_ageDev)) _wLegacy = 6e4 - Math.max(0, _ageDev);
-  if (isFinite(_ageSrv)) _wServer = 6e4 - Math.max(0, _ageSrv);
+  if (isFinite(_ageDev)) _wLegacy = OFFER_RING_MS - Math.max(0, _ageDev);
+  if (isFinite(_ageSrv)) _wServer = OFFER_RING_MS - Math.max(0, _ageSrv);
  }
  curOrder.expire = Date.now() + Math.max(1e4, _wLegacy, _wServer);
  document.getElementById("alTitle").innerText = active.length ? "طلب إضافي! 🔥" : "طلب جديد!";
@@ -6968,6 +6984,115 @@ window.ittRefused = async function(id, btn) {
  }
  btn.disabled = false;
  btn.innerHTML = orig;
+};
+
+const DP_FAR_M = 600, DP_STOP_M = 50, DP_STOP_S = 50, DP_REMIND_MINS = 25, DP_SNOOZE_MS = 6 * 6e4;
+
+const _dp = {};
+
+let _dpAt = 0, _dpOpen = null;
+
+function _dpClose() {
+ _dpOpen = null;
+ try {
+  const el = document.getElementById("dpSheet");
+  if (el) el.remove();
+ } catch (_) {}
+}
+
+function _dpShow(o, why, d) {
+ _dpOpen = String(o.id);
+ let el = document.getElementById("dpSheet");
+ if (el) el.remove();
+ el = document.createElement("div");
+ el.id = "dpSheet";
+ el.style.cssText = "position:fixed;left:12px;right:12px;bottom:max(14px,env(safe-area-inset-bottom));z-index:39000;background:#fff;border-radius:20px;box-shadow:0 10px 40px rgba(14,23,41,.28);padding:18px 18px 16px;direction:rtl;text-align:center;font-family:inherit";
+ el.innerHTML = '<div style="font-size:1.25rem;font-weight:800;color:var(--ink)">سلّمت طلب ' + esc(o.restaurant || "المطعم") + "؟</div>" + (o.area ? '<div style="font-size:.95rem;color:var(--muted);margin-top:4px">' + esc(o.area) + "</div>" : "") + '<div style="display:flex;gap:10px;margin-top:14px"><button id="dpYes" style="flex:2;border:0;border-radius:14px;padding:15px 8px;background:var(--ok);color:#fff;font-size:1.1rem;font-weight:800">نعم، سلّمت</button>' + '<button id="dpNo" style="flex:1;border:0;border-radius:14px;padding:15px 8px;background:var(--bg2);color:var(--ink2);font-size:1rem;font-weight:700">ليس بعد</button></div>';
+ document.body.appendChild(el);
+ const id = String(o.id);
+ document.getElementById("dpYes").onclick = function() {
+  track("dp_yes", {
+   orderId: id,
+   reason: why
+  });
+  let b = null;
+  try {
+   b = document.querySelector("#o-" + sid(id) + ' button[onclick*="finish"]');
+  } catch (_) {}
+  if (!b) {
+   b = document.createElement("button");
+  }
+  _dpClose();
+  try {
+   orderAction(id, "finish", b);
+  } catch (e) {
+   track("dp_yes_fail", {
+    reason: String(e && e.message || e).slice(0, 40)
+   });
+  }
+ };
+ document.getElementById("dpNo").onclick = function() {
+  const s = _dp[id];
+  if (s) {
+   s.snoozeUntil = Date.now() + DP_SNOOZE_MS;
+   s.snoozeLat = s.stopLat;
+   s.snoozeLng = s.stopLng;
+  }
+  track("dp_later", {
+   orderId: id,
+   reason: why
+  });
+  _dpClose();
+ };
+ try {
+  if (navigator.vibrate) navigator.vibrate([ 150, 80, 150 ]);
+ } catch (_) {}
+ track("dp_shown", {
+  orderId: id,
+  reason: why,
+  d: d
+ });
+}
+
+window.dpCheck = function(lat, lng) {
+ const now = Date.now();
+ if (now - _dpAt < 8e3) return;
+ _dpAt = now;
+ lat = Number(lat);
+ lng = Number(lng);
+ if (!isFinite(lat) || !isFinite(lng)) return;
+ if (_dpOpen && !active.some(x => String(x.id) === _dpOpen && x.state === "picked_up")) _dpClose();
+ let offerUp = false;
+ try {
+  offerUp = !document.getElementById("alertOv").classList.contains("dn");
+ } catch (_) {}
+ for (const o of active) {
+  if (o.state !== "picked_up" || o.kind === "supply" || !o.resLat || !o.resLng) continue;
+  const k = String(o.id);
+  const s = _dp[k] || (_dp[k] = {
+   stopLat: lat,
+   stopLng: lng,
+   stopAt: now,
+   snoozeUntil: 0,
+   snoozeLat: null,
+   snoozeLng: null
+  });
+  if (dist(lat, lng, s.stopLat, s.stopLng) > DP_STOP_M) {
+   s.stopLat = lat;
+   s.stopLng = lng;
+   s.stopAt = now;
+  }
+  if (_dpOpen || offerUp) continue;
+  if (now < s.snoozeUntil && !(s.snoozeLat != null && dist(lat, lng, s.snoozeLat, s.snoozeLng) > 300)) continue;
+  const el = now - (o.pickupTime || now);
+  if (el < MIN_PICKUP_SECS * 1e3) continue;
+  const dRes = dist(lat, lng, Number(o.resLat), Number(o.resLng));
+  const stopped = now - s.stopAt >= DP_STOP_S * 1e3;
+  const why = dRes >= DP_FAR_M && stopped ? "stop" : el >= DP_REMIND_MINS * 6e4 && dRes >= AT_RES_BLOCK_M ? "time" : "";
+  if (!why) continue;
+  _dpShow(o, why, Math.round(dRes));
+  break;
+ }
 };
 
 window.orderAction = function(id, act, btn) {
