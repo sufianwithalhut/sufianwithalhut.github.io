@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://*.firebasedatabase.app https://*.firebaseio.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app https://www.gstatic.com; object-src 'none'; base-uri 'none'; form-action 'self';">
 
 <script>
-const CURRENT_APP_VERSION = "32.29-RushSheet";
+const CURRENT_APP_VERSION = "32.30-CarTrip";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -356,6 +356,7 @@ select.inp-clay{appearance:none;-webkit-appearance:none;cursor:pointer;
 @keyframes bellRing{0%,100%{transform:scale(1) rotate(0)}25%{transform:scale(1.05) rotate(-7deg)}75%{transform:scale(1.05) rotate(7deg)}}
 .al-t{font-size:2.1rem;font-weight:800;letter-spacing:-.8px;}
 .al-sov{font-size:.9rem;font-weight:800;color:#FFD8A8;margin-top:7px;}
+.al-trip{font-size:1.02rem;font-weight:800;color:#fff;margin-top:8px;line-height:1.7;}   
 .tmr{width:172px;height:172px;margin:18px auto;position:relative;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 .tmr svg{transform:rotate(-90deg);width:172px;height:172px;}
 .tmr circle{fill:none;stroke:#fff;stroke-width:6;stroke-dasharray:471;stroke-dashoffset:0;transition:1s linear;stroke-linecap:round;}
@@ -997,6 +998,7 @@ window.__SND = {
     <div class="al-bell"><svg class="si" style="width:44px;height:44px;" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div>
     <div class="al-t" id="alTitle">طلب جديد!</div>
     <p class="al-sov" id="alSov"></p>
+    <p class="al-trip dn" id="alTrip"></p>
   </div>
   <div class="tmr">
     <svg><circle id="tmrRing" cx="86" cy="86" r="75"/></svg>
@@ -6135,6 +6137,20 @@ function _offerScan(fb, myId, pump) {
  document.getElementById("alRes").innerText = (f.vehicle === "car" ? "🚗 سيارة · " : "") + (f.kind === "supply" && f.sup ? "🛒 مقاضي من " + f.sup.n + " ← " + f.restaurant : f.restaurant);
  document.getElementById("alArea").innerText = f.area || "غير محدد";
  (function() {
+  const el = document.getElementById("alTrip"), t = f.trip;
+  if (!el) return;
+  if (t && Number(t.n) >= 2) {
+   document.getElementById("alTitle").innerText = "🚗 رحلة " + t.n + " طلبات!";
+   const ar = (Array.isArray(t.areas) ? t.areas : Object.values(t.areas || {})).filter(Boolean);
+   if (ar.length) document.getElementById("alArea").innerText = ar.join(" · ");
+   el.textContent = "طريقٌ واحد · أجرة التوصيل كلّها " + (Number(t.fee) || 0).toLocaleString("ar-EG") + " د.ع" + (Number(t.unk) > 0 ? " + " + t.unk + " غير مؤكّدة" : "") + " · المسار نحو " + (Number(t.km) || 0).toLocaleString("ar-EG") + " كم · قبولك يقبلها كلّها";
+   el.classList.remove("dn");
+  } else {
+   el.textContent = "";
+   el.classList.add("dn");
+  }
+ })();
+ (function() {
   const _pEl = document.getElementById("alPrice");
   _pEl.textContent = (Number(f.price) || 0).toLocaleString("ar-EG") + " ";
   const _u = document.createElement("small");
@@ -6249,7 +6265,7 @@ function listenOrders() {
   if (rm.length) removeOrdersBatch(rm);
   {
    const DONE_R = [ "completed", "مكتمل", "settled", "delivered", "done", "تم التسليم", "تم", "deleted" ];
-   let restored = 0;
+   let restored = 0, tripN = 0;
    const restoredIds = [];
    Object.keys(fb).forEach(kk => {
     const f = fb[kk];
@@ -6289,6 +6305,7 @@ function listenOrders() {
     if (f.ready_for_pickup === true) readySet.add(oid);
     restored++;
     restoredIds.push(oid);
+    if (f.trip_of || f.trip) tripN++;
    });
    if (restored) {
     localStorage.setItem("suf_orders", JSON.stringify(active));
@@ -6303,7 +6320,7 @@ function listenOrders() {
      try {
       window._selfAccepted = null;
      } catch (_) {}
-    } else toast(`♻️ استُرجع ${restored === 1 ? "طلب" : restored + " طلبات"} ما زال باسمك.<br>راجع الحالة قبل المتابعة.`, "info");
+    } else if (tripN === restored) toast(`🚗 أُضيفت ${restored === 1 ? "طلبٌ" : restored + " طلبات"} من رحلتك — كلّها في قائمتك الآن.`, "info"); else toast(`♻️ استُرجع ${restored === 1 ? "طلب" : restored + " طلبات"} ما زال باسمك.<br>راجع الحالة قبل المتابعة.`, "info");
    }
   }
   active.forEach(mo => {
