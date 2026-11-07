@@ -1258,6 +1258,7 @@ body.adv-on #fbSt{bottom:calc(154px + env(safe-area-inset-bottom));}
       <button class="fp fo" onclick="doFilt('dlyr',this)">🕐 متأخر بالمطعم <span class="fc" id="cDR">0</span></button>
       <button class="fp fa" onclick="doFilt('dlyd',this)">🛵 متأخر بالطريق <span class="fc" id="cDD">0</span></button>
     </div>
+    <div id="eveCard" style="display:none;margin:8px 10px 0"></div>
     <div id="emgBar" style="display:none;margin:8px 10px 0;padding:11px 14px;border-radius:12px;background:#fff4e5;border:1px solid #f6c77d;color:#8a4b00;font-weight:800;font-size:.86rem;line-height:1.6">🆘 وضع الطوارئ مفعّل: التوزيع وإنهاء الطلبات آليّان الآن. لا تعيين ولا إنهاء من اللوحة — تابعوا المحادثات والتأمين واتّصلوا بكباتن المساء.</div>
     <div id="greenBar" style="display:none;margin:8px 10px 0"></div>
     <div id="radar" class="og"></div>
@@ -2326,6 +2327,12 @@ function attachDataListeners() {
   scheduleMap();
  };
  listen("drivers_locations", _locCb);
+ listen("ops_eve/now", snap => {
+  window._eveNow = snap.val() || null;
+  try {
+   paintEve();
+  } catch (_) {}
+ });
  listen("system_settings/shifts_enabled", snap => {
   window._emerg = snap.val() === false;
   try {
@@ -3321,6 +3328,26 @@ function evChip(ev) {
  if (!ev) return "";
  const c = ev.k === "green" ? "background:#e7f7ee;color:#0b7a43;border:1px solid #b8e6cb" : ev.k === "red" ? "background:#fdecec;color:#b3261e;border:1px solid #f5c2c0" : "background:#f1f3f6;color:#5b6472;border:1px solid #e1e5ea";
  return '<div style="margin-top:6px;display:inline-block;padding:3px 9px;border-radius:9px;font-size:.7rem;font-weight:800;' + c + '">' + (ev.k === "gray" ? "○ " : "● ") + esc(ev.t) + "</div>";
+}
+
+function paintEve() {
+ const b = document.getElementById("eveCard");
+ if (!b) return;
+ const e = window._eveNow;
+ let hide = "";
+ try {
+  hide = localStorage.getItem("eve_hide") || "";
+ } catch (_) {}
+ if (!e || !e.at || Date.now() - Number(e.at) > 3 * 36e5 || hide === String(e.day)) {
+  b.style.display = "none";
+  b.innerHTML = "";
+  return;
+ }
+ const list = Array.isArray(e.list) ? e.list : Object.values(e.list || {});
+ const rows = list.slice(0, 30).map(x => '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid #f1e3c8"><span style="font-weight:800">' + esc(x.n || "0" + x.p) + ' <small style="color:#8a6d3b;font-weight:600">· يعمل مساءً ' + (Number(x.d) || 0) + ' من 14 يوماً</small></span><button class="cc-f" style="padding:6px 12px;font-size:.75rem;font-weight:800;background:#0b7a43;color:#fff;border:0;border-radius:9px" onclick="ccDial(\'' + esc(String(x.p)) + "')\">💬 واتساب</button></div>").join("");
+ const rain = Number(e.rain) >= 1 ? " · <b>مطرٌ متوقّع</b>" : "";
+ b.innerHTML = '<div style="padding:12px 14px;border-radius:12px;background:#fff8ec;border:1px solid #f3cf8d;color:#5b3b00;font-size:.84rem;line-height:1.7">' + '<div style="font-weight:900;font-size:.95rem">📣 مساء اليوم: الكباتن أقلّ من المعتاد</div>' + "<div>المتّصلون الآن <b>" + (Number(e.on) >= 0 ? e.on : "؟") + "</b>، والمعتاد في هذا الوقت <b>" + (Number(e.base) >= 0 ? e.base : "؟") + "</b> — ينقصنا <b>" + (Number(e.short) > 0 ? e.short : "؟") + "</b>" + rain + ". اتّصلوا بكباتن المساء ليدخلوا قبل الزحمة:</div>" + (rows || '<div style="margin-top:6px">لا أسماء متاحة الآن.</div>') + '<div style="text-align:left;margin-top:6px"><button class="cc-f" style="padding:4px 10px;font-size:.7rem;background:transparent;border:1px solid #e5c389;border-radius:8px;color:#8a6d3b" onclick="try{localStorage.setItem(\'eve_hide\',\'' + esc(String(e.day)) + "')}catch(_){}paintEve()\">إخفاء لليوم</button></div></div>";
+ b.style.display = "";
 }
 
 function paintEmg() {

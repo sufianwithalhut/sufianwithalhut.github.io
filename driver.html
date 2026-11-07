@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://*.firebasedatabase.app https://*.firebaseio.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app https://www.gstatic.com; object-src 'none'; base-uri 'none'; form-action 'self';">
 
 <script>
-const CURRENT_APP_VERSION = "32.28-Rush";
+const CURRENT_APP_VERSION = "32.29-RushSheet";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -4255,7 +4255,86 @@ function startDayRollover(initial) {
  }, 6e4);
 }
 
+function _rushSheetDue() {
+ try {
+  if (!(Date.now() - (window._rushAt || 0) < 30 * 6e4)) return false;
+  const h = new Date(srvNow() + 3 * 36e5).getUTCHours();
+  if (h < 15 || h >= 22) return false;
+  return !localStorage.getItem("suf_rush_sheet_" + bizDay());
+ } catch (_) {
+  return false;
+ }
+}
+
+function _rushSheetShow() {
+ try {
+  localStorage.setItem("suf_rush_sheet_" + bizDay(), "1");
+ } catch (_) {}
+ const bt = new Date(srvNow() + 3 * 36e5), hm = bt.getUTCHours() + bt.getUTCMinutes() / 60;
+ const ask = hm < 19.5 ? "إذا تكدر تبقى لحد 7 ونص تساعدنا هواية" : "إذا تكدر تبقى ساعة بعد تساعدنا هواية";
+ let el = document.getElementById("rushSheet");
+ if (el) el.remove();
+ el = document.createElement("div");
+ el.id = "rushSheet";
+ el.style.cssText = "position:fixed;inset:0;z-index:39500;background:rgba(14,23,41,.45);display:flex;align-items:flex-end;justify-content:center;direction:rtl;font-family:inherit";
+ el.innerHTML = '<div style="background:#fff;width:100%;max-width:520px;border-radius:22px 22px 0 0;padding:20px 18px max(18px,env(safe-area-inset-bottom));text-align:center">' + '<div style="font-size:1.25rem;font-weight:800;color:var(--ink)">الطلبات هسه هواية 🙏</div>' + '<div style="font-size:1rem;color:var(--ink2);margin-top:6px">' + ask + ".</div>" + '<button id="rsStay" style="width:100%;margin-top:14px;border:0;border-radius:14px;padding:15px;background:var(--ok);color:#fff;font-size:1.1rem;font-weight:800">أكمل متاح</button>' + '<div style="display:flex;gap:10px;margin-top:10px"><button id="rsBreak" style="flex:1;border:0;border-radius:14px;padding:13px 6px;background:var(--bg2);color:var(--ink2);font-size:.98rem;font-weight:700">استراحة 15 دقيقة</button>' + '<button id="rsEnd" style="flex:1;border:0;border-radius:14px;padding:13px 6px;background:var(--bg2);color:var(--ink2);font-size:.98rem;font-weight:700">أنهيت يومي</button></div></div>';
+ document.body.appendChild(el);
+ track("rush_sheet_shown");
+ const off = function(why) {
+  el.remove();
+  track("rush_sheet_" + why);
+  if (why === "break") {
+   try {
+    localStorage.setItem("suf_break_until", String(Date.now() + 15 * 6e4));
+   } catch (_) {}
+   setTimeout(_breakOver, 15 * 6e4 + 2e3);
+  }
+  const t = document.getElementById("onlineTog");
+  if (t) t.checked = false;
+  window._rushSheetBypass = true;
+  window.toggleOnline();
+ };
+ document.getElementById("rsStay").onclick = function() {
+  el.remove();
+  track("rush_sheet_stay");
+  toast("شكراً كابتن 🌟", "ok");
+ };
+ document.getElementById("rsBreak").onclick = function() {
+  off("break");
+ };
+ document.getElementById("rsEnd").onclick = function() {
+  off("end");
+ };
+}
+
+function _breakOver() {
+ try {
+  const u = Number(localStorage.getItem("suf_break_until") || 0);
+  if (!u || Date.now() < u) return;
+  localStorage.removeItem("suf_break_until");
+  if (!isOnline) {
+   toast("☕ انتهت استراحتك — تكدر ترجع متاح هسه", "info");
+   try {
+    if (navigator.vibrate) navigator.vibrate(200);
+   } catch (_) {}
+  }
+ } catch (_) {}
+}
+
+document.addEventListener("visibilitychange", function() {
+ if (document.visibilityState === "visible") _breakOver();
+});
+
 window.toggleOnline = async function() {
+ try {
+  const t0 = document.getElementById("onlineTog");
+  if (t0 && !t0.checked && isOnline && !window._rushSheetBypass && _rushSheetDue()) {
+   t0.checked = true;
+   _rushSheetShow();
+   return;
+  }
+ } catch (_) {}
+ window._rushSheetBypass = false;
  const _tog = document.getElementById("onlineTog");
  if (_tog && _tog.checked && !window.locConsentGiven()) {
   _tog.checked = false;
@@ -6048,6 +6127,9 @@ function _offerScan(fb, myId, pump) {
   if (isFinite(_ageSrv)) _wServer = OFFER_RING_MS - Math.max(0, _ageSrv);
  }
  curOrder.expire = Date.now() + Math.max(1e4, _wLegacy, _wServer);
+ try {
+  if (Number(f.rush_lv) >= 1) window._rushAt = Date.now();
+ } catch (_) {}
  document.getElementById("alTitle").innerText = active.length ? "طلب إضافي! 🔥" : "طلب جديد!";
  document.getElementById("alSov").innerText = curOrder.is_sovereign ? "⚠️ تعيين إداري مباشر — لا يمكن تجاهله" : "";
  document.getElementById("alRes").innerText = (f.vehicle === "car" ? "🚗 سيارة · " : "") + (f.kind === "supply" && f.sup ? "🛒 مقاضي من " + f.sup.n + " ← " + f.restaurant : f.restaurant);
