@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://*.firebasedatabase.app https://*.firebaseio.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app https://www.gstatic.com; object-src 'none'; base-uri 'none'; form-action 'self';">
 
 <script>
-const CURRENT_APP_VERSION = "32.30-CarTrip";
+const CURRENT_APP_VERSION = "32.33-V36";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -999,6 +999,8 @@ window.__SND = {
     <div class="al-t" id="alTitle">طلب جديد!</div>
     <p class="al-sov" id="alSov"></p>
     <p class="al-trip dn" id="alTrip"></p>
+    <p class="al-trip dn" id="alFwd"></p>
+    <p class="al-trip dn" id="alRush"></p>
   </div>
   <div class="tmr">
     <svg><circle id="tmrRing" cx="86" cy="86" r="75"/></svg>
@@ -1008,6 +1010,7 @@ window.__SND = {
     <div class="al-r"><span class="al-k">المطعم</span><span class="al-v" id="alRes">---</span></div>
     <div class="al-r"><span class="al-k">المنطقة</span><span class="al-v ar" id="alArea">---</span></div>
     <div class="al-r"><span class="al-k">قيمة الفاتورة</span><span class="al-v pr" id="alPrice">---</span></div>
+    <div class="al-r dn" id="alFeeR"><span class="al-k">الأجرة</span><span class="al-v" id="alFee" style="font-size:.95rem;line-height:1.6"></span></div>   
   </div>
   <div>
     <button class="btn-mute" onclick="muteAlarm()"><svg class="si" viewBox="0 0 24 24"><line x1="1" y1="1" x2="23" y2="23"/><path d="M11 5L6 9H2v6h4l5 4V5z"/></svg>إسكات الصوت</button>
@@ -1717,6 +1720,26 @@ const AT_RES_BLOCK_M = 150, AT_RES_BLOCK_MINS = 10;
 
 let DAILY_GOAL = Math.min(40, Math.max(5, parseInt(localStorage.getItem("suf_goal")) || 15));
 
+function fwdOf_(f) {
+ try {
+  const w = f && f.fwd;
+  if (!w || typeof w !== "object" || !w.by || !drv || nP(w.by) !== nP(drv.phone)) return null;
+  const a = Array.isArray(w.after) ? w.after : w.after && typeof w.after === "object" ? Object.values(w.after) : [];
+  return {
+   after: a.map(String).filter(Boolean),
+   free_at: Number(w.free_at) || 0,
+   pred: String(w.pred || ""),
+   way: w.way ? 1 : 0
+  };
+ } catch (_) {
+  return null;
+ }
+}
+
+function fwdWait_(o) {
+ return !!(o && o.fwd && o.state === "heading" && o.fwd.after.some(id => active.some(x => String(x.id) === String(id))));
+}
+
 function nP(p) {
  if (!p) return "";
  let s = String(p);
@@ -1764,6 +1787,9 @@ function markFix(lat, lng, acc) {
  }
  try {
   if (window.dpCheck) window.dpCheck(lat, lng);
+ } catch (_) {}
+ try {
+  if (window.arCheck) window.arCheck(lat, lng, acc);
  } catch (_) {}
 }
 
@@ -2857,6 +2883,10 @@ let OFFER_RING_MS = 54e3;
 
 let RESLOC_MS = 18e5, _resLocAt = 0, _resLocTimer = null;
 
+let RELEASE_BTN = 0;
+
+let AUTO_ARRIVE = 0, AUTO_ARRIVE_M = 120, AUTO_ARRIVE_S = 40, PK_PROMPT = 1, RUSH_OFFER_LINE = 1, AUTO_WD = 0, AUTO_ARRIVE_AB = 0;
+
 const TUNE_LIMITS = {
  NET_TIMEOUT_MS: [ 3e3, 2e4 ],
  TAP_TIMEOUT_MS: [ 8e3, 4e4 ],
@@ -2866,7 +2896,15 @@ const TUNE_LIMITS = {
  CLOUD_RACE_MS: [ 2e3, 12e3 ],
  HB_THIN: [ 0, 1 ],
  HB_NATIVE_MS: [ 2e4, 6e4 ],
- OFFER_RING_MS: [ 4e4, 6e4 ]
+ OFFER_RING_MS: [ 4e4, 6e4 ],
+ RELEASE_BTN: [ 0, 1 ],
+ AUTO_ARRIVE: [ 0, 2 ],
+ AUTO_ARRIVE_M: [ 50, 300 ],
+ AUTO_ARRIVE_S: [ 10, 180 ],
+ PK_PROMPT: [ 0, 1 ],
+ RUSH_OFFER_LINE: [ 0, 1 ],
+ AUTO_WD: [ 0, 2 ],
+ AUTO_ARRIVE_AB: [ 0, 2 ]
 };
 
 const _rtt = [];
@@ -2894,7 +2932,15 @@ function _tuneSet(k, v) {
  v = Number(v);
  if (!lim || !isFinite(v)) return;
  v = Math.min(lim[1], Math.max(lim[0], v));
- if (k === "NET_TIMEOUT_MS") NET_TIMEOUT_MS = v; else if (k === "TAP_TIMEOUT_MS") TAP_TIMEOUT_MS = v; else if (k === "HB_BUSY_MS") HB_BUSY_MS = v; else if (k === "HB_IDLE_MS") HB_IDLE_MS = v; else if (k === "RESLOC_MS") RESLOC_MS = v; else if (k === "CLOUD_RACE_MS") CLOUD_RACE_MS = v; else if (k === "HB_THIN") HB_THIN = v >= .5 ? 1 : 0; else if (k === "HB_NATIVE_MS") HB_NATIVE_MS = v; else if (k === "OFFER_RING_MS") OFFER_RING_MS = v;
+ if (k === "NET_TIMEOUT_MS") NET_TIMEOUT_MS = v; else if (k === "TAP_TIMEOUT_MS") TAP_TIMEOUT_MS = v; else if (k === "HB_BUSY_MS") HB_BUSY_MS = v; else if (k === "HB_IDLE_MS") HB_IDLE_MS = v; else if (k === "RESLOC_MS") RESLOC_MS = v; else if (k === "CLOUD_RACE_MS") CLOUD_RACE_MS = v; else if (k === "HB_THIN") HB_THIN = v >= .5 ? 1 : 0; else if (k === "HB_NATIVE_MS") HB_NATIVE_MS = v; else if (k === "OFFER_RING_MS") OFFER_RING_MS = v; else if (k === "AUTO_ARRIVE") AUTO_ARRIVE = Math.round(v); else if (k === "AUTO_ARRIVE_M") AUTO_ARRIVE_M = v; else if (k === "AUTO_ARRIVE_S") AUTO_ARRIVE_S = v; else if (k === "PK_PROMPT") PK_PROMPT = v >= .5 ? 1 : 0; else if (k === "RUSH_OFFER_LINE") RUSH_OFFER_LINE = v >= .5 ? 1 : 0; else if (k === "AUTO_WD") AUTO_WD = Math.round(v); else if (k === "AUTO_ARRIVE_AB") AUTO_ARRIVE_AB = Math.round(v); else if (k === "RELEASE_BTN") {
+  const nv = v >= .5 ? 1 : 0;
+  if (nv !== RELEASE_BTN) {
+   RELEASE_BTN = nv;
+   try {
+    if (typeof renderOrders === "function") renderOrders();
+   } catch (_) {}
+  }
+ }
 }
 
 function applyTunables(t) {
@@ -6117,7 +6163,10 @@ function _offerScan(fb, myId, pump) {
   kind: f.kind || "",
   sup: f.sup || null,
   dropLat: f.dropLat,
-  dropLng: f.dropLng
+  dropLng: f.dropLng,
+  far_fee: f.far_fee || null,
+  car_bonus: f.car_bonus || null,
+  fwd: fwdOf_(f)
  };
  curOrder.okey = _offerKey(f);
  const _stamp = f.last_update ? new Date(f.last_update).getTime() : 0;
@@ -6132,18 +6181,46 @@ function _offerScan(fb, myId, pump) {
  try {
   if (Number(f.rush_lv) >= 1) window._rushAt = Date.now();
  } catch (_) {}
+ try {
+  const rl = document.getElementById("alRush");
+  if (rl) {
+   const on = rushOfferLine_(f, RUSH_OFFER_LINE, AUTO_WD);
+   rl.textContent = on ? "⏱️ وقت الزحمة: اقبل إذا راح تطلع هسه — الطلب يتحوّل إذا ما تحرّكت" : "";
+   rl.classList.toggle("dn", !on);
+  }
+ } catch (_) {}
  document.getElementById("alTitle").innerText = active.length ? "طلب إضافي! 🔥" : "طلب جديد!";
+ (function() {
+  const el = document.getElementById("alFwd");
+  if (!el) return;
+  const w = fwdOf_(f), on = !!(w && active.length);
+  if (on) {
+   document.getElementById("alTitle").innerText = w.way ? "🛵 طلب على طريقك" : "⏭️ طلبك التالي";
+   el.textContent = w.way ? "على طريقك: استلمه بطريقك وسلّمه بنفس المنطقة — بعده كمّل توصيلتك" : "طلبك التالي — بعد ما تسلّم الطلب الحاليّ، روح للمطعم" + (w.free_at ? " · تخلص تقريباً " + new Date(w.free_at).toLocaleTimeString("ar-EG", {
+    hour: "2-digit",
+    minute: "2-digit"
+   }) : "");
+  } else el.textContent = "";
+  el.classList.toggle("dn", !on);
+ })();
  document.getElementById("alSov").innerText = curOrder.is_sovereign ? "⚠️ تعيين إداري مباشر — لا يمكن تجاهله" : "";
  document.getElementById("alRes").innerText = (f.vehicle === "car" ? "🚗 سيارة · " : "") + (f.kind === "supply" && f.sup ? "🛒 مقاضي من " + f.sup.n + " ← " + f.restaurant : f.restaurant);
  document.getElementById("alArea").innerText = f.area || "غير محدد";
  (function() {
+  const r = document.getElementById("alFeeR"), v = document.getElementById("alFee");
+  if (!r || !v) return;
+  const t = feeLine(f);
+  v.textContent = t;
+  r.classList.toggle("dn", !t);
+ })();
+ (function() {
   const el = document.getElementById("alTrip"), t = f.trip;
   if (!el) return;
-  if (t && Number(t.n) >= 2) {
+  if (t && Number(t.n) >= 2 && (!t.to || String(t.to) === String(drv && drv.phone || ""))) {
    document.getElementById("alTitle").innerText = "🚗 رحلة " + t.n + " طلبات!";
    const ar = (Array.isArray(t.areas) ? t.areas : Object.values(t.areas || {})).filter(Boolean);
    if (ar.length) document.getElementById("alArea").innerText = ar.join(" · ");
-   el.textContent = "طريقٌ واحد · أجرة التوصيل كلّها " + (Number(t.fee) || 0).toLocaleString("ar-EG") + " د.ع" + (Number(t.unk) > 0 ? " + " + t.unk + " غير مؤكّدة" : "") + " · المسار نحو " + (Number(t.km) || 0).toLocaleString("ar-EG") + " كم · قبولك يقبلها كلّها";
+   el.textContent = "طريقٌ واحد · أجرة التوصيل كلّها " + (Number(t.fee) || 0).toLocaleString("ar-EG") + " د.ع" + (Number(t.unk) > 0 ? " + " + t.unk + " غير مؤكّدة" : "") + (Number(t.res) > 0 ? " + " + Number(t.res).toLocaleString("ar-EG") + " على المطاعم" : "") + " · المسار نحو " + (Number(t.km) || 0).toLocaleString("ar-EG") + " كم · قبولك يقبلها كلّها";
    el.classList.remove("dn");
   } else {
    el.textContent = "";
@@ -6300,7 +6377,14 @@ function listenOrders() {
      kind: f.kind || "",
      sup: f.sup || null,
      dropLat: f.dropLat,
-     dropLng: f.dropLng
+     dropLng: f.dropLng,
+     far_fee: f.far_fee || null,
+     car_bonus: f.car_bonus || null,
+     resNeed: f.res_need && typeof f.res_need === "object" ? {
+      m: Number(f.res_need.m) || 0,
+      at: Number(f.res_need.at) || 0
+     } : null,
+     fwd: fwdOf_(f)
     });
     if (f.ready_for_pickup === true) readySet.add(oid);
     restored++;
@@ -6327,6 +6411,14 @@ function listenOrders() {
    const f = fb[mo.id];
    if (!f) return;
    const oid = String(mo.id);
+   {
+    const w = fwdOf_(f);
+    if (JSON.stringify(w) !== JSON.stringify(mo.fwd || null)) {
+     mo.fwd = w;
+     localStorage.setItem("suf_orders", JSON.stringify(active));
+     renderOrders();
+    }
+   }
    if (f.ready_for_pickup === true && !readySet.has(oid)) {
     readySet.add(oid);
     mo.readyForPickup = true;
@@ -6340,6 +6432,24 @@ function listenOrders() {
     readySet.delete(oid);
     mo.readyForPickup = false;
     localStorage.setItem("suf_orders", JSON.stringify(active));
+    renderOrders();
+   }
+   const rn = f.res_need && typeof f.res_need === "object" ? f.res_need : null, rnAt = rn ? Number(rn.at) || 0 : 0;
+   if (rnAt && rnAt !== Number(mo.resNeed && mo.resNeed.at)) {
+    mo.resNeed = {
+     m: Number(rn.m) || 0,
+     at: rnAt
+    };
+    localStorage.setItem("suf_orders", JSON.stringify(active));
+    const tx = resNeedTxt_(mo.resNeed, srvNow());
+    if (tx) {
+     play("ready");
+     toast("🍳 " + esc(tx) + "<br><b>" + esc(mo.resName) + "</b>", "info");
+     track("res_need_seen", {
+      orderId: oid,
+      ms: mo.resNeed.m
+     });
+    }
     renderOrders();
    }
   });
@@ -6603,7 +6713,10 @@ function finalizeAccept() {
   kind: curOrder.kind || "",
   sup: curOrder.sup || null,
   dropLat: curOrder.dropLat,
-  dropLng: curOrder.dropLng
+  dropLng: curOrder.dropLng,
+  far_fee: curOrder.far_fee || null,
+  car_bonus: curOrder.car_bonus || null,
+  fwd: curOrder.fwd || null
  };
  active.push(o);
  localStorage.setItem("suf_orders", JSON.stringify(active));
@@ -6825,6 +6938,23 @@ function sid(x) {
  return String(x ?? "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
 }
 
+function feeLine(o) {
+ if (!o) return "";
+ const m = String(o.area || "").match(/توصيل(?:\s*بسيارة)?\s*:?\s*([\d][\d,٬]*)/);
+ const n = m ? Number(String(m[1]).replace(/[,٬]/g, "")) || 0 : 0;
+ let res = 0, cust = 0;
+ if (o.far_fee && typeof o.far_fee === "object") res += Number(o.far_fee.y) || 0;
+ const cb = o.car_bonus;
+ if (cb && typeof cb === "object") {
+  if (cb.by === "res") res += Number(cb.y) || 0; else if (cb.by === "cust") cust += Number(cb.y) || 0;
+ }
+ if (!res && !cust) return "";
+ const f = x => Number(x).toLocaleString("ar-EG"), p = [];
+ if (n) p.push(f(n) + " من الزبون" + (cust ? " (فيها زيادة السيّارة " + f(cust) + ")" : "")); else if (cust) p.push("زيادة السيّارة " + f(cust) + " من الزبون");
+ if (res) p.push(f(res) + " على المطعم — اخصمها من فلوسه");
+ return "💵 الأجرة كلّها " + f(n + res + (n ? 0 : cust)) + " د.ع · " + p.join(" + ");
+}
+
 function jss(x) {
  return String(x ?? "").replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/"/g, "&quot;").replace(/\r?\n/g, " ").replace(/&(?!quot;)/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -7003,7 +7133,9 @@ function renderOrders() {
  rad.style.display = "none";
  const dbl = active.length > 1;
  let html = "";
- active.forEach((o, idx) => {
+ const _nx = o => fwdWait_(o) && !o.fwd.way;
+ const _list = active.some(_nx) ? active.slice().sort((a, b) => (_nx(a) ? 1 : 0) - (_nx(b) ? 1 : 0)) : active;
+ _list.forEach((o, idx) => {
   const step = o.state === "heading" ? 1 : o.state === "arrived" ? 2 : o.state === "picked_up" ? 3 : 4;
   const strip = o.state === "heading" ? "st-blue" : o.state === "arrived" ? "st-warn" : "st-ok";
   const act = o.state === "heading" ? "arrive" : o.state === "arrived" ? "pickup" : "finish";
@@ -7032,12 +7164,14 @@ function renderOrders() {
   const cpin = det.match(/maps\.google\.com\/\?q=(-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)/);
   const cmp = cpin ? `https://www.google.com/maps/dir/?api=1&destination=${cpin[1]},${cpin[2]}` : "";
   const isItt = o.itt || /^🛒 طلب «اتحاد المتاجر»/.test(det);
-  const tags = dbl ? `<span class="pill p-warn">🔥 مزدوج (${idx + 1}/${active.length})</span>` : "";
-  const ready = o.readyForPickup ? `<div class="ready">${ICO.bell}<span class="ready-t">🍽️ الطلبية جاهزة — توجّه للاستلام!</span></div>` : "";
+  const _fw = fwdWait_(o);
+  const tags = _fw ? `<span class="pill p-warn">${o.fwd.way ? "🛵 على طريقك" : "⏭️ طلبك التالي"}</span>` : dbl ? `<span class="pill p-warn">🔥 مزدوج (${idx + 1}/${active.length})</span>` : "";
+  const _rnTx = !o.readyForPickup && o.state !== "picked_up" ? resNeedTxt_(o.resNeed, srvNow()) : "";
+  const ready = o.readyForPickup ? `<div class="ready">${ICO.bell}<span class="ready-t">🍽️ الطلبية جاهزة — توجّه للاستلام!</span></div>` : _rnTx ? `<div class="ready" style="background:#fff7ed;color:#9a3412">${ICO.clk}<span class="ready-t">🍳 ${esc(_rnTx)}</span></div>` : "";
   const photo = o.photoUrl && /^https:\/\//.test(String(o.photoUrl)) ? `<button class="act a-img" data-receipt="${esc(o.photoUrl)}" onclick="openReceipt(this.dataset.receipt)">${ICO.img} الوصل</button>` : "";
   if (!o.resArea) enrichOrder(o);
   const pick = o.resArea ? ` (${esc(o.resArea)})` : "";
-  html += `<div class="ord" id="o-${sid(o.id)}">\n      <div class="ord-strip ${strip}"></div>\n      <div class="ord-b">\n        <div class="ord-hd">\n          <div><div class="ord-no">#${sid(o.id)}</div><div class="ord-tags">${tags}</div>\n            <div id="t-${sid(o.id)}" class="ord-tm tm-ok">${ICO.clk} --:--</div></div>\n          <div class="ord-pr"><div class="ord-pv">${num(o.price).toLocaleString("ar-EG")}<small> د.ع</small></div>\n            <button class="sup" onclick="openChat()" style="margin-top:9px;">${ICO.sup} ليدر<span class="sup-dot" id="d-${sid(o.id)}"></span></button></div>\n        </div>\n        <div class="steps">\n          <div class="step ${step >= 1 ? step === 1 ? "now" : "done" : ""}"><div class="step-d">${step > 1 ? "✓" : "1"}</div><span class="step-l">قبلت</span></div>\n          <div class="step ${step >= 2 ? step === 2 ? "now" : "done" : ""}"><div class="step-d">${step > 2 ? "✓" : "2"}</div><span class="step-l">${sup ? "بالمحلّ" : "بالمطعم"}</span></div>\n          <div class="step ${step >= 3 ? step === 3 ? "now" : "done" : ""}"><div class="step-d">${step > 3 ? "✓" : "3"}</div><span class="step-l">استلمت</span></div>\n          <div class="step ${step >= 4 ? "now" : ""}"><div class="step-d">🏁</div><span class="step-l">سلّمت</span></div>\n        </div>\n        ${ready}\n        ${sup ? supRoute(o, sup, rpn, rwa, mp) : `<div class="route">\n          <div class="rp up"><div class="rp-t">📍 الاستلام من${pick}</div><div class="rp-n">${esc(o.resName)}</div>\n            <div class="acts">\n              ${rpn ? `<button class="act a-call" onclick="openLink('tel:${rpn}')">${ICO.call} اتصال</button>` : ""}\n              ${rwa ? `<button class="act a-wa" onclick="openLink('https://wa.me/${rwa}')">${ICO.wa} واتساب</button>` : ""}\n              ${mp ? `<button class="act a-map" onclick="openLink('${mp}')">${ICO.map} خريطة</button>` : ""}\n            </div></div>\n          <div class="rp dn2"><div class="rp-t">🏠 التسليم إلى (${esc(o.area)})</div><div class="rp-n">${esc(det)}</div>\n            <div class="acts">\n              ${cp ? `<button class="act a-call" onclick="openLink('tel:${cp}')">${ICO.call} اتصال</button>` : ""}\n              ${cp || cu ? `<button class="act a-wa" onclick="smartWa('${jss(cp || cu)}','${jss(o.resName)}','${jss(o.area)}','${sid(o.id)}','${num(o.price)}','${jss(rpn || "")}')">${ICO.wa} رسالة الزبون</button>` : ""}\n              ${cmp ? `<button class="act a-map" onclick="openLink('${cmp}')">${ICO.map} موقع الزبون</button>` : ""}\n              ${photo}\n            </div></div>\n        </div>`}\n        <button class="cta ${bCls}" ${dis} onclick="orderAction('${sid(o.id)}','${sid(act)}',this)">${bTxt}</button>\n        ${isItt && o.state === "picked_up" ? `<button class="refz" onclick="ittRefused('${sid(o.id)}',this)">📵 الزبون رفض الاستلام</button>` : ""}\n      </div></div>`;
+  html += `<div class="ord" id="o-${sid(o.id)}">\n      <div class="ord-strip ${strip}"></div>\n      <div class="ord-b">\n        <div class="ord-hd">\n          <div><div class="ord-no">#${sid(o.id)}</div><div class="ord-tags">${tags}</div>\n            <div id="t-${sid(o.id)}" class="ord-tm tm-ok">${ICO.clk} --:--</div></div>\n          <div class="ord-pr"><div class="ord-pv">${num(o.price).toLocaleString("ar-EG")}<small> د.ع</small></div>\n            <button class="sup" onclick="openChat()" style="margin-top:9px;">${ICO.sup} ليدر<span class="sup-dot" id="d-${sid(o.id)}"></span></button></div>\n        </div>\n        <div class="steps">\n          <div class="step ${step >= 1 ? step === 1 ? "now" : "done" : ""}"><div class="step-d">${step > 1 ? "✓" : "1"}</div><span class="step-l">قبلت</span></div>\n          <div class="step ${step >= 2 ? step === 2 ? "now" : "done" : ""}"><div class="step-d">${step > 2 ? "✓" : "2"}</div><span class="step-l">${sup ? "بالمحلّ" : "بالمطعم"}</span></div>\n          <div class="step ${step >= 3 ? step === 3 ? "now" : "done" : ""}"><div class="step-d">${step > 3 ? "✓" : "3"}</div><span class="step-l">استلمت</span></div>\n          <div class="step ${step >= 4 ? "now" : ""}"><div class="step-d">🏁</div><span class="step-l">سلّمت</span></div>\n        </div>\n        ${_fw ? `<div class="ready" style="background:#eef2ff;color:#3730a3">${ICO.clk}<span class="ready-t">${o.fwd.way ? "🛵 على طريقك — استلمه بطريقك وسلّمه بنفس المنطقة" : "⏭️ طلبك التالي — بعد ما تسلّم الطلب الحاليّ، روح للمطعم"}</span></div>` : ""}\n        ${ready}\n        ${feeLine(o) ? `<div style="margin:8px 0;padding:8px 12px;border-radius:12px;background:#FFF6E0;color:#7A4F00;font-weight:800;font-size:.85rem;line-height:1.6">${esc(feeLine(o))}</div>` : ""}\n        ${sup ? supRoute(o, sup, rpn, rwa, mp) : `<div class="route">\n          <div class="rp up"><div class="rp-t">📍 الاستلام من${pick}</div><div class="rp-n">${esc(o.resName)}</div>\n            <div class="acts">\n              ${rpn ? `<button class="act a-call" onclick="openLink('tel:${rpn}')">${ICO.call} اتصال</button>` : ""}\n              ${rwa ? `<button class="act a-wa" onclick="openLink('https://wa.me/${rwa}')">${ICO.wa} واتساب</button>` : ""}\n              ${mp ? `<button class="act a-map" onclick="openLink('${mp}')">${ICO.map} خريطة</button>` : ""}\n            </div></div>\n          <div class="rp dn2"><div class="rp-t">🏠 التسليم إلى (${esc(o.area)})</div><div class="rp-n">${esc(det)}</div>\n            <div class="acts">\n              ${cp ? `<button class="act a-call" onclick="openLink('tel:${cp}')">${ICO.call} اتصال</button>` : ""}\n              ${cp || cu ? `<button class="act a-wa" onclick="smartWa('${jss(cp || cu)}','${jss(o.resName)}','${jss(o.area)}','${sid(o.id)}','${num(o.price)}','${jss(rpn || "")}')">${ICO.wa} رسالة الزبون</button>` : ""}\n              ${cmp ? `<button class="act a-map" onclick="openLink('${cmp}')">${ICO.map} موقع الزبون</button>` : ""}\n              ${photo}\n            </div></div>\n        </div>`}\n        <button class="cta ${bCls}" ${dis} onclick="orderAction('${sid(o.id)}','${sid(act)}',this)">${bTxt}</button>\n        ${isItt && o.state === "picked_up" ? `<button class="refz" onclick="ittRefused('${sid(o.id)}',this)">📵 الزبون رفض الاستلام</button>` : ""}\n        ${RELEASE_BTN && o.state === "heading" && !sup ? `<button class="refz" onclick="relOpen('${sid(o.id)}')">🙏 ما أكدر أوصل — حرّر الطلب</button>` : ""}\n      </div></div>`;
  });
  if (lastHtml !== html) {
   box.innerHTML = html;
@@ -7053,7 +7187,7 @@ function timers() {
  active.forEach(o => {
   const e = document.getElementById("t-" + o.id);
   if (!e) return;
-  const el = Date.now() - (o.acceptedTime || Date.now()), rem = 30 * 60 * 1e3 - el;
+  const el = Date.now() - Math.max(o.acceptedTime || Date.now(), o.fwd && o.fwd.free_at || 0), rem = 30 * 60 * 1e3 - el;
   const neg = rem < 0, ab = Math.abs(rem), m = Math.floor(ab / 6e4), s = Math.floor(ab % 6e4 / 1e3);
   e.innerHTML = `${ICO.clk} ${neg ? "-" : ""}${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   e.className = "ord-tm " + (rem > 6e5 ? "tm-ok" : rem > 0 ? "tm-w" : "tm-b");
@@ -7084,6 +7218,75 @@ window.ittRefused = async function(id, btn) {
  btn.disabled = false;
  btn.innerHTML = orig;
 };
+
+const REL_WHY = [ [ "veh", "🛵 عطل بالدراجة" ], [ "far", "📍 بعيد عليّ" ], [ "box", "📦 الطلب ما يدخل بالصندوق" ], [ "rain", "🌧️ المطر أو الشارع مسدود" ], [ "phone", "📱 مشكلة بالهاتف" ] ];
+
+function relClose() {
+ try {
+  const el = document.getElementById("relSheet");
+  if (el) el.remove();
+ } catch (_) {}
+}
+
+window.relOpen = function(id) {
+ relClose();
+ const o = active.find(x => String(x.id) === String(id));
+ if (!o) return;
+ const el = document.createElement("div");
+ el.id = "relSheet";
+ el.style.cssText = "position:fixed;left:12px;right:12px;bottom:max(14px,env(safe-area-inset-bottom));z-index:39000;background:#fff;border-radius:20px;box-shadow:0 10px 40px rgba(14,23,41,.28);padding:18px 18px 14px;direction:rtl;text-align:center;font-family:inherit";
+ el.innerHTML = '<div style="font-size:1.15rem;font-weight:800;color:var(--ink)">ليش ما تكدر توصل طلب ' + esc(o.restaurant || o.resName || "المطعم") + "؟</div>" + '<div style="font-size:.9rem;color:var(--muted);margin-top:4px">اختر السبب، والطلب يرجع للنظام لكابتن ثاني.</div>' + '<div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">' + REL_WHY.map(r => '<button data-why="' + r[0] + '" style="border:0;border-radius:14px;padding:13px 8px;background:var(--bg2);color:var(--ink);font-size:1rem;font-weight:700">' + r[1] + "</button>").join("") + '<button data-why="" style="border:0;border-radius:14px;padding:11px 8px;background:transparent;color:var(--muted);font-size:.95rem">رجوع</button></div>';
+ document.body.appendChild(el);
+ el.querySelectorAll("button").forEach(b => {
+  b.onclick = function() {
+   const w = b.dataset.why;
+   if (!w) {
+    relClose();
+    track("rel_cancel", {
+     orderId: String(id)
+    });
+    return;
+   }
+   relSend(String(id), w, b);
+  };
+ });
+ track("rel_shown", {
+  orderId: String(id)
+ });
+};
+
+async function relSend(id, why, btn) {
+ const sheet = document.getElementById("relSheet");
+ if (sheet) sheet.querySelectorAll("button").forEach(b => {
+  b.disabled = true;
+ });
+ const orig = btn.innerHTML;
+ btn.textContent = "يُرسل…";
+ try {
+  const d = await drvAction("RELEASE", id, why, 12e3);
+  if (d && d.success) {
+   relClose();
+   toast("✅ " + (d.msg || "تم تحرير الطلب."), "ok");
+   track("rel_ok", {
+    orderId: id,
+    reason: why
+   });
+   return;
+  }
+  relClose();
+  toast("⚠️ " + (d && d.msg || "تعذّر التحرير — أعد المحاولة."), "bad");
+  track("rel_no", {
+   orderId: id,
+   reason: why
+  });
+ } catch (e) {
+  btn.innerHTML = orig;
+  if (sheet) sheet.querySelectorAll("button").forEach(b => {
+   b.disabled = false;
+  });
+  toast("⚠️ تعذّر الإرسال — تأكّد من الشبكة وأعد المحاولة.", "bad");
+ }
+}
 
 const DP_FAR_M = 600, DP_STOP_M = 50, DP_STOP_S = 50, DP_REMIND_MINS = 25, DP_SNOOZE_MS = 6 * 6e4;
 
@@ -7191,6 +7394,213 @@ window.dpCheck = function(lat, lng) {
   if (!why) continue;
   _dpShow(o, why, Math.round(dRes));
   break;
+ }
+};
+
+const AR_ACC_M = 50, PK_FAR_M = 250, AR_SNOOZE_MS = 6 * 6e4;
+
+const AR_NB_M = 20;
+
+function arNearOwn_(fix, o, resByPh, maxM, accMax) {
+ const out = {
+  ok: false,
+  d: null
+ };
+ if (!fix || !o || !o.resLat || !o.resLng) return out;
+ const lat = Number(fix.lat), lng = Number(fix.lng), acc = Number(fix.acc);
+ if (!isFinite(lat) || !isFinite(lng)) return out;
+ const d = dist(lat, lng, Number(o.resLat), Number(o.resLng));
+ out.d = Math.round(d);
+ if (!(acc > 0 && acc <= accMax) || !(d <= maxM)) return out;
+ const own = String(o.resPhone || "").replace(/\D/g, "").replace(/^964/, "").replace(/^0/, "");
+ for (const ph of Object.keys(resByPh || {})) {
+  const r = resByPh[ph];
+  if (!r || !r.lat || !r.lng) continue;
+  if (String(ph).replace(/\D/g, "").replace(/^964/, "").replace(/^0/, "") === own) continue;
+  if (Math.abs(Number(r.lat) - Number(o.resLat)) < 1e-7 && Math.abs(Number(r.lng) - Number(o.resLng)) < 1e-7) continue;
+  if (dist(lat, lng, Number(r.lat), Number(r.lng)) + AR_NB_M < d) return out;
+ }
+ out.ok = true;
+ return out;
+}
+
+function arStep_(s, ok, nowMs, holdS) {
+ s = s || {};
+ if (!ok) return {
+  s: {
+   since: 0,
+   fired: !!s.fired,
+   snooze: s.snooze || 0
+  },
+  fire: false
+ };
+ const since = s.since || nowMs, fire = !s.fired && nowMs >= (s.snooze || 0) && nowMs - since >= holdS * 1e3;
+ return {
+  s: {
+   since: since,
+   fired: !!s.fired || fire,
+   snooze: s.snooze || 0
+  },
+  fire: fire
+ };
+}
+
+function pkFar_(fix, o, farM, accMax) {
+ if (!fix || !o || !o.resLat || !o.resLng) return false;
+ const acc = Number(fix.acc);
+ if (!(acc > 0 && acc <= accMax)) return false;
+ return dist(Number(fix.lat), Number(fix.lng), Number(o.resLat), Number(o.resLng)) >= farM;
+}
+
+function resNeedTxt_(rn, nowMs) {
+ if (!rn || typeof rn !== "object") return "";
+ const m = Number(rn.m), at = Number(rn.at);
+ if (!(m >= 1 && m <= 60) || !(at > 0) || nowMs >= at + m * 6e4) return "";
+ const t = new Date(at + m * 6e4), hh = t.getHours(), mm = String(t.getMinutes()).padStart(2, "0");
+ return "المطعم: يحتاج ~" + m + " د — جاهز قرابة " + (hh % 12 || 12) + ":" + mm;
+}
+
+function rushOfferLine_(f, on, wd) {
+ return !!(on && Number(wd) === 2 && f && Number(f.rush_lv) >= 1 && !f.is_sovereign);
+}
+
+function abSlot_(phone) {
+ const m = String(phone == null ? "" : phone).replace(/\D/g, "").match(/(\d)$/);
+ return m ? Number(m[1]) % 2 === 0 ? 1 : 2 : 0;
+}
+
+function abOn_(ab, phone) {
+ ab = Number(ab) || 0;
+ return !ab || abSlot_(phone) === ab;
+}
+
+const _ar = {}, _pk = {};
+
+let _arAt = 0, _arOpen = null;
+
+function _arClose() {
+ _arOpen = null;
+ try {
+  const el = document.getElementById("arSheet");
+  if (el) el.remove();
+ } catch (_) {}
+}
+
+function _arShow(o, kind, d) {
+ _arOpen = String(o.id) + ":" + kind;
+ let el = document.getElementById("arSheet");
+ if (el) el.remove();
+ el = document.createElement("div");
+ el.id = "arSheet";
+ el.style.cssText = "position:fixed;left:12px;right:12px;bottom:max(14px,env(safe-area-inset-bottom));z-index:39000;background:#fff;border-radius:20px;box-shadow:0 10px 40px rgba(14,23,41,.28);padding:18px 18px 16px;direction:rtl;text-align:center;font-family:inherit";
+ const q = kind === "arr" ? "وصلت " + esc(o.resName || "المطعم") + "؟" : "استلمت طلب " + esc(o.resName || "المطعم") + "؟";
+ el.innerHTML = '<div style="font-size:1.25rem;font-weight:800;color:var(--ink)">' + q + "</div>" + '<div style="display:flex;gap:10px;margin-top:14px"><button id="arYes" style="flex:2;border:0;border-radius:14px;padding:15px 8px;background:var(--ok);color:#fff;font-size:1.1rem;font-weight:800">' + (kind === "arr" ? "نعم، وصلت" : "نعم، استلمت") + "</button>" + '<button id="arNo" style="flex:1;border:0;border-radius:14px;padding:15px 8px;background:var(--bg2);color:var(--ink2);font-size:1rem;font-weight:700">ليس بعد</button></div>';
+ document.body.appendChild(el);
+ const id = String(o.id), ev = kind === "arr" ? "ar" : "pk";
+ document.getElementById("arYes").onclick = function() {
+  track(ev + "_yes", {
+   orderId: id,
+   ms: d,
+   code: "ab" + abSlot_(drv && drv.phone)
+  });
+  let b = null;
+  try {
+   b = document.querySelector("#o-" + sid(id) + " button.cta");
+  } catch (_) {}
+  if (!b) b = document.createElement("button");
+  _arClose();
+  try {
+   orderAction(id, kind === "arr" ? "arrive" : "pickup", b);
+  } catch (e) {
+   track(ev + "_yes_fail", {
+    reason: String(e && e.message || e).slice(0, 40)
+   });
+  }
+ };
+ document.getElementById("arNo").onclick = function() {
+  const S = kind === "arr" ? _ar : _pk;
+  S[id] = Object.assign({}, S[id] || {}, {
+   since: 0,
+   fired: false,
+   snooze: Date.now() + AR_SNOOZE_MS
+  });
+  track(ev + "_later", {
+   orderId: id,
+   ms: d,
+   code: "ab" + abSlot_(drv && drv.phone)
+  });
+  _arClose();
+ };
+ try {
+  if (navigator.vibrate) navigator.vibrate([ 150, 80, 150 ]);
+ } catch (_) {}
+ track(ev + "_shown", {
+  orderId: id,
+  ms: d,
+  code: "ab" + abSlot_(drv && drv.phone)
+ });
+}
+
+window.arCheck = function(lat, lng, acc) {
+ if (!(AUTO_ARRIVE > 0) && !PK_PROMPT) return;
+ if (!abOn_(AUTO_ARRIVE_AB, drv && drv.phone)) return;
+ const now = Date.now();
+ if (now - _arAt < 3e3) return;
+ _arAt = now;
+ const fix = {
+  lat: Number(lat),
+  lng: Number(lng),
+  acc: Number(acc || drv && drv.gpsAccuracy || 0)
+ };
+ if (!isFinite(fix.lat) || !isFinite(fix.lng)) return;
+ if (_arOpen && !active.some(x => _arOpen === String(x.id) + ":arr" && x.state === "heading" || _arOpen === String(x.id) + ":pk" && x.state === "arrived")) _arClose();
+ let offerUp = false;
+ try {
+  offerUp = !document.getElementById("alertOv").classList.contains("dn");
+ } catch (_) {}
+ for (const o of active) {
+  if (o.kind === "supply" || !o.resLat || !o.resLng) continue;
+  const k = String(o.id);
+  if (AUTO_ARRIVE > 0 && o.state === "heading") {
+   const n = arNearOwn_(fix, o, resByPhone, AUTO_ARRIVE_M, AR_ACC_M);
+   const r = arStep_(_ar[k], n.ok, now, AUTO_ARRIVE_S);
+   _ar[k] = r.s;
+   if (!r.fire) continue;
+   if (AUTO_ARRIVE === 2) {
+    track("ar_auto", {
+     orderId: k,
+     ms: n.d,
+     code: "ab" + abSlot_(drv && drv.phone)
+    });
+    let b = null;
+    try {
+     b = document.querySelector("#o-" + sid(k) + " button.cta");
+    } catch (_) {}
+    try {
+     orderAction(k, "arrive", b || document.createElement("button"));
+    } catch (e) {
+     track("ar_auto_fail", {
+      reason: String(e && e.message || e).slice(0, 40)
+     });
+    }
+    break;
+   }
+   if (_arOpen || _dpOpen || offerUp) {
+    _ar[k].fired = false;
+    continue;
+   }
+   _arShow(o, "arr", n.d);
+   break;
+  } else if (PK_PROMPT && o.state === "arrived") {
+   const s = _pk[k] || {};
+   if (s.fired || now < (s.snooze || 0) || _arOpen || _dpOpen || offerUp) continue;
+   if (!pkFar_(fix, o, PK_FAR_M, AR_ACC_M)) continue;
+   _pk[k] = Object.assign({}, s, {
+    fired: true
+   });
+   _arShow(o, "pk", Math.round(dist(fix.lat, fix.lng, Number(o.resLat), Number(o.resLng))));
+   break;
+  }
  }
 };
 
