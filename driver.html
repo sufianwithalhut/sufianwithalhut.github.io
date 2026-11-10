@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://*.firebasedatabase.app https://*.firebaseio.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app https://www.gstatic.com; object-src 'none'; base-uri 'none'; form-action 'self';">
 
 <script>
-const CURRENT_APP_VERSION = "32.34-Card";
+const CURRENT_APP_VERSION = "32.35-CarRich";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -6266,11 +6266,15 @@ function _offerScan(fb, myId, pump) {
  (function() {
   const el = document.getElementById("alTrip"), t = f.trip;
   if (!el) return;
-  if (t && Number(t.n) >= 2 && (!t.to || String(t.to) === String(drv && drv.phone || ""))) {
+  const x = carIncomeLine_(f, drv && drv.phone || "");
+  if (x && x.trip) {
    document.getElementById("alTitle").innerText = "🚗 رحلة " + t.n + " طلبات!";
    const ar = (Array.isArray(t.areas) ? t.areas : Object.values(t.areas || {})).filter(Boolean);
    if (ar.length) document.getElementById("alArea").innerText = ar.join(" · ");
-   el.textContent = "طريقٌ واحد · أجرة التوصيل كلّها " + (Number(t.fee) || 0).toLocaleString("en-US") + " د.ع" + (Number(t.unk) > 0 ? " + " + t.unk + " غير مؤكّدة" : "") + (Number(t.res) > 0 ? " + " + Number(t.res).toLocaleString("en-US") + " على المطاعم" : "") + " · المسار نحو " + (Number(t.km) || 0).toLocaleString("en-US") + " كم · قبولك يقبلها كلّها";
+   el.textContent = x.line;
+   el.classList.remove("dn");
+  } else if (x) {
+   el.textContent = x.line;
    el.classList.remove("dn");
   } else {
    el.textContent = "";
@@ -6986,6 +6990,26 @@ function esc(x) {
 
 function sid(x) {
  return String(x ?? "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
+}
+
+function carIncomeLine_(f, myPhone) {
+ if (!f) return null;
+ const n = x => Number(x).toLocaleString("en-US"), t = f.trip;
+ if (t && Number(t.n) >= 2 && (!t.to || String(t.to) === String(myPhone || ""))) {
+  const res = Number(t.res) || 0, inc = (Number(t.fee) || 0) + res;
+  return {
+   trip: 1,
+   line: t.n + " طلبات · مجموع أجرتك " + n(inc) + " د.ع" + (res > 0 ? " (منها " + n(res) + " على المطاعم)" : "") + (Number(t.unk) > 0 ? " + " + t.unk + " غير مؤكّدة" : "") + " · " + n(Number(t.km) || 0) + " كم · قبولك يقبلها كلّها"
+  };
+ }
+ const l = f.car_load;
+ if (l && typeof l === "object" && Number(l.n) >= 2) {
+  return {
+   trip: 0,
+   line: "مع ما معك: " + l.n + " طلبات · مجموع أجرتك " + n(Number(l.fee) || 0) + " د.ع" + (Number(l.unk) > 0 ? " + " + l.unk + " غير مؤكّدة" : "") + (Number(l.km) > 0 ? " · " + n(Number(l.km)) + " كم" : "")
+  };
+ }
+ return null;
 }
 
 function feeLine(o) {
