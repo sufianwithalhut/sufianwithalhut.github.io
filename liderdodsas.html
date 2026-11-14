@@ -2325,6 +2325,9 @@ function attachDataListeners() {
   scheduleRadar();
   scheduleHof();
   scheduleMap();
+  try {
+   _eveKick();
+  } catch (_) {}
  };
  listen("drivers_locations", _locCb);
  listen("ops_eve/now", snap => {
@@ -3340,24 +3343,356 @@ function evChip(ev) {
  return '<div style="margin-top:6px;display:inline-block;padding:3px 9px;border-radius:9px;font-size:.7rem;font-weight:800;' + c + '">' + (ev.k === "gray" ? "○ " : "● ") + esc(ev.t) + "</div>";
 }
 
+let _eveMore = false, _eveHtml = "", _eveT = null, _eveKickT = null, _eveFoldMem = null, _eveTab = null, _eveZone = -1;
+
+const _EVZC = [ [ "#7c3aed", "#f3e8ff" ], [ "#0284c7", "#e0f2fe" ], [ "#ea580c", "#ffedd5" ], [ "#0d9488", "#ccfbf1" ], [ "#db2777", "#fce7f3" ], [ "#4f46e5", "#e0e7ff" ] ];
+
+function _evBiz(ms) {
+ return new Date(ms - 36e5).toISOString().slice(0, 10);
+}
+
+function _evClock(ms) {
+ const d = new Date(ms + 3 * 36e5);
+ let h = d.getUTCHours();
+ const m = String(d.getUTCMinutes()).padStart(2, "0"), pm = h >= 12;
+ h = h % 12 || 12;
+ return h + ":" + m + (pm ? " م" : " ص");
+}
+
+function _evHM(min) {
+ const h = Math.floor(min / 60) % 24, m = min % 60;
+ return (h % 12 || 12) + ":" + String(m).padStart(2, "0") + (h >= 12 ? " م" : " ص");
+}
+
+function _evHL(h) {
+ h = (h % 24 + 24) % 24;
+ return (h % 12 || 12) + (h >= 12 ? " م" : " ص");
+}
+
+function _evNowMin(now) {
+ const t = new Date(now + 3 * 36e5);
+ return t.getUTCHours() * 60 + t.getUTCMinutes();
+}
+
+function _evCap(n) {
+ n = Math.max(0, Math.round(n));
+ return n === 1 ? "كابتنٌ واحد" : n === 2 ? "كابتنان" : n >= 3 && n <= 10 ? n + " كباتن" : n + " كابتناً";
+}
+
+function _evDur(m) {
+ return m >= 60 ? Math.floor(m / 60) + " س" + (m % 60 ? " و" + m % 60 + " د" : "") : m + " د";
+}
+
+function _evSeen(p, now) {
+ const L = drvLocs && (drvLocs[p] || drvLocs[nP(p)]);
+ const lu = L && Date.parse(L.last_update);
+ if (!lu || !isFinite(lu)) return "";
+ const mins = Math.round((now - lu) / 6e4);
+ if (mins < 60) return "آخر ظهور قبل " + Math.max(1, mins) + " د";
+ const b = _evBiz(lu), t = _evBiz(now);
+ if (b === t) return "آخر ظهور اليوم " + _evClock(lu);
+ const days = Math.round((Date.parse(t) - Date.parse(b)) / 864e5);
+ return days <= 1 ? "آخر ظهور أمس" : days === 2 ? "آخر ظهور قبل يومين" : "آخر ظهور قبل " + days + (days <= 10 ? " أيّام" : " يوماً");
+}
+
+function _evDue(st, now) {
+ st = Number(st);
+ if (!(st >= 0 && st < 1440)) return [ 3, "" ];
+ const late = _evNowMin(now) - st;
+ if (late >= 15) return [ 0, '<span class="ev-tg late" title="موعده المعتاد ' + _evHM(st) + '">متأخّر ' + _evDur(late) + " عن موعده</span>" ];
+ if (late > -15) return [ 1, '<span class="ev-tg due">موعده الآن · ' + _evHM(st) + "</span>" ];
+ return [ 2, '<span class="ev-tg soon">موعده المعتاد ' + _evHM(st) + "</span>" ];
+}
+
+function _evZoneIdx(zn, lat, lng) {
+ lat = Number(lat);
+ lng = Number(lng);
+ if (!(lat > 30 && lat < 40 && lng > 40 && lng < 50)) return -1;
+ let b = -1, bd = 1e9;
+ zn.forEach((z, i) => {
+  const dx = (lat - Number(z[2])) * 111, dy = (lng - Number(z[3])) * 90.5, d = dx * dx + dy * dy;
+  if (d < bd) {
+   bd = d;
+   b = i;
+  }
+ });
+ return bd <= 225 ? b : -1;
+}
+
+function _evCalled(day) {
+ try {
+  const o = JSON.parse(localStorage.getItem("eve_called") || "{}");
+  return o && o.day === day && o.m ? o.m : {};
+ } catch (_) {
+  return {};
+ }
+}
+
+function _evFolded(day) {
+ if (_eveFoldMem !== null) return _eveFoldMem === day;
+ try {
+  return localStorage.getItem("eve_fold") === day;
+ } catch (_) {
+  return false;
+ }
+}
+
+function _evTabGet() {
+ if (_eveTab) return _eveTab;
+ try {
+  return localStorage.getItem("eve_tab") || "list";
+ } catch (_) {
+  return "list";
+ }
+}
+
+window.eveFold = function(day) {
+ const f = !_evFolded(day);
+ _eveFoldMem = f ? day : "";
+ try {
+  if (f) localStorage.setItem("eve_fold", day); else localStorage.removeItem("eve_fold");
+ } catch (_) {}
+ paintEve();
+};
+
+window.eveTab = function(k) {
+ _eveTab = k;
+ try {
+  localStorage.setItem("eve_tab", k);
+ } catch (_) {}
+ paintEve();
+};
+
+window.eveZone = function(i) {
+ _eveZone = Number(i);
+ _eveMore = false;
+ _eveTab = "list";
+ try {
+  localStorage.setItem("eve_tab", "list");
+ } catch (_) {}
+ paintEve();
+};
+
+window.eveMore = function() {
+ _eveMore = !_eveMore;
+ paintEve();
+};
+
+window.eveDial = function(p, day) {
+ try {
+  const m = _evCalled(day);
+  m[p] = Date.now();
+  localStorage.setItem("eve_called", JSON.stringify({
+   day: day,
+   m: m
+  }));
+ } catch (_) {}
+ ccDial(p);
+ paintEve();
+};
+
+function _eveKick() {
+ if (!window._eveNow || _eveKickT) return;
+ _eveKickT = setTimeout(() => {
+  _eveKickT = null;
+  try {
+   paintEve();
+  } catch (_) {}
+ }, 3e3);
+}
+
+const _EVW = {
+ 0: [ "صافٍ", "s" ],
+ 1: [ "صافٍ غالباً", "s" ],
+ 2: [ "غائمٌ جزئيّاً", "c" ],
+ 3: [ "غائم", "c" ],
+ 45: [ "ضباب", "f" ],
+ 48: [ "ضباب", "f" ],
+ 51: [ "رذاذ", "r" ],
+ 53: [ "رذاذ", "r" ],
+ 55: [ "رذاذٌ كثيف", "r" ],
+ 56: [ "رذاذٌ متجمّد", "r" ],
+ 57: [ "رذاذٌ متجمّد", "r" ],
+ 61: [ "مطرٌ خفيف", "r" ],
+ 63: [ "مطر", "r" ],
+ 65: [ "مطرٌ غزير", "r" ],
+ 66: [ "مطرٌ متجمّد", "r" ],
+ 67: [ "مطرٌ متجمّد", "r" ],
+ 71: [ "ثلجٌ خفيف", "n" ],
+ 73: [ "ثلج", "n" ],
+ 75: [ "ثلجٌ كثيف", "n" ],
+ 77: [ "حبيبات ثلج", "n" ],
+ 80: [ "زخّاتٌ خفيفة", "r" ],
+ 81: [ "زخّات مطر", "r" ],
+ 82: [ "زخّاتٌ غزيرة", "r" ],
+ 85: [ "زخّات ثلج", "n" ],
+ 86: [ "زخّات ثلج", "n" ],
+ 95: [ "عاصفةٌ رعديّة", "t" ],
+ 96: [ "رعدٌ وبَرَد", "t" ],
+ 99: [ "رعدٌ وبَرَد", "t" ]
+};
+
+function _evW(c) {
+ return _EVW[Number(c)] || [ "—", "c" ];
+}
+
+function _evCss() {
+ if (document.getElementById("evCss")) return;
+ const s = document.createElement("style");
+ s.id = "evCss";
+ s.textContent = ".ev{background:#fff;border:1px solid #e9d5ff;border-radius:16px;overflow:hidden;box-shadow:0 2px 8px rgba(91,33,182,.07);color:#2e1065}" + ".ev-h{display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;background:#faf5ff;border:0;border-bottom:1px solid #ede4fb;cursor:pointer;text-align:right;font:inherit;color:inherit}" + ".ev.fold .ev-h{border-bottom:0}" + ".ev-ht{flex:1;min-width:0}" + ".ev-t{font-size:.98rem;font-weight:900;color:#3b0764;line-height:1.5}" + ".ev-k{font-size:.72rem;color:#7e22ce;font-weight:700;line-height:1.6}" + ".ev-big{flex:none;display:flex;flex-direction:column;align-items:center;min-width:64px;padding:4px 9px 5px;border-radius:14px;background:#e11d48;color:#fff;box-shadow:0 2px 0 #be123c}" + ".ev-big b{font-size:1.5rem;line-height:1.1;font-weight:900}" + ".ev-big span{font-size:.64rem;font-weight:800;opacity:.92}" + ".ev-big.ok{background:#16a34a;box-shadow:0 2px 0 #15803d}" + ".ev-ch{flex:none;width:9px;height:9px;border-left:2.4px solid #7c3aed;border-bottom:2.4px solid #7c3aed;transform:rotate(135deg);margin:5px 2px 0;transition:transform .2s}" + ".ev.fold .ev-ch{transform:rotate(-45deg);margin:0 2px 5px}" + ".ev-b{padding:12px 14px 12px}" + ".ev-g{display:flex;height:16px;border-radius:8px;background:#ffe4e6;overflow:hidden}" + ".ev-g i{display:block;height:100%}" + ".ev-lg{display:flex;flex-wrap:wrap;gap:3px 14px;margin-top:7px;font-size:.74rem;color:#581c87;font-weight:700}" + ".ev-lg span{white-space:nowrap}" + ".ev-lg span::before{content:'';display:inline-block;width:10px;height:10px;border-radius:3px;margin-left:5px;vertical-align:-1px;background:var(--c)}" + ".ev-lg b{color:#2e1065;font-weight:900}" + ".ev-cp{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}" + ".ev-cp span{padding:4px 11px;border-radius:999px;font-size:.74rem;font-weight:800;background:#f3e8ff;color:#6b21a8}" + ".ev-cp .rn{background:#dbeafe;color:#1d4ed8}" + ".ev-cp .hot{background:#ffe4e6;color:#be123c}" + ".ev-tabs{display:flex;gap:4px;margin-top:12px;padding:4px;background:#f3e8ff;border-radius:12px}" + ".ev-tabs button{flex:1;padding:8px 4px;border:0;border-radius:9px;background:transparent;color:#6b21a8;font:inherit;font-size:.8rem;font-weight:800;cursor:pointer;white-space:nowrap}" + ".ev-tabs button b{display:inline-block;min-width:20px;padding:0 6px;margin-right:3px;border-radius:999px;background:#e11d48;color:#fff;font-size:.7rem;line-height:1.6}" + ".ev-tabs button.on{background:#7c3aed;color:#fff;box-shadow:0 2px 0 #5b21b6}" + ".ev-tabs button.on b{background:#fff;color:#be123c}" + ".ev-st{margin:13px 0 2px;font-weight:900;font-size:.86rem;color:#2e1065}" + ".ev-st small{display:block;font-weight:700;color:#7e22ce;font-size:.72rem}" + ".ev-fz{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px;padding:8px 11px;border-radius:11px;background:var(--zl);color:var(--zc);font-weight:900;font-size:.8rem}" + ".ev-fz button{border:0;background:#fff;color:var(--zc);font:inherit;font-size:.72rem;font-weight:800;padding:3px 10px;border-radius:999px;cursor:pointer}" + ".ev-r{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid #f1eafb}" + ".ev-st+.ev-r,.ev-fz+.ev-st+.ev-r{border-top:0}" + ".ev-av{flex:none;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-weight:900;font-size:.92rem;background:var(--zl,#f3e8ff);color:var(--zc,#7c3aed)}" + ".ev-i{flex:1;min-width:0}" + ".ev-n{font-weight:800;font-size:.86rem;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#1e1b2e}" + ".ev-m{display:flex;align-items:center;flex-wrap:wrap;gap:2px 8px;font-size:.7rem;color:#6b5a86;font-weight:700}" + ".ev-d{display:inline-flex;gap:2px}" + ".ev-d i{width:6px;height:6px;border-radius:50%;background:#ece6f6}" + ".ev-d i.f{background:#8b5cf6}" + ".ev-tg{display:inline-block;padding:1px 8px;border-radius:999px;font-size:.68rem;font-weight:800;line-height:1.7}" + ".ev-tg.late{background:#ffe4e6;color:#be123c}" + ".ev-tg.due{background:#fef3c7;color:#b45309}" + ".ev-tg.soon{background:#f3e8ff;color:#6b21a8}" + ".ev-tg.zn{background:var(--zl);color:var(--zc)}" + ".ev-wa{flex:none;padding:8px 15px;font-size:.78rem;font-weight:800;background:#16a34a;color:#fff;border:1px solid #16a34a;border-radius:11px;cursor:pointer;font-family:inherit;box-shadow:0 2px 0 #15803d}" + ".ev-r.sent .ev-av{background:#f1f3f6;color:#8b8b8b}" + ".ev-r.sent .ev-n{color:#6b6b6b}" + ".ev-r.sent .ev-wa{background:#fff;color:#15803d;border-color:#bbf7d0;box-shadow:none}" + ".ev-mo{display:block;width:100%;margin-top:6px;padding:9px;border:1.5px dashed #c4b5fd;border-radius:11px;background:transparent;color:#6d28d9;font-weight:800;font-size:.78rem;cursor:pointer;font-family:inherit}" + ".ev-bk{margin-top:10px;padding:9px 11px;border-radius:11px;background:#dcfce7;font-size:.76rem;color:#14532d;font-weight:800;line-height:1.9}" + ".ev-bk b{font-weight:900}" + ".ev-bk span{display:inline-block;margin-left:12px;font-weight:700}" + ".ev-sec{margin-top:12px}" + ".ev-sh{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-weight:900;font-size:.84rem;color:#2e1065;margin-bottom:2px}" + ".ev-key{font-size:.68rem;font-weight:700;color:#7e22ce;white-space:nowrap}" + ".ev-lead{padding:9px 11px;border-radius:11px;background:#f5f3ff;font-size:.78rem;font-weight:700;color:#3b0764;line-height:1.75;margin-top:12px}" + ".ev-lead b{font-weight:900}" + ".ev-lead.wet{background:#dbeafe;color:#1e3a8a}" + ".ev-zr{display:block;width:100%;margin-top:8px;padding:10px 12px;border:1px solid #efe9f7;border-right:5px solid var(--zc);border-radius:12px;background:#fff;text-align:right;font:inherit;color:inherit;cursor:pointer}" + ".ev-zr.hot{background:#fff7f8}" + ".ev-z1{display:flex;align-items:center;justify-content:space-between;gap:8px}" + ".ev-z1 b{font-size:.9rem;font-weight:900;color:var(--zc)}" + ".ev-z1 small{font-size:.7rem;font-weight:700;color:#6b5a86;margin-right:6px}" + ".ev-nd{flex:none;padding:3px 10px;border-radius:999px;font-size:.74rem;font-weight:900}" + ".ev-nd.r{background:#e11d48;color:#fff}.ev-nd.a{background:#f59e0b;color:#fff}.ev-nd.g{background:#dcfce7;color:#15803d}" + ".ev-z2{display:flex;align-items:center;gap:10px;margin-top:7px}" + ".ev-zb{flex:1;height:10px;border-radius:5px;background:#ffe4e6;overflow:hidden}" + ".ev-zb i{display:block;height:100%;border-radius:5px;background:var(--zc)}" + ".ev-z2 span{flex:none;font-size:.74rem;font-weight:800;color:#3b0764}" + ".ev-z3{display:flex;flex-wrap:wrap;align-items:center;gap:3px 10px;margin-top:6px;font-size:.7rem;font-weight:700;color:#6b5a86}" + ".ev-z3 .w{color:#1d4ed8}" + ".ev-z3 .go{margin-right:auto;color:var(--zc);font-weight:900}" + ".ev-wd{flex:none;display:inline-block;width:9px;height:9px;border-radius:50%;background:#a9b1bb;vertical-align:-1px;margin-left:3px}" + ".ev-wd.s{background:#f59e0b}.ev-wd.c{background:#a9b1bb}.ev-wd.f{background:#cfd4da}.ev-wd.r{background:#2563eb}.ev-wd.n{background:#38bdf8}.ev-wd.t{background:#7c3aed}" + ".ev-fc{display:grid;grid-template-columns:repeat(6,1fr);gap:4px}" + ".ev-fh{display:flex;flex-direction:column;align-items:center;gap:2px;padding:7px 2px;border-radius:11px;background:#f5f3ff;text-align:center}" + ".ev-fl{font-size:.7rem;font-weight:800;color:#6b21a8}" + ".ev-ft{font-size:.95rem;font-weight:900;color:#2e1065;direction:ltr}" + ".ev-fb{display:flex;align-items:flex-end;justify-content:center;width:100%;height:36px}" + ".ev-fb i{display:block;width:12px;border-radius:3px 3px 0 0;background:#2563eb}" + ".ev-fp{font-size:.68rem;font-weight:800;color:#1d4ed8}" + ".ev-fw{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:.62rem;font-weight:700;color:#4c3d66;line-height:1.3;min-height:30px}" + ".ev-note{margin-top:10px;font-size:.66rem;font-weight:600;color:#8a7aa6;line-height:1.6}";
+ document.head.appendChild(s);
+}
+
+function _evZoneStats(e, list) {
+ const zn = Array.isArray(e.zn) ? e.zn : Object.values(e.zn || {});
+ if (zn.length < 2) return null;
+ const cap = zn.map(() => 0);
+ actDrv.forEach(p => {
+  const L = drvLocs && (drvLocs[p] || drvLocs[nP(p)]);
+  if (L && L.lat && L.lng) {
+   const z = _evZoneIdx(zn, L.lat, L.lng);
+   if (z >= 0) cap[z]++;
+  }
+ });
+ const base = Number(e.base) > 0 ? Number(e.base) : Math.max(0, Number(e.on)) + Math.max(0, Number(e.short));
+ return zn.map((z, i) => {
+  const need = Math.round(base * (Number(z[5]) || 0));
+  return {
+   i: i,
+   name: String(z[0] || ""),
+   sub: String(z[1] || ""),
+   w: Number(z[4]),
+   share: Number(z[5]) || 0,
+   perH: Number(z[6]) || 0,
+   cap: cap[i],
+   need: need,
+   gap: need - cap[i],
+   regs: list.filter(x => Number(x.z) === i).length
+  };
+ });
+}
+
+function _evZoneTab(e, zs, am, now) {
+ const wx = e.wx && Array.isArray(e.wx.z) ? e.wx : null, part = am ? "الصباح" : "المساء";
+ let h = "";
+ if (wx) {
+  const hr = wx.h || [], at = Number(wx.at) || now, off = Math.max(0, Math.floor((now + 3 * 36e5) / 36e5) - Math.floor((at + 3 * 36e5) / 36e5)), fut = hr.slice(off, off + 6);
+  const wet = fut.find(x => Number(x[2]) >= 50 || Number(x[3]) >= .5), wetNow = wx.z.map((r, i) => [ r, i ]).filter(([r]) => Number(r[3]) > 0 || "rt".indexOf(_evW(r[2])[1]) >= 0);
+  const lead = wetNow.length ? "<b>يمطر الآن</b> في " + wetNow.map(([r]) => esc(String(r[0]).split(":")[0])).join("، ") + " — الطلبات ترتفع والكباتن يقلّون." : wet ? "مطرٌ محتمل <b>" + Math.max(0, Number(wet[2])) + "%</b> الساعة <b>" + _evHL(Number(wet[0])) + "</b> — راسلوا الكباتن قبلها." : "لا مطر متوقّع في الساعات القادمة.";
+  h += '<div class="ev-lead' + (wetNow.length || wet ? " wet" : "") + '">' + lead + "</div>";
+  e._fut = fut;
+ }
+ if (zs) {
+  const hot = zs.filter(z => z.gap > 0).sort((a, b) => b.gap - a.gap);
+  h += '<div class="ev-sec"><div class="ev-sh">أين ينقصنا الآن<span class="ev-key">' + (hot.length ? "الأشدّ: " + esc(hot[0].name) : "كلّ الجهات مكتفية") + "</span></div>";
+  h += zs.slice().sort((a, b) => b.gap - a.gap || b.need - a.need).map(z => {
+   const c = _EVZC[z.i % _EVZC.length], r = wx && wx.z[z.w], ww = r ? _evW(r[2]) : null, tp = r ? Number(r[1]) : -99, mm = r ? Number(r[3]) : 0;
+   const cls = z.gap >= 3 ? "r" : z.gap >= 1 ? "a" : "g", pct = z.need > 0 ? Math.min(100, z.cap / z.need * 100) : 100;
+   return '<button class="ev-zr' + (z.gap >= 3 ? " hot" : "") + '" style="--zc:' + c[0] + ";--zl:" + c[1] + '" onclick="eveZone(' + z.i + ')">' + '<div class="ev-z1"><div><b>' + esc(z.name) + "</b><small>" + esc(z.sub) + '</small></div><span class="ev-nd ' + cls + '">' + (z.gap > 0 ? "ينقصها " + z.gap : "يكفي") + "</span></div>" + '<div class="ev-z2"><div class="ev-zb"><i style="width:' + pct.toFixed(0) + '%"></i></div><span>الآن <b>' + z.cap + "</b> من <b>" + z.need + "</b></span></div>" + '<div class="ev-z3">' + (ww ? '<span class="' + (ww[1] === "r" || ww[1] === "t" || mm > 0 ? "w" : "") + '"><i class="ev-wd ' + ww[1] + '"></i>' + (tp > -90 ? '<span dir="ltr">' + Math.round(tp) + "°</span> " : "") + esc(ww[0]) + (mm > 0 ? " " + mm + " ملم" : "") + "</span>" : "") + "<span>طلبات زحمة " + part + " ~" + Math.round(z.perH) + " في الساعة</span>" + (z.regs ? '<span class="go">راسل منتظميها (' + z.regs + ") ‹</span>" : "") + "</div></button>";
+  }).join("");
+  h += '<div class="ev-note">الحاجة = المعتاد في هذا الوقت (' + (Number(e.base) > 0 ? Number(e.base) : "؟") + ") موزّعاً بحصّة كلّ جهة من طلبات الزحمة المعتادة · الكباتن من مواقعهم الحيّة · تقريبيّة</div></div>";
+ }
+ if (e._fut && e._fut.length) {
+  h += '<div class="ev-sec"><div class="ev-sh">الساعات القادمة<span class="ev-key">المركز · احتمال المطر</span></div><div class="ev-fc">' + e._fut.map(x => {
+   const w = _evW(x[4]), p = Math.max(0, Number(x[2]) || 0), tp = Number(x[1]);
+   return '<div class="ev-fh"><div class="ev-fl">' + _evHL(Number(x[0])) + '</div><div class="ev-ft">' + (tp > -90 ? Math.round(tp) + "°" : "—") + "</div>" + '<div class="ev-fb"><i style="height:' + Math.max(2, p * .34).toFixed(0) + 'px"></i></div><div class="ev-fp">' + p + '%</div><div class="ev-fw"><i class="ev-wd ' + w[1] + '"></i>' + esc(w[0]) + "</div></div>";
+  }).join("") + "</div></div>";
+ }
+ return h;
+}
+
 function paintEve() {
  const b = document.getElementById("eveCard");
  if (!b) return;
- const e = window._eveNow;
- let hide = "";
- try {
-  hide = localStorage.getItem("eve_hide") || "";
- } catch (_) {}
- if (!e || !e.at || Date.now() - Number(e.at) > 3 * 36e5 || hide === String(e.day)) {
+ if (_eveT) {
+  clearTimeout(_eveT);
+  _eveT = null;
+ }
+ const e0 = window._eveNow, now = Date.now();
+ if (!e0 || !e0.at || now - Number(e0.at) > 3 * 36e5) {
+  if (_eveHtml) {
+   b.innerHTML = "";
+   _eveHtml = "";
+  }
   b.style.display = "none";
-  b.innerHTML = "";
   return;
  }
- const list = Array.isArray(e.list) ? e.list : Object.values(e.list || {});
- const rows = list.slice(0, 30).map(x => '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid #f1e3c8"><span style="font-weight:800">' + esc(x.n || "0" + x.p) + ' <small style="color:#8a6d3b;font-weight:600">· يعمل ' + (e.part === "am" ? "صباحاً" : "مساءً") + " " + (Number(x.d) || 0) + ' من 14 يوماً</small></span><button class="cc-f" style="padding:6px 12px;font-size:.75rem;font-weight:800;background:#0b7a43;color:#fff;border:0;border-radius:9px" onclick="ccDial(\'' + esc(String(x.p)) + "')\">💬 واتساب</button></div>").join("");
- const rain = Number(e.rain) >= 1 ? " · <b>مطرٌ متوقّع</b>" : "";
- b.innerHTML = '<div style="padding:12px 14px;border-radius:12px;background:#fff8ec;border:1px solid #f3cf8d;color:#5b3b00;font-size:.84rem;line-height:1.7">' + '<div style="font-weight:900;font-size:.95rem">📣 ' + (e.part === "am" ? "صباح" : "مساء") + " اليوم: الكباتن أقلّ من المعتاد</div>" + "<div>المتّصلون الآن <b>" + (Number(e.on) >= 0 ? e.on : "؟") + "</b>، والمعتاد في هذا الوقت <b>" + (Number(e.base) >= 0 ? e.base : "؟") + "</b> — ينقصنا <b>" + (Number(e.short) > 0 ? e.short : "؟") + "</b>" + rain + ". اتّصلوا بكباتن " + (e.part === "am" ? "الصباح" : "المساء") + " ليدخلوا قبل الزحمة:</div>" + (rows || '<div style="margin-top:6px">لا أسماء متاحة الآن.</div>') + '<div style="text-align:left;margin-top:6px"><button class="cc-f" style="padding:4px 10px;font-size:.7rem;background:transparent;border:1px solid #e5c389;border-radius:8px;color:#8a6d3b" onclick="try{localStorage.setItem(\'eve_hide\',\'' + esc(String(e.day)) + "')}catch(_){}paintEve()\">إخفاء لليوم</button></div></div>";
+ _evCss();
+ const e = Object.assign({}, e0);
+ const am = e.part === "am", day = String(e.day || ""), fold = _evFolded(day), called = _evCalled(day);
+ const list = (Array.isArray(e.list) ? e.list : Object.values(e.list || {})).filter(x => x && /^\d{9,13}$/.test(String(x.p)));
+ const isOn = p => actDrv.has(p) || actDrv.has(nP(p));
+ const back = list.filter(x => isOn(String(x.p))), waitAll = list.filter(x => !isOn(String(x.p)));
+ const due = {};
+ waitAll.forEach(x => {
+  due[x.p] = _evDue(x.st, now);
+ });
+ waitAll.sort((a, c) => (called[a.p] ? 1 : 0) - (called[c.p] ? 1 : 0) || due[a.p][0] - due[c.p][0] || (Number(c.d) || 0) - (Number(a.d) || 0));
+ const zs = _evZoneStats(e, waitAll);
+ if (_eveZone >= 0 && (!zs || !zs[_eveZone])) _eveZone = -1;
+ const wait = _eveZone >= 0 ? waitAll.filter(x => Number(x.z) === _eveZone) : waitAll;
+ const on = Number(e.on), base = Number(e.base), hasG = on >= 0 && base > 0;
+ const short = Number(e.short) > 0 ? Number(e.short) : hasG ? Math.max(0, base - on) : 0;
+ const left = Math.max(0, short - back.length), ok = short > 0 && left === 0;
+ const part = am ? "الصباح" : "المساء", partAdv = am ? "صباحاً" : "مساءً";
+ let rush = "", late = false;
+ if (!am) {
+  const m = 17 * 60 - _evNowMin(now);
+  late = m <= 0;
+  rush = m > 0 ? "باقٍ " + _evDur(m) + " على زحمة المساء" : "الزحمة بدأت — كلّ كابتنٍ يدخل الآن يخفّف الانتظار";
+ }
+ const hot = zs ? zs.filter(z => z.gap > 0).sort((a, c) => c.gap - a.gap) : [];
+ const sum = [ ok ? "عاد العدد إلى المعتاد" : "ينقصنا " + _evCap(left) ];
+ if (hot.length && !ok) sum.push("أشدّه في " + hot[0].name);
+ if (back.length) sum.push("دخل " + back.length);
+ if (rush && !ok) sum.push(rush.split(" — ")[0]);
+ let h = '<div class="ev' + (fold ? " fold" : "") + '">' + '<button class="ev-h" aria-expanded="' + !fold + '" onclick="eveFold(\'' + esc(day) + "')\">" + '<div class="ev-ht"><div class="ev-t">كباتن ' + part + " " + (ok ? "عادوا إلى المعتاد" : "أقلّ من المعتاد") + "</div>" + '<div class="ev-k">' + (fold ? esc(sum.join(" · ")) + " · اضغط للعرض" : (am ? "صباح" : "مساء") + " اليوم · قياس الساعة " + _evClock(Number(e.at)) + " · اضغط للطيّ") + "</div></div>" + '<div class="ev-big' + (ok ? " ok" : "") + '"><b>' + (ok ? "✓" : left) + "</b><span>" + (ok ? "اكتمل" : "ينقصنا") + "</span></div>" + '<span class="ev-ch"></span></button>';
+ if (!fold) {
+  h += '<div class="ev-b">';
+  if (hasG) {
+   const mx = Math.max(base, on + back.length, 1), wa = on / mx * 100, wn = back.length / mx * 100;
+   h += '<div class="ev-g" role="img" aria-label="المتّصلون ' + on + " والمعتاد " + base + '"><i style="width:' + wa.toFixed(1) + '%;background:#7c3aed"></i>' + (back.length ? '<i style="width:' + wn.toFixed(1) + '%;background:#16a34a"></i>' : "") + "</div>" + '<div class="ev-lg"><span style="--c:#7c3aed">متّصلون عند القياس <b>' + on + "</b></span>" + (back.length ? '<span style="--c:#16a34a">دخلوا بعد النداء <b>' + back.length + "</b></span>" : "") + (left > 0 ? '<span style="--c:#fda4af">ينقص <b>' + left + "</b></span>" : "") + '<span style="--c:#ede9fe">المعتاد <b>' + base + "</b></span></div>";
+  }
+  const chips = [];
+  if (rush) chips.push('<span class="' + (late ? "hot" : "") + '">' + esc(rush) + "</span>");
+  if (Number(e.rain) >= 1) chips.push('<span class="rn">مطرٌ متوقّع ' + Number(e.rain) + " ملم</span>");
+  if (chips.length) h += '<div class="ev-cp">' + chips.join("") + "</div>";
+  const hasZ = !!zs || !!(e.wx && Array.isArray(e.wx.z) && e.wx.z.length);
+  let tab = _evTabGet();
+  if (tab !== "zones" || !hasZ) tab = "list";
+  if (hasZ) {
+   h += '<div class="ev-tabs" role="tablist">' + '<button role="tab" class="' + (tab === "list" ? "on" : "") + '" onclick="eveTab(\'list\')">المناداة' + (waitAll.length ? " <b>" + waitAll.length + "</b>" : "") + "</button>" + '<button role="tab" class="' + (tab === "zones" ? "on" : "") + '" onclick="eveTab(\'zones\')">الجهات والطقس' + (hot.length ? " <b>" + hot.length + "</b>" : "") + "</button>" + "</div>";
+  }
+  if (tab === "zones") h += _evZoneTab(e, zs, am, now); else {
+   if (_eveZone >= 0 && zs) {
+    const c = _EVZC[_eveZone % _EVZC.length], z = zs[_eveZone];
+    h += '<div class="ev-fz" style="--zc:' + c[0] + ";--zl:" + c[1] + '"><span>منتظمو ' + esc(z.name) + " (" + wait.length + ")" + (z.gap > 0 ? " · ينقصها " + z.gap : "") + '</span><button onclick="eveZone(-1)">الكلّ ✕</button></div>';
+   }
+   if (wait.length) {
+    const shown = _eveMore ? wait : wait.slice(0, 8);
+    h += '<div class="ev-st">' + (ok ? "الباقون من منتظمي " + part + " — إن احتجتم المزيد" : "راسلوا منتظمي " + part + (late ? "" : " قبل الزحمة")) + "<small>لم يدخلوا بعد · المتأخّرون عن موعدهم أوّلاً · النقاط أيّامه " + partAdv + " من آخر 14</small></div>";
+    h += shown.map(x => {
+     const p = String(x.p), d = Math.max(0, Math.min(14, Number(x.d) || 0)), nm = String(x.n || "0" + p), sent = called[p], zi = Number(x.z);
+     const zc = zs && zi >= 0 && zs[zi] ? _EVZC[zi % _EVZC.length] : null;
+     let dots = "";
+     for (let i = 0; i < 14; i++) dots += "<i" + (i < d ? ' class="f"' : "") + "></i>";
+     const seen = _evSeen(p, now);
+     return '<div class="ev-r' + (sent ? " sent" : "") + '"' + (zc ? ' style="--zc:' + zc[0] + ";--zl:" + zc[1] + '"' : "") + '><div class="ev-av">' + esc(nm.trim().charAt(0) || "؟") + "</div>" + '<div class="ev-i"><div class="ev-n">' + esc(nm) + "</div>" + '<div class="ev-m"><span class="ev-d" title="' + d + ' من 14">' + dots + "</span><span>" + d + "/14</span>" + (due[p] ? due[p][1] : "") + (zc && _eveZone < 0 ? '<span class="ev-tg zn">' + esc(zs[zi].name) + "</span>" : "") + (seen ? "<span>" + esc(seen) + "</span>" : "") + "</div></div>" + '<button class="ev-wa" onclick="eveDial(\'' + esc(p) + "','" + esc(day) + "')\">" + (sent ? "رُوسل " + _evClock(Number(sent)) : "واتساب") + "</button></div>";
+    }).join("");
+    if (wait.length > 8) h += '<button class="ev-mo" onclick="eveMore()">' + (_eveMore ? "عرض أوّل 8 فقط" : "عرض الباقين (" + (wait.length - 8) + ")") + "</button>";
+   } else if (_eveZone >= 0) h += '<div class="ev-st">لا منتظمين لهذه الجهة في القائمة الآن.</div>'; else if (!back.length) h += '<div class="ev-st">لا أسماء متاحة الآن.</div>';
+   if (back.length && _eveZone < 0) h += '<div class="ev-bk"><b>دخلوا الميدان بعد النداء (' + back.length + "):</b> " + back.map(x => "<span>✓ " + esc(String(x.n || "0" + x.p)) + "</span>").join("") + "</div>";
+  }
+  h += "</div>";
+ }
+ h += "</div>";
+ if (h !== _eveHtml) {
+  b.innerHTML = h;
+  _eveHtml = h;
+ }
  b.style.display = "";
+ _eveT = setTimeout(paintEve, 3e4);
 }
 
 function paintEmg() {
