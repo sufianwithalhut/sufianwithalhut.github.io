@@ -18,7 +18,7 @@ try {
 <meta charset="UTF-8">
 <meta name="robots" content="noindex, nofollow">
 <script>
-const ADMIN_APP_VERSION = "5.9-NonUrgent";
+const ADMIN_APP_VERSION = "6.0-Contracts";
 
 try {
  if (localStorage.getItem("hut_adm_version") !== ADMIN_APP_VERSION) {
@@ -408,6 +408,7 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
   background:var(--sky-l);color:var(--sky);flex-shrink:0;font-size:18px;}
 .ec-n{font-size:.86rem;font-weight:900;color:var(--ink);margin-bottom:1px;}
 .ec-ph{font-size:.7rem;font-weight:700;color:var(--ink4);direction:ltr;margin-bottom:6px;}
+.ec-sg{direction:rtl;font-weight:800}.ec-sg.ok{color:#15803d}.ec-sg.no{color:#be123c}   
 .ls{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:9px;}
 .lm{background:var(--base2);border-radius:10px;padding:7px 8px;
   border:1px solid var(--line2);text-align:center;transition:background .3s;}
@@ -1345,6 +1346,7 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
         <button class="fp fa" onclick="setSF('RES','inactive',this)">استراحة <span class="fc" id="br-inactive">0</span></button>
         <button class="fp fr" onclick="setSF('RES','banned',this)">موقوف <span class="fc" id="br-banned">0</span></button>
         <button class="fp" onclick="setSF('RES','deleted',this)" title="المحذوفة — ✓ يعيد تفعيلها">🗑 محذوف <span class="fc" id="br-deleted">0</span></button>
+        <button class="fp fr" onclick="setSF('RES','unsigned',this)" title="المطاعم المفعّلة وفي الاستراحة بلا عقدٍ موقّع — الأكثر طلباً أوّلاً">✍️ غير موقّع <span class="fc" id="br-unsigned">…</span></button>
       </div>
       <div class="eg" id="resList"></div>
     </div>
@@ -3243,6 +3245,14 @@ function updBadges(type, list) {
   const el = document.getElementById(p + "-" + k);
   if (el) el.textContent = cnt[k];
  });
+ if (type === "RES" && _ctMap) {
+  let u = 0;
+  list.slice(1).forEach(i => {
+   if (ctOpen(i[R.STATUS]) && !ctOf(nP(i[2]))) u++;
+  });
+  const ue = document.getElementById("br-unsigned");
+  if (ue) ue.textContent = u;
+ }
 }
 
 function patchCards(type) {
@@ -3287,6 +3297,14 @@ function filtEnt(type) {
  } else if (filter === "mostDebt") {
   const lM = type === "RES" ? liveLed.restaurants : liveLed.drivers;
   list.sort((a, b) => (lM?.[nP(b[2])]?.debt || 0) - (lM?.[nP(a[2])]?.debt || 0));
+ } else if (filter === "unsigned" && type === "RES") {
+  if (!_ctMap) {
+   ctLoad();
+   cont.innerHTML = `<div class="empty-s" style="grid-column:1/-1"><div class="es-ic">⏳</div><div class="es-t">جاري تحميل العقود…</div></div>`;
+   return;
+  }
+  const lM = liveLed.restaurants;
+  list = list.filter(i => ctOpen(i[R.STATUS]) && !ctOf(nP(i[2]))).sort((a, b) => (lM?.[nP(b[2])]?.completed_orders || 0) - (lM?.[nP(a[2])]?.completed_orders || 0));
  } else if (filter === "pending" || filter === "waiting") list = list.filter(i => (type === "RES" ? i[R.STATUS] : i[D.STATUS]) === "pending" || (type === "RES" ? i[R.STATUS] : i[D.STATUS]) === "waiting"); else if (filter === "active" && type === "DRV") list = list.filter(i => i[D.STATUS] === "active" && actDrv.has(nP(i[D.PHONE]))); else if ([ "active", "inactive", "banned" ].includes(filter)) list = list.filter(i => (type === "RES" ? i[R.STATUS] : i[D.STATUS]) === filter);
  updBadges(type, type === "RES" ? gD.restaurants : gD.drivers);
  if (!list.length) {
@@ -3370,7 +3388,7 @@ function filtEnt(type) {
    return;
   }
   const pj = ej(phone);
-  const html = `<div id="${cid}" class="ec ec-${status}">\n      ${extra}\n      <div class="ec-top">\n        <div class="ec-av">${type === "DRV" && drvPhoto[n] ? `<img src="${esc(drvPhoto[n])}" alt="" loading="lazy" style="width:100%;height:100%;border-radius:inherit;object-fit:cover">` : type === "RES" ? "🍽" : "🛵"}</div>\n        <span class="sp ${spC}">${esc(spL)}</span>\n      </div>\n      <div class="ec-n">${esc(name)}</div>\n      <div class="ec-ph">${esc(phone)}</div>\n      ${type === "RES" ? `<div class="ec-ph" id="hold-${n}" style="display:none;color:#7A4F00;font-weight:800"></div>` : ""}\n      ${type === "DRV" ? `<div class="ec-ph sh-click" style="color:#0369a1;font-weight:700" title="تعديل الشفت — ساعة البدء والمدّة" onclick="opShift('${pj}')">🕐 ${drvShift[n] ? esc(drvShift[n]) : "بلا موعد — اضغط للتحديد"}</div>` : ""}\n      <div class="ls">\n        <div class="lm"><div class="lv b ls-ord">${orders.toLocaleString("ar-EG")}</div><div class="ll">طلبات منجزة</div></div>\n        <div class="lm"><div class="lv r ls-debt">${debt.toLocaleString("ar-EG")} د.ع</div><div class="ll">عمولة مستحقة</div></div>\n      </div>\n      <div class="ec-acts">\n        <div style="display:flex;gap:4px">\n          <button class="ea ea-a" title="تفعيل"   onclick="doAct('ACCEPT','${type}','${pj}',this)">✓</button>\n          <button class="ea ea-p" title="استراحة" onclick="doAct('PAUSE','${type}','${pj}',this)">⏸</button>\n          <button class="ea ea-b" title="حظر"      onclick="doAct('BAN','${type}','${pj}',this)">🚫</button>\n          ${type === "DRV" ? `<button class="ea" title="${ldrSet.has(n) ? "إلغاء صفة الليدر" : "جعله ليدر"}" style="background:${ldrSet.has(n) ? "#7c3aed" : "#e2e8f0"};color:${ldrSet.has(n) ? "#fff" : "#64748b"}" onclick="toggleLeader('${pj}',${ldrSet.has(n) ? "false" : "true"},this)">&#128081;</button>${ldrSet.has(n) ? `<button class="ea" title="مدّة نافذة هذا الليدر" style="background:#ede9fe;color:#7c3aed" onclick="pickLeaderHours('${pj}')">⏱</button>` : ""}` : ""}\n          ${type === "RES" ? `<button class="ea ea-pref" title="كباتن المطعم الثابتون" style="background:${prefCount[n] ? "#0ea5e9" : "#e2e8f0"};color:${prefCount[n] ? "#fff" : "#64748b"}" onclick="opPref('${pj}')">&#127869;</button>` : ""}\n          <button class="ea ea-d" title="حذف"      onclick="doAct('DEL','${type}','${pj}',this)">🗑</button>\n          <button class="ea ea-e" title="تعديل"   onclick="opEdit('${type}','${pj}')">✏️</button>\n        </div>\n        <div style="display:flex;gap:4px">\n          <button class="ea ea-money" title="تصفير"  onclick="rstDebt('${type}','${pj}',this)">💵</button>\n          ${type === "DRV" ? `<button class="ea" title="فتح الشفت — يبدأ شفتاً جديداً اليوم" style="background:#f59e0b;color:#fff" onclick="rstShift('${pj}',this)">🔓</button><button class="ea" title="تعديل الشفت — ساعة البدء والمدّة" style="background:var(--sky);color:#fff" onclick="opShift('${pj}')">🕐</button><button class="ea" title="${_lastLocs && _lastLocs[n] && _lastLocs[n].vehicle === "car" ? "كابتن سيارة — اضغط لإعادته دراجة" : "اجعله كابتن سيارة (تصله طلبات السيارة، والطلبات العاديّة كغيره)"}" style="background:${_lastLocs && _lastLocs[n] && _lastLocs[n].vehicle === "car" ? "#0ea5e9" : "#cbd5e1"};color:#fff" onclick="setVehicle('${pj}',this)">🚗</button>` : ``}\n          <button class="ea ea-c" title="اتصال"   onclick="window.open('tel:${pj}')">📞</button>\n        </div>\n      </div>\n    </div>`;
+  const html = `<div id="${cid}" class="ec ec-${status}">\n      ${extra}\n      <div class="ec-top">\n        <div class="ec-av">${type === "DRV" && drvPhoto[n] ? `<img src="${esc(drvPhoto[n])}" alt="" loading="lazy" style="width:100%;height:100%;border-radius:inherit;object-fit:cover">` : type === "RES" ? "🍽" : "🛵"}</div>\n        <span class="sp ${spC}">${esc(spL)}</span>\n      </div>\n      <div class="ec-n">${esc(name)}</div>\n      <div class="ec-ph">${esc(phone)}</div>\n      ${type === "RES" ? `<div class="ec-ph" id="hold-${n}" style="display:none;color:#7A4F00;font-weight:800"></div>` : ""}\n      ${type === "RES" ? `<div class="ec-ph ec-sg" id="sg-${n}" style="display:none"></div>` : ""}\n      ${type === "DRV" ? `<div class="ec-ph sh-click" style="color:#0369a1;font-weight:700" title="تعديل الشفت — ساعة البدء والمدّة" onclick="opShift('${pj}')">🕐 ${drvShift[n] ? esc(drvShift[n]) : "بلا موعد — اضغط للتحديد"}</div>` : ""}\n      <div class="ls">\n        <div class="lm"><div class="lv b ls-ord">${orders.toLocaleString("ar-EG")}</div><div class="ll">طلبات منجزة</div></div>\n        <div class="lm"><div class="lv r ls-debt">${debt.toLocaleString("ar-EG")} د.ع</div><div class="ll">عمولة مستحقة</div></div>\n      </div>\n      <div class="ec-acts">\n        <div style="display:flex;gap:4px">\n          <button class="ea ea-a" title="تفعيل"   onclick="doAct('ACCEPT','${type}','${pj}',this)">✓</button>\n          <button class="ea ea-p" title="استراحة" onclick="doAct('PAUSE','${type}','${pj}',this)">⏸</button>\n          <button class="ea ea-b" title="حظر"      onclick="doAct('BAN','${type}','${pj}',this)">🚫</button>\n          ${type === "DRV" ? `<button class="ea" title="${ldrSet.has(n) ? "إلغاء صفة الليدر" : "جعله ليدر"}" style="background:${ldrSet.has(n) ? "#7c3aed" : "#e2e8f0"};color:${ldrSet.has(n) ? "#fff" : "#64748b"}" onclick="toggleLeader('${pj}',${ldrSet.has(n) ? "false" : "true"},this)">&#128081;</button>${ldrSet.has(n) ? `<button class="ea" title="مدّة نافذة هذا الليدر" style="background:#ede9fe;color:#7c3aed" onclick="pickLeaderHours('${pj}')">⏱</button>` : ""}` : ""}\n          ${type === "RES" ? `<button class="ea ea-pref" title="كباتن المطعم الثابتون" style="background:${prefCount[n] ? "#0ea5e9" : "#e2e8f0"};color:${prefCount[n] ? "#fff" : "#64748b"}" onclick="opPref('${pj}')">&#127869;</button>` : ""}\n          <button class="ea ea-d" title="حذف"      onclick="doAct('DEL','${type}','${pj}',this)">🗑</button>\n          <button class="ea ea-e" title="تعديل"   onclick="opEdit('${type}','${pj}')">✏️</button>\n        </div>\n        <div style="display:flex;gap:4px">\n          <button class="ea ea-money" title="تصفير"  onclick="rstDebt('${type}','${pj}',this)">💵</button>\n          ${type === "DRV" ? `<button class="ea" title="فتح الشفت — يبدأ شفتاً جديداً اليوم" style="background:#f59e0b;color:#fff" onclick="rstShift('${pj}',this)">🔓</button><button class="ea" title="تعديل الشفت — ساعة البدء والمدّة" style="background:var(--sky);color:#fff" onclick="opShift('${pj}')">🕐</button><button class="ea" title="${_lastLocs && _lastLocs[n] && _lastLocs[n].vehicle === "car" ? "كابتن سيارة — اضغط لإعادته دراجة" : "اجعله كابتن سيارة (تصله طلبات السيارة، والطلبات العاديّة كغيره)"}" style="background:${_lastLocs && _lastLocs[n] && _lastLocs[n].vehicle === "car" ? "#0ea5e9" : "#cbd5e1"};color:#fff" onclick="setVehicle('${pj}',this)">🚗</button>` : ``}\n          <button class="ea ea-c" title="اتصال"   onclick="window.open('tel:${pj}')">📞</button>\n        </div>\n      </div>\n    </div>`;
   cont.insertAdjacentHTML("beforeend", html);
  });
  rendered.forEach(id => {
@@ -3386,7 +3404,52 @@ function filtEnt(type) {
  if (type === "RES") {
   holdListen();
   holdPaintCards();
+  ctLoad();
+  ctPaintCards();
  }
+}
+
+let _ctMap = null, _ctAt = 0, _ctBusy = false;
+
+const ctOf = n => _ctMap && _ctMap[n];
+
+const ctOpen = st => st !== "deleted" && st !== "banned" && st !== "pending" && st !== "waiting";
+
+function ctLoad() {
+ if (_ctBusy || _ctMap && Date.now() - _ctAt < 6e5) return;
+ _ctBusy = true;
+ db.ref("res_contracts").once("value").then(s => {
+  _ctMap = s.val() || {};
+  _ctAt = Date.now();
+  if (gD) updBadges("RES", gD.restaurants);
+  if (resSF === "unsigned") filtEnt("RES"); else ctPaintCards();
+ }).catch(e => {
+  console.warn("res_contracts:", e && e.message);
+  if (!_ctMap) _ctMap = {};
+ }).finally(() => {
+  _ctBusy = false;
+ });
+}
+
+function ctPaintCards() {
+ if (!_ctMap) return;
+ document.querySelectorAll("[id^='sg-']").forEach(el => {
+  const c = ctOf(el.id.slice(3));
+  if (c) {
+   el.style.display = "";
+   el.className = "ec-ph ec-sg ok";
+   el.textContent = "✍️ عقدٌ موقّع" + (c.d ? " · " + c.d : "");
+   el.title = c.t ? "الاتّفاق في العقد: " + c.t : "";
+  } else if (resSF === "unsigned") {
+   el.style.display = "";
+   el.className = "ec-ph ec-sg no";
+   el.textContent = "✍️ بلا عقدٍ موقّع";
+   el.title = "";
+  } else {
+   el.style.display = "none";
+   el.textContent = "";
+  }
+ });
 }
 
 window.pickLeaderHours = async function(pj) {
