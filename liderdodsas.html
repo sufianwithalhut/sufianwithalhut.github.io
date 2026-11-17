@@ -2690,8 +2690,13 @@ window.insPayOpen = async function(phone) {
   alert(nm + ": " + (info.left ? "ترك العمل — تأمينه عند الإدارة." : info.exempt ? "مُعفى من التأمين." : "اكتمل تأمينه (" + fmt(info.paid) + " د.ع)."));
   return;
  }
- const def = Math.min(room, info.owed > 0 ? info.owed : info.weekly || 1e4);
- const raw = prompt("💵 استلام تأمين — " + nm + "\nالمدفوع: " + fmt(info.paid) + " من " + fmt(info.target) + " د.ع" + (info.owed > 0 ? "\nالمتأخّر عليه: " + fmt(info.owed) + " د.ع" : "") + "\n\nالمبلغ المستلَم (د.ع):", String(def));
+ const weekly = Number(info.weekly) || 1e4;
+ const def = Math.min(room, weekly);
+ const wk = n => {
+  const w = Math.round(n / weekly);
+  return w === 1 ? "أسبوع" : w === 2 ? "أسبوعان" : w + " أسابيع";
+ };
+ const raw = prompt("💵 استلام تأمين — " + nm + "\nالمدفوع: " + fmt(info.paid) + " من " + fmt(info.target) + " د.ع" + (info.owed > 0 ? "\nالمتأخّر عليه: " + fmt(info.owed) + " د.ع (" + wk(info.owed) + ")" : "") + "\n\nاكتب المبلغ الذي استلمته بيدك الآن (د.ع):", String(def));
  if (raw === null) return;
  const amount = Math.round(Number(String(raw).replace(/[^\d]/g, "")));
  if (!(amount >= 1e3)) {
@@ -2702,19 +2707,28 @@ window.insPayOpen = async function(phone) {
   alert("المبلغ أكبر من المتبقّي (" + fmt(room) + " د.ع).");
   return;
  }
+ if (amount > weekly && !confirm("⚠️ انتبه: " + fmt(amount) + " د.ع أكثر من أسبوعٍ واحد (" + fmt(weekly) + " د.ع).\n\nهل استلمتَ " + fmt(amount) + " د.ع نقداً من " + nm + " فعلاً؟\n\nإن استلمتَ " + fmt(weekly) + " فقط فاضغط «إلغاء» واكتب المبلغ الصحيح.")) return;
  if (!confirm("تأكيد استلام " + fmt(amount) + " د.ع من " + nm + "؟\n\nيُحسب للكابتن الآن (ويُرفع منعه إن كان موقوفاً بسبب التأمين)، ويصير المبلغ ذمّةً عليك حتى تسلّمه للإدارة.")) return;
  const cid = "insp_" + nP(EMP_PHONE || "") + "_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+ let again = false;
  for (let i = 0; i < 2; i++) {
   try {
    const d = await staffAction({
     action: "STAFF_INS_PAY",
     driverPhone: p,
     amount: amount,
-    cid: cid
+    cid: cid,
+    again: again
    });
    if (d && d.success) {
     toast("✅ سُجّل استلام " + fmt(d.amount || amount) + " د.ع من " + nm + " — ذمّةٌ عليك للإدارة");
     return;
+   }
+   if (d && d.recent && !again) {
+    if (!confirm("⚠️ " + d.msg + "\n\nهل هذه دفعةٌ ثانية استلمتها من " + nm + " فعلاً؟\n\nاضغط «إلغاء» إن كانت ضغطةً مكرّرة بالخطأ.")) return;
+    again = true;
+    i = -1;
+    continue;
    }
    alert(d && d.msg || "تعذّر التسجيل.");
    return;
