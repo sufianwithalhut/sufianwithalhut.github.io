@@ -8465,4 +8465,262 @@ document.addEventListener("visibilitychange", () => {
  _flSync();
 });
 </script>
+<script>
+(function() {
+ const LS_KEY = "office_rec_dev";
+ try {
+  const q = new URLSearchParams(location.search).get("office");
+  if (q === "1" && !localStorage.getItem(LS_KEY)) localStorage.setItem(LS_KEY, Math.random().toString(36).slice(2, 10).padEnd(8, "0"));
+  if (q === "0") localStorage.removeItem(LS_KEY);
+ } catch (e) {}
+ let DEV = null;
+ try {
+  DEV = localStorage.getItem(LS_KEY);
+ } catch (e) {}
+ if (!DEV || !/^[a-z0-9]{6,16}$/.test(DEV)) return;
+ const SEG_MS = window.__officeSegMs || 10 * 60 * 1e3;
+ let on = false, uid = "", stream = null, rec = null, chunks = [], segStart = 0, segTimer = null, st = "", lastErr = "", retryT = null;
+ let actx = null, anl = null, lvT = null, lvSum = 0, lvN = 0, lvMax = 0;
+ const queue = [];
+ const bizDay = ms => new Date(ms - 36e5).toISOString().slice(0, 10);
+ const hms = ms => new Date(ms + 3 * 36e5).toISOString().slice(11, 19).replace(/:/g, "");
+ let badge = null;
+ function paint() {
+  if (!badge) {
+   badge = document.createElement("div");
+   badge.id = "officeRecBadge";
+   badge.style.cssText = "position:fixed;bottom:10px;left:10px;z-index:9998;border-radius:20px;padding:6px 13px;font-weight:800;font-size:.74rem;line-height:1.4;box-shadow:0 2px 8px rgba(0,0,0,.25);direction:rtl;pointer-events:none";
+   document.body.appendChild(badge);
+  }
+  const txt = {
+   rec: "🔴 🎙️ المكتب مُسجَّل لضمان جودة العمل",
+   denied: "🎙️ التسجيل ينتظر إذن الميكروفون — «سماح» في شريط العنوان",
+   no_mic: "🎙️ لا ميكروفون في هذا الحاسوب",
+   err: "🎙️ تعذّر التسجيل — يُعاد تلقائيّاً"
+  }[st];
+  if (!on || !txt) {
+   badge.style.display = "none";
+   return;
+  }
+  badge.style.display = "";
+  badge.textContent = txt;
+  badge.style.background = st === "rec" ? "#7f1d1d" : "#475569";
+  badge.style.color = "#fff";
+ }
+ function beat() {
+  if (!uid) return;
+  try {
+   db.ref("office_rec/dev/" + DEV).set({
+    at: firebase.database.ServerValue.TIMESTAMP,
+    st: st || "off",
+    by: uid,
+    err: String(lastErr || "").slice(0, 120)
+   }).catch(() => {});
+  } catch (e) {}
+ }
+ function setSt(s, err) {
+  if (s === st && !err) return;
+  st = s;
+  lastErr = err || "";
+  paint();
+  beat();
+ }
+ function levelStart() {
+  try {
+   actx = actx || new (window.AudioContext || window.webkitAudioContext);
+   const src = actx.createMediaStreamSource(stream);
+   anl = actx.createAnalyser();
+   anl.fftSize = 1024;
+   src.connect(anl);
+   const buf = new Uint8Array(anl.fftSize);
+   clearInterval(lvT);
+   lvT = setInterval(() => {
+    if (!anl || actx.state !== "running") return;
+    anl.getByteTimeDomainData(buf);
+    let s = 0;
+    for (let i = 0; i < buf.length; i++) {
+     const v = (buf[i] - 128) / 128;
+     s += v * v;
+    }
+    const r = Math.min(100, Math.round(Math.sqrt(s / buf.length) * 300));
+    lvSum += r;
+    lvN++;
+    if (r > lvMax) lvMax = r;
+   }, 1e3);
+   if (actx.state !== "running") document.addEventListener("pointerdown", () => {
+    try {
+     actx.resume();
+    } catch (e) {}
+   }, {
+    once: true
+   });
+  } catch (e) {}
+ }
+ let _stLib = null;
+ function storageLib() {
+  if (firebase.storage) return Promise.resolve();
+  if (_stLib) return _stLib;
+  _stLib = new Promise((ok, bad) => {
+   const s = document.createElement("script");
+   s.src = "https://www.gstatic.com/firebasejs/9.22.2/firebase-storage-compat.js";
+   s.onload = ok;
+   s.onerror = () => {
+    _stLib = null;
+    bad(new Error("storage lib"));
+   };
+   document.head.appendChild(s);
+  });
+  return _stLib;
+ }
+ async function upload(c) {
+  await storageLib();
+  const path = "office_audio/" + c.day + "/" + c.id + ".webm";
+  await firebase.storage().ref(path).put(c.blob, {
+   contentType: "audio/webm",
+   customMetadata: {
+    dev: DEV,
+    by: c.by
+   }
+  });
+  await db.ref("office_rec/clips/" + c.day + "/" + c.id).set({
+   t: c.t,
+   d: c.d,
+   s: c.blob.size,
+   lv: c.lv,
+   pk: c.pk,
+   by: c.by,
+   dev: DEV
+  });
+ }
+ async function flush() {
+  while (queue.length) {
+   try {
+    await upload(queue[0]);
+    queue.shift();
+    lastErr = "";
+    beat();
+   } catch (e) {
+    lastErr = "upload: " + (e && (e.code || e.message) || e);
+    beat();
+    return;
+   }
+  }
+ }
+ setInterval(() => {
+  if (queue.length) flush();
+ }, 6e4);
+ function segment() {
+  if (!stream || !on) return;
+  let mime = "audio/webm;codecs=opus";
+  try {
+   if (!MediaRecorder.isTypeSupported(mime)) mime = "audio/webm";
+  } catch (e) {}
+  try {
+   rec = new MediaRecorder(stream, {
+    mimeType: mime,
+    audioBitsPerSecond: 24e3
+   });
+  } catch (e) {
+   setSt("err", "recorder: " + (e && e.message || e));
+   return;
+  }
+  chunks = [];
+  segStart = Date.now();
+  lvSum = 0;
+  lvN = 0;
+  lvMax = 0;
+  const by = uid;
+  rec.ondataavailable = e => {
+   if (e.data && e.data.size) chunks.push(e.data);
+  };
+  rec.onstop = () => {
+   const t = segStart, d = Math.round((Date.now() - t) / 1e3), blob = new Blob(chunks, {
+    type: "audio/webm"
+   });
+   chunks = [];
+   if (blob.size > 2e3 && d >= 3) {
+    queue.push({
+     blob: blob,
+     t: t,
+     d: d,
+     day: bizDay(t),
+     id: hms(t) + "_" + DEV,
+     by: by,
+     lv: lvN ? Math.round(lvSum / lvN) : -1,
+     pk: lvN ? lvMax : -1
+    });
+    while (queue.length > 6) queue.shift();
+    flush();
+   }
+   if (on && stream) segment();
+  };
+  rec.start();
+  clearTimeout(segTimer);
+  segTimer = setTimeout(() => {
+   try {
+    if (rec && rec.state !== "inactive") rec.stop();
+   } catch (e) {}
+  }, SEG_MS);
+  setSt("rec");
+ }
+ async function start() {
+  if (stream || !on) return;
+  clearTimeout(retryT);
+  try {
+   stream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+     channelCount: 1,
+     echoCancellation: false,
+     noiseSuppression: false,
+     autoGainControl: true
+    }
+   });
+  } catch (e) {
+   stream = null;
+   const n = e && e.name || "";
+   setSt(n === "NotAllowedError" || n === "SecurityError" ? "denied" : n === "NotFoundError" || n === "OverconstrainedError" ? "no_mic" : "err", n + ": " + (e && e.message || ""));
+   retryT = setTimeout(start, 5 * 6e4);
+   return;
+  }
+  if (!on) {
+   stream.getTracks().forEach(t => t.stop());
+   stream = null;
+   return;
+  }
+  stream.getAudioTracks().forEach(t => t.onended = () => {
+   stream = null;
+   setSt("no_mic", "track ended");
+   retryT = setTimeout(start, 6e4);
+  });
+  levelStart();
+  segment();
+ }
+ function stop() {
+  clearTimeout(segTimer);
+  clearTimeout(retryT);
+  const s = stream;
+  stream = null;
+  try {
+   if (rec && rec.state !== "inactive") rec.stop();
+  } catch (e) {}
+  if (s) s.getTracks().forEach(t => t.stop());
+  clearInterval(lvT);
+  setSt("off");
+ }
+ window.addEventListener("pagehide", () => {
+  try {
+   if (rec && rec.state !== "inactive") rec.stop();
+  } catch (e) {}
+ });
+ auth.onAuthStateChanged(u => {
+  if (!u || uid) return;
+  uid = u.uid;
+  db.ref("office_rec/on").on("value", s => {
+   on = s.val() === true;
+   paint();
+   if (on) start(); else stop();
+  }, () => {});
+ });
+})();
+</script>
 </html>
