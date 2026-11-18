@@ -7195,13 +7195,38 @@ window.ittStatsLoad = async function(d) {
   const pct = (a, b) => b ? Math.round(a * 100 / b) + "%" : "—";
   const decided = r.n - r.live, okR = r.n ? pct(r.done, decided || r.n) : "—";
   const box = (lbl, val, sub, col) => '<div style="flex:1;min-width:120px;border:1px solid var(--line2);border-radius:12px;padding:10px 12px;background:var(--base)"><div style="font-size:.74rem;color:var(--mute);font-weight:700">' + lbl + '</div><div style="font-size:1.25rem;font-weight:900;' + (col ? "color:" + col : "") + '">' + val + "</div>" + (sub ? '<div style="font-size:.7rem;color:var(--mute)">' + sub + "</div>" : "") + "</div>";
+  const H = r.hits || {}, hk = Object.keys(H).sort((a, b) => (H[b].v || 0) - (H[a].v || 0)), T = {
+   v: 0,
+   cart: 0,
+   co: 0,
+   sent: 0
+  };
+  hk.forEach(k => [ "v", "cart", "co", "sent" ].forEach(f => T[f] += Number(H[k][f]) || 0));
+  const fun = x => "زيارة " + N(x.v) + " ← أضاف للسلّة " + N(x.cart) + " ← فتح الإتمام " + N(x.co) + " ← أرسل " + N(x.sent);
+  const visits = '<div style="margin-bottom:10px;line-height:2;font-size:.84rem;border:1px solid var(--line2);border-radius:12px;padding:8px 12px;background:var(--base)"><b>👣 الزوّار:</b> ' + (T.v ? fun(T) : "لا زيارات مسجَّلة بعد في هذه الفترة (العدّاد بدأ 18-11)") + hk.map(k => '<br><span style="color:var(--mute)">' + ittE(ITT_SRCN[k] || (k === "direct" ? "دخول مباشر" : k)) + ":</span> " + fun(H[k])).join("") + "</div>";
   if (!r.n) {
-   bx.innerHTML = '<div style="color:var(--mute)">لا طلبات في هذه الفترة' + (ITTA && ITTA.cfg && !ITTA.cfg.live ? " — الاتحاد مغلقٌ للزبائن بعد." : ".") + "</div>";
+   bx.innerHTML = visits + '<div style="color:var(--mute)">لا طلبات في هذه الفترة' + (ITTA && ITTA.cfg && !ITTA.cfg.live ? " — الاتحاد مغلقٌ للزبائن بعد." : ".") + "</div>";
    return;
   }
+  const CXN = {
+   edit: "عدّل طلبه",
+   mind: "غيّر رأيه",
+   phone: "سيطلب بالهاتف",
+   fee: "الأجرة عالية",
+   slow: "تأخّر ردّ المطعم",
+   mistake: "أرسله بالخطأ",
+   other: "سببٌ آخر",
+   "?": "بلا سبب (قبل 18-11)"
+  };
+  const cxs = (r.cx_s || []).slice().sort((a, b) => a - b), cxMed = cxs.length ? cxs[Math.floor(cxs.length / 2)] : null;
+  const cxw = Object.keys(r.cxw || {}).sort((a, b) => r.cxw[b] - r.cxw[a]).map(k => ittE(CXN[k] || k) + " " + r.cxw[k]).join(" · ");
+  const lost = (r.lost || []).map(x => ittE(x.store) + ' <span style="color:var(--mute)">' + new Date(x.at).toLocaleDateString("en-GB", {
+   day: "2-digit",
+   month: "2-digit"
+  }) + " · " + N(x.sub) + "</span>").join(" · ");
   const acc = r.acc_avg_s == null ? "—" : r.acc_avg_s < 60 ? r.acc_avg_s + " ث" : Math.round(r.acc_avg_s / 6) / 10 + " د";
   const src = Object.keys(r.src || {}).sort((a, b) => r.src[b] - r.src[a]).map(k => ittE(ITT_SRCN[k] || k) + " " + r.src[k]).join(" · ");
-  bx.innerHTML = '<div style="display:flex;gap:8px;flex-wrap:wrap">' + box("الطلبات", N(r.n), N(r.custs) + " زبون") + box("وصلت", N(r.done), "نسبة النجاح " + okR, "var(--jade)") + box("زمن قرار المطعم", acc, "متوسّط القبول") + box("مبيعات المطاعم", N(r.sub) + " د.ع", "أجور التوصيل " + N(r.fee)) + '</div><div style="margin-top:10px;line-height:2;font-size:.84rem">' + "<b>لم تكتمل:</b> اعتذر المطعم " + N(r.declined) + " · لم يردّ المطعم " + N(r.timeout) + " · ألغى الزبون " + N(r.customer) + " · انتهت صلاحيّته " + N(r.expired) + " · أخرى " + N(r.other) + (r.live ? " · <b>قيد التنفيذ " + N(r.live) + "</b>" : "") + (r.refused || r.reported ? '<br><b style="color:var(--rose)">بلاغات:</b> رفض الاستلام (كابتن) ' + N(r.refused) + " · زبونٌ وهميّ (مطعم) " + N(r.reported) : "") + (src ? "<br><b>من أين جاءت:</b> " + src : "") + "<br><b>المتاجر:</b> " + (r.stores || []).map(x => ittE(x.name || x.res) + " " + x.done + "/" + x.n + (x.miss ? ' <span style="color:var(--rose)">(لم يردّ ' + x.miss + ")</span>" : "")).join(" · ") + "</div>";
+  bx.innerHTML = visits + '<div style="display:flex;gap:8px;flex-wrap:wrap">' + box("الطلبات", N(r.n), N(r.custs) + " زبون") + box("وصلت", N(r.done), "نسبة النجاح " + okR, "var(--jade)") + box("زمن قرار المطعم", acc, "متوسّط القبول") + box("مبيعات المطاعم", N(r.sub) + " د.ع", "أجور التوصيل " + N(r.fee)) + '</div><div style="margin-top:10px;line-height:2;font-size:.84rem">' + "<b>لم تكتمل:</b> اعتذر المطعم " + N(r.declined) + " · لم يردّ المطعم " + N(r.timeout) + " · ألغى الزبون " + N(r.customer) + " · انتهت صلاحيّته " + N(r.expired) + " · أخرى " + N(r.other) + (r.live ? " · <b>قيد التنفيذ " + N(r.live) + "</b>" : "") + (r.refused || r.reported ? '<br><b style="color:var(--rose)">بلاغات:</b> رفض الاستلام (كابتن) ' + N(r.refused) + " · زبونٌ وهميّ (مطعم) " + N(r.reported) : "") + (cxw ? "<br><b>لماذا ألغى الزبون:</b> " + cxw + (cxMed != null ? ' <span style="color:var(--mute)">(بعد ' + cxMed + " ث من الإرسال عادةً)</span>" : "") : "") + (lost ? '<br><b style="color:var(--rose)">قبلها المطعم ثمّ لم تكتمل:</b> ' + lost : "") + (src ? "<br><b>من أين جاءت:</b> " + src : "") + "<br><b>المتاجر:</b> " + (r.stores || []).map(x => ittE(x.name || x.res) + " " + x.done + "/" + x.n + (x.miss ? ' <span style="color:var(--rose)">(لم يردّ ' + x.miss + ")</span>" : "")).join(" · ") + "</div>";
  } catch (e) {
   bx.textContent = "⚠️ تعذّر: " + (e && e.message || e);
  }
