@@ -21,7 +21,7 @@
       build.js يرفض البناء عند الاختلاف، وtest_gate يحرسه. فتغيير الإصدار
       يُنشئ كاشاً جديداً ويُسقط القديم عند التفعيل — لا نسختين معاً.
    ═══════════════════════════════════════════════════════════════════════════ */
-const VER   = '32.37-IttMsg';   /* 🛍️ [32.37-IttMsg] دعوة الاتحاد في رسالة الزبون — يساوي CURRENT_APP_VERSION في driver.html */ /* السابق: 32.36-Waze */   /* 🧭 [32.36-Waze] الكابتن يختار تطبيق الملاحة — يساوي CURRENT_APP_VERSION في driver.html */ /* السابق: 32.35-CarRich */   /* 🚗💰 [32.35-CarRich] سطر دخل السيّارة على العرض — يساوي CURRENT_APP_VERSION في driver.html */ /* السابق: 32.34-Card */   /* 🧭 [32.34-Card] بطاقة الطلب «المحطّة الحاليّة» — يساوي CURRENT_APP_VERSION في driver.html */ /* السابق: 32.33-V36 (P16 «طلبك التالي») · 32.32-V36 (دمج F + P4 + P13) */
+const VER   = '32.38-Itt1st';   /* 🎁 [32.38-Itt1st] نصف أجرة أوّل طلب في دعوة الاتحاد — يساوي CURRENT_APP_VERSION في driver.html */ /* السابق: 32.37-IttMsg */   /* 🛍️ [32.37-IttMsg] دعوة الاتحاد في رسالة الزبون — يساوي CURRENT_APP_VERSION في driver.html */ /* السابق: 32.36-Waze */   /* 🧭 [32.36-Waze] الكابتن يختار تطبيق الملاحة — يساوي CURRENT_APP_VERSION في driver.html */ /* السابق: 32.35-CarRich */   /* 🚗💰 [32.35-CarRich] سطر دخل السيّارة على العرض — يساوي CURRENT_APP_VERSION في driver.html */ /* السابق: 32.34-Card */   /* 🧭 [32.34-Card] بطاقة الطلب «المحطّة الحاليّة» — يساوي CURRENT_APP_VERSION في driver.html */ /* السابق: 32.33-V36 (P16 «طلبك التالي») · 32.32-V36 (دمج F + P4 + P13) */
 const CACHE = 'suf-' + VER;
 const SHELL = ['./driver.html'];
 const NET_TIMEOUT_MS = 8000;

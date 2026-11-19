@@ -1517,6 +1517,8 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
       </div>
       <div class="pg-ttl" style="font-size:1rem;margin-top:6px">📊 أداء الاتحاد <span id="ittStDays" style="display:inline-flex;gap:6px;margin-inline-start:8px"></span></div>
       <div class="eg" style="display:block;margin-bottom:12px" id="ittStats"></div>
+      <div class="pg-ttl" style="font-size:1rem;margin-top:6px">🎁 تعويض الكباتن <span style="font-size:.78rem;font-weight:500;color:var(--mute)">— نصف أجرة أوّل طلب: الزبون دفع النصف، والشركة تدفع للكابتن الباقي</span></div>
+      <div class="eg" style="display:block;margin-bottom:12px" id="ittComp"></div>
       <div class="eg" style="display:block;margin-bottom:12px" id="ittCfg"></div>
       <div class="pg-ttl" style="font-size:1rem;margin-top:6px">💬 محادثات الزبائن <span style="font-size:.78rem;font-weight:500;color:var(--mute)">— يردّ عليها فريق الليدرز الأذكياء، والمُحالة لكم بالأحمر</span></div>
       <div class="eg" style="display:block;margin-bottom:12px" id="ittHelp"></div>
@@ -7162,9 +7164,39 @@ window.ittStart = async function() {
   ittHelpLoad();
   ittStatsLoad();
   ittPromoLoad();
+  ittCompLoad();
  } catch (e) {
   if (h) h.textContent = "⚠️ تعذّر التحميل: " + (e && e.message || e);
  }
+};
+
+window.ittCompLoad = async function() {
+ const bx = document.getElementById("ittComp");
+ if (!bx) return;
+ bx.textContent = "…";
+ try {
+  const L = ((await fnCall("ittihadRes", {
+   op: "admin_comp"
+  })).data || {}).list || [], N = v => (Number(v) || 0).toLocaleString("en-US");
+  const due = L.filter(x => x.due > 0), tot = due.reduce((a, x) => a + x.due, 0), paid = L.reduce((a, x) => a + x.paid, 0);
+  bx.innerHTML = due.length ? '<div style="margin-bottom:8px"><b>المستحقّ الآن: ' + N(tot) + " د.ع</b> لـ" + N(due.length) + " كابتن" + (paid ? ' <span style="color:var(--mute)">· دُفع سابقاً ' + N(paid) + "</span>" : "") + "</div>" + due.map(x => '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:6px 0;border-top:1px solid var(--line2)"><span dir="ltr" style="font-weight:800">0' + ittE(x.drv) + "</span><span>" + N(x.n) + " طلب · <b>" + N(x.due) + ' د.ع</b></span><button class="abt" style="height:28px;padding:0 12px;font-size:.76rem" onclick="ittCompPaid(\'' + ittE(x.drv) + "'," + x.due + ')">✅ دُفع</button></div>').join("") : '<span style="color:var(--mute)">لا مستحقّات الآن' + (paid ? " — دُفع حتى الآن " + N(paid) + " د.ع" : "") + ". تظهر هنا عند اكتمال أوّل طلبٍ مخصوم لزبونٍ جديد.</span>";
+ } catch (e) {
+  bx.textContent = "⚠️ تعذّر: " + (e && e.message || e);
+ }
+};
+
+window.ittCompPaid = async function(drv, amt) {
+ if (!confirm("تسجيل دفع " + Number(amt).toLocaleString("en-US") + " د.ع للكابتن 0" + drv + "؟")) return;
+ try {
+  const r = (await fnCall("ittihadRes", {
+   op: "admin_comp_paid",
+   drv: drv
+  })).data;
+  toast && toast("سُجّل: " + r.n + " طلب · " + Number(r.amt).toLocaleString("en-US") + " د.ع");
+ } catch (e) {
+  alert("تعذّر: " + (e && e.message || e));
+ }
+ ittCompLoad();
 };
 
 let ITTS_D = 1;
