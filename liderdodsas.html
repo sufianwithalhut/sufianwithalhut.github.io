@@ -8481,11 +8481,25 @@ document.addEventListener("visibilitychange", () => {
 </script>
 <script>
 (function() {
- const LS_KEY = "office_rec_dev";
+ const LS_KEY = "office_rec_dev", LS_OFF = "office_rec_off";
+ const isComputer = () => {
+  try {
+   const d = navigator.userAgentData;
+   if (d && d.mobile === true) return false;
+  } catch (e) {}
+  const ua = String(navigator.userAgent || "");
+  if (/Android|iPhone|iPad|iPod|Mobile|Silk|Kindle|; wv\)/i.test(ua)) return false;
+  if (/Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1) return false;
+  return /Windows NT|Macintosh|Linux|CrOS/.test(ua);
+ };
  try {
   const q = new URLSearchParams(location.search).get("office");
-  if (q === "1" && !localStorage.getItem(LS_KEY)) localStorage.setItem(LS_KEY, Math.random().toString(36).slice(2, 10).padEnd(8, "0"));
-  if (q === "0") localStorage.removeItem(LS_KEY);
+  if (q === "0") {
+   localStorage.removeItem(LS_KEY);
+   localStorage.setItem(LS_OFF, "1");
+  }
+  if (q === "1") localStorage.removeItem(LS_OFF);
+  if (!localStorage.getItem(LS_KEY) && (q === "1" || !localStorage.getItem(LS_OFF) && isComputer())) localStorage.setItem(LS_KEY, Math.random().toString(36).slice(2, 10).padEnd(8, "0"));
  } catch (e) {}
  let DEV = null;
  try {
@@ -8507,7 +8521,7 @@ document.addEventListener("visibilitychange", () => {
    document.body.appendChild(badge);
   }
   const txt = {
-   rec: "🔴 🎙️ المكتب مُسجَّل لضمان جودة العمل",
+   rec: "🔴 🎙️ الصوت مُسجَّل لضمان جودة العمل",
    denied: "🎙️ التسجيل ينتظر إذن الميكروفون — «سماح» في شريط العنوان",
    no_mic: "🎙️ لا ميكروفون في هذا الحاسوب",
    err: "🎙️ تعذّر التسجيل — يُعاد تلقائيّاً"
