@@ -187,15 +187,49 @@ if (!hash_equals($want, $sig) || abs(round(microtime(true) * 1000) - (int) $ts) 
 $e = json_decode($raw, true);   // $e['ref'], $e['status'], $e['captain']['name']
 http_response_code(200);</code></pre>
 
-<h2>6. الإلغاء — <span class="m">POST</span> <code>/v1/orders/{ref}/cancel</code></h2>
+<h2>6. تعديل الطلب — <span class="m">PUT</span> <code>/v1/orders/{ref}</code></h2>
+<p>قبل أن يستلم الكابتن الطلب عدّلوا ما شئتم: رقم الزبون واسمه، والعنوان والموقع، والأصناف أو التفاصيل، والملاحظة، والمبلغ الذي يُقبض (<code>total</code>). لا حاجة إلى الإلغاء وإعادة الإرسال.</p>
+<p><b>أرسلوا الطلب كاملاً بعد التعديل</b>، بالحقول نفسها في «إرسال طلب»، فيحلّ محلّ القديم. الحقل الذي لا ترسلونه يُحذف من الطلب، مثل الملاحظة أو الموقع. والرقم <code>ref</code> في الرابط لا يتغيّر.</p>
+<ul>
+  <li>يبقى الطلب في مكانه من الدور. وإن كان الكابتن قد قبِله فلا يضيع، ويصله على هاتفه إشعارٌ بما تغيّر.</li>
+  <li>إن تغيّرت المنطقة تُحسب أجرتها من قائمة أسعاركم في سفيان، كالطلب الجديد. أو أرسلوا <code>delivery_fee</code>.</li>
+  <li>بعد استلام الكابتن يرجع <code>409 too_late</code>. والطلب الملغى يرجع <code>409 cancelled</code>، فأرسلوه طلباً جديداً برقمٍ جديد.</li>
+  <li>إن كان نظامكم لا يرسل <span class="m">PUT</span>، فاستعملوا <span class="m">POST</span> <code>/v1/orders/{ref}/update</code> بالجسم نفسه. و<code>"test": true</code> يعاين التعديل بلا حفظ.</li>
+</ul>
+<pre><code>PUT /v1/orders/WEB-1001
+{
+  "customer": { "phone": "07801234567", "name": "أحمد" },
+  "address": "الحرية، شارع ١٤ تموز، قرب المدرسة",
+  "area": "الحرية",
+  "items": [ { "name": "شاورما", "qty": 3, "price": 6000 } ],
+  "total": 21000,
+  "location": { "lat": 35.4655, "lng": 44.4010 }
+}</code></pre>
+<h3>الجواب — <code>200</code></h3>
+<pre><code>{
+  "ok": true,
+  "order_id": "HUT-…",
+  "ref": "WEB-1001",
+  "status": "captain_assigned",
+  "status_ar": "قبل الكابتن الطلب وهو في طريقه إلى المطعم",
+  "changed": ["address", "area", "location", "items", "notes", "total"],
+  "area": "الحرية (توصيل: 2500)",
+  "area_matched": "الحرية",
+  "delivery_fee": 2500,
+  "captain_notified": true
+}</code></pre>
+<p><code>changed</code> يسمّي ما تغيّر فعلاً: <code>customer</code> · <code>address</code> · <code>area</code> · <code>location</code> · <code>items</code> · <code>notes</code> · <code>total</code>. وإن أرسلتم الطلب كما هو يرجع <code>"changed": []</code> و<code>"unchanged": true</code> بلا أيّ تغيير. أمّا <code>captain_notified</code> فيظهر حين يكون للطلب كابتنٌ قبِله.</p>
+<p class="en">Before pickup, send the complete updated order (same body as POST /v1/orders) with PUT /v1/orders/{ref}, or POST /v1/orders/{ref}/update. It replaces the old one in place: the order keeps its queue position and its captain, who is notified of what changed. Omitted optional fields are removed. After pickup: 409 too_late; cancelled order: 409 cancelled.</p>
+
+<h2>7. الإلغاء — <span class="m">POST</span> <code>/v1/orders/{ref}/cancel</code></h2>
 <p>مثل زرّ الإلغاء في لوحة المطعم: يُقبل في كلّ وقتٍ <b>قبل أن يستلم الكابتن الطلب</b>. بعد الاستلام يرجع <code>409 too_late</code>، فاتّصلوا بالدعم.</p>
 <pre><code>POST /v1/orders/WEB-1001/cancel
 { "reason": "الزبون ألغى" }</code></pre>
 
-<h2>7. الفحص — <span class="m">GET</span> <code>/v1/ping</code></h2>
+<h2>8. الفحص — <span class="m">GET</span> <code>/v1/ping</code></h2>
 <pre><code>{ "ok": true, "restaurant": "اسم مطعمكم", "webhook": "https://…" , "version": "1" }</code></pre>
 
-<h2>8. الأخطاء</h2>
+<h2>9. الأخطاء</h2>
 <p>كلّ خطأٍ بالشكل نفسه، ومعه رسالةٌ بالعربيّة يمكن عرضها لموظّفكم:</p>
 <pre><code>{ "ok": false, "error": { "code": "phone", "message": "customer.phone: …", "message_ar": "…", "field": "customer.phone" } }</code></pre>
 <div class="tbl"><table>
@@ -204,14 +238,15 @@ http_response_code(200);</code></pre>
   <tr><td><code>403</code></td><td><code>disabled</code></td><td>أطفأت الإدارة الربط لمطعمكم.</td></tr>
   <tr><td><code>404</code></td><td><code>not_found</code></td><td>رقم طلبٍ لا نعرفه، أو مسارٌ خاطئ.</td></tr>
   <tr><td><code>409</code></td><td><code>restaurant_closed</code></td><td>مطعمكم في «استراحة» أو موقوف في سفيان، فلا تُستقبل الطلبات الآن.</td></tr>
-  <tr><td><code>409</code></td><td><code>too_late</code></td><td>الإلغاء بعد استلام الكابتن.</td></tr>
+  <tr><td><code>409</code></td><td><code>too_late</code></td><td>الإلغاء أو التعديل بعد استلام الكابتن، أو بعد انتهاء الطلب.</td></tr>
+  <tr><td><code>409</code></td><td><code>cancelled</code></td><td>تعديل طلبٍ ملغى. أرسلوه طلباً جديداً برقمٍ جديد.</td></tr>
   <tr><td><code>409</code></td><td><code>in_progress</code></td><td>الرقم نفسه قيد الإنشاء الآن. أعيدوا بعد ثوانٍ.</td></tr>
   <tr><td><code>422</code></td><td>اسم الحقل</td><td>حقلٌ ناقص أو غير صالح، و<code>field</code> يسمّيه.</td></tr>
   <tr><td><code>429</code></td><td><code>rate_limited</code></td><td>أكثر من ٦٠ نداءً في الدقيقة.</td></tr>
   <tr><td><code>500</code></td><td><code>server</code></td><td>عطلٌ مؤقّت. أعيدوا بالرقم نفسه، ولن يتكرّر الطلب.</td></tr>
 </table></div>
 
-<h2>9. قبل التشغيل</h2>
+<h2>10. قبل التشغيل</h2>
 <ol>
   <li>جرّبوا بـ<code>"test": true</code> حتى يخرج الطلب كما تريدون، خاصّةً المنطقة وأجرتها.</li>
   <li>أرسلوا طلباً حقيقيّاً واحداً وأخبروا الإدارة لتتابعه معكم.</li>
