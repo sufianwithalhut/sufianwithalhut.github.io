@@ -335,6 +335,7 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
 .pwa-ic{display:block;width:72px;height:72px;border-radius:16px;margin:0 auto 10px;border:1px solid var(--line);}
 .pwa-li{list-style:none;margin:0 0 14px;font-size:.8rem;font-weight:700;color:var(--ink2);line-height:1.9;}
 .pwa-steps{background:var(--surface3);border-radius:12px;padding:10px 13px;margin-bottom:12px;font-size:.8rem;font-weight:700;line-height:1.95;color:var(--ink2);}
+.pwa-tip{margin-top:6px;padding-top:6px;border-top:1px dashed var(--line);font-size:.72rem;color:var(--ink3);line-height:1.7;}
 .pk-note{font-size:.8rem;font-weight:700;color:var(--ink2);text-align:center;line-height:1.7;margin-bottom:12px;}
 .pk-ok{color:var(--green-d);}
 .pk-warn{background:var(--amber-l);color:var(--amber-d);border-radius:10px;padding:8px 11px;font-size:.74rem;font-weight:800;line-height:1.6;margin-bottom:10px;}
@@ -1250,8 +1251,9 @@ body.adv-on #fbSt{bottom:calc(154px + env(safe-area-inset-bottom));}
     <div class="sheet-title">ثبّت لوحة الليدرز</div>
     <div class="sheet-sub">افتحها من شاشتك مثل أيّ تطبيق</div>
     <ul class="pwa-li"><li>✓ أيقونة على شاشتك بلا بحثٍ عن الرابط</li><li>✓ شاشة كاملة بلا شريط المتصفّح</li><li>✓ دخولٌ بالبصمة على الهاتف</li></ul>
-    <div class="pwa-steps dn" id="pwaSteps">١. اضغط زرّ المشاركة <b>⬆️</b> في سفاري<br>٢. اختر <b>إضافة إلى الشاشة الرئيسية</b><br>٣. اضغط <b>إضافة</b></div>
+    <div class="pwa-steps dn" id="pwaSteps"></div>
     <button class="auth-btn dn" id="pwaGo" onclick="pwaInstall()">📲 تثبيت التطبيق</button>
+    <button class="auth-btn dn" id="pwaChrome" onclick="pwaOpenChrome()">افتح في Chrome</button>
     <button class="sheet-cancel" style="margin-top:8px" onclick="pwaLater()">لاحقاً</button>
   </div>
 </div>
@@ -8995,9 +8997,9 @@ document.addEventListener("visibilitychange", () => {
 });
 </script>
 <script>
-const PWA_LATER = "pwa_later_at";
+const PWA_LATER = "pwa_later_at", PWA_DONE = "pwa_installed";
 
-let _pwaEvt = null;
+let _pwaEvt = null, _pwaRelated = false;
 
 const pwaStandalone = () => {
  try {
@@ -9011,22 +9013,53 @@ const _pwaUA = String(navigator.userAgent || "");
 
 const pwaIOS = /iPhone|iPad|iPod/.test(_pwaUA) || /Macintosh/.test(_pwaUA) && (navigator.maxTouchPoints || 0) > 1;
 
-const pwaInApp = /FBAN|FBAV|Instagram|; wv\)|WhatsApp|TikTok|Snapchat/i.test(_pwaUA);
+const pwaAndroid = /Android/i.test(_pwaUA);
+
+const pwaSocial = /FBAN|FBAV|FB_IAB|Instagram|TikTok|musical_ly|Snapchat|Line\//i.test(_pwaUA);
+
+const pwaWebView = /; wv\)/.test(_pwaUA) && !pwaSocial;
 
 function pwaCan() {
- return !pwaStandalone() && !pwaInApp && (!!_pwaEvt || pwaIOS);
+ return !pwaStandalone() && !pwaWebView;
+}
+
+function pwaDone() {
+ try {
+  return localStorage.getItem(PWA_DONE) === "1";
+ } catch (_) {
+  return false;
+ }
 }
 
 function pwaPaintBtn() {
  const b = document.getElementById("pwaBtn");
- if (b) b.classList.toggle("dn", !pwaCan());
+ if (b) b.classList.toggle("dn", !pwaCan() || _pwaRelated);
+}
+
+function pwaSteps() {
+ const u = _pwaUA, L = a => a.map((x, i) => "١٢٣٤"[i] + ". " + x).join("<br>");
+ if (pwaSocial) return pwaAndroid ? "هذا متصفّح داخل التطبيق ولا يثبّت. افتح اللوحة في Chrome ثمّ ثبّتها." : "هذا متصفّح داخل التطبيق ولا يثبّت. اضغط <b>⋯</b> ثمّ <b>فتح في سفاري</b>، ثمّ ثبّتها.";
+ if (pwaIOS) return L([ "اضغط زرّ المشاركة <b>⬆️</b>", "اختر <b>إضافة إلى الشاشة الرئيسية</b>", "اضغط <b>إضافة</b>" ]);
+ if (/SamsungBrowser/.test(u)) return L([ "اضغط القائمة <b>☰</b> أسفل الشاشة", "اختر <b>إضافة صفحة إلى</b>", "اختر <b>الشاشة الرئيسية</b>" ]);
+ if (/Firefox\//.test(u)) return L([ "اضغط القائمة <b>⋮</b>", "اختر <b>تثبيت</b> أو <b>إضافة إلى الشاشة الرئيسية</b>" ]);
+ if (pwaAndroid && /Chrome\//.test(u) && !/EdgA\/|OPR\/|MiuiBrowser|HuaweiBrowser|HeyTapBrowser|VivoBrowser/.test(u)) return L([ "اضغط القائمة <b>⋮</b> أعلى الشاشة", "اختر <b>تثبيت التطبيق</b> أو <b>إضافة إلى الشاشة الرئيسية</b>", "اضغط <b>تثبيت</b>" ]) + '<div class="pwa-tip">إن فتحت الرابط من واتساب: اختر أوّلاً <b>فتح في Chrome</b> من القائمة.</div>';
+ if (pwaAndroid) return L([ "افتح قائمة المتصفّح", "اختر <b>إضافة إلى الشاشة الرئيسية</b>", "اضغط <b>إضافة</b>" ]);
+ if (/Edg\//.test(u)) return L([ "اضغط القائمة <b>⋯</b> أعلى المتصفّح", "اختر <b>التطبيقات</b>", "اختر <b>تثبيت هذا الموقع كتطبيق</b>" ]);
+ return L([ "اضغط أيقونة التثبيت في شريط العنوان، أو القائمة <b>⋮</b>", "اختر <b>الإرسال والحفظ والمشاركة</b>", "اختر <b>تثبيت الصفحة كتطبيق</b>" ]);
 }
 
 window.pwaOpen = function() {
  if (!pwaCan()) return;
- document.getElementById("pwaSteps").classList.toggle("dn", !!_pwaEvt);
- document.getElementById("pwaGo").classList.toggle("dn", !_pwaEvt);
+ const st = document.getElementById("pwaSteps"), native = !!_pwaEvt;
+ st.classList.toggle("dn", native);
+ if (!native) st.innerHTML = pwaSteps();
+ document.getElementById("pwaGo").classList.toggle("dn", !native);
+ document.getElementById("pwaChrome").classList.toggle("dn", native || !(pwaSocial && pwaAndroid));
  document.getElementById("pwaSheet").classList.add("open");
+};
+
+window.pwaOpenChrome = function() {
+ location.href = "intent://" + location.host + location.pathname + "#Intent;scheme=https;package=com.android.chrome;end";
 };
 
 function uiBusy() {
@@ -9037,13 +9070,13 @@ function uiBusy() {
 let _pwaTries = 0;
 
 function pwaOffer() {
- if (!pwaCan() || document.getElementById("pwaSheet").classList.contains("open")) return;
+ if (!pwaCan() || _pwaRelated || pwaDone() || document.getElementById("pwaSheet").classList.contains("open")) return;
  try {
   const t = Number(localStorage.getItem(PWA_LATER) || 0);
   if (Date.now() - t < 864e5) return;
  } catch (_) {}
  if (_pkBusy || uiBusy()) {
-  if (++_pwaTries < 40) setTimeout(pwaOffer, 1500);
+  if (++_pwaTries < 150) setTimeout(pwaOffer, 2e3);
   return;
  }
  pwaOpen();
@@ -9076,16 +9109,31 @@ window.pwaInstall = async function() {
 window.addEventListener("beforeinstallprompt", e => {
  e.preventDefault();
  _pwaEvt = e;
+ try {
+  localStorage.removeItem(PWA_DONE);
+ } catch (_) {}
  pwaPaintBtn();
- setTimeout(pwaOffer, 700);
+ if (document.getElementById("pwaSheet").classList.contains("open")) pwaOpen(); else setTimeout(pwaOffer, 700);
 });
 
 window.addEventListener("appinstalled", () => {
  _pwaEvt = null;
+ try {
+  localStorage.setItem(PWA_DONE, "1");
+ } catch (_) {}
  pwaPaintBtn();
  clSheet("pwaSheet");
  toast("تم تثبيت لوحة الليدرز على جهازك");
 });
+
+try {
+ if (navigator.getInstalledRelatedApps) navigator.getInstalledRelatedApps().then(a => {
+  if (a && a.length) {
+   _pwaRelated = true;
+   pwaPaintBtn();
+  }
+ }).catch(() => {});
+} catch (_) {}
 
 if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
  navigator.serviceWorker.register("sw-leaders.js", {
@@ -9462,7 +9510,7 @@ pwaPaintBtn();
   hasSession = !!sessionStorage.getItem("staff_session");
  } catch (_) {}
  if (!hasSession && pkHint() && pkPhoneUA && !pwaIOS && document.visibilityState === "visible") setTimeout(() => pkLogin(true), 350);
- if (pwaIOS) setTimeout(pwaOffer, 900);
+ setTimeout(pwaOffer, pwaIOS ? 900 : 3500);
 })();
 </script>
 <script>
