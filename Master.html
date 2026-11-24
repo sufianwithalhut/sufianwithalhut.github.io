@@ -1458,6 +1458,7 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
         <button class="fp" onclick="insSetF('today',this)">وجبة اليوم</button>
         <button class="fp fr" onclick="insSetF('blocked',this)">متأخّرون</button>
         <button class="fp fg" onclick="insSetF('ok',this)">دفعوا</button>
+        <button class="fp" onclick="insSetF('frozen',this)">⏸ مجمّدون <span class="fc" id="insKFrz">0</span></button>
         <button class="fp" onclick="insSetF('notice',this)">أبلغوا بالترك</button>
         <button class="fp" onclick="insSetF('all',this)">الكل</button>
       </div>
@@ -5697,13 +5698,35 @@ function insStateA(cfgRaw, acc, nowMs) {
   state: "not_started",
   starts: add(startW, base.day)
  });
+ const fz = c.freeze && typeof c.freeze === "object" ? c.freeze : null;
+ const fzOk = !!fz && /^\d{4}-\d{2}-\d{2}$/.test(String(fz.from)) && /^\d{4}-\d{2}-\d{2}$/.test(String(fz.until)) && String(fz.from) <= String(fz.until);
+ let fzSkip = false;
+ if (fzOk) {
+  const fzMin = Math.max(0, Math.round(Number(fz.min_paid) || 0));
+  if (today <= fz.until) {
+   if (today >= fz.from && paid >= fzMin) return Object.assign(base, {
+    state: "frozen",
+    until: String(fz.until)
+   });
+  } else {
+   const endMs = Date.parse(fz.until + "T00:00:00Z") + 864e5 - 3 * 36e5;
+   let pb = 0;
+   Object.values(acc.payments || {}).forEach(p => {
+    const a = Number(p && p.amount), t = Number(p && p.at);
+    if (isFinite(a) && a > 0 && (!isFinite(t) || t < endMs)) pb += Math.round(a);
+   });
+   fzSkip = pb >= fzMin;
+  }
+ }
+ const fzIn = d => fzSkip && d >= fz.from && d <= fz.until;
  let weeksPast = 0;
  for (let w = startW; w <= curW; w = add(w, 7)) {
-  if (add(w, base.day) < today) weeksPast++;
+  const d = add(w, base.day);
+  if (d < today && !fzIn(d)) weeksPast++;
  }
  const expectedPast = Math.min(target, weeksPast * c.weekly);
  const dueThis = add(curW, base.day);
- const expectedNow = Math.min(target, (weeksPast + (dueThis >= today ? 1 : 0)) * c.weekly);
+ const expectedNow = Math.min(target, (weeksPast + (dueThis >= today && !fzIn(dueThis) ? 1 : 0)) * c.weekly);
  base.expected = expectedPast;
  base.due_date = dueThis;
  const gu = /^\d{4}-\d{2}-\d{2}$/.test(String(c.grace_until || "")) ? String(c.grace_until) : "";
@@ -5787,13 +5810,18 @@ function insRender() {
  }
  const start = cfg.start || "2026-10-10";
  document.getElementById("insHead").innerHTML = on ? `🛡️ <b>مفعّل</b> — ${insFmt(cfg.target || 1e5)} د.ع على كلّ كابتن، ${insFmt(cfg.weekly || 1e4)} كلّ أسبوع في يومه (السبت…الخميس). بدء التحصيل: <b>${esc(start)}</b>. اليوم: <b>${todayIdx < 6 ? esc(INS_DAYS_AR[todayIdx]) : "الجمعة (بلا تحصيل)"}</b>. الكابتن يُنذر في يومه، ويتوقّف عن استلام الطلبات من اليوم التالي حتى تؤكّد الاستلام هنا — ثم يعود تلقائياً خلال دقائق.` : `🛡️ <b>غير مفعّل</b> — حين تفعّله يبدأ التحصيل يوم <b>${esc(start)}</b>، ويُوزَّع الكباتن النشطون على ٦ وجبات (السبت…الخميس) تلقائياً.`;
+ try {
+  const fz = cfg.freeze;
+  if (on && fz && fz.until && new Date(Date.now() + 3 * 36e5).toISOString().slice(0, 10) <= fz.until) document.getElementById("insHead").innerHTML += `<div style="margin-top:6px">⏸ <b>تجميد الأقساط</b> من ${esc(fz.from)} حتى <b>${esc(fz.until)}</b> لمن سدّد ${insFmt(fz.min_paid)} د.ع فأكثر: لا منع ولا قسط، والتسديد مفتوح. وبعده يكملون من حيث توقّفوا.</div>`;
+ } catch (_) {}
  const q = (document.getElementById("insSch") || {}).value || "";
  const rows = [];
- let kB = 0, kT = 0, kO = 0, kS = 0;
+ let kB = 0, kT = 0, kO = 0, kS = 0, kF = 0;
  Object.keys(insAccs).forEach(p => {
   if (!/^7\d{9}$/.test(p)) return;
   const a = insAccs[p] || {}, s = insStateA(cfg, a, now), name = insName(p), notice = a.notice_at || (insNotices[p] && insNotices[p].at ? new Date(Number(insNotices[p].at)).toISOString() : null);
   kS += s.paid || 0;
+  if (s.state === "frozen") kF++;
   if (s.state === "blocked" || s.state === "overdue") kB++; else if (s.state === "due_today") kT++; else if (s.state === "ok" || s.state === "complete") kO++;
   if (q && !(name.includes(q) || p.includes(q.replace(/^0/, "")))) return;
   const f = insF;
@@ -5801,6 +5829,7 @@ function insRender() {
   if (f === "today" && s.day !== todayIdx) return;
   if (f === "blocked" && ![ "blocked", "overdue" ].includes(s.state)) return;
   if (f === "ok" && ![ "ok", "complete" ].includes(s.state)) return;
+  if (f === "frozen" && s.state !== "frozen") return;
   if (f === "notice" && !notice && !a.left_at) return;
   rows.push({
    p: p,
@@ -5810,7 +5839,7 @@ function insRender() {
    notice: notice
   });
  });
- [ [ "insKBlocked", kB ], [ "insKToday", kT ], [ "insKOk", kO ], [ "insKSum", insFmt(kS) ] ].forEach(([id, v]) => {
+ [ [ "insKBlocked", kB ], [ "insKToday", kT ], [ "insKOk", kO ], [ "insKSum", insFmt(kS) ], [ "insKFrz", kF ] ].forEach(([id, v]) => {
   const e = document.getElementById(id);
   if (e) e.textContent = v;
  });
@@ -5823,6 +5852,7 @@ function insRender() {
   upcoming: [ "🗓 قادم", "ep" ],
   ok: [ "✅ دفع هذا الأسبوع", "ek" ],
   complete: [ "🎉 مكتمل", "ek" ],
+  frozen: [ "⏸ مجمّد حتى 05-01", "ep" ],
   exempt: [ "معفى", "ep" ],
   left: [ "ترك العمل", "ep" ],
   not_started: [ "لم يبدأ", "ep" ],

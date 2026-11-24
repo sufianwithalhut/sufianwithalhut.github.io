@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://*.firebasedatabase.app https://*.firebaseio.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https://actions.google.com; connect-src 'self' https://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebasedatabase.app wss://*.firebaseio.com https://script.google.com https://script.googleusercontent.com https://*.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app https://www.gstatic.com; object-src 'none'; base-uri 'none'; form-action 'self';">
 
 <script>
-const CURRENT_APP_VERSION = "32.38-Itt1st";
+const CURRENT_APP_VERSION = "32.39-InsFrz";
 
 window.APP_VERSION = CURRENT_APP_VERSION;
 
@@ -4090,13 +4090,35 @@ function insState(cfgRaw, acc, nowMs) {
   state: "not_started",
   starts: add(startW, base.day)
  });
+ const fz = c.freeze && typeof c.freeze === "object" ? c.freeze : null;
+ const fzOk = !!fz && /^\d{4}-\d{2}-\d{2}$/.test(String(fz.from)) && /^\d{4}-\d{2}-\d{2}$/.test(String(fz.until)) && String(fz.from) <= String(fz.until);
+ let fzSkip = false;
+ if (fzOk) {
+  const fzMin = Math.max(0, Math.round(Number(fz.min_paid) || 0));
+  if (today <= fz.until) {
+   if (today >= fz.from && paid >= fzMin) return Object.assign(base, {
+    state: "frozen",
+    until: String(fz.until)
+   });
+  } else {
+   const endMs = Date.parse(fz.until + "T00:00:00Z") + 864e5 - 3 * 36e5;
+   let pb = 0;
+   Object.values(acc.payments || {}).forEach(p => {
+    const a = Number(p && p.amount), t = Number(p && p.at);
+    if (isFinite(a) && a > 0 && (!isFinite(t) || t < endMs)) pb += Math.round(a);
+   });
+   fzSkip = pb >= fzMin;
+  }
+ }
+ const fzIn = d => fzSkip && d >= fz.from && d <= fz.until;
  let weeksPast = 0;
  for (let w = startW; w <= curW; w = add(w, 7)) {
-  if (add(w, base.day) < today) weeksPast++;
+  const d = add(w, base.day);
+  if (d < today && !fzIn(d)) weeksPast++;
  }
  const expectedPast = Math.min(target, weeksPast * c.weekly);
  const dueThis = add(curW, base.day);
- const expectedNow = Math.min(target, (weeksPast + (dueThis >= today ? 1 : 0)) * c.weekly);
+ const expectedNow = Math.min(target, (weeksPast + (dueThis >= today && !fzIn(dueThis) ? 1 : 0)) * c.weekly);
  base.expected = expectedPast;
  base.due_date = dueThis;
  const gu = /^\d{4}-\d{2}-\d{2}$/.test(String(c.grace_until || "")) ? String(c.grace_until) : "";
@@ -4153,7 +4175,8 @@ function paintInsurance() {
    complete: "🎉 اكتمل تأمينك بالكامل — لا أقساط بعد اليوم.",
    exempt: "ℹ️ أنت معفى من التأمين.",
    left: "ℹ️ مسجَّلٌ أنك تركت العمل — تُعاد تأميناتك بعد " + (Number(cfg.refund_days) || 30) + " يوماً من تركك.",
-   not_started: "🗓️ يبدأ تحصيل التأمين معك يوم " + (s.starts ? insDateAr(s.starts) : "") + "."
+   not_started: "🗓️ يبدأ تحصيل التأمين معك يوم " + (s.starts ? insDateAr(s.starts) : "") + ".",
+   frozen: "⏸ أقساط التأمين مجمّدة حتى " + (s.until ? s.until.slice(8, 10) + "/" + s.until.slice(5, 7) + "/" + s.until.slice(0, 4) : "") + " تقديراً لظروف السوق — لا يتوقّف استلامك للطلبات ولا يُحسب عليك قسط، وتقدر تسدّد متى ما تريد."
   };
   const se = document.getElementById("insState");
   se.innerText = ST[s.state] || "";
