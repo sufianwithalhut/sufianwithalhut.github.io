@@ -3090,8 +3090,10 @@ function setupFB() {
   snap.forEach(ch => {
    out[ch.key] = {
     debt: ch.child("debt").val() || 0,
-    completed_orders: ch.child("completed_orders").val() || 0,
-    balance: ch.child("balance").val() || 0
+    completed_orders: Math.max(0, ch.child("completed_orders").val() || 0),
+    balance: ch.child("balance").val() || 0,
+    last_week_orders: (v => v === null || v === undefined ? null : Number(v) || 0)(ch.child("last_week_orders").val()),
+    week_start: ch.child("week_start").val() || ""
    };
    return false;
   });
@@ -3665,11 +3667,18 @@ function patchCards(type) {
   const card = document.getElementById(`card-${type}-${phone}`);
   if (!card) return;
   const ov = card.querySelector(".ls-ord"), dv = card.querySelector(".ls-debt");
-  const no = String(l.completed_orders || 0), nd = (l.debt || 0).toLocaleString("ar-EG") + " د.ع";
+  const no = (l.completed_orders || 0).toLocaleString("ar-EG"), nd = (l.debt || 0).toLocaleString("ar-EG") + " د.ع";
   if (ov && ov.textContent !== no) {
    ov.textContent = no;
    ov.closest(".lm")?.classList.add("pulse");
    setTimeout(() => ov.closest(".lm")?.classList.remove("pulse"), 500);
+  }
+  const lwE = card.querySelector(".ls-lw");
+  if (lwE) {
+   const t = admLwTxt(l);
+   if (lwE.textContent !== t) lwE.textContent = t;
+   const lb = card.querySelector(".ls-oll"), lt = admOrdLbl(l);
+   if (lb && lb.textContent !== lt) lb.textContent = lt;
   }
   if (dv && dv.textContent !== nd) {
    dv.textContent = nd;
@@ -3741,6 +3750,7 @@ function filtEnt(type) {
   const n = nP(phone);
   const l = type === "RES" ? liveLed.restaurants?.[n] || {} : liveLed.drivers?.[n] || {};
   const orders = l.completed_orders || 0, debt = l.debt || 0;
+  const lvlN = type === "DRV" ? Math.max(orders, l.last_week_orders || 0) : orders;
   const cid = `card-${type}-${n}`;
   toR.add(cid);
   let spC = "sp-a";
@@ -3758,19 +3768,19 @@ function filtEnt(type) {
    const dc = dm.completed_orders || 0, tm = dm.total_delivery_minutes || 0, rj = dm.rejected_orders || 0;
    const avg = dc > 0 ? Math.round(tm / dc) : 0;
    let rC = "dr-n", rI = "⭐", rL = "كابتن جديد";
-   if (orders >= 200) {
+   if (lvlN >= 200) {
     rC = "dr-dm";
     rI = "💎";
     rL = "ماسي";
-   } else if (orders >= 100) {
+   } else if (lvlN >= 100) {
     rC = "dr-gd";
     rI = "🥇";
     rL = "ذهبي";
-   } else if (orders >= 30) {
+   } else if (lvlN >= 30) {
     rC = "dr-sv";
     rI = "🥈";
     rL = "فضي";
-   } else if (orders >= 10) {
+   } else if (lvlN >= 10) {
     rC = "dr-br";
     rI = "🥉";
     rL = "برونزي";
@@ -3808,6 +3818,12 @@ function filtEnt(type) {
    if (ex.querySelector(".sp")) ex.querySelector(".sp").textContent = spL;
    const ov = ex.querySelector(".ls-ord"), dv = ex.querySelector(".ls-debt");
    if (ov) ov.textContent = orders.toLocaleString("ar-EG");
+   const lwE = ex.querySelector(".ls-lw");
+   if (lwE) {
+    lwE.textContent = admLwTxt(l);
+    const lb = ex.querySelector(".ls-oll");
+    if (lb) lb.textContent = admOrdLbl(l);
+   }
    if (dv) dv.textContent = debt.toLocaleString("ar-EG") + " د.ع";
    if (type === "RES") {
     const pb = ex.querySelector(".ea-pref");
@@ -3819,7 +3835,7 @@ function filtEnt(type) {
    return;
   }
   const pj = ej(phone);
-  const html = `<div id="${cid}" class="ec ec-${status}" data-hq="${esc(q.n)}">\n      ${extra}\n      <div class="ec-top">\n        <div class="ec-av">${type === "DRV" && drvPhoto[n] ? `<img src="${esc(drvPhoto[n])}" alt="" loading="lazy" style="width:100%;height:100%;border-radius:inherit;object-fit:cover">` : type === "RES" ? "🍽" : "🛵"}</div>\n        <span class="sp ${spC}">${esc(spL)}</span>\n      </div>\n      <div class="ec-n">${asHl(name, q)}</div>\n      <div class="ec-ph">${asHl(phone, q)}</div>\n      ${type === "RES" ? `<div class="ec-ph" id="hold-${n}" style="display:none;color:#7A4F00;font-weight:800"></div>` : ""}\n      ${type === "RES" ? `<div class="ec-ph ec-sg" id="sg-${n}" style="display:none"></div>` : ""}\n      ${type === "DRV" ? `<div class="ec-ph sh-click" style="color:#0369a1;font-weight:700" title="تعديل الشفت — ساعة البدء والمدّة" onclick="opShift('${pj}')">🕐 ${drvShift[n] ? esc(drvShift[n]) : "بلا موعد — اضغط للتحديد"}</div>` : ""}\n      <div class="ls">\n        <div class="lm"><div class="lv b ls-ord">${orders.toLocaleString("ar-EG")}</div><div class="ll">طلبات منجزة</div></div>\n        <div class="lm"><div class="lv r ls-debt">${debt.toLocaleString("ar-EG")} د.ع</div><div class="ll">عمولة مستحقة</div></div>\n      </div>\n      <div class="ec-acts">\n        <div style="display:flex;gap:4px">\n          <button class="ea ea-a" title="تفعيل"   onclick="doAct('ACCEPT','${type}','${pj}',this)">✓</button>\n          <button class="ea ea-p" title="استراحة" onclick="doAct('PAUSE','${type}','${pj}',this)">⏸</button>\n          <button class="ea ea-b" title="حظر"      onclick="doAct('BAN','${type}','${pj}',this)">🚫</button>\n          ${type === "DRV" ? `<button class="ea" title="${ldrSet.has(n) ? "إلغاء صفة الليدر" : "جعله ليدر"}" style="background:${ldrSet.has(n) ? "#7c3aed" : "#e2e8f0"};color:${ldrSet.has(n) ? "#fff" : "#64748b"}" onclick="toggleLeader('${pj}',${ldrSet.has(n) ? "false" : "true"},this)">&#128081;</button>${ldrSet.has(n) ? `<button class="ea" title="مدّة نافذة هذا الليدر" style="background:#ede9fe;color:#7c3aed" onclick="pickLeaderHours('${pj}')">⏱</button>` : ""}` : ""}\n          ${type === "RES" ? `<button class="ea ea-pref" title="كباتن المطعم الثابتون" style="background:${prefCount[n] ? "#0ea5e9" : "#e2e8f0"};color:${prefCount[n] ? "#fff" : "#64748b"}" onclick="opPref('${pj}')">&#127869;</button>` : ""}\n          <button class="ea ea-d" title="حذف"      onclick="doAct('DEL','${type}','${pj}',this)">🗑</button>\n          <button class="ea ea-e" title="تعديل"   onclick="opEdit('${type}','${pj}')">✏️</button>\n        </div>\n        <div style="display:flex;gap:4px">\n          <button class="ea ea-money" title="تصفير"  onclick="rstDebt('${type}','${pj}',this)">💵</button>\n          ${type === "DRV" ? `<button class="ea" title="فتح الشفت — يبدأ شفتاً جديداً اليوم" style="background:#f59e0b;color:#fff" onclick="rstShift('${pj}',this)">🔓</button><button class="ea" title="تعديل الشفت — ساعة البدء والمدّة" style="background:var(--sky);color:#fff" onclick="opShift('${pj}')">🕐</button><button class="ea" title="${_lastLocs && _lastLocs[n] && _lastLocs[n].vehicle === "car" ? "كابتن سيارة — اضغط لإعادته دراجة" : "اجعله كابتن سيارة (تصله طلبات السيارة، والطلبات العاديّة كغيره)"}" style="background:${_lastLocs && _lastLocs[n] && _lastLocs[n].vehicle === "car" ? "#0ea5e9" : "#cbd5e1"};color:#fff" onclick="setVehicle('${pj}',this)">🚗</button>` : ``}\n          <button class="ea ea-c" title="اتصال"   onclick="window.open('tel:${pj}')">📞</button>\n        </div>\n      </div>\n    </div>`;
+  const html = `<div id="${cid}" class="ec ec-${status}" data-hq="${esc(q.n)}">\n      ${extra}\n      <div class="ec-top">\n        <div class="ec-av">${type === "DRV" && drvPhoto[n] ? `<img src="${esc(drvPhoto[n])}" alt="" loading="lazy" style="width:100%;height:100%;border-radius:inherit;object-fit:cover">` : type === "RES" ? "🍽" : "🛵"}</div>\n        <span class="sp ${spC}">${esc(spL)}</span>\n      </div>\n      <div class="ec-n">${asHl(name, q)}</div>\n      <div class="ec-ph">${asHl(phone, q)}</div>\n      ${type === "RES" ? `<div class="ec-ph" id="hold-${n}" style="display:none;color:#7A4F00;font-weight:800"></div>` : ""}\n      ${type === "RES" ? `<div class="ec-ph ec-sg" id="sg-${n}" style="display:none"></div>` : ""}\n      ${type === "DRV" ? `<div class="ec-ph sh-click" style="color:#0369a1;font-weight:700" title="تعديل الشفت — ساعة البدء والمدّة" onclick="opShift('${pj}')">🕐 ${drvShift[n] ? esc(drvShift[n]) : "بلا موعد — اضغط للتحديد"}</div>` : ""}\n      <div class="ls">\n        <div class="lm"><div class="lv b ls-ord">${orders.toLocaleString("ar-EG")}</div><div class="ll ls-oll">${type === "DRV" ? admOrdLbl(l) : "طلبات منجزة"}</div>${type === "DRV" ? `<div class="ll ls-lw" style="opacity:.75">${esc(admLwTxt(l))}</div>` : ""}</div>\n        <div class="lm"><div class="lv r ls-debt">${debt.toLocaleString("ar-EG")} د.ع</div><div class="ll">عمولة مستحقة</div></div>\n      </div>\n      <div class="ec-acts">\n        <div style="display:flex;gap:4px">\n          <button class="ea ea-a" title="تفعيل"   onclick="doAct('ACCEPT','${type}','${pj}',this)">✓</button>\n          <button class="ea ea-p" title="استراحة" onclick="doAct('PAUSE','${type}','${pj}',this)">⏸</button>\n          <button class="ea ea-b" title="حظر"      onclick="doAct('BAN','${type}','${pj}',this)">🚫</button>\n          ${type === "DRV" ? `<button class="ea" title="${ldrSet.has(n) ? "إلغاء صفة الليدر" : "جعله ليدر"}" style="background:${ldrSet.has(n) ? "#7c3aed" : "#e2e8f0"};color:${ldrSet.has(n) ? "#fff" : "#64748b"}" onclick="toggleLeader('${pj}',${ldrSet.has(n) ? "false" : "true"},this)">&#128081;</button>${ldrSet.has(n) ? `<button class="ea" title="مدّة نافذة هذا الليدر" style="background:#ede9fe;color:#7c3aed" onclick="pickLeaderHours('${pj}')">⏱</button>` : ""}` : ""}\n          ${type === "RES" ? `<button class="ea ea-pref" title="كباتن المطعم الثابتون" style="background:${prefCount[n] ? "#0ea5e9" : "#e2e8f0"};color:${prefCount[n] ? "#fff" : "#64748b"}" onclick="opPref('${pj}')">&#127869;</button>` : ""}\n          <button class="ea ea-d" title="حذف"      onclick="doAct('DEL','${type}','${pj}',this)">🗑</button>\n          <button class="ea ea-e" title="تعديل"   onclick="opEdit('${type}','${pj}')">✏️</button>\n        </div>\n        <div style="display:flex;gap:4px">\n          <button class="ea ea-money" title="تصفير"  onclick="rstDebt('${type}','${pj}',this)">💵</button>\n          ${type === "DRV" ? `<button class="ea" title="فتح الشفت — يبدأ شفتاً جديداً اليوم" style="background:#f59e0b;color:#fff" onclick="rstShift('${pj}',this)">🔓</button><button class="ea" title="تعديل الشفت — ساعة البدء والمدّة" style="background:var(--sky);color:#fff" onclick="opShift('${pj}')">🕐</button><button class="ea" title="${_lastLocs && _lastLocs[n] && _lastLocs[n].vehicle === "car" ? "كابتن سيارة — اضغط لإعادته دراجة" : "اجعله كابتن سيارة (تصله طلبات السيارة، والطلبات العاديّة كغيره)"}" style="background:${_lastLocs && _lastLocs[n] && _lastLocs[n].vehicle === "car" ? "#0ea5e9" : "#cbd5e1"};color:#fff" onclick="setVehicle('${pj}',this)">🚗</button>` : ``}\n          <button class="ea ea-c" title="اتصال"   onclick="window.open('tel:${pj}')">📞</button>\n        </div>\n      </div>\n    </div>`;
   cont.insertAdjacentHTML("beforeend", html);
  });
  rendered.forEach(id => {
@@ -9118,10 +9134,11 @@ function asgPaint() {
   return;
  }
  box.innerHTML = rows.map(c => {
-  const tier = c.cp >= 100 ? "💎" : c.cp >= 30 ? "⭐" : "🟢";
+  const lv = Math.max(c.cp, liveLed.drivers && liveLed.drivers[c.n] && liveLed.drivers[c.n].last_week_orders || 0);
+  const tier = lv >= 100 ? "💎" : lv >= 30 ? "⭐" : "🟢";
   const w = [ c.carry >= 3 ? "معه " + c.carry + " طلبات" : "", c.onRoad ? "خرج بطلبه من المطعم" : "", c.km != null && c.km > 3 ? "المطعم بعيد عنه" : "" ].filter(Boolean);
   const badge = c.cur ? `<span class="asn-badge b-cur">الحالي</span>` : c.busy ? `<span class="asn-badge b-busy">🔴 معه ${c.all}</span>` : `<span class="asn-badge b-free">🟢 متاح</span>`;
-  return `<div class="asn-item" onclick="asgPick('${ej(c.ph)}')">\n      <div class="asn-av">${admDrvAv(c.n) || esc(c.name.charAt(0) || "🛵")}</div>\n      <div class="asn-info"><div class="asn-nm">${tier} ${asHl(c.name, q)}</div>\n        <div class="asn-meta"><span dir="ltr">${asHl("0" + c.n, q)}</span> · ${c.cp} طلب إجمالي${c.km != null ? " · على " + c.km.toFixed(1) + " كم من المطعم" : ""}</div>\n        ${w.length ? `<div class="asn-warn">⚠️ ${esc(w.join(" · "))}</div>` : ""}</div>\n      ${badge}</div>`;
+  return `<div class="asn-item" onclick="asgPick('${ej(c.ph)}')">\n      <div class="asn-av">${admDrvAv(c.n) || esc(c.name.charAt(0) || "🛵")}</div>\n      <div class="asn-info"><div class="asn-nm">${tier} ${asHl(c.name, q)}</div>\n        <div class="asn-meta"><span dir="ltr">${asHl("0" + c.n, q)}</span> · ${c.cp} ${liveLed.drivers && liveLed.drivers[c.n] && liveLed.drivers[c.n].week_start ? "طلب هذا الأسبوع" : "طلب منجز"}${c.km != null ? " · على " + c.km.toFixed(1) + " كم من المطعم" : ""}</div>\n        ${w.length ? `<div class="asn-warn">⚠️ ${esc(w.join(" · "))}</div>` : ""}</div>\n      ${badge}</div>`;
  }).join("");
 }
 
@@ -9334,7 +9351,7 @@ function admDrvIcon(busy, car) {
 
 function admDrvPop(ph, d, busy, car) {
  const k = nP(ph), nm = admDrvName(ph, d), cp = liveLed.drivers && liveLed.drivers[k] && liveLed.drivers[k].completed_orders || 0;
- return `<div class="mk-pop" dir="rtl"><b>🛵 ${esc(nm)}</b><small>0${esc(k)}</small>\n    <span class="mk-st ${busy ? "busy" : "free"}">${car > 1 ? "🔁 معه " + rfOrdN(car) : busy ? "🔴 مشغول بطلب" : "🟢 متاح للطلبات"}</span>\n    <div style="font-size:.74rem;font-weight:700;margin-bottom:8px">📦 منجزة (إجمالي): ${cp}</div>\n    <div class="mk-acts"><button onclick="window.open('tel:0${ej(k)}')">📞 اتصال</button>${busy ? `<button onclick="rfFocusDriver('${ej(k)}')">📋 طلباته</button>` : ""}</div></div>`;
+ return `<div class="mk-pop" dir="rtl"><b>🛵 ${esc(nm)}</b><small>0${esc(k)}</small>\n    <span class="mk-st ${busy ? "busy" : "free"}">${car > 1 ? "🔁 معه " + rfOrdN(car) : busy ? "🔴 مشغول بطلب" : "🟢 متاح للطلبات"}</span>\n    <div style="font-size:.74rem;font-weight:700;margin-bottom:8px">📦 ${esc(admOrdLbl(liveLed.drivers && liveLed.drivers[k]))}: ${cp}</div>\n    <div class="mk-acts"><button onclick="window.open('tel:0${ej(k)}')">📞 اتصال</button>${busy ? `<button onclick="rfFocusDriver('${ej(k)}')">📋 طلباته</button>` : ""}</div></div>`;
 }
 
 window.setMapFilter = function(f) {
@@ -11548,6 +11565,16 @@ function asHl(text, q) {
   out += esc(text[i]);
  }
  return on ? out + "</mark>" : out;
+}
+
+function admOrdLbl(l) {
+ return l && l.week_start ? "طلبات هذا الأسبوع" : "طلبات منجزة";
+}
+
+function admLwTxt(l) {
+ const v = l && l.last_week_orders;
+ if (v !== null && v !== undefined) return "الأسبوع الماضي: " + Number(v).toLocaleString("ar-EG");
+ return l && l.week_start ? "بدأ العدّ السبت" : "يُصفَّر تلقائياً كلّ سبت";
 }
 
 function asCntTxt(n) {

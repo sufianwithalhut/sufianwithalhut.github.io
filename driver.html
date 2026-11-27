@@ -826,7 +826,7 @@ window.__SND = {
     <div class="stats">
       <div class="stat" onclick="openLedger()">
         <div class="stat-i" style="color:var(--ok-dp);"><svg class="si si-s" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
-        <div class="stat-v" id="stOrders">0</div><div class="stat-l">منجزة</div>
+        <div class="stat-v" id="stOrders">0</div><div class="stat-l" id="stOrdersL">منجزة</div>
       </div>
       <div class="stat">
         <div class="stat-i" style="color:var(--bad-dp);"><svg class="si si-s" viewBox="0 0 24 24"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg></div>
@@ -948,7 +948,7 @@ window.__SND = {
         <div class="sb"><div class="sb-v" id="siEnd">--</div><div class="sb-l">نهاية الشفت</div></div>
         <div class="sb"><div class="sb-v" id="siLeft">--</div><div class="sb-l">الوقت المتبقي</div></div>
         <div class="sb"><div class="sb-v" id="siLvl">--</div><div class="sb-l">مستواك</div></div>
-        <div class="sb"><div class="sb-v" id="siTotal">--</div><div class="sb-l">إجمالي طلباتك</div></div>
+        <div class="sb"><div class="sb-v" id="siTotal">--</div><div class="sb-l" id="siTotalL">إجمالي طلباتك</div></div>
         <div class="sb"><div class="sb-v" id="siRej" style="color:var(--bad-dp);">0</div><div class="sb-l">رفض اليوم</div></div>
         <div class="sb"><div class="sb-v" id="siRate">100%</div><div class="sb-l">معدل القبول</div></div>
       </div>
@@ -1917,6 +1917,8 @@ setInterval(() => {
 let lastLat = 0, lastLng = 0, lastHtml = "";
 
 let readySet = new Set, rejToday = 0, doneToday = 0, earnToday = 0, lifetime = 0, debtNow = 0;
+
+let lastWeek = 0, weekOn = false;
 
 let queue = JSON.parse(localStorage.getItem("hut_offline_queue") || "[]"), qBusy = false;
 
@@ -5550,9 +5552,11 @@ window.openSettings = function() {
  document.getElementById("remTog").checked = localStorage.getItem("suf_rem") !== "off";
  document.getElementById("siHrs").innerText = (drv?.shiftHours || "--") + " س";
  document.getElementById("siMode").innerText = window._shiftsOff === true ? "دوام حر ♾️" : "نظام شفتات";
- const lv = level(lifetime);
+ const lv = level(Math.max(lifetime, lastWeek));
  document.getElementById("siLvl").innerText = lv.t.split(" ")[1] || lv.t;
  document.getElementById("siTotal").innerText = lifetime;
+ const stl = document.getElementById("siTotalL");
+ if (stl) stl.innerText = weekOn ? "طلباتك هذا الأسبوع" : "إجمالي طلباتك";
  document.getElementById("siRej").innerText = rejToday;
  const off = doneToday + rejToday, rate = off > 0 ? Math.round(doneToday / off * 100) : 100;
  document.getElementById("siRate").innerText = rate + "%";
@@ -5629,12 +5633,14 @@ function level(n) {
 }
 
 function refreshDash() {
- const lv = level(lifetime), b = document.getElementById("lvlBadge");
+ const lv = level(Math.max(lifetime, lastWeek)), b = document.getElementById("lvlBadge");
  if (b) {
   b.className = "lvl " + lv.c;
   b.innerText = lv.t;
  }
  document.getElementById("stOrders").innerText = lifetime;
+ const sol = document.getElementById("stOrdersL");
+ if (sol) sol.innerText = weekOn ? "هذا الأسبوع" : "منجزة";
  document.getElementById("stDebt").innerText = debtNow;
  const pct = Math.min(100, doneToday / DAILY_GOAL * 100);
  document.getElementById("goalFill").style.width = pct + "%";
@@ -5811,8 +5817,10 @@ function startListeners() {
  }));
  listen(() => ref(db, `ledgers/drivers/${drv.phone}`), s => {
   const l = s.val() || {};
-  lifetime = Number(l.completed_orders || 0);
+  lifetime = Math.max(0, Number(l.completed_orders || 0));
   debtNow = Number(l.debt || 0);
+  lastWeek = Math.max(0, Number(l.last_week_orders || 0));
+  weekOn = !!l.week_start;
   refreshDash();
  });
  listen(() => ref(db, `daily_metrics/${drv.phone}/${today}/completed_orders`), s => {
