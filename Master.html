@@ -1102,6 +1102,37 @@ button,input,select,textarea{font-family:'Cairo',sans-serif;}
 .tl-offers-h{font-size:.74rem;font-weight:900;color:var(--ink3);margin-bottom:6px;}
 .tl-off{display:flex;justify-content:space-between;gap:8px;font-size:.74rem;font-weight:700;color:var(--ink2);padding:3px 0;}
 .tl-note{background:var(--sky-l);border:1px solid #d8e5fb;border-radius:11px;padding:10px 12px;font-size:.72rem;font-weight:700;color:var(--sky-d);margin-top:14px;line-height:1.6;}
+
+.as-w{position:relative;display:block;}
+.srch-w.as-w{margin-bottom:13px;}
+.as-w .as-in{width:100%;height:44px;background:var(--base3);border:1.5px solid transparent;border-radius:12px;padding:0 40px 0 112px;
+  font-size:.84rem;font-weight:700;color:var(--ink);outline:none;font-family:'Cairo',sans-serif;box-shadow:none;transition:background .15s,border-color .15s;}
+.as-w .as-in:focus{background:#fff;border-color:var(--blk);box-shadow:none;}
+.as-w .as-in::placeholder{color:var(--ink4);font-weight:600;}
+.as-w .as-in::-webkit-search-cancel-button{display:none;}
+.as-w .si{position:absolute;right:14px;top:50%;transform:translateY(-50%);color:var(--ink3);pointer-events:none;font-size:14px;}
+.as-x{position:absolute;left:6px;top:50%;transform:translateY(-50%);width:32px;height:32px;border:none;border-radius:9px;background:none;
+  color:var(--ink3);font-size:.85rem;cursor:pointer;display:block;}
+.as-x:hover{background:var(--line);color:var(--ink);}
+.as-n{position:absolute;left:42px;top:50%;transform:translateY(-50%);font-size:.66rem;font-weight:800;color:var(--ink2);background:#fff;
+  border:1px solid var(--line);border-radius:20px;padding:2px 9px;pointer-events:none;white-space:nowrap;}
+.as-n:empty{display:none;}
+.as-n.z{color:var(--rose);border-color:#f3c9c5;}
+.as-in:placeholder-shown ~ .as-x,.as-in:placeholder-shown ~ .as-n{display:none;}
+.as-k{position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:.62rem;font-weight:800;color:var(--ink4);border:1px solid var(--line);
+  border-radius:6px;padding:1px 7px;pointer-events:none;background:#fff;display:none;}
+@media(hover:hover) and (min-width:769px){.as-in:placeholder-shown:not(:focus) ~ .as-k{display:block;}}
+mark.as-hl{background:#fff0a3;color:inherit;border-radius:3px;padding:0 1px;}
+.as-empty{grid-column:1/-1;text-align:center;padding:26px 14px;}
+.as-empty .es-ic{font-size:1.6rem;margin-bottom:6px;opacity:.7;}
+.as-empty .t{font-size:.86rem;font-weight:900;color:var(--ink);margin-bottom:6px;line-height:1.6;}
+.as-empty .s{font-size:.74rem;font-weight:700;color:var(--ink3);margin:4px 0 9px;}
+.as-chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-bottom:10px;}
+.as-chip{border:1px solid var(--line);background:#fff;border-radius:20px;padding:6px 13px;font-size:.74rem;font-weight:800;color:var(--ink);cursor:pointer;font-family:'Cairo',sans-serif;}
+.as-chip:hover{border-color:var(--blk);}
+.as-chip b{color:var(--sky);margin-inline-start:6px;}
+.as-chip.as-clr{color:var(--ink3);background:var(--base3);border-color:transparent;}
+@media(max-width:768px){.as-w .as-in{height:46px;font-size:16px;}}   
 </style>
 </head>
 <body>
@@ -3658,10 +3689,21 @@ function setSF(type, filter, btn) {
 function filtEnt(type) {
  if (!gD) return;
  const filter = type === "RES" ? resSF : drvSF;
- const q = document.getElementById(type === "RES" ? "sRes" : "sDrv")?.value.trim().toLowerCase() || "";
+ const inpId = type === "RES" ? "sRes" : "sDrv";
+ const q = asQ(document.getElementById(inpId)?.value || "");
  const cont = document.getElementById(type === "RES" ? "resList" : "drvList");
- let list = (type === "RES" ? gD.restaurants : gD.drivers).slice(1).filter(i => (type === "RES" ? i[R.STATUS] : i[D.STATUS]) === "deleted" === (filter === "deleted"));
- if (q) list = list.filter(i => String(i[1]).toLowerCase().includes(q) || String(i[2]).toLowerCase().includes(q));
+ const all = (type === "RES" ? gD.restaurants : gD.drivers).slice(1), sc = new Map;
+ const hit = i => {
+  if (!q.on) return 1;
+  let s = sc.get(i);
+  if (s === undefined) {
+   s = asScore(q, [ i[1], i[3], i[0] ], [ i[2] ]);
+   sc.set(i, s);
+  }
+  return s;
+ };
+ let list = all.filter(i => (type === "RES" ? i[R.STATUS] : i[D.STATUS]) === "deleted" === (filter === "deleted"));
+ if (q.on) list = list.filter(hit);
  if (filter === "mostOrders") {
   const lM = type === "RES" ? liveLed.restaurants : liveLed.drivers;
   list.sort((a, b) => (lM?.[nP(b[2])]?.completed_orders || 0) - (lM?.[nP(a[2])]?.completed_orders || 0));
@@ -3677,12 +3719,20 @@ function filtEnt(type) {
   const lM = liveLed.restaurants;
   list = list.filter(i => ctOpen(i[R.STATUS]) && !ctOf(nP(i[2]))).sort((a, b) => (lM?.[nP(b[2])]?.completed_orders || 0) - (lM?.[nP(a[2])]?.completed_orders || 0));
  } else if (filter === "pending" || filter === "waiting") list = list.filter(i => (type === "RES" ? i[R.STATUS] : i[D.STATUS]) === "pending" || (type === "RES" ? i[R.STATUS] : i[D.STATUS]) === "waiting"); else if (filter === "active" && type === "DRV") list = list.filter(i => i[D.STATUS] === "active" && actDrv.has(nP(i[D.PHONE]))); else if ([ "active", "inactive", "banned" ].includes(filter)) list = list.filter(i => (type === "RES" ? i[R.STATUS] : i[D.STATUS]) === filter);
+ if (q.on) list.sort((a, b) => hit(b) - hit(a));
  updBadges(type, type === "RES" ? gD.restaurants : gD.drivers);
+ asCnt(inpId, list.length);
  if (!list.length) {
-  cont.innerHTML = `<div class="empty-s" style="grid-column:1/-1"><div class="es-ic">🔍</div><div class="es-t">لا توجد نتائج</div></div>`;
+  cont.innerHTML = q.on ? asEmptyHtml(q, {
+   inp: inpId,
+   what: type === "RES" ? "مطاعم" : "كباتن",
+   where: (asEntBtns(type).find(x => x.k === filter) || {}).label,
+   jumps: asEntJumps(type, filter, all, hit),
+   names: all.map(i => i[1])
+  }) : `<div class="empty-s" style="grid-column:1/-1"><div class="es-ic">🔍</div><div class="es-t">لا توجد نتائج</div></div>`;
   return;
  }
- if (cont.querySelector(".empty-s")) cont.innerHTML = "";
+ if (cont.querySelector(".empty-s,.as-empty")) cont.innerHTML = "";
  const today = new Date(Date.now() + 3 * 36e5 - 4 * 36e5).toISOString().split("T")[0];
  const rendered = new Set([ ...cont.querySelectorAll("[id^='card-']") ].map(e => e.id));
  const toR = new Set;
@@ -3744,6 +3794,16 @@ function filtEnt(type) {
   }
   const ex = document.getElementById(cid);
   if (ex) {
+   if (ex.dataset.gone) {
+    delete ex.dataset.gone;
+    ex.style.opacity = "";
+   }
+   if (ex.dataset.hq !== q.n) {
+    ex.dataset.hq = q.n;
+    const ne = ex.querySelector(".ec-n"), pe = ex.querySelector(".ec-n + .ec-ph");
+    if (ne) ne.innerHTML = asHl(name, q);
+    if (pe) pe.innerHTML = asHl(phone, q);
+   }
    ex.querySelector(".sp")?.setAttribute("class", `sp ${spC}`);
    if (ex.querySelector(".sp")) ex.querySelector(".sp").textContent = spL;
    const ov = ex.querySelector(".ls-ord"), dv = ex.querySelector(".ls-debt");
@@ -3759,18 +3819,29 @@ function filtEnt(type) {
    return;
   }
   const pj = ej(phone);
-  const html = `<div id="${cid}" class="ec ec-${status}">\n      ${extra}\n      <div class="ec-top">\n        <div class="ec-av">${type === "DRV" && drvPhoto[n] ? `<img src="${esc(drvPhoto[n])}" alt="" loading="lazy" style="width:100%;height:100%;border-radius:inherit;object-fit:cover">` : type === "RES" ? "🍽" : "🛵"}</div>\n        <span class="sp ${spC}">${esc(spL)}</span>\n      </div>\n      <div class="ec-n">${esc(name)}</div>\n      <div class="ec-ph">${esc(phone)}</div>\n      ${type === "RES" ? `<div class="ec-ph" id="hold-${n}" style="display:none;color:#7A4F00;font-weight:800"></div>` : ""}\n      ${type === "RES" ? `<div class="ec-ph ec-sg" id="sg-${n}" style="display:none"></div>` : ""}\n      ${type === "DRV" ? `<div class="ec-ph sh-click" style="color:#0369a1;font-weight:700" title="تعديل الشفت — ساعة البدء والمدّة" onclick="opShift('${pj}')">🕐 ${drvShift[n] ? esc(drvShift[n]) : "بلا موعد — اضغط للتحديد"}</div>` : ""}\n      <div class="ls">\n        <div class="lm"><div class="lv b ls-ord">${orders.toLocaleString("ar-EG")}</div><div class="ll">طلبات منجزة</div></div>\n        <div class="lm"><div class="lv r ls-debt">${debt.toLocaleString("ar-EG")} د.ع</div><div class="ll">عمولة مستحقة</div></div>\n      </div>\n      <div class="ec-acts">\n        <div style="display:flex;gap:4px">\n          <button class="ea ea-a" title="تفعيل"   onclick="doAct('ACCEPT','${type}','${pj}',this)">✓</button>\n          <button class="ea ea-p" title="استراحة" onclick="doAct('PAUSE','${type}','${pj}',this)">⏸</button>\n          <button class="ea ea-b" title="حظر"      onclick="doAct('BAN','${type}','${pj}',this)">🚫</button>\n          ${type === "DRV" ? `<button class="ea" title="${ldrSet.has(n) ? "إلغاء صفة الليدر" : "جعله ليدر"}" style="background:${ldrSet.has(n) ? "#7c3aed" : "#e2e8f0"};color:${ldrSet.has(n) ? "#fff" : "#64748b"}" onclick="toggleLeader('${pj}',${ldrSet.has(n) ? "false" : "true"},this)">&#128081;</button>${ldrSet.has(n) ? `<button class="ea" title="مدّة نافذة هذا الليدر" style="background:#ede9fe;color:#7c3aed" onclick="pickLeaderHours('${pj}')">⏱</button>` : ""}` : ""}\n          ${type === "RES" ? `<button class="ea ea-pref" title="كباتن المطعم الثابتون" style="background:${prefCount[n] ? "#0ea5e9" : "#e2e8f0"};color:${prefCount[n] ? "#fff" : "#64748b"}" onclick="opPref('${pj}')">&#127869;</button>` : ""}\n          <button class="ea ea-d" title="حذف"      onclick="doAct('DEL','${type}','${pj}',this)">🗑</button>\n          <button class="ea ea-e" title="تعديل"   onclick="opEdit('${type}','${pj}')">✏️</button>\n        </div>\n        <div style="display:flex;gap:4px">\n          <button class="ea ea-money" title="تصفير"  onclick="rstDebt('${type}','${pj}',this)">💵</button>\n          ${type === "DRV" ? `<button class="ea" title="فتح الشفت — يبدأ شفتاً جديداً اليوم" style="background:#f59e0b;color:#fff" onclick="rstShift('${pj}',this)">🔓</button><button class="ea" title="تعديل الشفت — ساعة البدء والمدّة" style="background:var(--sky);color:#fff" onclick="opShift('${pj}')">🕐</button><button class="ea" title="${_lastLocs && _lastLocs[n] && _lastLocs[n].vehicle === "car" ? "كابتن سيارة — اضغط لإعادته دراجة" : "اجعله كابتن سيارة (تصله طلبات السيارة، والطلبات العاديّة كغيره)"}" style="background:${_lastLocs && _lastLocs[n] && _lastLocs[n].vehicle === "car" ? "#0ea5e9" : "#cbd5e1"};color:#fff" onclick="setVehicle('${pj}',this)">🚗</button>` : ``}\n          <button class="ea ea-c" title="اتصال"   onclick="window.open('tel:${pj}')">📞</button>\n        </div>\n      </div>\n    </div>`;
+  const html = `<div id="${cid}" class="ec ec-${status}" data-hq="${esc(q.n)}">\n      ${extra}\n      <div class="ec-top">\n        <div class="ec-av">${type === "DRV" && drvPhoto[n] ? `<img src="${esc(drvPhoto[n])}" alt="" loading="lazy" style="width:100%;height:100%;border-radius:inherit;object-fit:cover">` : type === "RES" ? "🍽" : "🛵"}</div>\n        <span class="sp ${spC}">${esc(spL)}</span>\n      </div>\n      <div class="ec-n">${asHl(name, q)}</div>\n      <div class="ec-ph">${asHl(phone, q)}</div>\n      ${type === "RES" ? `<div class="ec-ph" id="hold-${n}" style="display:none;color:#7A4F00;font-weight:800"></div>` : ""}\n      ${type === "RES" ? `<div class="ec-ph ec-sg" id="sg-${n}" style="display:none"></div>` : ""}\n      ${type === "DRV" ? `<div class="ec-ph sh-click" style="color:#0369a1;font-weight:700" title="تعديل الشفت — ساعة البدء والمدّة" onclick="opShift('${pj}')">🕐 ${drvShift[n] ? esc(drvShift[n]) : "بلا موعد — اضغط للتحديد"}</div>` : ""}\n      <div class="ls">\n        <div class="lm"><div class="lv b ls-ord">${orders.toLocaleString("ar-EG")}</div><div class="ll">طلبات منجزة</div></div>\n        <div class="lm"><div class="lv r ls-debt">${debt.toLocaleString("ar-EG")} د.ع</div><div class="ll">عمولة مستحقة</div></div>\n      </div>\n      <div class="ec-acts">\n        <div style="display:flex;gap:4px">\n          <button class="ea ea-a" title="تفعيل"   onclick="doAct('ACCEPT','${type}','${pj}',this)">✓</button>\n          <button class="ea ea-p" title="استراحة" onclick="doAct('PAUSE','${type}','${pj}',this)">⏸</button>\n          <button class="ea ea-b" title="حظر"      onclick="doAct('BAN','${type}','${pj}',this)">🚫</button>\n          ${type === "DRV" ? `<button class="ea" title="${ldrSet.has(n) ? "إلغاء صفة الليدر" : "جعله ليدر"}" style="background:${ldrSet.has(n) ? "#7c3aed" : "#e2e8f0"};color:${ldrSet.has(n) ? "#fff" : "#64748b"}" onclick="toggleLeader('${pj}',${ldrSet.has(n) ? "false" : "true"},this)">&#128081;</button>${ldrSet.has(n) ? `<button class="ea" title="مدّة نافذة هذا الليدر" style="background:#ede9fe;color:#7c3aed" onclick="pickLeaderHours('${pj}')">⏱</button>` : ""}` : ""}\n          ${type === "RES" ? `<button class="ea ea-pref" title="كباتن المطعم الثابتون" style="background:${prefCount[n] ? "#0ea5e9" : "#e2e8f0"};color:${prefCount[n] ? "#fff" : "#64748b"}" onclick="opPref('${pj}')">&#127869;</button>` : ""}\n          <button class="ea ea-d" title="حذف"      onclick="doAct('DEL','${type}','${pj}',this)">🗑</button>\n          <button class="ea ea-e" title="تعديل"   onclick="opEdit('${type}','${pj}')">✏️</button>\n        </div>\n        <div style="display:flex;gap:4px">\n          <button class="ea ea-money" title="تصفير"  onclick="rstDebt('${type}','${pj}',this)">💵</button>\n          ${type === "DRV" ? `<button class="ea" title="فتح الشفت — يبدأ شفتاً جديداً اليوم" style="background:#f59e0b;color:#fff" onclick="rstShift('${pj}',this)">🔓</button><button class="ea" title="تعديل الشفت — ساعة البدء والمدّة" style="background:var(--sky);color:#fff" onclick="opShift('${pj}')">🕐</button><button class="ea" title="${_lastLocs && _lastLocs[n] && _lastLocs[n].vehicle === "car" ? "كابتن سيارة — اضغط لإعادته دراجة" : "اجعله كابتن سيارة (تصله طلبات السيارة، والطلبات العاديّة كغيره)"}" style="background:${_lastLocs && _lastLocs[n] && _lastLocs[n].vehicle === "car" ? "#0ea5e9" : "#cbd5e1"};color:#fff" onclick="setVehicle('${pj}',this)">🚗</button>` : ``}\n          <button class="ea ea-c" title="اتصال"   onclick="window.open('tel:${pj}')">📞</button>\n        </div>\n      </div>\n    </div>`;
   cont.insertAdjacentHTML("beforeend", html);
  });
  rendered.forEach(id => {
   if (!toR.has(id)) {
    const el = document.getElementById(id);
-   if (el) {
+   if (el && !el.dataset.gone) {
+    el.dataset.gone = "1";
     el.style.opacity = "0";
     el.style.transition = ".2s";
-    setTimeout(() => el.remove(), 210);
+    setTimeout(() => {
+     if (el.dataset.gone) el.remove();
+    }, 210);
    }
   }
+ });
+ let prevEl = null;
+ list.forEach(item => {
+  const el = document.getElementById(`card-${type}-${nP(item[2])}`);
+  if (!el || el === prevEl) return;
+  const want = prevEl ? prevEl.nextElementSibling : cont.firstElementChild;
+  if (want !== el) cont.insertBefore(el, want);
+  prevEl = el;
  });
  if (type === "RES") {
   holdListen();
@@ -3904,25 +3975,34 @@ window.opPref = function(pj) {
 };
 
 window.prefRender = function() {
- const q = (document.getElementById("prefSearch")?.value || "").trim().toLowerCase();
+ const q = asQ(document.getElementById("prefSearch")?.value || "");
  const all = (gD?.drivers || []).slice(1).filter(function(d) {
   const st = d[D.STATUS];
   return st !== "deleted" && st !== "banned" || _prefSel.has(nP(d[2]));
  });
  let list = all;
- if (q) list = all.filter(d => String(d[1]).toLowerCase().includes(q) || String(d[2]).toLowerCase().includes(q));
+ const sc = new Map;
+ if (q.on) {
+  all.forEach(d => sc.set(d, asScore(q, [ d[1], d[3] ], [ d[2] ])));
+  list = all.filter(d => sc.get(d) > 0);
+ }
  list = list.slice().sort(function(a, b) {
   const sa = _prefSel.has(nP(a[2])) ? 0 : 1, sb = _prefSel.has(nP(b[2])) ? 0 : 1;
-  return sa - sb || String(a[1]).localeCompare(String(b[1]), "ar");
+  return sa - sb || (q.on ? sc.get(b) - sc.get(a) : 0) || String(a[1]).localeCompare(String(b[1]), "ar");
  });
  const body = document.getElementById("prefBody");
+ asCnt("prefSearch", list.length);
  if (!list.length) {
-  body.innerHTML = `<div style="text-align:center;padding:18px;color:var(--ink4);font-size:.78rem;font-weight:700">لا نتائج</div>`;
+  body.innerHTML = q.on ? asEmptyHtml(q, {
+   inp: "prefSearch",
+   what: "كباتن",
+   names: all.map(d => d[1])
+  }) : `<div style="text-align:center;padding:18px;color:var(--ink4);font-size:.78rem;font-weight:700">لا نتائج</div>`;
   return;
  }
  body.innerHTML = list.map(function(d) {
   const n = nP(d[2]), on = _prefSel.has(n), live = actDrv.has(n);
-  return `<label style="display:flex;align-items:center;gap:9px;padding:8px 9px;border-radius:10px;cursor:pointer;background:${on ? "var(--sky-l)" : "transparent"};margin-bottom:3px">\n      <input type="checkbox" ${on ? "checked" : ""} onchange="prefTgl('${ej(n)}',this.checked)" style="width:17px;height:17px;accent-color:var(--sky);cursor:pointer">\n      <span style="flex:1;font-size:.78rem;font-weight:800;color:var(--ink)">${esc(d[1])}</span>\n      <span style="font-size:.68rem;font-weight:700;color:var(--ink4)">${esc(d[2])}</span>\n      <span style="font-size:.62rem;font-weight:800;color:${live ? "#16a34a" : "var(--ink4)"}">${live ? "🟢" : "⚪"}</span>\n    </label>`;
+  return `<label style="display:flex;align-items:center;gap:9px;padding:8px 9px;border-radius:10px;cursor:pointer;background:${on ? "var(--sky-l)" : "transparent"};margin-bottom:3px">\n      <input type="checkbox" ${on ? "checked" : ""} onchange="prefTgl('${ej(n)}',this.checked)" style="width:17px;height:17px;accent-color:var(--sky);cursor:pointer">\n      <span style="flex:1;font-size:.78rem;font-weight:800;color:var(--ink)">${asHl(d[1], q)}</span>\n      <span style="font-size:.68rem;font-weight:700;color:var(--ink4)">${asHl(d[2], q)}</span>\n      <span style="font-size:.62rem;font-weight:800;color:${live ? "#16a34a" : "var(--ink4)"}">${live ? "🟢" : "⚪"}</span>\n    </label>`;
  }).join("");
  document.getElementById("prefSave").textContent = "حفظ (" + _prefSel.size + " كابتن)";
 };
@@ -5830,9 +5910,9 @@ function pbRender() {
   b.textContent = on ? onT : offT;
   b.style.background = on ? "var(--ink)" : col;
  });
- const q = (document.getElementById("pbSch") || {}).value || "";
+ const q = asQ((document.getElementById("pbSch") || {}).value || "");
  const rows = [];
- let kL = 0, kD = 0, kS = 0, kP = 0;
+ let kL = 0, kD = 0, kS = 0, kP = 0, qAll = 0;
  const resList = (gD && gD.restaurants || []).map(r => ({
   p: nP(r[R.PHONE]),
   name: String(r[R.NAME] || "")
@@ -5860,22 +5940,26 @@ function pbRender() {
    kP += live ? Number(d.pending) || 0 : 0;
   });
   const m = (pbModes[p] || {}).mode;
+  const sc = asScore(q, [ name ], [ p ]);
+  if (!sc) return;
+  qAll++;
   if (pbF === "inst" && !devs.length && !m) return;
-  if (q && !(name.includes(q) || p.includes(q.replace(/^0/, "")))) return;
   rows.push({
    p: p,
    name: name,
    devs: devs,
-   m: m
+   m: m,
+   sc: sc
   });
  });
+ asCnt("pbSch", rows.length);
  [ [ "pbKLive", kL ], [ "pbKDead", kD ], [ "pbKSent", kS ], [ "pbKPend", kP ] ].forEach(([id, v]) => {
   const e = document.getElementById(id);
   if (e) e.textContent = v;
  });
  const dot = document.getElementById("nbPbDot");
  if (dot) dot.style.display = kD ? "" : "none";
- rows.sort((a, b) => b.devs.length - a.devs.length || a.name.localeCompare(b.name, "ar"));
+ rows.sort((a, b) => (q.on ? b.sc - a.sc : 0) || b.devs.length - a.devs.length || a.name.localeCompare(b.name, "ar"));
  el.innerHTML = rows.length ? rows.map(({p: p, name: name, devs: devs, m: m}) => {
   const eff = pbEff(fl, m), mm = m === "off" || m === "manual" || m === "auto" ? m : "manual";
   const opts = [ "off", "manual", "auto" ].map(k => `<option value="${k}" ${k === mm ? "selected" : ""}>${PB_MODE_AR[k]}</option>`).join("");
@@ -5885,8 +5969,18 @@ function pbRender() {
    return `<div style="font-size:.72rem;font-weight:800;padding:6px 8px;border-radius:8px;background:var(--base2);margin-bottom:5px">\n        ${live ? "🟢" : "🔴"} ${esc(d.id)} · آخر نبض: ${ago} · الإصدار ${esc(d.ver || "?")}<br>\n        🖨 ${esc(d.printers || "—")}<br>\n        ${d.day === today ? `اليوم: التُقط ${Number(d.captured) || 0} · أُرسل ${Number(d.sent) || 0} · ليس توصيلاً ${Number(d.dismissed) || 0} · ينتظر ${Number(d.pending) || 0}` : "لا نشاط اليوم"}\n        ${Number(d.errors) ? ` · <span style="color:var(--rose)">أخطاء ${Number(d.errors)}</span>` : ""}\n        ${d.last_error ? `<div style="color:var(--rose);margin-top:3px;direction:ltr;text-align:right">${esc(d.last_error)}</div>` : ""}\n        ${pbDiagHtml(d)}${pbCmdHtml(p, d)}</div>`;
   }).join("") : `<div style="font-size:.72rem;font-weight:800;opacity:.6;margin-bottom:6px">البرنامج غير مثبَّت على أيّ جهاز بعد.</div>`;
   const cls = eff === "auto" ? "ek" : eff === "off" ? "ep" : "ei";
-  return `<div class="ec ${cls}">\n      <div class="ec-top"><div><div class="ec-n">${esc(name || "مطعم")}</div><div class="ec-ph">0${esc(p)}</div></div><div style="font-size:.72rem;font-weight:900">يعمل الآن: ${PB_MODE_AR[eff]}</div></div>\n      <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;font-size:.74rem;font-weight:800">وضع المطعم:\n        <select onchange="pbSetMode('${p}',this.value,this)" style="font:inherit;padding:3px 6px;border-radius:7px;border:1px solid var(--line2)">${opts}</select>\n        ${eff !== mm ? `<span style="color:var(--amber)">(زرٌّ عامّ يغيّره)</span>` : ""}</div>\n      ${devHtml}\n      ${devs.length ? `<button class="abt" style="background:var(--base2);color:var(--ink);box-shadow:none;border:1px solid var(--line2);font-size:.7rem" onclick="pbRelearn('${p}')">🔄 انسَ ما تعلّمته (ابدأ التعرّف من جديد)</button>` : ""}</div>`;
- }).join("") : `<div class="empty-s" style="grid-column:1/-1">${pbF === "inst" ? "لم يُثبَّت البرنامج عند أيّ مطعم بعد — اختر «كلّ المطاعم» لتضبط الوضع مسبقاً." : "لا مطاعم."}</div>`;
+  return `<div class="ec ${cls}">\n      <div class="ec-top"><div><div class="ec-n">${asHl(name || "مطعم", q)}</div><div class="ec-ph">${asHl("0" + p, q)}</div></div><div style="font-size:.72rem;font-weight:900">يعمل الآن: ${PB_MODE_AR[eff]}</div></div>\n      <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;font-size:.74rem;font-weight:800">وضع المطعم:\n        <select onchange="pbSetMode('${p}',this.value,this)" style="font:inherit;padding:3px 6px;border-radius:7px;border:1px solid var(--line2)">${opts}</select>\n        ${eff !== mm ? `<span style="color:var(--amber)">(زرٌّ عامّ يغيّره)</span>` : ""}</div>\n      ${devHtml}\n      ${devs.length ? `<button class="abt" style="background:var(--base2);color:var(--ink);box-shadow:none;border:1px solid var(--line2);font-size:.7rem" onclick="pbRelearn('${p}')">🔄 انسَ ما تعلّمته (ابدأ التعرّف من جديد)</button>` : ""}</div>`;
+ }).join("") : q.on ? asEmptyHtml(q, {
+  inp: "pbSch",
+  what: "مطاعم",
+  where: pbF === "inst" ? "المثبَّت عندهم" : "",
+  jumps: pbF === "inst" ? [ {
+   label: "كلّ المطاعم",
+   n: qAll,
+   js: "pbSetF('all',document.querySelectorAll('#pbFbar .fp')[1])"
+  } ] : [],
+  names: (gD && gD.restaurants || []).slice(1).map(r => r[R.NAME])
+ }) : `<div class="empty-s" style="grid-column:1/-1">${pbF === "inst" ? "لم يُثبَّت البرنامج عند أيّ مطعم بعد — اختر «كلّ المطاعم» لتضبط الوضع مسبقاً." : "لا مطاعم."}</div>`;
 }
 
 const PB_ACT_AR = {
@@ -6222,16 +6316,19 @@ function insRender() {
   const fz = cfg.freeze;
   if (on && fz && fz.until && new Date(Date.now() + 3 * 36e5).toISOString().slice(0, 10) <= fz.until) document.getElementById("insHead").innerHTML += `<div style="margin-top:6px">⏸ <b>تجميد الأقساط</b> من ${esc(fz.from)} حتى <b>${esc(fz.until)}</b> لمن سدّد ${insFmt(fz.min_paid)} د.ع فأكثر: لا منع ولا قسط، والتسديد مفتوح. وبعده يكملون من حيث توقّفوا.</div>`;
  } catch (_) {}
- const q = (document.getElementById("insSch") || {}).value || "";
- const rows = [];
- let kB = 0, kT = 0, kO = 0, kS = 0, kF = 0;
+ const q = asQ((document.getElementById("insSch") || {}).value || "");
+ const rows = [], allNames = [];
+ let kB = 0, kT = 0, kO = 0, kS = 0, kF = 0, qAll = 0;
  Object.keys(insAccs).forEach(p => {
   if (!/^7\d{9}$/.test(p)) return;
   const a = insAccs[p] || {}, s = insStateA(cfg, a, now), name = insName(p), notice = a.notice_at || (insNotices[p] && insNotices[p].at ? new Date(Number(insNotices[p].at)).toISOString() : null);
   kS += s.paid || 0;
   if (s.state === "frozen") kF++;
   if (s.state === "blocked" || s.state === "overdue") kB++; else if (s.state === "due_today") kT++; else if (s.state === "ok" || s.state === "complete") kO++;
-  if (q && !(name.includes(q) || p.includes(q.replace(/^0/, "")))) return;
+  allNames.push(name);
+  const sc = asScore(q, [ name ], [ p ]);
+  if (!sc) return;
+  qAll++;
   const f = insF;
   if (f === "due" && ![ "blocked", "overdue", "due_today" ].includes(s.state)) return;
   if (f === "today" && s.day !== todayIdx) return;
@@ -6244,9 +6341,11 @@ function insRender() {
    a: a,
    s: s,
    name: name,
-   notice: notice
+   notice: notice,
+   sc: sc
   });
  });
+ asCnt("insSch", rows.length);
  [ [ "insKBlocked", kB ], [ "insKToday", kT ], [ "insKOk", kO ], [ "insKSum", insFmt(kS) ], [ "insKFrz", kF ] ].forEach(([id, v]) => {
   const e = document.getElementById(id);
   if (e) e.textContent = v;
@@ -6266,13 +6365,23 @@ function insRender() {
   not_started: [ "لم يبدأ", "ep" ],
   off: [ "—", "ep" ]
  };
- rows.sort((x, y) => ([ "blocked", "overdue", "due_today" ].indexOf(x.s.state) + 1 || 9) - ([ "blocked", "overdue", "due_today" ].indexOf(y.s.state) + 1 || 9) || (y.s.owed || 0) - (x.s.owed || 0));
+ rows.sort((x, y) => (q.on ? y.sc - x.sc : 0) || ([ "blocked", "overdue", "due_today" ].indexOf(x.s.state) + 1 || 9) - ([ "blocked", "overdue", "due_today" ].indexOf(y.s.state) + 1 || 9) || (y.s.owed || 0) - (x.s.owed || 0));
  el.innerHTML = rows.length ? rows.map(({p: p, a: a, s: s, name: name, notice: notice}) => {
   const st = ST[s.state] || [ s.state, "ep" ], pct = s.target ? Math.min(100, Math.round((s.paid || 0) * 100 / s.target)) : 0;
   const refundDue = a.left_at ? new Date(Date.parse(a.left_at) + (Number(cfg.refund_days) || 30) * 864e5).toISOString().slice(0, 10) : null;
   const days = INS_DAYS_AR.map((d, i) => `<option value="${i}" ${i === s.day ? "selected" : ""}>${d}</option>`).join("");
-  return `<div class="ec ${st[1]}">\n      <div class="ec-top"><div><div class="ec-n">${esc(name || "كابتن")}</div><div class="ec-ph">0${esc(p)}</div></div><div style="font-size:.72rem;font-weight:900">${st[0]}</div></div>\n      <div style="height:8px;background:var(--base2);border-radius:9px;overflow:hidden;margin-bottom:6px"><div style="height:100%;width:${pct}%;background:var(--jade)"></div></div>\n      <div style="font-size:.74rem;font-weight:800;margin-bottom:6px">${insFmt(s.paid)} / ${insFmt(s.target)} د.ع ${s.owed ? `· <span style="color:var(--rose)">المطلوب ${insFmt(s.owed)}</span>` : ""}</div>\n      <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;font-size:.72rem;font-weight:800">يومه: <select onchange="insSetDay('${p}',this.value)" style="font:inherit;padding:3px 6px;border-radius:7px;border:1px solid var(--line2)">${days}</select></div>\n      ${insItemsLine(p)}\n      ${notice ? `<div style="font-size:.72rem;font-weight:800;color:var(--amber);margin-bottom:6px">📝 أبلغ بالترك: ${esc(String(notice).slice(0, 10))}</div>` : ""}\n      ${a.left_at ? `<div style="font-size:.72rem;font-weight:800;margin-bottom:6px">🚪 ترك: ${esc(String(a.left_at).slice(0, 10))} · الإعادة مستحقّة: <b>${esc(refundDue)}</b>${a.refunded_at ? ` · ✅ أُعيدت ${esc(String(a.refunded_at).slice(0, 10))}` : ""}</div>` : ""}\n      <div style="display:flex;gap:6px;flex-wrap:wrap">\n        ${!a.left_at && s.state !== "complete" && s.state !== "exempt" ? `<button class="abt" style="background:var(--jade)" onclick="insPay('${p}')">✅ استلام ${insFmt(s.weekly || 1e4)}</button>` : ""}\n        ${(notice || a.left_at) && !a.refunded_at ? `<button class="abt" style="background:var(--amber);color:#fff" title="الكابتن تراجع: يُلغى إبلاغه فيعمل كالمعتاد" onclick="insCancelNotice('${p}')">↩️ تراجع عن الترك</button>` : ""}\n        <button class="abt" style="background:var(--base2);color:var(--ink);box-shadow:none;border:1px solid var(--line2)" onclick="insHist('${p}')">📋 السجلّ</button>\n        <button class="abt" style="background:var(--base2);color:var(--ink);box-shadow:none;border:1px solid var(--line2)" onclick="insMore('${p}')">⋯</button>\n      </div></div>`;
- }).join("") : `<div class="empty-s" style="grid-column:1/-1">لا كباتن في هذا التصنيف.</div>`;
+  return `<div class="ec ${st[1]}">\n      <div class="ec-top"><div><div class="ec-n">${asHl(name || "كابتن", q)}</div><div class="ec-ph">${asHl("0" + p, q)}</div></div><div style="font-size:.72rem;font-weight:900">${st[0]}</div></div>\n      <div style="height:8px;background:var(--base2);border-radius:9px;overflow:hidden;margin-bottom:6px"><div style="height:100%;width:${pct}%;background:var(--jade)"></div></div>\n      <div style="font-size:.74rem;font-weight:800;margin-bottom:6px">${insFmt(s.paid)} / ${insFmt(s.target)} د.ع ${s.owed ? `· <span style="color:var(--rose)">المطلوب ${insFmt(s.owed)}</span>` : ""}</div>\n      <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;font-size:.72rem;font-weight:800">يومه: <select onchange="insSetDay('${p}',this.value)" style="font:inherit;padding:3px 6px;border-radius:7px;border:1px solid var(--line2)">${days}</select></div>\n      ${insItemsLine(p)}\n      ${notice ? `<div style="font-size:.72rem;font-weight:800;color:var(--amber);margin-bottom:6px">📝 أبلغ بالترك: ${esc(String(notice).slice(0, 10))}</div>` : ""}\n      ${a.left_at ? `<div style="font-size:.72rem;font-weight:800;margin-bottom:6px">🚪 ترك: ${esc(String(a.left_at).slice(0, 10))} · الإعادة مستحقّة: <b>${esc(refundDue)}</b>${a.refunded_at ? ` · ✅ أُعيدت ${esc(String(a.refunded_at).slice(0, 10))}` : ""}</div>` : ""}\n      <div style="display:flex;gap:6px;flex-wrap:wrap">\n        ${!a.left_at && s.state !== "complete" && s.state !== "exempt" ? `<button class="abt" style="background:var(--jade)" onclick="insPay('${p}')">✅ استلام ${insFmt(s.weekly || 1e4)}</button>` : ""}\n        ${(notice || a.left_at) && !a.refunded_at ? `<button class="abt" style="background:var(--amber);color:#fff" title="الكابتن تراجع: يُلغى إبلاغه فيعمل كالمعتاد" onclick="insCancelNotice('${p}')">↩️ تراجع عن الترك</button>` : ""}\n        <button class="abt" style="background:var(--base2);color:var(--ink);box-shadow:none;border:1px solid var(--line2)" onclick="insHist('${p}')">📋 السجلّ</button>\n        <button class="abt" style="background:var(--base2);color:var(--ink);box-shadow:none;border:1px solid var(--line2)" onclick="insMore('${p}')">⋯</button>\n      </div></div>`;
+ }).join("") : q.on ? asEmptyHtml(q, {
+  inp: "insSch",
+  what: "كباتن",
+  where: insF !== "all" ? ((document.querySelector("#insFbar .fp.on") || {}).textContent || "").replace(/\d+/g, "").trim() : "",
+  jumps: insF !== "all" ? [ {
+   label: "الكلّ",
+   n: qAll,
+   js: "insSetF('all',[...document.querySelectorAll('#insFbar .fp')].pop())"
+  } ] : [],
+  names: allNames
+ }) : `<div class="empty-s" style="grid-column:1/-1">لا كباتن في هذا التصنيف.</div>`;
 }
 
 window.insToggle = async function() {
@@ -8127,7 +8236,7 @@ window.ittPromoOpen = async function(res) {
 window.ittPromoPaint = function() {
  const bx = document.getElementById("ittPrList");
  if (!bx || !ITTP) return;
- const q = ITTP_Q.trim(), its = (ITTP.items || []).filter(it => !q || String(it.n).indexOf(q) > -1);
+ const q = ITTP_Q.trim(), qq = asQ(q), its = (ITTP.items || []).filter(it => asScore(qq, [ it.n ]) > 0);
  const row = it => {
   const off = Number(ITTP.off[it.i]) || 0, spv = ITTP.sp[it.i], sp = spv === true || !!it.sa && spv !== false, nx = sp ? it.sa ? "false" : "null" : it.sa ? "null" : "true", N = v => (Number(v) || 0).toLocaleString("en-US");
   return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line2)">' + (it.th ? '<img src="' + ittE(it.th) + '" alt="" loading="lazy" style="width:46px;height:46px;border-radius:10px;object-fit:cover;flex:none">' : '<span style="width:46px;height:46px;border-radius:10px;background:var(--base2);flex:none"></span>') + '<div style="flex:1;min-width:0"><div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + ittE(it.n) + '</div><div style="font-size:.8rem;color:var(--mute)">' + (it.f ? "من " : "") + (off ? "<s>" + N(it.pr) + '</s> ← <b style="color:var(--rose)">' + N(ittDisc(it.pr, off)) + " د.ع</b> (−" + off + "%)" : N(it.pr) + " د.ع") + "</div></div>" + (off ? '<span style="color:var(--rose);font-weight:700;font-size:.78rem;white-space:nowrap" title="يقرّره صاحب المطعم من لوحته">خصم المطعم ' + off + "%</span>" : "") + '<button class="abt" style="' + (sp ? "height:32px;padding:0 10px;font-size:.78rem" : ITT_LBTN + ";height:32px") + '" onclick="ittPromoSet(\'' + ittE(it.i) + "',{sp:" + nx + '})">' + (sp ? "⭐ خاصّة" : "☆ خاصّة") + (sp && it.sa && spv !== true ? ' <small style="opacity:.75">آليّ</small>' : "") + "</button></div>";
@@ -8303,7 +8412,10 @@ function rfFacet(o, q, now) {
  if (q) {
   const dp = o[O.DRV], has = dp && !RF_NO.includes(dp);
   const h = rfNorm([ o[O.ID], o[O.RES], o[O.AREA], o[O.DETAILS], has ? dN(dp) : "", has ? nP(dp) : "", has ? "0" + nP(dp) : "" ].join(" "));
-  if (!q.split(" ").every(w => h.includes(w))) return false;
+  if (!q.split(" ").every(w => h.includes(w))) {
+   const qz = q.replace(/ /g, "");
+   if (qz.length < 3 || !h.replace(/ /g, "").includes(qz)) return false;
+  }
  }
  return true;
 }
@@ -8995,18 +9107,21 @@ function asgPaint() {
    cur: n === cur
   });
  });
- const q = rfNorm(_asgQ), qd = /^[\s\d+٠-٩۰-۹-]+$/.test(_asgQ) ? nP(_asgQ) : "";
- if (q) rows = rows.filter(c => rfNorm(c.name).includes(q) || qd && c.n.includes(qd));
- rows.sort((a, b) => a.busy - b.busy || (a.km == null ? 9e9 : a.km) - (b.km == null ? 9e9 : b.km) || b.cp - a.cp);
+ const q = asQ(_asgQ), all = rows;
+ if (q.on) {
+  rows = rows.filter(c => (c.sc = asScore(q, [ c.name ], [ c.n ])) > 0);
+ }
+ rows.sort((a, b) => (q.on ? b.sc - a.sc : 0) || a.busy - b.busy || (a.km == null ? 9e9 : a.km) - (b.km == null ? 9e9 : b.km) || b.cp - a.cp);
  if (!rows.length) {
-  box.innerHTML = `<div class="asn-empty">${q ? "🔍 لا كابتن متّصل يطابق «" + esc(_asgQ) + "»" : "🌙 لا كباتن نشطون بالميدان الآن"}</div>`;
+  const near = q.on ? asNear(q, all.map(c => c.name), 4) : [];
+  box.innerHTML = `<div class="asn-empty">${q.on ? "🔍 لا كابتن متّصل يطابق «" + esc(_asgQ) + "»" + (near.length ? `<div class="as-chips" style="margin-top:10px">${near.map(x => `<button class="as-chip" onclick="asSet('asgQ','${ej(x.name)}')">${esc(x.name)}</button>`).join("")}</div>` : "") : "🌙 لا كباتن نشطون بالميدان الآن"}</div>`;
   return;
  }
  box.innerHTML = rows.map(c => {
   const tier = c.cp >= 100 ? "💎" : c.cp >= 30 ? "⭐" : "🟢";
   const w = [ c.carry >= 3 ? "معه " + c.carry + " طلبات" : "", c.onRoad ? "خرج بطلبه من المطعم" : "", c.km != null && c.km > 3 ? "المطعم بعيد عنه" : "" ].filter(Boolean);
   const badge = c.cur ? `<span class="asn-badge b-cur">الحالي</span>` : c.busy ? `<span class="asn-badge b-busy">🔴 معه ${c.all}</span>` : `<span class="asn-badge b-free">🟢 متاح</span>`;
-  return `<div class="asn-item" onclick="asgPick('${ej(c.ph)}')">\n      <div class="asn-av">${admDrvAv(c.n) || esc(c.name.charAt(0) || "🛵")}</div>\n      <div class="asn-info"><div class="asn-nm">${tier} ${esc(c.name)}</div>\n        <div class="asn-meta"><span dir="ltr">0${esc(c.n)}</span> · ${c.cp} طلب إجمالي${c.km != null ? " · على " + c.km.toFixed(1) + " كم من المطعم" : ""}</div>\n        ${w.length ? `<div class="asn-warn">⚠️ ${esc(w.join(" · "))}</div>` : ""}</div>\n      ${badge}</div>`;
+  return `<div class="asn-item" onclick="asgPick('${ej(c.ph)}')">\n      <div class="asn-av">${admDrvAv(c.n) || esc(c.name.charAt(0) || "🛵")}</div>\n      <div class="asn-info"><div class="asn-nm">${tier} ${asHl(c.name, q)}</div>\n        <div class="asn-meta"><span dir="ltr">${asHl("0" + c.n, q)}</span> · ${c.cp} طلب إجمالي${c.km != null ? " · على " + c.km.toFixed(1) + " كم من المطعم" : ""}</div>\n        ${w.length ? `<div class="asn-warn">⚠️ ${esc(w.join(" · "))}</div>` : ""}</div>\n      ${badge}</div>`;
  }).join("");
 }
 
@@ -9231,26 +9346,31 @@ window.setMapFilter = function(f) {
 window.mapSearch = function(v) {
  const box = document.getElementById("mapRes");
  if (!box) return;
- const q = rfNorm(v), qd = /^[\s\d+٠-٩۰-۹-]+$/.test(String(v || "")) ? nP(v) : "";
- if (!q) {
+ const q = asQ(v);
+ if (!q.on) {
   box.style.display = "none";
   box.innerHTML = "";
   return;
  }
- const carry = admCarry(), now = Date.now(), out = [];
+ const carry = admCarry(), now = Date.now(), out = [], names = [];
  Object.keys(_lastLocs || {}).forEach(ph => {
   const d = _lastLocs[ph];
   if (!d || d.status !== "active" || !d.lat || !d.lng) return;
   if ((d.last_update ? now - new Date(d.last_update).getTime() : 9e9) > 42e4) return;
   const k = nP(ph), nm = admDrvName(ph, d);
-  if (rfNorm(nm).includes(q) || qd && k.includes(qd)) out.push({
+  names.push(nm);
+  const sc = asScore(q, [ nm ], [ k ]);
+  if (sc) out.push({
    ph: ph,
    k: k,
    nm: nm,
+   sc: sc,
    car: carry[k] || 0
   });
  });
- box.innerHTML = out.length ? out.slice(0, 12).map(m => `<div class="mt-it" onclick="mapJump('${ej(m.ph)}')"><span>${m.car > 1 ? "🔁" : m.car ? "🔴" : "🟢"} ${esc(m.nm)}</span><small>0${esc(m.k)}</small></div>`).join("") : `<div class="mt-none">لا كابتن متّصل بهذا الاسم</div>`;
+ out.sort((a, b) => b.sc - a.sc);
+ const near = out.length ? [] : asNear(q, names, 4);
+ box.innerHTML = out.length ? out.slice(0, 12).map(m => `<div class="mt-it" onclick="mapJump('${ej(m.ph)}')"><span>${m.car > 1 ? "🔁" : m.car ? "🔴" : "🟢"} ${asHl(m.nm, q)}</span><small>${asHl("0" + m.k, q)}</small></div>`).join("") : `<div class="mt-none">لا كابتن متّصل بهذا الاسم${near.length ? `<div style="margin-top:6px">هل تقصد: ${near.map(x => `<a href="#" style="color:var(--sky);font-weight:800" onclick="event.preventDefault();var i=document.getElementById('mapQ');i.value='${ej(x.name)}';mapSearch(i.value)">${esc(x.name)}</a>`).join(" · ")}</div>` : ""}</div>`;
  box.style.display = "block";
 };
 
@@ -9616,6 +9736,12 @@ window.arcSrt = function(col) {
  renderArch();
 };
 
+function asArcHit(o, q) {
+ if (!q.on) return true;
+ const dp = o[O.DRV] || "", has = dp && !RF_NO.includes(dp);
+ return asScore(q, [ o[O.ID], o[O.RES], has ? asDrvName(dp) : "", o[O.AREA], o[O.DETAILS] ], has ? [ dp, o[O.RESPH] ] : [ o[O.RESPH] ]) > 0;
+}
+
 function renderArch() {
  if (!gD) return;
  const seen = new Set;
@@ -9626,14 +9752,14 @@ function renderArch() {
   if (k) seen.add(k);
   src.push(o);
  });
- const q = document.getElementById("arcSch")?.value.trim().toLowerCase() || "";
+ const q = asQ(document.getElementById("arcSch")?.value || "");
  const rF = document.getElementById("arcRS")?.value || "";
  const dF = document.getElementById("arcDS")?.value || "";
  let filtered = [];
  let tComm = 0, tRev = 0, tComp = 0, tCanc = 0;
  src.forEach(o => {
   const rN = o[O.RES] || "", dp = o[O.DRV] || "";
-  if (q && !String(o[O.ID]).toLowerCase().includes(q) && !String(o[O.DETAILS] || "").toLowerCase().includes(q) && !rN.toLowerCase().includes(q)) return;
+  if (!asArcHit(o, q)) return;
   if (rF && rN !== rF) return;
   if (dF && dp !== dF) return;
   const isC = [ "completed", "مكتمل", "settled" ].includes(o[O.STATUS]);
@@ -9659,7 +9785,8 @@ function renderArch() {
  document.getElementById("akCm").textContent = fmt(tComm);
  document.getElementById("akRv").textContent = fmt(tRev);
  document.getElementById("arcBdg").textContent = filtered.length.toLocaleString("ar-EG") + " طلب";
- const sig = filtered.length + "|" + q + "|" + rF + "|" + dF + "|" + arcPage + "|" + filtered.slice(0, 400).map(o => String(o[O.ID]) + o[O.STATUS]).join(",");
+ asCnt("arcSch", filtered.length);
+ const sig = filtered.length + "|" + q.n + "|" + rF + "|" + dF + "|" + arcPage + "|" + filtered.slice(0, 400).map(o => String(o[O.ID]) + o[O.STATUS]).join(",");
  if (sig === archSig) return;
  archSig = sig;
  const PAGE = 50;
@@ -9699,11 +9826,15 @@ function renderArch() {
    isSt: isSt
   })).replace(/'/g, "%27");
   const stH = isDel ? '<span class="stb stb-r">ملغي</span>' : isSt ? '<span class="stb stb-b">مسدد ✓</span>' : '<span class="stb stb-g">مكتمل</span>';
-  let idH = esc(oId);
+  let idH = asHl(oId, q);
   if (pU) idH += ` <button onclick="event.stopPropagation();opImg('${ej(pU)}')" style="background:transparent;border:none;cursor:pointer;color:var(--sky)">🖼</button>`;
-  html += `<tr onclick="opInv('${inv}')">\n      <td style="color:var(--ink4);font-size:.67rem">${i + 1}</td>\n      <td class="td-id" style="direction:ltr">${idH}</td>\n      <td style="font-size:.7rem"><div style="font-weight:800;color:var(--ink)">${esc(dateStr)}</div><div style="color:var(--ink4);font-size:.64rem">${esc(timeStr)}</div></td>\n      <td class="td-res">${esc(rN)}</td>\n      <td class="td-drv">${esc(dn2)}</td>\n      <td style="font-size:.7rem;color:var(--ink4)">${esc(o[O.AREA] || "—")}</td>\n      <td class="td-pr">${pr.toLocaleString("ar-EG")} <small style="color:var(--ink4)">د.ع</small></td>\n      <td class="td-cm">${cVal > 0 ? cVal.toLocaleString("ar-EG") + " د.ع" : '<span style="color:var(--ink4)">—</span>'}</td>\n      <td>${stH}</td>\n    </tr>`;
+  html += `<tr onclick="opInv('${inv}')">\n      <td style="color:var(--ink4);font-size:.67rem">${i + 1}</td>\n      <td class="td-id" style="direction:ltr">${idH}</td>\n      <td style="font-size:.7rem"><div style="font-weight:800;color:var(--ink)">${esc(dateStr)}</div><div style="color:var(--ink4);font-size:.64rem">${esc(timeStr)}</div></td>\n      <td class="td-res">${asHl(rN, q)}</td>\n      <td class="td-drv">${asHl(dn2, q)}</td>\n      <td style="font-size:.7rem;color:var(--ink4)">${asHl(o[O.AREA] || "—", q)}</td>\n      <td class="td-pr">${pr.toLocaleString("ar-EG")} <small style="color:var(--ink4)">د.ع</small></td>\n      <td class="td-cm">${cVal > 0 ? cVal.toLocaleString("ar-EG") + " د.ع" : '<span style="color:var(--ink4)">—</span>'}</td>\n      <td>${stH}</td>\n    </tr>`;
  });
- const empty = `<tr><td colspan="9" style="padding:42px"><div class="empty-s"><div class="es-ic">📭</div><div class="es-t">لا توجد طلبات مطابقة</div></div></td></tr>`;
+ const empty = q.on ? `<tr><td colspan="9" style="padding:10px">${asEmptyHtml(q, {
+  inp: "arcSch",
+  what: "طلبات",
+  where: rF || dF ? "المطعم أو الكابتن المختار" : ""
+ })}</td></tr>` : `<tr><td colspan="9" style="padding:42px"><div class="empty-s"><div class="es-ic">📭</div><div class="es-t">لا توجد طلبات مطابقة</div></div></td></tr>`;
  const final = html || empty;
  if (archHtml !== final) {
   document.getElementById("arcTb").innerHTML = final;
@@ -9863,11 +9994,11 @@ window.expCSV = function() {
   all.push(o);
  });
  if (!all.length) return toast("لا توجد طلبات", "e");
- const q = document.getElementById("arcSch")?.value.trim().toLowerCase() || "";
+ const q = asQ(document.getElementById("arcSch")?.value || "");
  const rF = document.getElementById("arcRS")?.value || "", dF = document.getElementById("arcDS")?.value || "";
  const rows = all.filter(o => {
   const rN = o[O.RES] || "", dp = o[O.DRV] || "";
-  if (q && !String(o[O.ID]).toLowerCase().includes(q) && !String(o[O.DETAILS] || "").toLowerCase().includes(q) && !rN.toLowerCase().includes(q)) return false;
+  if (!asArcHit(o, q)) return false;
   if (rF && rN !== rF) return false;
   if (dF && dp !== dF) return false;
   return true;
@@ -10012,8 +10143,6 @@ window.doLogout = function() {
 
 function renderAudit() {
  const AUD_MAX = 100;
- const q = document.getElementById("auSch")?.value.trim().toLowerCase() || "";
- const list = auData.filter(e => !q || JSON.stringify(e).toLowerCase().includes(q)).slice(0, AUD_MAX);
  const iMap = {
   updateEntity: "✏️",
   resetDebt: "💵",
@@ -10046,6 +10175,17 @@ function renderAudit() {
   drvPhoto: "تغيير صورة كابتن",
   freeDrvPhoto: "فتح صورة كابتن"
  };
+ const q = asQ(document.getElementById("auSch")?.value || "");
+ const hits = q.on ? auData.filter(e => {
+  const vals = Object.keys(e || {}).map(k => e[k]).filter(v => v !== null && v !== undefined && typeof v !== "object").map(String);
+  let ts = "";
+  try {
+   ts = new Date(e.timestamp).toLocaleString("ar-EG");
+  } catch (_) {}
+  return asScore(q, [ nMap[e.action] || e.action, e.details, ts ].concat(vals), vals.filter(v => /^7\d{9}$/.test(nP(v)))) > 0;
+ }) : auData;
+ const list = hits.slice(0, AUD_MAX);
+ asCnt("auSch", hits.length);
  let html = "";
  list.forEach(e => {
   const ico = iMap[e.action] || "⚡", nm = nMap[e.action] || e.action;
@@ -10053,10 +10193,14 @@ function renderAudit() {
   try {
    ts = new Date(e.timestamp).toLocaleString("ar-EG");
   } catch (err) {}
-  html += `<div class="au-it"><div class="au-ic">${ico}</div><div style="flex:1"><div style="font-weight:800;color:var(--ink);font-size:.85rem;margin-bottom:2px">${esc(nm)}</div><div style="font-size:.7rem;font-weight:700;color:var(--ink4);margin-bottom:4px">${esc(ts)}</div><div style="font-size:.76rem;font-weight:700;color:var(--ink3);background:var(--base2);padding:4px 7px;border-radius:7px;border:1px solid var(--line2)">${esc(e.details)}</div></div></div>`;
+  html += `<div class="au-it"><div class="au-ic">${ico}</div><div style="flex:1"><div style="font-weight:800;color:var(--ink);font-size:.85rem;margin-bottom:2px">${asHl(nm, q)}</div><div style="font-size:.7rem;font-weight:700;color:var(--ink4);margin-bottom:4px">${esc(ts)}</div><div style="font-size:.76rem;font-weight:700;color:var(--ink3);background:var(--base2);padding:4px 7px;border-radius:7px;border:1px solid var(--line2)">${asHl(e.details, q)}</div></div></div>`;
  });
+ if (html && hits.length > AUD_MAX) html += `<div style="text-align:center;font-size:.72rem;font-weight:800;color:var(--ink4);padding:8px">تُعرض أوّل ${AUD_MAX} من ${hits.length} — زِد كلمةً في البحث لتضييقها</div>`;
  const el = document.getElementById("auList");
- if (el) el.innerHTML = html || `<div class="empty-s"><div class="es-ic">📋</div><div class="es-t">لا توجد سجلات</div></div>`;
+ if (el) el.innerHTML = html || (q.on ? asEmptyHtml(q, {
+  inp: "auSch",
+  what: "سجلّات"
+ }) : `<div class="empty-s"><div class="es-ic">📋</div><div class="es-t">لا توجد سجلات</div></div>`);
 }
 
 function renderAlerts() {
@@ -10281,11 +10425,19 @@ function renderStaffOnline() {
 function renderStaffList() {
  const c = document.getElementById("staffAllList");
  if (!c) return;
- const q = document.getElementById("staffSch")?.value.trim().toLowerCase() || "";
+ const q = asQ(document.getElementById("staffSch")?.value || "");
  let list = [ ...staffRoster ];
- if (q) list = list.filter(e => String(e.name).toLowerCase().includes(q) || String(e.phone).includes(q));
+ if (q.on) {
+  const sc = new Map(list.map(e => [ e, asScore(q, [ e.name ], [ e.phone ]) ]));
+  list = list.filter(e => sc.get(e) > 0).sort((a, b) => sc.get(b) - sc.get(a));
+ }
+ asCnt("staffSch", list.length);
  if (!list.length) {
-  c.innerHTML = `<div class="empty-s" style="grid-column:1/-1"><div class="es-ic">👥</div><div class="es-t">لا يوجد موظفون مسجّلون</div></div>`;
+  c.innerHTML = q.on ? asEmptyHtml(q, {
+   inp: "staffSch",
+   what: "موظفين",
+   names: staffRoster.map(e => e.name)
+  }) : `<div class="empty-s" style="grid-column:1/-1"><div class="es-ic">👥</div><div class="es-t">لا يوجد موظفون مسجّلون</div></div>`;
   return;
  }
  let html = "";
@@ -10300,7 +10452,7 @@ function renderStaffList() {
   const spLbl = active ? isOnline ? "متصل" : "غير متصل" : "موقوف";
   const lastSeen = sess.last_activity ? fmtDateTime(sess.last_activity) : sess.logout_time ? fmtDateTime(sess.logout_time) : "—";
   const pj = ej(e.phone);
-  html += `<div class="ec ${active ? "ec-active" : "ec-banned"}">\n      <div class="dr-rt ${rt.cls}" style="margin-bottom:6px">${rt.ic} ${rt.lbl}</div>\n      <div class="ec-top">\n        <div class="ec-av" style="background:var(--sky-l);color:var(--sky)">🧑‍💼</div>\n        <span class="sp ${spCls}">${spLbl}</span>\n      </div>\n      <div class="ec-n">${esc(e.name)}</div>\n      <div class="ec-ph">${esc(e.phone)}</div>\n      <div class="dm-row">\n        <div class="dm-it">📅 آخر ظهور</div>\n        <div class="dm-it" style="font-size:.6rem">${esc(lastSeen)}</div>\n      </div>\n      <div class="ls">\n        <div class="lm"><div class="lv b">${st.counts.ASSIGN}</div><div class="ll">تعيين</div></div>\n        <div class="lm"><div class="lv g">${st.counts.COMPLETE}</div><div class="ll">إكمال</div></div>\n        <div class="lm"><div class="lv" style="color:var(--amber)">${st.counts.WITHDRAW}</div><div class="ll">سحب</div></div>\n        <div class="lm"><div class="lv r">${st.counts.DELETE}</div><div class="ll">حذف</div></div>\n      </div>\n      ${stPermsHtml(e)}\n      <div class="ec-acts">\n        <div style="display:flex;gap:4px">\n          <button class="ea ea-e" title="تقرير الأداء" onclick="opStaffPerf('${pj}')">📊</button>\n          <button class="ea ea-a" title="إعادة كلمة المرور" onclick="opStaffReset('${pj}','${ej(e.name)}')">🔑</button>\n          ${active ? `<button class="ea ea-p" title="إيقاف" onclick="stSetStatus('${pj}','suspended',this)">⏸</button>` : `<button class="ea ea-a" title="تفعيل" onclick="stSetStatus('${pj}','active',this)">✓</button>`}\n          <button class="ea ea-d" title="حذف" onclick="stDelete('${pj}','${ej(e.name)}',this)">🗑</button>\n        </div>\n        <button class="ea ea-c" title="اتصال" onclick="window.open('tel:${pj}')">📞</button>\n      </div>\n    </div>`;
+  html += `<div class="ec ${active ? "ec-active" : "ec-banned"}">\n      <div class="dr-rt ${rt.cls}" style="margin-bottom:6px">${rt.ic} ${rt.lbl}</div>\n      <div class="ec-top">\n        <div class="ec-av" style="background:var(--sky-l);color:var(--sky)">🧑‍💼</div>\n        <span class="sp ${spCls}">${spLbl}</span>\n      </div>\n      <div class="ec-n">${asHl(e.name, q)}</div>\n      <div class="ec-ph">${asHl(e.phone, q)}</div>\n      <div class="dm-row">\n        <div class="dm-it">📅 آخر ظهور</div>\n        <div class="dm-it" style="font-size:.6rem">${esc(lastSeen)}</div>\n      </div>\n      <div class="ls">\n        <div class="lm"><div class="lv b">${st.counts.ASSIGN}</div><div class="ll">تعيين</div></div>\n        <div class="lm"><div class="lv g">${st.counts.COMPLETE}</div><div class="ll">إكمال</div></div>\n        <div class="lm"><div class="lv" style="color:var(--amber)">${st.counts.WITHDRAW}</div><div class="ll">سحب</div></div>\n        <div class="lm"><div class="lv r">${st.counts.DELETE}</div><div class="ll">حذف</div></div>\n      </div>\n      ${stPermsHtml(e)}\n      <div class="ec-acts">\n        <div style="display:flex;gap:4px">\n          <button class="ea ea-e" title="تقرير الأداء" onclick="opStaffPerf('${pj}')">📊</button>\n          <button class="ea ea-a" title="إعادة كلمة المرور" onclick="opStaffReset('${pj}','${ej(e.name)}')">🔑</button>\n          ${active ? `<button class="ea ea-p" title="إيقاف" onclick="stSetStatus('${pj}','suspended',this)">⏸</button>` : `<button class="ea ea-a" title="تفعيل" onclick="stSetStatus('${pj}','active',this)">✓</button>`}\n          <button class="ea ea-d" title="حذف" onclick="stDelete('${pj}','${ej(e.name)}',this)">🗑</button>\n        </div>\n        <button class="ea ea-c" title="اتصال" onclick="window.open('tel:${pj}')">📞</button>\n      </div>\n    </div>`;
  });
  c.innerHTML = html;
 }
@@ -10308,12 +10460,6 @@ function renderStaffList() {
 function renderStaffLog() {
  const c = document.getElementById("staffLogList");
  if (!c) return;
- const q = document.getElementById("staffLogSch")?.value.trim().toLowerCase() || "";
- const list = staffLog.filter(e => !q || JSON.stringify(e).toLowerCase().includes(q));
- if (!list.length) {
-  c.innerHTML = `<div class="empty-s"><div class="es-ic">📋</div><div class="es-t">لا توجد أفعال مسجّلة</div></div>`;
-  return;
- }
  const icoMap = {
   LOGIN: "🟢",
   LOGOUT: "🔴",
@@ -10330,6 +10476,16 @@ function renderStaffLog() {
   DELETE: "حذف طلب",
   WITHDRAW: "سحب طلب"
  };
+ const q = asQ(document.getElementById("staffLogSch")?.value || "");
+ const list = q.on ? staffLog.filter(e => asScore(q, [ e.staffName, nmMap[e.action] || e.action, e.details, e.orderId, e.action, fmtDateTime(e.timestamp) ], [ e.staffPhone ]) > 0) : staffLog;
+ asCnt("staffLogSch", list.length);
+ if (!list.length) {
+  c.innerHTML = q.on ? asEmptyHtml(q, {
+   inp: "staffLogSch",
+   what: "أفعال"
+  }) : `<div class="empty-s"><div class="es-ic">📋</div><div class="es-t">لا توجد أفعال مسجّلة</div></div>`;
+  return;
+ }
  const colMap = {
   LOGIN: "var(--jade)",
   LOGOUT: "var(--rose)",
@@ -10343,7 +10499,7 @@ function renderStaffLog() {
   const ico = icoMap[e.action] || "⚡";
   const nm = nmMap[e.action] || e.action;
   const col = colMap[e.action] || "var(--sky)";
-  html += `<div class="au-it">\n      <div class="au-ic" style="background:${col}1a;color:${col}">${ico}</div>\n      <div style="flex:1">\n        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:2px">\n          <div style="font-weight:800;color:var(--ink);font-size:.85rem">${esc(e.staffName || "موظف")} — ${esc(nm)}</div>\n          <span style="font-size:.62rem;font-weight:800;color:var(--ink4);direction:ltr">${esc(e.staffPhone || "")}</span>\n        </div>\n        <div style="font-size:.7rem;font-weight:700;color:var(--ink4);margin-bottom:4px">${esc(fmtDateTime(e.timestamp))}</div>\n        ${e.details ? `<div style="font-size:.76rem;font-weight:700;color:var(--ink3);background:var(--base2);padding:4px 7px;border-radius:7px;border:1px solid var(--line2)">${esc(e.details)}</div>` : ""}\n      </div>\n    </div>`;
+  html += `<div class="au-it">\n      <div class="au-ic" style="background:${col}1a;color:${col}">${ico}</div>\n      <div style="flex:1">\n        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:2px">\n          <div style="font-weight:800;color:var(--ink);font-size:.85rem">${asHl(e.staffName || "موظف", q)} — ${asHl(nm, q)}</div>\n          <span style="font-size:.62rem;font-weight:800;color:var(--ink4);direction:ltr">${asHl(e.staffPhone || "", q)}</span>\n        </div>\n        <div style="font-size:.7rem;font-weight:700;color:var(--ink4);margin-bottom:4px">${esc(fmtDateTime(e.timestamp))}</div>\n        ${e.details ? `<div style="font-size:.76rem;font-weight:700;color:var(--ink3);background:var(--base2);padding:4px 7px;border-radius:7px;border:1px solid var(--line2)">${asHl(e.details, q)}</div>` : ""}\n      </div>\n    </div>`;
  });
  c.innerHTML = html;
 }
@@ -11246,6 +11402,378 @@ function admAfterEnter(via) {
 admPkPaint();
 
 if (admPkHint() && admPhoneUA && !pwaIOS && document.visibilityState === "visible") setTimeout(() => admPkLogin(true), 350);
+
+const _asNC = new Map;
+
+function asN(s) {
+ const k = String(s === null || s === undefined ? "" : s);
+ let v = _asNC.get(k);
+ if (v !== undefined) return v;
+ v = rfNorm(k).replace(/ء/g, "");
+ if (_asNC.size > 9e3) _asNC.clear();
+ _asNC.set(k, v);
+ return v;
+}
+
+const _asQC = new Map;
+
+function asQ(raw) {
+ raw = String(raw === null || raw === undefined ? "" : raw);
+ let q = _asQC.get(raw);
+ if (q) return q;
+ const n = asN(raw), dg = n.replace(/[\s\-+().\/]/g, ""), num = /^\d{3,}$/.test(dg);
+ q = {
+  raw: raw,
+  n: n,
+  nz: n.replace(/ /g, ""),
+  w: n ? n.split(" ") : [],
+  num: num,
+  dg: num ? dg : "",
+  ph: num ? nP(dg) : "",
+  on: !!n
+ };
+ if (_asQC.size > 300) _asQC.clear();
+ _asQC.set(raw, q);
+ return q;
+}
+
+function asScore(q, texts, phones) {
+ if (!q || !q.on) return 1;
+ texts = texts || [];
+ phones = phones || [];
+ const nm = asN(texts[0]), hay = texts.length > 1 ? asN(texts.join(" ")) : nm;
+ const ps = phones.map(nP).filter(Boolean);
+ if (q.num) {
+  if (q.ph && ps.some(p => p.includes(q.ph))) return 4;
+  return hay.replace(/ /g, "").includes(q.dg) ? 3 : 0;
+ }
+ let hz = null;
+ const inHay = w => {
+  if (/^\d{1,2}$/.test(w)) return (" " + hay + " ").includes(" " + w + " ");
+  return hay.includes(w) || w.length >= 3 && (hz === null ? hz = hay.replace(/ /g, "") : hz).includes(w) || /^\d{3,}$/.test(w) && ps.some(p => p.includes(nP(w)));
+ };
+ if (!q.w.every(inHay)) return 0;
+ if (nm === q.n) return 6;
+ if (nm.startsWith(q.n)) return 5;
+ const sp = " " + nm;
+ if (q.w.every(w => sp.includes(" " + w))) return 4;
+ if (q.w.every(w => nm.includes(w))) return 3;
+ return 2;
+}
+
+function asDist(a, b, max) {
+ const la = a.length, lb = b.length;
+ if (Math.abs(la - lb) > max) return max + 1;
+ let p2 = null, p = [];
+ for (let j = 0; j <= lb; j++) p[j] = j;
+ for (let i = 1; i <= la; i++) {
+  const c = [ i ];
+  let best = i;
+  for (let j = 1; j <= lb; j++) {
+   let v = Math.min(p[j] + 1, c[j - 1] + 1, p[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+   if (p2 && i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) v = Math.min(v, p2[j - 2] + 1);
+   c[j] = v;
+   if (v < best) best = v;
+  }
+  if (best > max) return max + 1;
+  p2 = p;
+  p = c;
+ }
+ return p[lb];
+}
+
+function asNear(q, names, lim) {
+ if (!q || !q.on || q.num) return [];
+ const ws = q.w.filter(w => w.length >= 3);
+ if (!ws.length) return [];
+ const seen = new Set, out = [];
+ (names || []).forEach(nm => {
+  const raw = String(nm === null || nm === undefined ? "" : nm).trim();
+  if (!raw || seen.has(raw)) return;
+  seen.add(raw);
+  const tw = asN(raw).split(" ").filter(Boolean);
+  let tot = 0;
+  for (const w of ws) {
+   const k = w.length >= 6 ? 2 : 1;
+   let b = k + 1;
+   for (const t of tw) {
+    b = Math.min(b, asDist(w, t, k));
+    if (t.length > w.length) b = Math.min(b, asDist(w, t.slice(0, w.length), k));
+    if (!b) break;
+   }
+   if (b > k) return;
+   tot += b;
+  }
+  out.push({
+   name: raw,
+   d: tot
+  });
+ });
+ return out.sort((a, b) => a.d - b.d).slice(0, lim || 5);
+}
+
+function asHl(text, q) {
+ text = String(text === null || text === undefined ? "" : text);
+ if (!q || !q.on || !text) return esc(text);
+ let nn = "";
+ const map = [];
+ for (let i = 0; i < text.length; i++) {
+  const ch = text[i], m = /\s/.test(ch) ? " " : asN(ch);
+  for (let j = 0; j < m.length; j++) {
+   nn += m[j];
+   map.push(i);
+  }
+ }
+ const mk = new Uint8Array(text.length);
+ (q.num ? [ q.dg, q.ph ] : q.w).forEach(w => {
+  if (!w) return;
+  const whole = /^\d{1,2}$/.test(w);
+  let k = nn.indexOf(w);
+  while (k > -1) {
+   if (!whole || (k === 0 || nn[k - 1] === " ") && (k + w.length === nn.length || nn[k + w.length] === " ")) for (let j = k; j < k + w.length; j++) mk[map[j]] = 1;
+   k = nn.indexOf(w, k + w.length);
+  }
+ });
+ let out = "", on = false;
+ for (let i = 0; i < text.length; i++) {
+  let m = mk[i];
+  if (!m && on && !/\s/.test(text[i]) && asN(text[i]) === "") m = 1;
+  if (m && !on) {
+   out += '<mark class="as-hl">';
+   on = true;
+  } else if (!m && on) {
+   out += "</mark>";
+   on = false;
+  }
+  out += esc(text[i]);
+ }
+ return on ? out + "</mark>" : out;
+}
+
+function asCntTxt(n) {
+ return n === 0 ? "لا نتائج" : n === 1 ? "نتيجة واحدة" : n === 2 ? "نتيجتان" : n <= 10 ? n + " نتائج" : n + " نتيجة";
+}
+
+function asCnt(id, n) {
+ const e = document.getElementById("asn_" + id);
+ if (!e) return;
+ const t = asCntTxt(n);
+ if (e.textContent !== t) e.textContent = t;
+ e.classList.toggle("z", n === 0);
+}
+
+window.asSet = function(id, v) {
+ const i = document.getElementById(id);
+ if (!i) return;
+ i.value = String(v || "");
+ i.dispatchEvent(new Event("input", {
+  bubbles: true
+ }));
+ if (i._asRun) i._asRun();
+ try {
+  i.focus({
+   preventScroll: true
+  });
+ } catch (_) {}
+};
+
+function asEmptyHtml(q, o) {
+ o = o || {};
+ let h = `<div class="as-empty"><div class="es-ic">🔍</div><div class="t">لا ${esc(o.what || "نتائج")} لـ«${esc(q.raw.trim())}»${o.where ? ` في «${esc(o.where)}»` : ""}</div>`;
+ const j = (o.jumps || []).filter(x => x.n > 0);
+ if (j.length) h += `<div class="s">موجودٌ في:</div><div class="as-chips">${j.map(x => `<button class="as-chip" onclick="${x.js}">${esc(x.label)}<b>${x.n}</b></button>`).join("")}</div>`; else {
+  const near = asNear(q, o.names || [], 5);
+  if (near.length) h += `<div class="s">هل تقصد:</div><div class="as-chips">${near.map(x => `<button class="as-chip" onclick="asSet('${ej(o.inp)}','${ej(x.name)}')">${esc(x.name)}</button>`).join("")}</div>`; else h += `<div class="s">${q.num ? "جرّب آخر ٤ أو ٥ أرقام وحدها" : "جرّب كلمةً أقصر أو جزءاً من الاسم"}</div>`;
+ }
+ return h + `<button class="as-chip as-clr" onclick="asSet('${ej(o.inp)}','')">✕ مسح البحث</button></div>`;
+}
+
+let _asDrvSrc = null, _asDrvMap = null;
+
+function asDrvName(p) {
+ const src = gD && gD.drivers;
+ if (!src) return "";
+ if (_asDrvSrc !== src) {
+  _asDrvSrc = src;
+  _asDrvMap = new Map;
+  src.slice(1).forEach(d => {
+   const k = nP(d[D.PHONE]);
+   if (k && !_asDrvMap.has(k)) _asDrvMap.set(k, String(d[D.NAME] || ""));
+  });
+ }
+ return _asDrvMap.get(nP(p)) || "";
+}
+
+function asEntIn(type, f, i) {
+ const st = type === "RES" ? i[R.STATUS] : i[D.STATUS];
+ if (st === "deleted" !== (f === "deleted")) return false;
+ if (f === "deleted" || f === "mostOrders" || f === "mostDebt") return true;
+ if (f === "unsigned") return type === "RES" && !!_ctMap && ctOpen(st) && !ctOf(nP(i[2]));
+ if (f === "pending" || f === "waiting") return st === "pending" || st === "waiting";
+ if (f === "active" && type === "DRV") return st === "active" && actDrv.has(nP(i[D.PHONE]));
+ return st === f;
+}
+
+function asEntBtns(type) {
+ return [ ...document.querySelectorAll("#pg-" + (type === "RES" ? "restaurants" : "drivers") + " .fbar .fp") ].map(b => {
+  const m = /setSF\('\w+','(\w+)'/.exec(b.getAttribute("onclick") || "");
+  return m ? {
+   k: m[1],
+   b: b,
+   label: (b.childNodes[0] && b.childNodes[0].textContent || "").trim()
+  } : null;
+ }).filter(Boolean);
+}
+
+function asEntJumps(type, cur, all, hit) {
+ const allLike = cur === "mostOrders" || cur === "mostDebt";
+ return asEntBtns(type).filter(x => x.k !== cur && x.k !== "mostDebt" && (!allLike || x.k === "deleted")).map(x => ({
+  label: x.k === "mostOrders" ? "الكلّ" : x.label,
+  n: all.filter(i => hit(i) && asEntIn(type, x.k, i)).length,
+  js: `asJumpF('${type}','${x.k}')`
+ }));
+}
+
+window.asJumpF = function(type, k) {
+ const x = asEntBtns(type).find(y => y.k === k);
+ if (x) setSF(type, k, x.b);
+};
+
+const AS_BOXES = {
+ sRes: {
+  ph: "ابحث: اسم المطعم، رقمه، منطقته…",
+  ms: 120
+ },
+ sDrv: {
+  ph: "ابحث: اسم الكابتن، رقمه، منطقته…",
+  ms: 120
+ },
+ staffSch: {
+  ph: "ابحث: اسم الموظف أو رقمه…",
+  ms: 60
+ },
+ staffLogSch: {
+  ph: "ابحث في السجلّ: موظف، فعل، رقم طلب، تاريخ…",
+  ms: 120
+ },
+ auSch: {
+  ph: "ابحث في السجلّ: الفعل، الاسم، الرقم، التفاصيل…",
+  ms: 120
+ },
+ insSch: {
+  ph: "ابحث: اسم الكابتن أو رقمه…",
+  ms: 80
+ },
+ pbSch: {
+  ph: "ابحث: اسم المطعم أو رقمه…",
+  ms: 80
+ },
+ arcSch: {
+  ph: "رقم الطلب، مطعم، كابتن، منطقة، هاتف…",
+  ms: 160
+ },
+ prefSearch: {
+  ph: "ابحث باسم الكابتن أو رقمه أو منطقته",
+  ms: 60
+ }
+};
+
+function asWire() {
+ Object.keys(AS_BOXES).forEach(id => {
+  const inp = document.getElementById(id);
+  if (!inp || inp.dataset.as) return;
+  const cfg = AS_BOXES[id];
+  inp.dataset.as = "1";
+  let w = inp.closest(".srch-w");
+  if (!w) {
+   w = document.createElement("div");
+   inp.parentNode.insertBefore(w, inp);
+   w.appendChild(inp);
+   w.style.margin = inp.style.marginBottom ? "0 0 " + inp.style.marginBottom : "";
+   inp.style.marginBottom = "";
+  }
+  w.classList.add("as-w");
+  inp.classList.add("as-in");
+  try {
+   inp.type = "search";
+  } catch (_) {}
+  inp.setAttribute("autocomplete", "off");
+  inp.setAttribute("spellcheck", "false");
+  inp.setAttribute("enterkeyhint", "search");
+  inp.setAttribute("aria-label", cfg.ph);
+  inp.placeholder = cfg.ph;
+  if (!w.querySelector(".si")) {
+   const s = document.createElement("span");
+   s.className = "si";
+   s.textContent = "🔍";
+   w.insertBefore(s, inp);
+  }
+  const n = document.createElement("span");
+  n.className = "as-n";
+  n.id = "asn_" + id;
+  w.appendChild(n);
+  const x = document.createElement("button");
+  x.type = "button";
+  x.className = "as-x";
+  x.title = "مسح البحث (Esc)";
+  x.setAttribute("aria-label", "مسح البحث");
+  x.textContent = "✕";
+  x.onclick = () => asSet(id, "");
+  w.appendChild(x);
+  const k = document.createElement("span");
+  k.className = "as-k";
+  k.textContent = "/";
+  k.title = "اضغط / للبحث";
+  w.appendChild(k);
+  const h = inp.oninput;
+  inp.oninput = null;
+  inp.removeAttribute("oninput");
+  let t = null;
+  const run = () => {
+   clearTimeout(t);
+   t = null;
+   try {
+    if (h) h.call(inp);
+   } catch (e) {
+    console.warn("بحث " + id, e);
+   }
+  };
+  inp._asRun = run;
+  inp.addEventListener("input", () => {
+   clearTimeout(t);
+   t = setTimeout(run, inp.value ? cfg.ms : 0);
+  });
+  inp.addEventListener("keydown", e => {
+   if (e.key === "Escape" && inp.value) {
+    e.preventDefault();
+    e.stopPropagation();
+    asSet(id, "");
+   } else if (e.key === "Enter") {
+    e.preventDefault();
+    run();
+    if (typeof admPhoneUA !== "undefined" && admPhoneUA) inp.blur();
+   }
+  });
+ });
+}
+
+asWire();
+
+document.addEventListener("keydown", e => {
+ const slash = e.code === "Slash" && !e.ctrlKey && !e.metaKey && !e.altKey, ck = (e.ctrlKey || e.metaKey) && e.code === "KeyK";
+ if (!slash && !ck) return;
+ const a = document.activeElement;
+ if (a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA" || a.tagName === "SELECT" || a.isContentEditable)) return;
+ const scope = document.querySelector(".mbg.open,.xs-bg.open") || document.querySelector(".pg.on");
+ if (!scope) return;
+ const inp = [ ...scope.querySelectorAll(".as-in,#rfQ,#asgQ") ].find(i => i.offsetParent !== null);
+ if (!inp) return;
+ e.preventDefault();
+ inp.focus();
+ try {
+  inp.select();
+ } catch (_) {}
+});
 </script>
 </body>
 </html>
