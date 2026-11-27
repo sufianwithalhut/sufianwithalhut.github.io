@@ -3908,7 +3908,11 @@ window.setVehicle = function(id, el) {
 window.rstShift = function(id, el) {
  const n = nP(id);
  const nm = gD?.drivers?.find(i => nP(i[2]) === n)?.[1] || id;
- if (!confirm(`فتح شفت ${nm}؟ سيتمكّن من بدء شفتٍ جديد كامل الآن.`)) return;
+ const lenRaw = Number(_lastLocs && _lastLocs[n] && _lastLocs[n].shift_len);
+ const len = Math.min(12, isFinite(lenRaw) && lenRaw >= 1 ? lenRaw : 10);
+ const untilMs = Date.now() + (len + 2) * 36e5;
+ const untilTxt = new Date(untilMs + 3 * 36e5).toISOString().slice(11, 16);
+ if (!confirm(`فتح شفت ${nm}؟\nيبدأ شفتاً جديداً كاملاً (${len} ساعات) متى ضغط «متاح»، ولو كان خارج موعده — والباب مفتوح حتى ${untilTxt}.`)) return;
  if (!MP) return toast("انتهت الجلسة", "e");
  if (el) {
   el.disabled = true;
@@ -3925,11 +3929,15 @@ window.rstShift = function(id, el) {
    pass: MP
   })
  }).then(r => r.json()).then(d => {
-  if (d && d.success) {
+  if (!(d && d.success)) return toast(d && d.msg ? d.msg : "فشل فتح الشفت", "e");
+  return db.ref("drivers_locations/" + n + "/shift_free_until").set(new Date(untilMs).toISOString()).then(() => {
    _flPeek(n);
-   toast("فُتح الشفت 🔓");
-   logAudit("resetShift", `فتح شفت كابتن: ${nm}`);
-  } else toast(d && d.msg ? d.msg : "فشل فتح الشفت", "e");
+   toast(`فُتح الشفت 🔓 حتى ${untilTxt}`);
+   logAudit("resetShift", `فتح شفت كابتن: ${nm} (حتى ${untilTxt})`);
+  }).catch(e => {
+   console.error("shift_free_until", e);
+   toast("مُسح انتهاء الشفت، لكن تعذّر فتح موعده — أعد المحاولة", "e");
+  });
  }).catch(() => toast("تعذّر الإرسال", "e")).finally(() => {
   if (el) el.disabled = false;
  });

@@ -4493,7 +4493,7 @@ window.toggleOnline = async function() {
     _so = v === null ? undefined : v === "1";
    } catch (_) {}
   }
-  const s = ENFORCE_SHIFT_WINDOW && _so === false ? myShift() : null;
+  const s = ENFORCE_SHIFT_WINDOW && _so === false && !shiftFreeNow() ? myShift() : null;
   if (s) {
    const w = inWindowLocal(s.h, s.len, srvNow());
    if (!w.inside) {
@@ -5295,6 +5295,12 @@ function profileComplete() {
  return !!(drv && drv.photo && myShift());
 }
 
+function shiftFreeNow() {
+ if (!drv || !drv.shift_free_until) return false;
+ const t = Date.parse(drv.shift_free_until);
+ return isFinite(t) && t > srvNow();
+}
+
 function photoLocked() {
  return !!(drv && drv.photo);
 }
@@ -5479,6 +5485,11 @@ function shiftWindowPulse() {
   return;
  }
  if (!isOnline || !drv) return;
+ if (shiftFreeNow()) {
+  window._winOver = false;
+  window._winNotified = false;
+  return;
+ }
  const s = myShift();
  if (!s) return;
  const w = inWindowLocal(s.h, s.len, srvNow());
@@ -5752,7 +5763,7 @@ function startListeners() {
    location.reload();
   }
  });
- const _SELF_KEYS = [ "photo", "shift_h", "shift_len", "shift_next" ], _selfPend = {}, _selfSeen = {};
+ const _SELF_KEYS = [ "photo", "shift_h", "shift_len", "shift_next", "shift_free_until" ], _selfPend = {}, _selfSeen = {};
  let _selfT = null;
  const _selfCommit = () => {
   if (!_SELF_KEYS.every(k => _selfSeen[k])) return;
@@ -5761,6 +5772,21 @@ function startListeners() {
   if ("shift_h" in v) drv.shift_h = v.shift_h === undefined || v.shift_h === null ? null : v.shift_h;
   if ("shift_len" in v) drv.shift_len = v.shift_len || null;
   if ("shift_next" in v) drv.shift_next = v.shift_next || null;
+  if ("shift_free_until" in v) {
+   const was = shiftFreeNow();
+   drv.shift_free_until = v.shift_free_until || null;
+   if (!was && shiftFreeNow()) {
+    window._winOver = false;
+    window._winNotified = false;
+    window._shiftOver = false;
+    if (window._selfCommitted) {
+     try {
+      toast("🔓 فتحت الإدارة شفتك — اضغط «متاح» وابدأ", "ok");
+     } catch (_) {}
+    }
+   }
+  }
+  window._selfCommitted = true;
   _SELF_KEYS.forEach(k => {
    delete _selfPend[k];
   });
